@@ -1,0 +1,7 @@
+[package]
+name = "blockchain-lab"
+version = "0.1.0"
+authors = ["Dong Zhou <dong.zhou.08@gmail.com>"]
+
+[dependencies]
+crypto = { path = "crypto" }
