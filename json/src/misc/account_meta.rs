@@ -14,15 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::io::{Error, ErrorKind};
+//! Misc deserialization.
 
-pub fn preset_config_string(arg: &str) -> Result<&'static str, Error> {
-    match arg.to_lowercase().as_ref() {
-        "dev" => Ok(include_str!("./config.dev.toml")),
-        "mining" => Ok(include_str!("./config.mining.toml")),
-        "non-standard-ports" => Ok(include_str!("./config.non-standard-ports.toml")),
-        "insecure" => Ok(include_str!("./config.insecure.toml")),
-        "dev-insecure" => Ok(include_str!("./config.dev-insecure.toml")),
-        _ => Err(Error::new(ErrorKind::InvalidInput, "Config doesn't match any presets [dev, mining, non-standard-ports, insecure, dev-insecure]"))
-    }
+use hash;
+
+/// Collected account metadata
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AccountMeta {
+	/// The name of the account.
+	pub name: String,
+	/// The rest of the metadata of the account.
+	pub meta: String,
+	/// The 128-bit Uuid of the account, if it has one (brain-wallets don't).
+	pub uuid: Option<String>,
 }
+
+impl_serialization!(hash::Address => AccountMeta);

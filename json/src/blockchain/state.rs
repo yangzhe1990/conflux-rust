@@ -14,15 +14,21 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::io::{Error, ErrorKind};
+//! Blockchain test state deserializer.
 
-pub fn preset_config_string(arg: &str) -> Result<&'static str, Error> {
-    match arg.to_lowercase().as_ref() {
-        "dev" => Ok(include_str!("./config.dev.toml")),
-        "mining" => Ok(include_str!("./config.mining.toml")),
-        "non-standard-ports" => Ok(include_str!("./config.non-standard-ports.toml")),
-        "insecure" => Ok(include_str!("./config.insecure.toml")),
-        "dev-insecure" => Ok(include_str!("./config.dev-insecure.toml")),
-        _ => Err(Error::new(ErrorKind::InvalidInput, "Config doesn't match any presets [dev, mining, non-standard-ports, insecure, dev-insecure]"))
-    }
+use std::collections::BTreeMap;
+use hash::Address;
+use blockchain::account::Account;
+
+/// Blockchain test state deserializer.
+#[derive(Debug, PartialEq, Deserialize, Clone)]
+pub struct State(BTreeMap<Address, Account>);
+
+impl IntoIterator for State {
+	type Item = <BTreeMap<Address, Account> as IntoIterator>::Item;
+	type IntoIter = <BTreeMap<Address, Account> as IntoIterator>::IntoIter;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.0.into_iter()
+	}
 }

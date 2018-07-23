@@ -14,15 +14,17 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::io::{Error, ErrorKind};
+//! Trie test deserialization.
 
-pub fn preset_config_string(arg: &str) -> Result<&'static str, Error> {
-    match arg.to_lowercase().as_ref() {
-        "dev" => Ok(include_str!("./config.dev.toml")),
-        "mining" => Ok(include_str!("./config.mining.toml")),
-        "non-standard-ports" => Ok(include_str!("./config.non-standard-ports.toml")),
-        "insecure" => Ok(include_str!("./config.insecure.toml")),
-        "dev-insecure" => Ok(include_str!("./config.dev-insecure.toml")),
-        _ => Err(Error::new(ErrorKind::InvalidInput, "Config doesn't match any presets [dev, mining, non-standard-ports, insecure, dev-insecure]"))
-    }
+use hash::H256;
+use trie::Input;
+
+/// Trie test deserialization.
+#[derive(Debug, Deserialize, PartialEq)]
+pub struct Trie {
+	/// Trie test input.
+	#[serde(rename="in")]
+	pub input: Input,
+	/// Trie root hash.
+	pub root: H256,
 }
