@@ -6,18 +6,18 @@ extern crate serde_json;
 extern crate serde_derive;
 extern crate ctrlc;
 extern crate jsonrpc_core;
-extern crate jsonrpc_ipc_server as ipc;
 extern crate jsonrpc_tcp_server as tcp;
 extern crate parking_lot;
+#[macro_use]
+extern crate error_chain;
 
 extern crate parity_reactor;
 
-mod account;
 mod configuration;
 mod network;
 mod rpc;
 
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg};
 use configuration::Configuration;
 use ctrlc::CtrlC;
 use parity_reactor::EventLoop;
@@ -27,13 +27,16 @@ use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
 
-fn start(_conf: Configuration) -> Result<Box<Any>, String> {
+fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let event_loop = EventLoop::spawn();
 
     let rpc_deps = rpc::Dependencies {
         remote: event_loop.raw_remote(),
     };
-    let rpc_server = rpc::new_tcp(rpc::TcpConfiguration::default(), &rpc_deps)?;
+    let rpc_server = rpc::new_tcp(
+        rpc::TcpConfiguration::with_port(conf.jsonrpc_port),
+        &rpc_deps,
+    )?;
 
     Ok(Box::new((event_loop, rpc_server)))
 }
@@ -47,13 +50,20 @@ fn main() {
                 .help("Listen for p2p connections on PORT.")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("jsonrpc-port")
+                .long("jsonrpc-port")
+                .value_name("PORT")
+                .help("Specify the PORT for the TCP JSON-RPC API server.")
+                .takes_value(true),
+        )
         .get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));
 
     process::exit(match start(conf) {
-        Ok(_) => {
+        Ok(keep_alive) => {
             CtrlC::set_handler({
                 let e = exit.clone();
                 move || {
@@ -66,6 +76,9 @@ fn main() {
             if !*lock {
                 let _ = exit.1.wait(&mut lock);
             }
+
+            drop(keep_alive);
+
             0
         }
         Err(err) => {

@@ -1,8 +1,6 @@
-use std::path::PathBuf;
-
 use jsonrpc_core::{IoHandler, Value};
 use parity_reactor::TokioRemote;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tcp::ServerBuilder as TcpServerBuilder;
 
 pub use tcp::Server as TcpServer;
@@ -17,11 +15,11 @@ pub struct TcpConfiguration {
     pub socket_addr: SocketAddr,
 }
 
-impl Default for TcpConfiguration {
-    fn default() -> Self {
+impl TcpConfiguration {
+    pub fn with_port(port: u16) -> Self {
         TcpConfiguration {
             enabled: true,
-            socket_addr: "0.0.0.0:2323".parse().unwrap(),
+            socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port)),
         }
     }
 }

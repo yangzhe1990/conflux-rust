@@ -3,6 +3,7 @@ use clap;
 #[derive(Debug, PartialEq)]
 pub struct Configuration {
     pub port: u16,
+    pub jsonrpc_port: u16,
 }
 
 impl Configuration {
@@ -12,6 +13,14 @@ impl Configuration {
             None => 32323,
         };
 
-        Ok(Configuration { port: port })
+        let jsonrpc_port = match matches.value_of("jsonrpc-port") {
+            Some(port) => port.parse().map_err(|_| "Invalid port".to_owned())?,
+            None => 2323,
+        };
+
+        Ok(Configuration {
+            port: port,
+            jsonrpc_port: jsonrpc_port,
+        })
     }
 }
