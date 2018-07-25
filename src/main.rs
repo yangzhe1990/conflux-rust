@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate clap;
-extern crate dir;
 extern crate serde;
 extern crate serde_json;
 #[macro_use]
@@ -10,17 +9,15 @@ extern crate jsonrpc_core;
 extern crate jsonrpc_ipc_server as ipc;
 extern crate jsonrpc_tcp_server as tcp;
 extern crate parking_lot;
-extern crate toml;
 
 extern crate parity_reactor;
-extern crate parity_version;
 
 mod account;
-mod cli;
 mod configuration;
+mod network;
 mod rpc;
-mod run;
 
+use clap::{App, Arg, SubCommand};
 use configuration::Configuration;
 use ctrlc::CtrlC;
 use parity_reactor::EventLoop;
@@ -30,7 +27,7 @@ use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
 
-fn start(conf: Configuration) -> Result<Box<Any>, String> {
+fn start(_conf: Configuration) -> Result<Box<Any>, String> {
     let event_loop = EventLoop::spawn();
 
     let rpc_deps = rpc::Dependencies {
@@ -42,10 +39,16 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
 }
 
 fn main() {
-    let conf = {
-        let mut args = std::env::args().collect::<Vec<_>>();
-        Configuration::parse_cli(&args).unwrap_or_else(|e| e.exit())
-    };
+    let matches = App::new("conflux")
+        .arg(
+            Arg::with_name("port")
+                .long("port")
+                .value_name("PORT")
+                .help("Listen for p2p connections on PORT.")
+                .takes_value(true),
+        )
+        .get_matches_from(std::env::args().collect::<Vec<_>>());
+    let conf = Configuration::parse(&matches).unwrap();
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));
 
