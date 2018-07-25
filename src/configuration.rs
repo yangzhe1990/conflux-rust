@@ -15,10 +15,10 @@ pub struct Configuration {
 }
 
 impl Configuration {
-    pub fn parse<S: AsRef<str>>(command: &[S]) -> Result<Self, ArgsError> {
-        let args = Args::parse(command)?;
-
-        let config = Configuration { args: args };
+    pub fn parse_cli<S: AsRef<str>>(command: &[S]) -> Result<Self, ArgsError> {
+        let config = Configuration {
+            args: Args::parse(command)?,
+        };
 
         Ok(config)
     }
@@ -38,7 +38,6 @@ impl Configuration {
         } else {
             let run_cmd = RunCmd {
                 dirs: Default::default(),
-                ipc_conf: Default::default(),
                 tcp_conf: Default::default(),
             };
             Cmd::Run(run_cmd)
