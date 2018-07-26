@@ -5,6 +5,8 @@ use tcp::ServerBuilder as TcpServerBuilder;
 
 pub use tcp::Server as TcpServer;
 
+const DEFAULT_TCP_PORT: u16 = 32324;
+
 pub struct Dependencies {
     pub remote: TokioRemote,
 }
@@ -16,17 +18,19 @@ pub struct TcpConfiguration {
 }
 
 impl TcpConfiguration {
-    pub fn with_port(port: u16) -> Self {
+    pub fn new(port: Option<u16>) -> Self {
         TcpConfiguration {
             enabled: true,
-            socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port)),
+            socket_addr: SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(0, 0, 0, 0),
+                port.unwrap_or(DEFAULT_TCP_PORT),
+            )),
         }
     }
 }
 
 pub fn new_tcp(
-    conf: TcpConfiguration,
-    dependencies: &Dependencies,
+    conf: TcpConfiguration, dependencies: &Dependencies,
 ) -> Result<Option<TcpServer>, String> {
     if !conf.enabled {
         return Ok(None);

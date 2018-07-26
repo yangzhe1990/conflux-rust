@@ -3,7 +3,6 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
     pub listen_address: Option<SocketAddr>,
-    pub port: Option<u16>,
 }
 
 impl Default for NetworkConfiguration {
@@ -16,7 +15,6 @@ impl NetworkConfiguration {
     pub fn new() -> Self {
         NetworkConfiguration {
             listen_address: None,
-            port: None,
         }
     }
 

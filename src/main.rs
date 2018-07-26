@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 #[macro_use]
 extern crate clap;
 extern crate serde;
@@ -10,8 +12,13 @@ extern crate jsonrpc_tcp_server as tcp;
 extern crate parking_lot;
 #[macro_use]
 extern crate error_chain;
-
+extern crate ethcore_io as io;
+extern crate mio;
 extern crate parity_reactor;
+#[macro_use]
+extern crate log;
+extern crate ethereum_types;
+extern crate slab;
 
 mod configuration;
 mod network;
@@ -33,12 +40,17 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let rpc_deps = rpc::Dependencies {
         remote: event_loop.raw_remote(),
     };
-    let rpc_server = rpc::new_tcp(
-        rpc::TcpConfiguration::with_port(conf.jsonrpc_port),
-        &rpc_deps,
-    )?;
+    let rpc_server = rpc::new_tcp(rpc::TcpConfiguration::new(conf.jsonrpc_port), &rpc_deps)?;
 
-    Ok(Box::new((event_loop, rpc_server)))
+    let net_conf = match conf.port {
+        Some(port) => network::NetworkConfiguration::new_with_port(port),
+        None => network::NetworkConfiguration::default(),
+    };
+
+    let net_svc = network::NetworkService::new(net_conf).map_err(|e| format!("{}", e))?;
+    net_svc.start().map_err(|e| format!("{}", e))?;
+
+    Ok(Box::new((event_loop, rpc_server, net_svc)))
 }
 
 fn main() {

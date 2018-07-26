@@ -6,3 +6,4 @@ trailing_comma = "Vertical"
 reorder_imports = true
 format_strings = false
 error_on_line_overflow = false
+fn_args_density = "Compressed"
