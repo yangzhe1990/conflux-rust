@@ -1,0 +1,7 @@
+[package]
+name = "conflux-service"
+version = "0.1.0"
+authors = ["ming wu <ming@alt-chain.io>"]
+
+[dependencies]
+conflux-sync = { path = "../sync" }
