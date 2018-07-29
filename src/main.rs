@@ -18,15 +18,16 @@ extern crate parity_reactor;
 #[macro_use]
 extern crate log;
 extern crate ethereum_types;
+extern crate network;
 extern crate slab;
 
 mod configuration;
-mod network;
 mod rpc;
 
 use clap::{App, Arg};
 use configuration::Configuration;
 use ctrlc::CtrlC;
+use network::{NetworkConfiguration, NetworkService};
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
 use std::any::Any;
@@ -40,14 +41,16 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let rpc_deps = rpc::Dependencies {
         remote: event_loop.raw_remote(),
     };
-    let rpc_server = rpc::new_tcp(rpc::TcpConfiguration::new(conf.jsonrpc_port), &rpc_deps)?;
+    let rpc_server =
+        rpc::new_tcp(rpc::TcpConfiguration::new(conf.jsonrpc_port), &rpc_deps)?;
 
     let net_conf = match conf.port {
         Some(port) => network::NetworkConfiguration::new_with_port(port),
         None => network::NetworkConfiguration::default(),
     };
 
-    let net_svc = network::NetworkService::new(net_conf).map_err(|e| format!("{}", e))?;
+    let net_svc =
+        network::NetworkService::new(&net_conf).map_err(|e| format!("{}", e))?;
     net_svc.start().map_err(|e| format!("{}", e))?;
 
     Ok(Box::new((event_loop, rpc_server, net_svc)))

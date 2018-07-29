@@ -29,3 +29,4 @@ log = "0.3"
 ethereum-types = "0.3"
 slab = "0.2"
 core = { path = "core" }
+network = { path = "network" }
