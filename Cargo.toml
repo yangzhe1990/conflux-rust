@@ -28,3 +28,4 @@ error-chain = { version = "0.12" }
 log = "0.3"
 ethereum-types = "0.3"
 slab = "0.2"
+network = { path = "network" }
