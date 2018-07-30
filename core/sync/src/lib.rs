@@ -87,6 +87,9 @@ impl ChainNotify for ConfluxSync {
             },
             _ => {},
         }
+
+//        self.network.register_protocol(self.syn_handler.clone(), self.subprotocol_name, &[ETH_PROTOCOL_VERSION_62, ETH_PROTOCOL_VERSION_63])
+//            .unwrap_or_else(|e| warn!("Error registering conflux protocol: {:?}", e));
     }
 
     fn stop(&self) {
