@@ -1,10 +1,11 @@
-use bytes::{BufMut, BytesMut};
+use bytes::{Bytes, IntoBuf};
 use io::{IoContext, StreamToken};
 use mio::deprecated::*;
 use mio::tcp::*;
 use mio::*;
+use session::SessionMsgHandler;
 use std::collections::VecDeque;
-use std::io::{self, Read, Write};
+use std::io::{self, Cursor, Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use {Error, ErrorKind};
 
@@ -18,43 +19,52 @@ pub trait GenericSocket: Read + Write {}
 
 impl GenericSocket for TcpStream {}
 
-pub struct GenericConnection<Socket: GenericSocket> {
+pub trait GenericMsgHandler {
+    fn on_msg(self: &mut Self, buf: Cursor<&Bytes>) -> usize;
+}
+
+pub struct GenericConnection<Socket: GenericSocket, Handler: GenericMsgHandler>
+{
     token: StreamToken,
     socket: Socket,
-    recv_buf: BytesMut,
-    recv_size: usize,
+    handler: Handler,
+    recv_buf: Bytes,
     send_queue: VecDeque<(Vec<u8>, u64)>,
     interest: Ready,
     registered: AtomicBool,
 }
 
-impl<Socket: GenericSocket> GenericConnection<Socket> {
-    pub fn expect(&mut self, size: usize) {
-        trace!(target: "network", "Expect to read {} bytes", size);
-        if self.recv_size > 0 && self.recv_size != self.recv_buf.len() {
-            warn!(target: "network", "Unexpected conenction read start");
-        }
-        self.recv_size = size;
-        self.recv_buf = BytesMut::with_capacity(self.recv_size);
-    }
-
-    pub fn readable(&mut self) -> io::Result<Option<Vec<u8>>> {
-        match self.socket.read(unsafe { self.recv_buf.bytes_mut() }) {
-            Ok(size) => {
-                trace!(target: "network", "Read {} bytes token={:?}", size, self.token);
-                if (size == self.recv_buf.remaining_mut()) {
-                    self.recv_size = 0;
-                    Ok(Some(self.recv_buf.to_vec()))
-                } else {
-                    unsafe { self.recv_buf.advance_mut(size) }
-                    Ok(None)
+impl<Socket: GenericSocket, Handler: GenericMsgHandler>
+    GenericConnection<Socket, Handler>
+{
+    pub fn readable(&mut self) -> io::Result<usize> {
+        let mut buf: [u8; 1024] = [0; 1024];
+        loop {
+            match self.socket.read(&mut buf) {
+                Ok(size) => {
+                    trace!(target: "network", "{}: Read {} bytes", self.token, size);
+                    if (size == 0) {
+                        break;
+                    }
+                    self.recv_buf.extend_from_slice(&buf[0..size]);
+                }
+                Err(e) => {
+                    debug!(target: "network", "{}: Error reading: {:?}", self.token, e);
+                    return Err(e);
                 }
             }
-            Err(e) => {
-                debug!(target: "network", "Read error {} token={:?}", e, self.token);
-                Err(e)
-            }
         }
+
+        let mut size = 0;
+        loop {
+            let consumed = self.handler.on_msg((&self.recv_buf).into_buf());
+            if consumed == 0 {
+                break;
+            }
+            self.recv_buf.advance(consumed);
+            size += consumed;
+        }
+        Ok(size)
     }
 
     pub fn writable<Message: Sync + Send + Clone + 'static>(
@@ -109,15 +119,17 @@ impl<Socket: GenericSocket> GenericConnection<Socket> {
     }
 }
 
-pub type Connection = GenericConnection<TcpStream>;
+pub type Connection = GenericConnection<TcpStream, SessionMsgHandler>;
 
 impl Connection {
-    pub fn new(token: StreamToken, socket: TcpStream) -> Self {
+    pub fn new(
+        token: StreamToken, socket: TcpStream, handler: SessionMsgHandler,
+    ) -> Self {
         Connection {
             token: token,
             socket: socket,
-            recv_buf: BytesMut::new(),
-            recv_size: 0,
+            handler: handler,
+            recv_buf: Bytes::new(),
             send_queue: VecDeque::new(),
             interest: Ready::hup() | Ready::readable(),
             registered: AtomicBool::new(false),
@@ -172,9 +184,10 @@ impl Connection {
 mod tests {
     use std::cmp;
     use std::collections::VecDeque;
-    use std::io::{Error, ErrorKind, Read, Result, Write};
+    use std::io::{Cursor, Error, ErrorKind, Read, Result, Write};
 
     use super::*;
+    use bytes::{Buf, Bytes};
     use io::*;
     use mio::Ready;
 
@@ -243,56 +256,34 @@ mod tests {
 
     impl GenericSocket for TestSocket {}
 
-    type TestConnection = GenericConnection<TestSocket>;
+    struct TestMsgHandler;
+
+    impl GenericMsgHandler for TestMsgHandler {
+        fn on_msg(&mut self, buf: Cursor<&Bytes>) -> usize {
+            if buf.remaining() >= 2 {
+                let bytes = (&buf as &Buf).bytes();
+                let size = (bytes[0] as usize) | ((bytes[1] as usize) << 8);
+                if buf.remaining() >= size {
+                    size
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        }
+    }
+
+    type TestConnection = GenericConnection<TestSocket, TestMsgHandler>;
 
     impl TestConnection {
         fn new() -> Self {
             TestConnection {
                 token: 1234567890usize,
                 socket: TestSocket::new(),
+                handler: TestMsgHandler,
                 send_queue: VecDeque::new(),
-                recv_buf: BytesMut::new(),
-                recv_size: 0,
-                interest: Ready::hup() | Ready::readable(),
-                registered: AtomicBool::new(false),
-            }
-        }
-    }
-
-    struct TestBrokenSocket {
-        error: String,
-    }
-
-    impl Read for TestBrokenSocket {
-        fn read(&mut self, _: &mut [u8]) -> Result<usize> {
-            Err(Error::new(ErrorKind::Other, self.error.clone()))
-        }
-    }
-
-    impl Write for TestBrokenSocket {
-        fn write(&mut self, _: &[u8]) -> Result<usize> {
-            Err(Error::new(ErrorKind::Other, self.error.clone()))
-        }
-
-        fn flush(&mut self) -> ::std::io::Result<()> {
-            unimplemented!();
-        }
-    }
-
-    impl GenericSocket for TestBrokenSocket {}
-
-    type TestBrokenConnection = GenericConnection<TestBrokenSocket>;
-
-    impl TestBrokenConnection {
-        pub fn new() -> Self {
-            TestBrokenConnection {
-                token: 1234567890usize,
-                socket: TestBrokenSocket {
-                    error: "test broken socket".to_owned(),
-                },
-                send_queue: VecDeque::new(),
-                recv_buf: BytesMut::new(),
-                recv_size: 0,
+                recv_buf: Bytes::new(),
                 interest: Ready::hup() | Ready::readable(),
                 registered: AtomicBool::new(false),
             }
@@ -301,13 +292,6 @@ mod tests {
 
     fn test_io() -> IoContext<i32> {
         IoContext::new(IoChannel::disconnected(), 0)
-    }
-
-    #[test]
-    fn connection_expect() {
-        let mut connection = TestConnection::new();
-        connection.expect(1024);
-        assert_eq!(1024, connection.recv_size);
     }
 
     #[test]
@@ -332,61 +316,24 @@ mod tests {
     }
 
     #[test]
-    fn connection_write_to_broken() {
-        let mut connection = TestBrokenConnection::new();
-        let data = (vec![0; 10240], 0);
-        connection.send_queue.push_back(data);
-
-        let status = connection.writable(&test_io());
-
-        assert!(!status.is_ok());
-        assert_eq!(1, connection.send_queue.len());
-    }
-
-    #[test]
-    fn connection_read() {
-        let mut connection = TestConnection::new();
-        connection.recv_size = 2048;
-        connection.recv_buf = BytesMut::with_capacity(2048);
-        connection.recv_buf.put(&[10u8; 1024][..]);
-        connection.socket.read_buf = vec![99; 2048];
-
-        let status = connection.readable();
-
-        assert!(status.is_ok());
-        assert_eq!(1024, connection.socket.cursor);
-    }
-
-    #[test]
-    fn connection_read_from_broken() {
-        let mut connection = TestBrokenConnection::new();
-        connection.recv_size = 2048;
-
-        let status = connection.readable();
-        assert!(!status.is_ok());
-        assert_eq!(0, connection.recv_buf.len());
-    }
-
-    #[test]
     fn connection_read_nothing() {
         let mut connection = TestConnection::new();
-        connection.recv_size = 2048;
+        connection.socket.read_buf = vec![3, 0];
 
         let status = connection.readable();
 
         assert!(status.is_ok());
-        assert_eq!(0, connection.recv_buf.len());
+        assert_eq!(status.unwrap(), 0);
     }
 
     #[test]
     fn connection_read_full() {
         let mut connection = TestConnection::new();
-        connection.recv_size = 1024;
-        connection.recv_buf = BytesMut::from(&[76u8; 1024][..]);
+        connection.socket.read_buf = vec![3, 0, 0];
 
         let status = connection.readable();
 
         assert!(status.is_ok());
-        assert_eq!(0, connection.socket.cursor);
+        assert_eq!(status.unwrap(), 3);
     }
 }

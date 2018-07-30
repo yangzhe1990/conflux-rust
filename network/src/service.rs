@@ -3,7 +3,9 @@ use mio::deprecated::EventLoop;
 use mio::tcp::*;
 use mio::*;
 use parking_lot::{Mutex, RwLock};
+use session::Session;
 use std::collections::HashMap;
+use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use {
@@ -53,11 +55,11 @@ impl NetworkService {
     }
 }
 
-type Session = usize;
+type SharedSession = Arc<Mutex<Session>>;
 
 struct NetworkServiceInner {
     tcp_listener: Mutex<TcpListener>,
-    sessions: Arc<RwLock<Slab<Session>>>,
+    sessions: Arc<RwLock<Slab<SharedSession>>>,
     handlers: RwLock<HashMap<ProtocolId, Arc<NetworkProtocolHandler + Sync>>>,
 }
 
@@ -89,6 +91,33 @@ impl NetworkServiceInner {
         Ok(())
     }
 
+    fn create_connection(
+        &self, socket: TcpStream, io: &IoContext<NetworkIoMessage>,
+    ) -> Result<(), Error> {
+        let mut sessions = self.sessions.write();
+
+        let token = sessions.insert_with_opt(|token| {
+            trace!(target: "network", "{}: Initiating session", token);
+            match Session::new(io, socket, token) {
+                Ok(sess) => Some(Arc::new(Mutex::new(sess))),
+                Err(e) => {
+                    debug!(target: "network", "Error creating session: {:?}", e);
+                    None
+                }
+            }
+        });
+
+        match token {
+            Some(token) => {
+                io.register_stream(token).map(|_| ()).map_err(Into::into)
+            }
+            None => {
+                debug!(target: "network", "Max sessions reached");
+                Ok(())
+            }
+        }
+    }
+
     fn connection_closed(
         &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
@@ -102,9 +131,35 @@ impl NetworkServiceInner {
     fn session_writable(
         &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
+        let session = self.sessions.read().get(stream).cloned();
+
+        if let Some(session) = session {
+            let mut sess = session.lock();
+            if let Err(e) = sess.writable(io) {
+                trace!(target: "network", "{}: Session write error: {:?}", stream, e);
+            }
+            if sess.done() {
+                io.deregister_stream(stream).unwrap_or_else(|e| {
+                    debug!("Error deregistering stream: {:?}", e)
+                });
+            }
+        }
     }
 
-    fn accept(&self, io: &IoContext<NetworkIoMessage>) {}
+    fn accept(&self, io: &IoContext<NetworkIoMessage>) {
+        trace!(target: "network", "Accepting incoming connection");
+        loop {
+            let socket = match self.tcp_listener.lock().accept() {
+                Ok((sock, _addr)) => sock,
+                Err(e) => {
+                    if e.kind() != io::ErrorKind::WouldBlock {
+                        debug!(target: "network", "Error accepting connection: {:?}", e);
+                    }
+                    break;
+                }
+            };
+        }
+    }
 }
 
 impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
@@ -181,6 +236,10 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
         event_loop: &mut EventLoop<IoManager<NetworkIoMessage>>,
     )
     {
+        match stream {
+            FIRST_SESSION...LAST_SESSION => {}
+            _ => warn!("Unexpected stream deregistration"),
+        }
     }
 
     fn update_stream(
@@ -188,6 +247,18 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
         event_loop: &mut EventLoop<IoManager<NetworkIoMessage>>,
     )
     {
+        match stream {
+            FIRST_SESSION...LAST_SESSION => {}
+            TCP_ACCEPT => event_loop
+                .reregister(
+                    &*self.tcp_listener.lock(),
+                    Token(TCP_ACCEPT),
+                    Ready::all(),
+                    PollOpt::edge(),
+                )
+                .expect("Error reregistering stream"),
+            _ => warn!("Unexpected stream update"),
+        }
     }
 }
 

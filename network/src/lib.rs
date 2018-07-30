@@ -15,6 +15,7 @@ pub type PeerId = usize;
 mod connection;
 mod error;
 mod service;
+mod session;
 
 pub use error::{Error, ErrorKind};
 pub use io::TimerToken;
