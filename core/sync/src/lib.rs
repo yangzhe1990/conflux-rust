@@ -1,29 +1,61 @@
+mod api;
 
-/// Represents what has to be handled by actor listening to chain events
-pub trait ChainNotify : Send + Sync {
-	/// fires when chain has new blocks.
-	fn new_blocks(
-		&self,
-	) {
-		// does nothing by default
-	}
+pub use api::*;
 
-	/// fires when chain achieves active mode
-	fn start(&self) {
-		// does nothing by default
-	}
+use network::{NetworkProtocolHandler, NetworkContext, 
+              PeerId, ProtocolId};
+use io::{TimerToken};
 
-	/// fires when chain achieves passive mode
-	fn stop(&self) {
-		// does nothing by default
-	}
-
-	/// fires when chain broadcasts a message
-	fn broadcast(&self,) {}
-
-	/// fires when new transactions are received from a peer
-	fn transactions_received(&self,
-	) {
-		// does nothing by default
-	}
+/// Conflux network sync engine
+pub struct ConfluxSync {
+    /// Network service
+    network: NetworkService,
+    /// Main protocol handler
+    sync_handler: Arc<SyncProtocolHandler>,
+    /// The main subprotocol name
+    subprotocol_name: [u8; 3],
 }
+
+impl ConfluxSync {
+
+}
+
+struct SyncProtocolHandler {
+}
+
+impl NetworkProtocolHandler for SyncProtocolHandler {
+    fn initialize(&self, io: &NetworkContext) {
+    }
+
+	fn read(&self, io: &NetworkContext, peer: &PeerId, packet_id: u8, data: &[u8]) {
+    }
+
+	fn connected(&self, io: &NetworkContext, peer: &PeerId) {
+    }
+
+	fn disconnected(&self, io: &NetworkContext, peer: &PeerId) {
+    }
+
+	fn timeout(&self, io: &NetworkContext, timer: TimerToken) {
+    }
+}
+
+impl ChainNotify for ConfluxSync {
+    fn new_blocks(
+        &self,
+    ) {
+    }
+
+    fn start(&self) {
+    }
+
+    fn stop(&self) {
+    }
+
+    fn broadcast(&self,) {}
+
+    fn transactions_received(&self,
+    ) {
+    }
+}
+
