@@ -1,5 +1,9 @@
+use network::{ProtocolId};
+
+pub const CONFLUX_PROTOCOL: ProtocolId = *b"cfx";
+
 /// Represents what has to be handled by actor listening to chain events
-pub trait ChainNotify : Send + Sync {
+pub trait LedgerNotify : Send + Sync {
 	/// fires when chain has new blocks.
 	fn new_blocks(
 		&self,

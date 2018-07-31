@@ -67,7 +67,7 @@ pub trait NetworkProtocolHandler: Sync + Send {
     fn initialize(&self, io: &NetworkContext) {}
 
     fn on_message(
-        &self, io: &NetworkContext, peer: PeerId, msg_id: u8, data: Vec<u8>,
+        &self, io: &NetworkContext, peer: PeerId, msg_id: u8, data: &[u8],
     );
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId);

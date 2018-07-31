@@ -7,6 +7,9 @@ version = "0.1.0"
 authors = ["ming wu <ming@alt-chain.io>"]
 
 [dependencies]
+parking_lot = "0.6"
 network = { path = "../../network" }
 ethcore-io = { path = "../../util/io" }
+ethereum-types = "0.3"
 log = "0.3"
+core = { path = "../" }

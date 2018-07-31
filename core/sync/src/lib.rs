@@ -1,16 +1,27 @@
+extern crate ethereum_types;
 extern crate network;
 extern crate ethcore_io as io;
-use std::sync::{Arc};
+extern crate parking_lot;
+extern crate core;
+
 #[macro_use] 
 extern crate log;
 
+use parking_lot::RwLock;
+use std::sync::{Arc};
 mod api;
+mod dag;
+mod sync_ctx;
 
 pub use api::*;
+pub use dag::{DagSync};
 
 use network::{NetworkService, NetworkProtocolHandler, NetworkContext, NetworkConfiguration,
               PeerId, ProtocolId, Error};
 use io::{TimerToken};
+use ethereum_types::H256;
+use core::LedgerEngineInterface;
+use sync_ctx::SyncIoContext;
 
 /// Sync configuration
 #[derive(Debug, Clone, Copy)]
@@ -19,12 +30,22 @@ pub struct SyncConfig {
     pub subprotocol_name: [u8; 3],
 }
 
+impl Default for SyncConfig {
+    fn default() -> SyncConfig {
+        SyncConfig {
+            subprotocol_name: CONFLUX_PROTOCOL,
+        }
+    }
+}
+
 /// ConfluxSync initialization parameters.
 pub struct Params {
     /// Configuration.
     pub config: SyncConfig,
     /// Network layer configuration.
     pub network_config: NetworkConfiguration,
+    /// Ledger interface
+    pub ledger: Arc<LedgerEngineInterface>,
 }
 
 /// Conflux network sync engine
@@ -40,11 +61,14 @@ pub struct ConfluxSync {
 impl ConfluxSync {
     /// Create and register protocol with the network service
     pub fn new(params: Params) -> Result<Arc<ConfluxSync>, Error> {
+        let dag_sync = DagSync::new();
         let service = NetworkService::new(&params.network_config)?;
+
         let sync = Arc::new(ConfluxSync {
             network: service,
             sync_handler: Arc::new(SyncProtocolHandler {
-                
+                ledger: params.ledger,
+                sync: RwLock::new(dag_sync),
             }),
             subprotocol_name: params.config.subprotocol_name,
         });
@@ -53,6 +77,10 @@ impl ConfluxSync {
 }
 
 struct SyncProtocolHandler {
+    /// Shared ledger interface.
+    ledger: Arc<LedgerEngineInterface>,
+    /// Sync strategy
+    sync: RwLock<DagSync>,
 }
 
 impl NetworkProtocolHandler for SyncProtocolHandler {
@@ -60,21 +88,25 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     }
 
     fn on_message(
-        &self, io: &NetworkContext, peer: PeerId, msg_id: u8, data: Vec<u8>,
+        &self, io: &NetworkContext, peer: PeerId, msg_id: u8, data: &[u8],
     ) {
+        DagSync::dispatch_packet(&self.sync, &mut SyncIoContext::new(io, &*self.ledger), peer, msg_id, data);
     }
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
+        trace!("sync::connected");
     }
 
 	fn on_peer_disconnected(&self, io: &NetworkContext, peer: PeerId) {
+        trace!("sync::disconnected");
     }
 
 	fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {
+        trace!("sync::timeout");
     }
 }
 
-impl ChainNotify for ConfluxSync {
+impl LedgerNotify for ConfluxSync {
     fn new_blocks(
         &self,
     ) {
@@ -88,8 +120,7 @@ impl ChainNotify for ConfluxSync {
             _ => {},
         }
 
-//        self.network.register_protocol(self.syn_handler.clone(), self.subprotocol_name, &[ETH_PROTOCOL_VERSION_62, ETH_PROTOCOL_VERSION_63])
-//            .unwrap_or_else(|e| warn!("Error registering conflux protocol: {:?}", e));
+        // TODO:register_protocol
     }
 
     fn stop(&self) {
