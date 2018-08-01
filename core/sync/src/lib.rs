@@ -24,6 +24,9 @@ use ethereum_types::H256;
 use core::LedgerEngineInterface;
 use sync_ctx::SyncIoContext;
 
+/// Protocol handler level packet id
+pub type PacketId = u8;
+
 /// Sync configuration
 #[derive(Debug, Clone, Copy)]
 pub struct SyncConfig {
@@ -88,10 +91,9 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     fn initialize(&self, io: &NetworkContext) {
     }
 
-    fn on_message(
-        &self, io: &NetworkContext, peer: PeerId, msg_id: u8, data: &[u8],
-    ) {
-        DagSync::dispatch_packet(&self.sync, &mut SyncIoContext::new(io, &*self.ledger), peer, msg_id, data);
+    fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {
+        let msg_id = data[0];
+        DagSync::dispatch_packet(&self.sync, &mut SyncIoContext::new(io, &*self.ledger), peer, msg_id, &data[1..]);
     }
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {

@@ -1,4 +1,5 @@
 use super::{
+    PacketId,
     DagSync,
     GET_BLOCK_BODIES_PACKET,
     GET_BLOCK_HEADERS_PACKET,
@@ -15,7 +16,7 @@ pub struct SyncHandler;
 
 impl SyncHandler {
     /// Dispatch incoming requests and responses
-    pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: u8, data: &[u8]) {
+    pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
         let rlp = Rlp::new(data);
         let result = match packet_id {
             GET_BLOCK_BODIES_PACKET => SyncHandler::return_rlp(io, &rlp, peer,
@@ -58,6 +59,6 @@ impl SyncHandler {
     }
 
     /// Handle incoming packet from peer which does not require response
-    pub fn on_packet(sync: &mut DagSync, io: &mut SyncIo, peer: PeerId, packet_id: u8, data: &[u8]) {
+    pub fn on_packet(sync: &mut DagSync, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
     }
 }
