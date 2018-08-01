@@ -8,7 +8,6 @@ extern crate slab;
 extern crate error_chain;
 extern crate bytes;
 
-pub type MsgId = u8;
 pub type ProtocolId = [u8; 3];
 pub type PeerId = usize;
 
@@ -21,7 +20,7 @@ pub use error::{DisconnectReason, Error, ErrorKind};
 pub use io::TimerToken;
 pub use service::NetworkService;
 
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 use std::cmp::Ordering;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -67,15 +66,16 @@ pub enum NetworkIoMessage {
     AddHandler {
         handler: Arc<NetworkProtocolHandler + Sync>,
         protocol: ProtocolId,
+        versions: Vec<u8>,
     },
+    /// Disconnect a peer.
+    Disconnect(PeerId),
 }
 
 pub trait NetworkProtocolHandler: Sync + Send {
     fn initialize(&self, io: &NetworkContext) {}
 
-    fn on_message(
-        &self, io: &NetworkContext, peer: PeerId, msg_id: u8, data: &[u8],
-    );
+    fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]);
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId);
 
@@ -85,50 +85,66 @@ pub trait NetworkProtocolHandler: Sync + Send {
 }
 
 pub trait NetworkContext {
-    fn send(
-        &self, peer: PeerId, msg_id: MsgId, data: Vec<u8>,
-    ) -> Result<(), Error>;
+    fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error>;
 
     fn disconnect_peer(&self, peer: PeerId);
 }
 
 #[derive(Debug, Clone)]
 pub struct SessionMetadata {
-    pub capabilities: Vec<SessionCapability>,
-    pub peer_capabilities: Vec<PeerCapability>,
+    pub capabilities: Vec<Capability>,
+    pub peer_capabilities: Vec<Capability>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PeerCapability {
+pub struct Capability {
     pub protocol: ProtocolId,
     pub version: u8,
 }
 
-impl PeerCapability {
-    fn decode(buf: &mut Buf) -> PeerCapability {
-        PeerCapability {
+impl Capability {
+    fn decode(buf: &mut Buf) -> Capability {
+        Capability {
             protocol: [buf.get_u8(), buf.get_u8(), buf.get_u8()],
             version: buf.get_u8(),
         }
     }
+
+    pub fn encode(&self, buf: &mut BufMut) {
+        buf.put_slice(&self.protocol[..]);
+        buf.put_u8(self.version);
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionCapability {
-    pub protocol: ProtocolId,
-    pub version: u8,
-    pub packet_count: u8,
-    pub id_offset: u8,
-}
-
-impl PartialOrd for SessionCapability {
-    fn partial_cmp(&self, other: &SessionCapability) -> Option<Ordering> {
+impl PartialOrd for Capability {
+    fn partial_cmp(&self, other: &Capability) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for SessionCapability {
-    fn cmp(&self, other: &SessionCapability) -> Ordering {
+impl Ord for Capability {
+    fn cmp(&self, other: &Capability) -> Ordering {
         return self.protocol.cmp(&other.protocol);
     }
 }
+
+mod tests {
+    use super::*;
+
+    struct TestNetworkProtocolHandler;
+
+    impl NetworkProtocolHandler for TestNetworkProtocolHandler {
+        fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {}
+
+        fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {}
+
+        fn on_peer_disconnected(&self, io: &NetworkContext, peer: PeerId) {}
+
+        fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {}
+    }
+
+    #[test]
+    fn test_basic() {
+    }
+}
+

@@ -3,16 +3,23 @@ use std::{fmt, io, net};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DisconnectReason {
+    DisconnectRequested,
     Unknown,
 }
 
 impl DisconnectReason {
-    pub fn from_u8(n: u8) -> DisconnectReason { DisconnectReason::Unknown }
+    pub fn from_u8(n: u8) -> DisconnectReason {
+        match n {
+            0 => DisconnectReason::DisconnectRequested,
+            _ => DisconnectReason::Unknown,
+        }
+    }
 }
 
 impl fmt::Display for DisconnectReason {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match *self {
+            DisconnectRequested => "disconnect requested",
             Unknown => "unknown",
         };
 
