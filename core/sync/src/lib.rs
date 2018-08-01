@@ -15,7 +15,7 @@ mod dag;
 mod sync_ctx;
 
 pub use api::*;
-pub use dag::{DagSync};
+pub use dag::*;
 
 use network::{NetworkService, NetworkProtocolHandler, NetworkContext, NetworkConfiguration,
               PeerId, ProtocolId, Error};
@@ -123,7 +123,8 @@ impl LedgerNotify for ConfluxSync {
             _ => {},
         }
 
-        // TODO:register_protocol
+        self.network.register_protocol(self.sync_handler.clone(), self.subprotocol_name, &[CONFLUX_PROTOCOL_VERSION_1])
+            .unwrap_or_else(|e| warn!("Error registering conflux protocol: {:?}", e));
     }
 
     fn stop(&self) {

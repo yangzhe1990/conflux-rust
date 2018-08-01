@@ -7,6 +7,8 @@ use sync_ctx::SyncIo;
 use network::{PeerId};
 use rlp::{Rlp, RlpStream, DecoderError};
 
+pub const CONFLUX_PROTOCOL_VERSION_1: u8 = 0x01;
+
 const STATUS_PACKET: u8 = 0x00;
 pub const GET_BLOCK_HEADERS_PACKET: u8 = 0x01;
 pub const GET_BLOCK_BODIES_PACKET: u8 = 0x02;
