@@ -3,6 +3,7 @@ extern crate network;
 extern crate ethcore_io as io;
 extern crate parking_lot;
 extern crate core;
+extern crate rlp;
 
 #[macro_use] 
 extern crate log;

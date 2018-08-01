@@ -13,3 +13,4 @@ ethcore-io = { path = "../../util/io" }
 ethereum-types = "0.3"
 log = "0.3"
 core = { path = "../" }
+rlp = { git = "https://github.com/paritytech/parity-common" }
