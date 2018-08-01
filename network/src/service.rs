@@ -5,12 +5,13 @@ use mio::tcp::*;
 use mio::*;
 use parking_lot::{Mutex, RwLock};
 use session::Session;
+use session::SessionData;
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use {
-    Error, ErrorKind, MsgId, NetworkConfiguration,
+    Capability, DisconnectReason, Error, ErrorKind, NetworkConfiguration,
     NetworkContext as NetworkContextTrait, NetworkIoMessage,
     NetworkProtocolHandler, PeerId, ProtocolId,
 };
@@ -57,33 +58,19 @@ impl NetworkService {
 
     pub fn register_protocol(
         &self, handler: Arc<NetworkProtocolHandler + Sync>,
-        protocol: ProtocolId,
+        protocol: ProtocolId, versions: &[u8],
     ) -> Result<(), Error>
     {
-        self.io_service
-            .send_message(NetworkIoMessage::AddHandler { handler, protocol });
+        self.io_service.send_message(NetworkIoMessage::AddHandler {
+            handler,
+            protocol,
+            versions: versions.to_vec(),
+        });
         Ok(())
     }
 }
 
 type SharedSession = Arc<Mutex<Session>>;
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Capability {
-    /// Protocol ID
-    pub protocol: ProtocolId,
-    /// Protcol version
-    pub version: u8,
-    /// Total number of packet IDs this protocol support
-    pub packet_count: u8,
-}
-
-impl Capability {
-    pub fn encode(&self, buf: &mut BufMut) {
-        buf.put_slice(&self.protocol[..]);
-        buf.put_u8(self.version);
-    }
-}
 
 pub struct HostMetadata {
     config: NetworkConfiguration,
@@ -164,9 +151,62 @@ impl NetworkServiceInner {
     fn session_readable(
         &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
+        let mut ready_protocols: Vec<ProtocolId> = Vec::new();
+        let mut messages: Vec<(ProtocolId, Vec<u8>)> = Vec::new();
         let session = self.sessions.read().get(stream).cloned();
 
-        if let Some(session) = session.clone() {}
+        // if let Some(session) = session.clone()
+        if let Some(session) = session {
+            loop {
+                let data = session.lock().readable(io, &self.metadata.read());
+                match data {
+                    Ok(SessionData::Ready) => {
+                        let mut sess = session.lock();
+                        for (protocol, _) in self.handlers.read().iter() {
+                            if sess.have_capability(*protocol) {
+                                ready_protocols.push(*protocol);
+                            }
+                        }
+                    }
+                    Ok(SessionData::Message { data, protocol }) => {
+                        match self.handlers.read().get(&protocol) {
+                            None => {
+                                warn!(target: "network", "No handler found for protocol: {:?}", protocol)
+                            }
+                            Some(_) => messages.push((protocol, data)),
+                        }
+                    }
+                    Ok(SessionData::Continue) => (),
+                    Ok(SessionData::None) => break,
+                    Err(e) => {}
+                }
+            }
+        }
+
+        let handlers = self.handlers.read();
+        if !ready_protocols.is_empty() {
+            for protocol in ready_protocols {
+                if let Some(handler) = handlers.get(&protocol).clone() {
+                    handler.on_peer_connected(
+                        &NetworkContext::new(
+                            io,
+                            protocol,
+                            self.sessions.clone(),
+                        ),
+                        stream,
+                    );
+                }
+            }
+        }
+        for (protocol, data) in messages {
+            if let Some(handler) = handlers.get(&protocol).clone() {
+                handler.on_message(
+                    &NetworkContext::new(io, protocol, self.sessions.clone()),
+                    stream,
+                    &data,
+                );
+            }
+        }
     }
 
     fn session_writable(
@@ -251,6 +291,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
             NetworkIoMessage::AddHandler {
                 ref handler,
                 ref protocol,
+                ref versions,
             } => {
                 let h = handler.clone();
                 h.initialize(&NetworkContext::new(
@@ -259,7 +300,25 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                     self.sessions.clone(),
                 ));
                 self.handlers.write().insert(*protocol, h);
+                let mut metadata = self.metadata.write();
+                for &version in versions {
+                    metadata.capabilities.push(Capability {
+                        protocol: *protocol,
+                        version,
+                    });
+                }
             }
+            NetworkIoMessage::Disconnect(ref peer) => {
+                let session = self.sessions.read().get(*peer).cloned();
+                if let Some(session) = session {
+                    session
+                        .lock()
+                        .disconnect(io, DisconnectReason::DisconnectRequested);
+                }
+                trace!(target: "network", "Disconnect requested {}", peer);
+                //self.kill_connection(*peer, io, false);
+            }
+            _ => {}
         }
     }
 
@@ -269,7 +328,15 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     )
     {
         match stream {
-            FIRST_SESSION...LAST_SESSION => {}
+            FIRST_SESSION...LAST_SESSION => {
+                let session = self.sessions.read().get(stream).cloned();
+                if let Some(session) = session {
+                    session
+                        .lock()
+                        .register_socket(reg, event_loop)
+                        .expect("Error registering socket");
+                }
+            }
             TCP_ACCEPT => {
                 event_loop
                     .register(
@@ -290,7 +357,17 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     )
     {
         match stream {
-            FIRST_SESSION...LAST_SESSION => {}
+            FIRST_SESSION...LAST_SESSION => {
+                let mut sessions = self.sessions.write();
+                if let Some(session) = sessions.get(stream).cloned() {
+                    let sess = session.lock();
+                    if sess.expired() {
+                        sess.deregister_socket(event_loop)
+                            .expect("Error deregistering socket");
+                        sessions.remove(stream);
+                    }
+                }
+            }
             _ => warn!("Unexpected stream deregistration"),
         }
     }
@@ -301,7 +378,15 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     )
     {
         match stream {
-            FIRST_SESSION...LAST_SESSION => {}
+            FIRST_SESSION...LAST_SESSION => {
+                let session = self.sessions.read().get(stream).cloned();
+                if let Some(session) = session {
+                    session
+                        .lock()
+                        .update_socket(reg, event_loop)
+                        .expect("Error updating socket");
+                }
+            }
             TCP_ACCEPT => event_loop
                 .reregister(
                     &*self.tcp_listener.lock(),
@@ -336,11 +421,7 @@ impl<'a> NetworkContext<'a> {
 }
 
 impl<'a> NetworkContextTrait for NetworkContext<'a> {
-    fn send(
-        &self, peer: PeerId, msg_id: MsgId, data: Vec<u8>,
-    ) -> Result<(), Error> {
-        Ok(())
-    }
+    fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error> { Ok(()) }
 
     fn disconnect_peer(&self, peer: PeerId) {}
 }

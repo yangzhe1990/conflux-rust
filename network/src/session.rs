@@ -10,8 +10,7 @@ use mio::*;
 use service::HostMetadata;
 use std::{io, str};
 use {
-    DisconnectReason, Error, ErrorKind, PeerCapability, ProtocolId,
-    SessionCapability, SessionMetadata,
+    Capability, DisconnectReason, Error, ErrorKind, ProtocolId, SessionMetadata,
 };
 
 struct PacketSizer;
@@ -45,11 +44,7 @@ pub struct Session {
 pub enum SessionData {
     None,
     Ready,
-    Packet {
-        data: Vec<u8>,
-        protocol: ProtocolId,
-        packet_id: u8,
-    },
+    Message { data: Vec<u8>, protocol: ProtocolId },
     Continue,
 }
 
@@ -75,6 +70,22 @@ impl Session {
         })
     }
 
+    pub fn disconnect<Message: Send + Sync + Clone>(
+        &mut self, io: &IoContext<Message>, reason: DisconnectReason,
+    ) -> Error {
+        let mut buf = BytesMut::new();
+        buf.put_u8(reason as u8);
+        self.send_packet(io, None, PACKET_DISCONNECT, &buf[..]).ok();
+        ErrorKind::Disconnect(reason).into()
+    }
+
+    pub fn have_capability(&self, protocol: ProtocolId) -> bool {
+        self.metadata
+            .capabilities
+            .iter()
+            .any(|c| c.protocol == protocol)
+    }
+
     pub fn expired(&self) -> bool { self.expired }
 
     pub fn done(&self) -> bool {
@@ -96,6 +107,13 @@ impl Session {
         &self, reg: Token, event_loop: &mut EventLoop<H>,
     ) -> Result<(), Error> {
         self.connection.update_socket(reg, event_loop)?;
+        Ok(())
+    }
+
+    pub fn deregister_socket<H: Handler>(
+        &self, event_loop: &mut EventLoop<H>,
+    ) -> Result<(), Error> {
+        self.connection().deregister_socket(event_loop)?;
         Ok(())
     }
 
@@ -148,11 +166,9 @@ impl Session {
             PACKET_USER => {
                 let protocol: ProtocolId =
                     [buf.get_u8(), buf.get_u8(), buf.get_u8()];
-                let protocol_packet_id = buf.get_u8();
-                Ok(SessionData::Packet {
+                Ok(SessionData::Message {
                     data: buf.collect(),
                     protocol,
-                    packet_id: protocol_packet_id,
                 })
             }
             _ => {
@@ -165,24 +181,19 @@ impl Session {
     fn read_hello<Message: Send + Sync + Clone, B: Buf>(
         &mut self, io: &IoContext<Message>, buf: &mut B, host: &HostMetadata,
     ) -> Result<(), Error> {
-        let mut peer_caps: Vec<PeerCapability> = Vec::new();
+        let mut peer_caps: Vec<Capability> = Vec::new();
         let len = buf.get_u16_le();
         for i in 0..len {
-            peer_caps.push(PeerCapability::decode(buf));
+            peer_caps.push(Capability::decode(buf));
         }
 
-        let mut caps: Vec<SessionCapability> = Vec::new();
+        let mut caps: Vec<Capability> = Vec::new();
         for hc in &host.capabilities {
             if peer_caps
                 .iter()
                 .any(|c| c.protocol == hc.protocol && c.version == hc.version)
             {
-                caps.push(SessionCapability {
-                    protocol: hc.protocol,
-                    version: hc.version,
-                    id_offset: 0,
-                    packet_count: hc.packet_count,
-                });
+                caps.push(hc.clone());
             }
         }
 
