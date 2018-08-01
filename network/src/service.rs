@@ -1,3 +1,4 @@
+use bytes::BufMut;
 use io::*;
 use mio::deprecated::EventLoop;
 use mio::tcp::*;
@@ -53,11 +54,44 @@ impl NetworkService {
 
         Ok(())
     }
+
+    pub fn register_protocol(
+        &self, handler: Arc<NetworkProtocolHandler + Sync>,
+        protocol: ProtocolId,
+    ) -> Result<(), Error>
+    {
+        self.io_service
+            .send_message(NetworkIoMessage::AddHandler { handler, protocol });
+        Ok(())
+    }
 }
 
 type SharedSession = Arc<Mutex<Session>>;
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Capability {
+    /// Protocol ID
+    pub protocol: ProtocolId,
+    /// Protcol version
+    pub version: u8,
+    /// Total number of packet IDs this protocol support
+    pub packet_count: u8,
+}
+
+impl Capability {
+    pub fn encode(&self, buf: &mut BufMut) {
+        buf.put_slice(&self.protocol[..]);
+        buf.put_u8(self.version);
+    }
+}
+
+pub struct HostMetadata {
+    config: NetworkConfiguration,
+    pub capabilities: Vec<Capability>,
+}
+
 struct NetworkServiceInner {
+    metadata: RwLock<HostMetadata>,
     tcp_listener: Mutex<TcpListener>,
     sessions: Arc<RwLock<Slab<SharedSession>>>,
     handlers: RwLock<HashMap<ProtocolId, Arc<NetworkProtocolHandler + Sync>>>,
@@ -77,6 +111,10 @@ impl NetworkServiceInner {
         let tcp_listener = TcpListener::bind(&listen_address)?;
 
         Ok(NetworkServiceInner {
+            metadata: RwLock::new(HostMetadata {
+                config: config.clone(),
+                capabilities: Vec::new(),
+            }),
             tcp_listener: Mutex::new(tcp_listener),
             sessions: Arc::new(RwLock::new(Slab::new_starting_at(
                 FIRST_SESSION,
@@ -126,6 +164,9 @@ impl NetworkServiceInner {
     fn session_readable(
         &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
+        let session = self.sessions.read().get(stream).cloned();
+
+        if let Some(session) = session.clone() {}
     }
 
     fn session_writable(
@@ -207,6 +248,18 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
             NetworkIoMessage::Start => self.start(io).unwrap_or_else(|e| {
                 warn!("Error starting network service: {:?}", e)
             }),
+            NetworkIoMessage::AddHandler {
+                ref handler,
+                ref protocol,
+            } => {
+                let h = handler.clone();
+                h.initialize(&NetworkContext::new(
+                    io,
+                    *protocol,
+                    self.sessions.clone(),
+                ));
+                self.handlers.write().insert(*protocol, h);
+            }
         }
     }
 
@@ -265,6 +318,21 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
 pub struct NetworkContext<'a> {
     io: &'a IoContext<NetworkIoMessage>,
     protocol: ProtocolId,
+    sessions: Arc<RwLock<Slab<SharedSession>>>,
+}
+
+impl<'a> NetworkContext<'a> {
+    fn new(
+        io: &'a IoContext<NetworkIoMessage>, protocol: ProtocolId,
+        sessions: Arc<RwLock<Slab<SharedSession>>>,
+    ) -> NetworkContext<'a>
+    {
+        NetworkContext {
+            io,
+            protocol,
+            sessions,
+        }
+    }
 }
 
 impl<'a> NetworkContextTrait for NetworkContext<'a> {

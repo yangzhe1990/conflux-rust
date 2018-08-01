@@ -1,12 +1,14 @@
-use bytes::{Bytes, IntoBuf};
+use bytes::{Buf, Bytes};
 use io::{IoContext, StreamToken};
 use mio::deprecated::*;
 use mio::tcp::*;
 use mio::*;
-use session::SessionMsgHandler;
 use std::collections::VecDeque;
 use std::io::{self, Cursor, Read, Write};
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+use session;
 use {Error, ErrorKind};
 
 #[derive(PartialEq, Eq)]
@@ -15,29 +17,30 @@ pub enum WriteStatus {
     Complete,
 }
 
+pub const MAX_PAYLOAD_SIZE: usize = (1 << 16) - 1;
+
 pub trait GenericSocket: Read + Write {}
 
 impl GenericSocket for TcpStream {}
 
-pub trait GenericMsgHandler {
-    fn on_msg(self: &mut Self, buf: Cursor<&Bytes>) -> usize;
+pub trait PacketSizer {
+    fn packet_size(&Bytes) -> usize;
 }
 
-pub struct GenericConnection<Socket: GenericSocket, Handler: GenericMsgHandler>
-{
+pub struct GenericConnection<Socket: GenericSocket, Sizer: PacketSizer> {
     token: StreamToken,
     socket: Socket,
-    handler: Handler,
     recv_buf: Bytes,
     send_queue: VecDeque<(Vec<u8>, u64)>,
     interest: Ready,
     registered: AtomicBool,
+    phantom: PhantomData<Sizer>,
 }
 
-impl<Socket: GenericSocket, Handler: GenericMsgHandler>
-    GenericConnection<Socket, Handler>
+impl<Socket: GenericSocket, Sizer: PacketSizer>
+    GenericConnection<Socket, Sizer>
 {
-    pub fn readable(&mut self) -> io::Result<usize> {
+    pub fn readable(&mut self) -> io::Result<Option<Bytes>> {
         let mut buf: [u8; 1024] = [0; 1024];
         loop {
             match self.socket.read(&mut buf) {
@@ -55,16 +58,12 @@ impl<Socket: GenericSocket, Handler: GenericMsgHandler>
             }
         }
 
-        let mut size = 0;
-        loop {
-            let consumed = self.handler.on_msg((&self.recv_buf).into_buf());
-            if consumed == 0 {
-                break;
-            }
-            self.recv_buf.advance(consumed);
-            size += consumed;
+        let size = Sizer::packet_size(&self.recv_buf);
+        if size == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(self.recv_buf.split_to(size)))
         }
-        Ok(size)
     }
 
     pub fn writable<Message: Sync + Send + Clone + 'static>(
@@ -117,22 +116,22 @@ impl<Socket: GenericSocket, Handler: GenericMsgHandler>
             io.update_registration(self.token).ok();
         }
     }
+
+    pub fn is_sending(&self) -> bool { self.interest.is_writable() }
 }
 
-pub type Connection = GenericConnection<TcpStream, SessionMsgHandler>;
+pub type Connection<Sizer: PacketSizer> = GenericConnection<TcpStream, Sizer>;
 
-impl Connection {
-    pub fn new(
-        token: StreamToken, socket: TcpStream, handler: SessionMsgHandler,
-    ) -> Self {
+impl<Sizer: PacketSizer> Connection<Sizer> {
+    pub fn new(token: StreamToken, socket: TcpStream) -> Self {
         Connection {
             token: token,
             socket: socket,
-            handler: handler,
             recv_buf: Bytes::new(),
             send_queue: VecDeque::new(),
             interest: Ready::hup() | Ready::readable(),
             registered: AtomicBool::new(false),
+            phantom: PhantomData,
         }
     }
 
@@ -178,16 +177,18 @@ impl Connection {
         event_loop.deregister(&self.socket).ok();
         Ok(())
     }
+
+    pub fn token(&self) -> StreamToken { self.token }
 }
 
 #[cfg(test)]
 mod tests {
     use std::cmp;
     use std::collections::VecDeque;
-    use std::io::{Cursor, Error, ErrorKind, Read, Result, Write};
+    use std::io::{Error, ErrorKind, Read, Result, Write};
 
     use super::*;
-    use bytes::{Buf, Bytes};
+    use bytes::{Buf, Bytes, IntoBuf};
     use io::*;
     use mio::Ready;
 
@@ -256,13 +257,13 @@ mod tests {
 
     impl GenericSocket for TestSocket {}
 
-    struct TestMsgHandler;
+    struct TestPacketSizer;
 
-    impl GenericMsgHandler for TestMsgHandler {
-        fn on_msg(&mut self, buf: Cursor<&Bytes>) -> usize {
-            if buf.remaining() >= 2 {
-                let bytes = (&buf as &Buf).bytes();
-                let size = (bytes[0] as usize) | ((bytes[1] as usize) << 8);
+    impl PacketSizer for TestPacketSizer {
+        fn packet_size(raw_packet: &Bytes) -> usize {
+            let buf = &raw_packet.into_buf() as &Buf;
+            if buf.remaining() >= 1 {
+                let size = buf.bytes()[0] as usize;
                 if buf.remaining() >= size {
                     size
                 } else {
@@ -274,18 +275,18 @@ mod tests {
         }
     }
 
-    type TestConnection = GenericConnection<TestSocket, TestMsgHandler>;
+    type TestConnection = GenericConnection<TestSocket, TestPacketSizer>;
 
     impl TestConnection {
         fn new() -> Self {
             TestConnection {
                 token: 1234567890usize,
                 socket: TestSocket::new(),
-                handler: TestMsgHandler,
                 send_queue: VecDeque::new(),
                 recv_buf: Bytes::new(),
                 interest: Ready::hup() | Ready::readable(),
                 registered: AtomicBool::new(false),
+                phantom: PhantomData,
             }
         }
     }
@@ -316,24 +317,27 @@ mod tests {
     }
 
     #[test]
-    fn connection_read_nothing() {
+    fn connection_read() {
         let mut connection = TestConnection::new();
+
         connection.socket.read_buf = vec![3, 0];
+        {
+            let status = connection.readable();
+            assert!(status.is_ok());
+            assert!(status.unwrap().is_none());
+        }
 
-        let status = connection.readable();
+        connection.socket.read_buf.extend_from_slice(&[0u8]);
+        {
+            let status = connection.readable();
+            assert!(status.is_ok());
+            assert_eq!(status.unwrap().unwrap().len(), 3);
+        }
 
-        assert!(status.is_ok());
-        assert_eq!(status.unwrap(), 0);
-    }
-
-    #[test]
-    fn connection_read_full() {
-        let mut connection = TestConnection::new();
-        connection.socket.read_buf = vec![3, 0, 0];
-
-        let status = connection.readable();
-
-        assert!(status.is_ok());
-        assert_eq!(status.unwrap(), 3);
+        {
+            let status = connection.readable();
+            assert!(status.is_ok());
+            assert!(status.unwrap().is_none());
+        }
     }
 }

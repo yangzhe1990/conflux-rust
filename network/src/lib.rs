@@ -17,11 +17,14 @@ mod error;
 mod service;
 mod session;
 
-pub use error::{Error, ErrorKind};
+pub use error::{DisconnectReason, Error, ErrorKind};
 pub use io::TimerToken;
 pub use service::NetworkService;
 
+use bytes::Buf;
+use std::cmp::Ordering;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
@@ -61,6 +64,10 @@ impl NetworkConfiguration {
 #[derive(Clone)]
 pub enum NetworkIoMessage {
     Start,
+    AddHandler {
+        handler: Arc<NetworkProtocolHandler + Sync>,
+        protocol: ProtocolId,
+    },
 }
 
 pub trait NetworkProtocolHandler: Sync + Send {
@@ -83,4 +90,45 @@ pub trait NetworkContext {
     ) -> Result<(), Error>;
 
     fn disconnect_peer(&self, peer: PeerId);
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionMetadata {
+    pub capabilities: Vec<SessionCapability>,
+    pub peer_capabilities: Vec<PeerCapability>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerCapability {
+    pub protocol: ProtocolId,
+    pub version: u8,
+}
+
+impl PeerCapability {
+    fn decode(buf: &mut Buf) -> PeerCapability {
+        PeerCapability {
+            protocol: [buf.get_u8(), buf.get_u8(), buf.get_u8()],
+            version: buf.get_u8(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionCapability {
+    pub protocol: ProtocolId,
+    pub version: u8,
+    pub packet_count: u8,
+    pub id_offset: u8,
+}
+
+impl PartialOrd for SessionCapability {
+    fn partial_cmp(&self, other: &SessionCapability) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SessionCapability {
+    fn cmp(&self, other: &SessionCapability) -> Ordering {
+        return self.protocol.cmp(&other.protocol);
+    }
 }
