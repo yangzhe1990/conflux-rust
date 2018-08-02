@@ -68,7 +68,7 @@ impl ConfluxSync {
     /// Create and register protocol with the network service
     pub fn new(params: Params) -> Result<Arc<ConfluxSync>, Error> {
         let dag_sync = DagSync::new();
-        let service = NetworkService::new(&params.network_config)?;
+        let service = NetworkService::new(params.network_config)?;
 
         let sync = Arc::new(ConfluxSync {
             network: service,

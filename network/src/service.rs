@@ -18,8 +18,7 @@ use {
 
 type Slab<T> = ::slab::Slab<T, usize>;
 
-const MAX_SESSIONS: usize = 1024 + MAX_HANDSHAKES;
-const MAX_HANDSHAKES: usize = 1024;
+const MAX_SESSIONS: usize = 2048;
 
 const DEFAULT_PORT: u16 = 32323;
 
@@ -35,13 +34,13 @@ pub struct NetworkService {
 }
 
 impl NetworkService {
-    pub fn new(config: &NetworkConfiguration) -> Result<NetworkService, Error> {
+    pub fn new(config: NetworkConfiguration) -> Result<NetworkService, Error> {
         let io_service = IoService::<NetworkIoMessage>::start()?;
 
         Ok(NetworkService {
             io_service: io_service,
             inner: RwLock::new(None),
-            config: config.clone(),
+            config: config,
         })
     }
 
@@ -54,6 +53,11 @@ impl NetworkService {
         }
 
         Ok(())
+    }
+
+    pub fn local_address(&self) -> Option<SocketAddr> {
+        let inner = self.inner.read();
+        inner.as_ref().map(|inner_ref| inner_ref.local_address())
     }
 
     pub fn register_protocol(
@@ -75,6 +79,7 @@ type SharedSession = Arc<Mutex<Session>>;
 pub struct HostMetadata {
     config: NetworkConfiguration,
     pub capabilities: Vec<Capability>,
+    pub local_address: SocketAddr,
 }
 
 struct NetworkServiceInner {
@@ -88,7 +93,7 @@ impl NetworkServiceInner {
     pub fn new(
         config: &NetworkConfiguration,
     ) -> Result<NetworkServiceInner, Error> {
-        let listen_address = match config.listen_address {
+        let mut listen_address = match config.listen_address {
             None => SocketAddr::V4(SocketAddrV4::new(
                 Ipv4Addr::new(0, 0, 0, 0),
                 DEFAULT_PORT,
@@ -96,11 +101,17 @@ impl NetworkServiceInner {
             Some(addr) => addr,
         };
         let tcp_listener = TcpListener::bind(&listen_address)?;
+        listen_address = SocketAddr::new(
+            listen_address.ip(),
+            tcp_listener.local_addr()?.port(),
+        );
+        debug!(target: "network", "Listening at {:?}", listen_address);
 
         Ok(NetworkServiceInner {
             metadata: RwLock::new(HostMetadata {
                 config: config.clone(),
                 capabilities: Vec::new(),
+                local_address: listen_address,
             }),
             tcp_listener: Mutex::new(tcp_listener),
             sessions: Arc::new(RwLock::new(Slab::new_starting_at(
@@ -109,6 +120,23 @@ impl NetworkServiceInner {
             ))),
             handlers: RwLock::new(HashMap::new()),
         })
+    }
+
+    pub fn local_address(&self) -> SocketAddr {
+        self.metadata.read().local_address
+    }
+
+    pub fn connected_peers(&self) -> Vec<PeerId> {
+        let sessions = self.sessions.read();
+        let sessions = &*sessions;
+
+        let mut peers = Vec::with_capacity(sessions.count());
+        for i in (0..MAX_SESSIONS).map(|x| x + FIRST_SESSION) {
+            if sessions.get(i).is_some() {
+                peers.push(i);
+            }
+        }
+        peers
     }
 
     fn start(&self, io: &IoContext<NetworkIoMessage>) -> Result<(), Error> {

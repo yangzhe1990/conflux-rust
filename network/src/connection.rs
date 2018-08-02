@@ -105,11 +105,11 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
     }
 
     pub fn send<Message: Sync + Send + Clone + 'static>(
-        &mut self, io: &IoContext<Message>, data: Vec<u8>,
+        &mut self, io: &IoContext<Message>, data: &[u8],
     ) {
         if !data.is_empty() {
             trace!(target: "network", "Sending {} bytes token={:?}", data.len(), self.token);
-            self.send_queue.push_back((data, 0));
+            self.send_queue.push_back((data.to_vec(), 0));
             if !self.interest.is_writable() {
                 self.interest.insert(Ready::writable());
             }

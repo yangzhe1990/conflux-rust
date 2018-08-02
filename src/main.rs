@@ -50,7 +50,7 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
     };
 
     let net_svc =
-        network::NetworkService::new(&net_conf).map_err(|e| format!("{}", e))?;
+        network::NetworkService::new(net_conf).map_err(|e| format!("{}", e))?;
     net_svc.start().map_err(|e| format!("{}", e))?;
 
     Ok(Box::new((event_loop, rpc_server, net_svc)))

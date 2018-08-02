@@ -1,4 +1,5 @@
 use io::IoError;
+use rlp;
 use std::{fmt, io, net};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -38,6 +39,11 @@ error_chain! {
             display("Bad protocol"),
         }
 
+        Decoder {
+            description("Decoder error"),
+            display("Decoder error"),
+        }
+
         Expired {
             description("Expired message"),
             display("Expired message"),
@@ -62,4 +68,8 @@ error_chain! {
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self { Error::from_kind(ErrorKind::Io(err)) }
+}
+
+impl From<rlp::DecoderError> for Error {
+    fn from(_err: rlp::DecoderError) -> Self { ErrorKind::Decoder.into() }
 }
