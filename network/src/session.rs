@@ -7,6 +7,7 @@ use io::*;
 use mio::deprecated::*;
 use mio::tcp::*;
 use mio::*;
+use rlp::{DecoderError, Rlp, RlpStream, EMPTY_LIST_RLP};
 use service::HostMetadata;
 use std::{io, str};
 use {
@@ -143,15 +144,16 @@ impl Session {
         {
             return Err(ErrorKind::BadProtocol.into());
         }
-        let mut buf = data.into_buf();
-        buf.advance(1);
+        let data = &data[1..];
         match packet_id {
             PACKET_HELLO => {
-                self.read_hello(io, &mut buf, host)?;
+                let rlp = Rlp::new(&data);
+                self.read_hello(io, &rlp, host)?;
                 Ok(SessionData::Ready)
             }
             PACKET_DISCONNECT => {
-                let reason: u8 = buf.get_u8();
+                let rlp = Rlp::new(&data);
+                let reason: u8 = rlp.val_at(0)?;
                 if self.had_hello {
                     debug!(target: "network", "{}: Disconnected: {:?}", self.token(), DisconnectReason::from_u8(reason));
                 }
@@ -164,12 +166,16 @@ impl Session {
             }
             PACKET_PONG => Ok(SessionData::Continue),
             PACKET_USER => {
-                let protocol: ProtocolId =
-                    [buf.get_u8(), buf.get_u8(), buf.get_u8()];
-                Ok(SessionData::Message {
-                    data: buf.collect(),
-                    protocol,
-                })
+                if data.len() < 3 {
+                    Err(ErrorKind::Decoder.into())
+                } else {
+                    let mut protocol: ProtocolId = [0u8; 3];
+                    protocol.clone_from_slice(&data[..3]);
+                    Ok(SessionData::Message {
+                        data: (&data[3..]).to_vec(),
+                        protocol,
+                    })
+                }
             }
             _ => {
                 debug!(target: "network", "Unknown packet: {:?}", packet_id);
@@ -178,14 +184,10 @@ impl Session {
         }
     }
 
-    fn read_hello<Message: Send + Sync + Clone, B: Buf>(
-        &mut self, io: &IoContext<Message>, buf: &mut B, host: &HostMetadata,
+    fn read_hello<Message: Send + Sync + Clone>(
+        &mut self, io: &IoContext<Message>, rlp: &Rlp, host: &HostMetadata,
     ) -> Result<(), Error> {
-        let mut peer_caps: Vec<Capability> = Vec::new();
-        let len = buf.get_u16_le();
-        for i in 0..len {
-            peer_caps.push(Capability::decode(buf));
-        }
+        let mut peer_caps: Vec<Capability> = rlp.list_at(0)?;
 
         let mut caps: Vec<Capability> = Vec::new();
         for hc in &host.capabilities {
@@ -238,22 +240,18 @@ impl Session {
         if self.expired() {
             return Err(ErrorKind::Expired.into());
         }
-        let mut size = 1usize;
-        if let Some(protocol) = protocol {
-            size += protocol.len();
-        }
-        size += data.len();
-        if size > MAX_PAYLOAD_SIZE {
+        let packet_size =
+            1 + protocol.map(|p| p.len()).unwrap_or(0) + data.len();
+        if packet_size > MAX_PAYLOAD_SIZE {
             bail!(ErrorKind::OversizedPacket);
         }
-        let mut buf = BytesMut::with_capacity(size + 2);
-        buf.put_u16_le(size as u16);
-        buf.put_u8(packet_id);
+        let mut packet = BytesMut::with_capacity(2 + packet_size);
+        packet.put_u16_le(packet_size as u16);
         if let Some(protocol) = protocol {
-            buf.put_slice(&protocol[..]);
+            packet.put_slice(&protocol);
         }
-        buf.put_slice(data);
-        self.connection.send(io, buf.to_vec());
+        packet.put_slice(&data);
+        self.connection.send(io, &packet[..]);
         Ok(())
     }
 
@@ -272,12 +270,11 @@ impl Session {
     fn write_hello<Message: Send + Sync + Clone>(
         &mut self, io: &IoContext<Message>, host: &HostMetadata,
     ) -> Result<(), Error> {
-        let mut buf = BytesMut::new();
-        buf.put_u16_le(host.capabilities.len() as u16);
-        for i in 0..host.capabilities.len() {
-            host.capabilities[i].encode(&mut buf);
-        }
-        self.send_packet(io, None, PACKET_HELLO, &buf[..])
+        let mut rlp = RlpStream::new();
+        rlp.begin_list(2)
+            .append_list(&host.capabilities)
+            .append(&host.local_address.port());
+        self.send_packet(io, None, PACKET_HELLO, &rlp.drain())
     }
 
     pub fn writable<Message: Send + Sync + Clone>(

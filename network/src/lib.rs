@@ -7,6 +7,7 @@ extern crate slab;
 #[macro_use]
 extern crate error_chain;
 extern crate bytes;
+extern crate rlp;
 
 pub type ProtocolId = [u8; 3];
 pub type PeerId = usize;
@@ -20,14 +21,14 @@ pub use error::{DisconnectReason, Error, ErrorKind};
 pub use io::TimerToken;
 pub use service::NetworkService;
 
-use bytes::{Buf, BufMut};
+use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::cmp::Ordering;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
-    listen_address: Option<SocketAddr>,
+    pub listen_address: Option<SocketAddr>,
 }
 
 impl Default for NetworkConfiguration {
@@ -102,17 +103,28 @@ pub struct Capability {
     pub version: u8,
 }
 
-impl Capability {
-    fn decode(buf: &mut Buf) -> Capability {
-        Capability {
-            protocol: [buf.get_u8(), buf.get_u8(), buf.get_u8()],
-            version: buf.get_u8(),
-        }
+impl Encodable for Capability {
+    fn rlp_append(&self, rlp: &mut RlpStream) {
+        rlp.begin_list(2);
+        rlp.append(&&self.protocol[..]);
+        rlp.append(&self.version);
     }
+}
 
-    pub fn encode(&self, buf: &mut BufMut) {
-        buf.put_slice(&self.protocol[..]);
-        buf.put_u8(self.version);
+impl Decodable for Capability {
+    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        let p: Vec<u8> = rlp.val_at(0)?;
+        if p.len() != 3 {
+            return Err(DecoderError::Custom(
+                "Invalid subprotocol string length",
+            ));
+        }
+        let mut protocol: ProtocolId = [0u8; 3];
+        protocol.clone_from_slice(&p);
+        Ok(Capability {
+            protocol: protocol,
+            version: rlp.val_at(1)?,
+        })
     }
 }
 
@@ -127,24 +139,3 @@ impl Ord for Capability {
         return self.protocol.cmp(&other.protocol);
     }
 }
-
-mod tests {
-    use super::*;
-
-    struct TestNetworkProtocolHandler;
-
-    impl NetworkProtocolHandler for TestNetworkProtocolHandler {
-        fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {}
-
-        fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {}
-
-        fn on_peer_disconnected(&self, io: &NetworkContext, peer: PeerId) {}
-
-        fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {}
-    }
-
-    #[test]
-    fn test_basic() {
-    }
-}
-
