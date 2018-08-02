@@ -1,0 +1,8 @@
+[package]
+name = "common-types"
+description = "Common types used throughout the codebase"
+version = "0.1.0"
+authors = ["Conflux Technologies"]
+
+[dependencies]
+ethereum-types = "0.3"

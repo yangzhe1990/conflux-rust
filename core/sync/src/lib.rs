@@ -4,6 +4,8 @@ extern crate ethcore_io as io;
 extern crate parking_lot;
 extern crate core;
 extern crate rlp;
+extern crate parity_bytes as bytes;
+extern crate common_types as types;
 
 #[macro_use] 
 extern crate log;

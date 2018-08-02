@@ -6,6 +6,8 @@ use core::LedgerEngineInterface;
 pub trait SyncIo {
     /// Respond to current request with a packet. Can be called from an IO handler for incoming packet.
     fn respond(&mut self, packet_id: PacketId, data: Vec<u8>) -> Result<(), Error>;
+    /// Get the ledger
+    fn ledger(&self) -> &LedgerEngineInterface;
 }
 
 /// Wraps `NetworkContext` and the ledger engine interface
@@ -27,5 +29,9 @@ impl<'s> SyncIoContext<'s> {
 impl<'s> SyncIo for SyncIoContext<'s> {
     fn respond(&mut self, packet_id: PacketId, data: Vec<u8>) -> Result<(), Error>{
         Ok(())
+    }
+
+    fn ledger(&self) -> &LedgerEngineInterface {
+        return self.ledger;
     }
 }

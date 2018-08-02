@@ -14,3 +14,5 @@ ethereum-types = "0.3"
 log = "0.3"
 core = { path = "../" }
 rlp = { git = "https://github.com/paritytech/parity-common" }
+common-types = { path = "../types" }
+parity-bytes = { git = "https://github.com/paritytech/parity-common" }
