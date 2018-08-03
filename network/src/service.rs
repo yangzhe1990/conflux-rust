@@ -10,10 +10,11 @@ use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
+use std::time::Duration;
 use {
     Capability, DisconnectReason, Error, ErrorKind, NetworkConfiguration,
     NetworkContext as NetworkContextTrait, NetworkIoMessage,
-    NetworkProtocolHandler, PeerId, ProtocolId,
+    NetworkProtocolHandler, NodeId, PeerId, ProtocolId,
 };
 
 type Slab<T> = ::slab::Slab<T, usize>;
@@ -22,10 +23,13 @@ const MAX_SESSIONS: usize = 2048;
 
 const DEFAULT_PORT: u16 = 32323;
 
-const TCP_ACCEPT: StreamToken = SYS_TIMER + 1;
 const FIRST_SESSION: StreamToken = 0;
 const LAST_SESSION: StreamToken = FIRST_SESSION + MAX_SESSIONS - 1;
 const SYS_TIMER: TimerToken = LAST_SESSION + 1;
+const TCP_ACCEPT: StreamToken = SYS_TIMER + 1;
+const HOUSEKEEPING: TimerToken = SYS_TIMER + 2;
+
+const HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct NetworkService {
     io_service: IoService<NetworkIoMessage>,
@@ -55,9 +59,9 @@ impl NetworkService {
         Ok(())
     }
 
-    pub fn local_address(&self) -> Option<SocketAddr> {
+    pub fn local_addr(&self) -> Option<SocketAddr> {
         let inner = self.inner.read();
-        inner.as_ref().map(|inner_ref| inner_ref.local_address())
+        inner.as_ref().map(|inner_ref| inner_ref.local_addr())
     }
 
     pub fn register_protocol(
@@ -82,11 +86,18 @@ pub struct HostMetadata {
     pub local_address: SocketAddr,
 }
 
+#[derive(Debug)]
+struct NodeEntry {
+    id: NodeId,
+    local_address: SocketAddr,
+}
+
 struct NetworkServiceInner {
     metadata: RwLock<HostMetadata>,
     tcp_listener: Mutex<TcpListener>,
     sessions: Arc<RwLock<Slab<SharedSession>>>,
     handlers: RwLock<HashMap<ProtocolId, Arc<NetworkProtocolHandler + Sync>>>,
+    nodes: RwLock<HashMap<NodeId, NodeEntry>>,
 }
 
 impl NetworkServiceInner {
@@ -107,7 +118,7 @@ impl NetworkServiceInner {
         );
         debug!(target: "network", "Listening at {:?}", listen_address);
 
-        Ok(NetworkServiceInner {
+        let mut inner = NetworkServiceInner {
             metadata: RwLock::new(HostMetadata {
                 config: config.clone(),
                 capabilities: Vec::new(),
@@ -119,11 +130,81 @@ impl NetworkServiceInner {
                 LAST_SESSION,
             ))),
             handlers: RwLock::new(HashMap::new()),
-        })
+            nodes: RwLock::new(HashMap::new()),
+        };
+
+        for n in &config.boot_nodes {
+            inner.add_node(n);
+        }
+
+        Ok(inner)
     }
 
-    pub fn local_address(&self) -> SocketAddr {
+    pub fn local_addr(&self) -> SocketAddr {
         self.metadata.read().local_address
+    }
+
+    fn add_node(&mut self, n: &str) -> Result<(), Error> {
+        let local_address = n.parse()?;
+        let node = NodeEntry {
+            id: local_address,
+            local_address: local_address,
+        };
+        self.nodes.write().insert(node.id, node);
+        Ok(())
+    }
+
+    fn on_housekeeping(&self, io: &IoContext<NetworkIoMessage>) {
+        self.connect_peers(io);
+    }
+
+    fn connect_peers(&self, io: &IoContext<NetworkIoMessage>) {
+        let nodes: Vec<NodeId> =
+            { self.nodes.read().keys().map(|key| key.clone()).collect() };
+
+        for id in &nodes {
+            self.connect_peer(&id, io);
+        }
+    }
+
+    fn have_session(&self, id: &NodeId) -> bool {
+        self.sessions
+            .read()
+            .iter()
+            .any(|sess| sess.lock().metadata.id == Some(*id))
+    }
+
+    fn connect_peer(&self, id: &NodeId, io: &IoContext<NetworkIoMessage>) {
+        if self.have_session(id) {
+            trace!(target: "network", "Abort connect. Node already connected");
+            return;
+        }
+
+        let socket = {
+            let address = {
+                let mut nodes = self.nodes.write();
+                if let Some(node) = nodes.get_mut(id) {
+                    node.local_address
+                } else {
+                    debug!(target: "network", "Abort connect. Node expired");
+                    return;
+                }
+            };
+            match TcpStream::connect(&address) {
+                Ok(socket) => {
+                    trace!(target: "network", "{}: connecting to {:?}", id, address);
+                    socket
+                }
+                Err(e) => {
+                    debug!(target: "network", "{}: can't connect o address {:?} {:?}", id, address, e);
+                    return;
+                }
+            }
+        };
+
+        if let Err(e) = self.create_connection(socket, Some(id), io) {
+            debug!(target: "network", "Can't create connection: {:?}", e);
+        }
     }
 
     pub fn connected_peers(&self) -> Vec<PeerId> {
@@ -145,13 +226,15 @@ impl NetworkServiceInner {
     }
 
     fn create_connection(
-        &self, socket: TcpStream, io: &IoContext<NetworkIoMessage>,
-    ) -> Result<(), Error> {
+        &self, socket: TcpStream, id: Option<&NodeId>,
+        io: &IoContext<NetworkIoMessage>,
+    ) -> Result<(), Error>
+    {
         let mut sessions = self.sessions.write();
 
         let token = sessions.insert_with_opt(|token| {
             trace!(target: "network", "{}: Initiating session", token);
-            match Session::new(io, socket, token) {
+            match Session::new(io, socket, id, token, &self.metadata.read()) {
                 Ok(sess) => Some(Arc::new(Mutex::new(sess))),
                 Err(e) => {
                     debug!(target: "network", "Error creating session: {:?}", e);
@@ -174,6 +257,8 @@ impl NetworkServiceInner {
     fn connection_closed(
         &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
+        trace!(target: "network", "Connection closed: {}", stream);
+        self.kill_connection(stream, io, true);
     }
 
     fn session_readable(
@@ -181,6 +266,7 @@ impl NetworkServiceInner {
     ) {
         let mut ready_protocols: Vec<ProtocolId> = Vec::new();
         let mut messages: Vec<(ProtocolId, Vec<u8>)> = Vec::new();
+        let mut kill = false;
         let session = self.sessions.read().get(stream).cloned();
 
         // if let Some(session) = session.clone()
@@ -206,15 +292,28 @@ impl NetworkServiceInner {
                     }
                     Ok(SessionData::Continue) => (),
                     Ok(SessionData::None) => break,
-                    Err(e) => {}
+                    Err(e) => {
+                        let sess = session.lock();
+                        kill = true;
+                        break;
+                    }
                 }
             }
+        }
+
+        if kill {
+            self.kill_connection(stream, io, true);
         }
 
         let handlers = self.handlers.read();
         if !ready_protocols.is_empty() {
             for protocol in ready_protocols {
                 if let Some(handler) = handlers.get(&protocol).clone() {
+                    println!(
+                        "{}: peer {} connected",
+                        self.local_addr(),
+                        stream
+                    );
                     handler.on_peer_connected(
                         &NetworkContext::new(
                             io,
@@ -267,15 +366,64 @@ impl NetworkServiceInner {
                     break;
                 }
             };
+            if let Err(e) = self.create_connection(socket, None, io) {
+                debug!(target: "netweork", "Can't accept connection: {:?}", e);
+            }
+        }
+    }
+
+    fn kill_connection(
+        &self, token: StreamToken, io: &IoContext<NetworkIoMessage>,
+        remote: bool,
+    )
+    {
+        let mut to_disconnect: Vec<ProtocolId> = Vec::new();
+        let mut expired_session = None;
+        let mut deregister = false;
+
+        if let FIRST_SESSION...LAST_SESSION = token {
+            let sessions = self.sessions.read();
+            if let Some(session) = sessions.get(token).cloned() {
+                expired_session = Some(session.clone());
+                let mut sess = session.lock();
+                if !sess.expired() {
+                    if sess.is_ready() {
+                        for (p, _) in self.handlers.read().iter() {
+                            if sess.have_capability(*p) {
+                                to_disconnect.push(*p);
+                            }
+                        }
+                    }
+                    sess.set_expired();
+                }
+                deregister = remote || sess.done();
+            }
+        }
+        for p in to_disconnect {
+            if let Some(h) = self.handlers.read().get(&p).clone() {
+                println!("{}: peer {} disconnected", self.local_addr(), token);
+                h.on_peer_disconnected(
+                    &NetworkContext::new(io, p, self.sessions.clone()),
+                    token,
+                );
+            }
+        }
+        if deregister {
+            io.deregister_stream(token).unwrap_or_else(|e| {
+                debug!("Error deregistering stream {:?}", e);
+            })
         }
     }
 }
 
 impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     fn initialize(&self, io: &IoContext<NetworkIoMessage>) {
+        io.register_timer(HOUSEKEEPING, HOUSEKEEPING_TIMEOUT)
+            .expect("Error registering housekeeping timer");
         io.message(NetworkIoMessage::Start).unwrap_or_else(|e| {
             warn!("Error sending IO notification: {:?}", e)
         });
+        self.on_housekeeping(io);
     }
 
     fn stream_hup(
@@ -307,7 +455,12 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
         }
     }
 
-    fn timeout(&self, io: &IoContext<NetworkIoMessage>, token: TimerToken) {}
+    fn timeout(&self, io: &IoContext<NetworkIoMessage>, token: TimerToken) {
+        match token {
+            HOUSEKEEPING => self.on_housekeeping(io),
+            _ => {}
+        }
+    }
 
     fn message(
         &self, io: &IoContext<NetworkIoMessage>, message: &NetworkIoMessage,

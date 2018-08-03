@@ -11,7 +11,8 @@ use rlp::{DecoderError, Rlp, RlpStream, EMPTY_LIST_RLP};
 use service::HostMetadata;
 use std::{io, str};
 use {
-    Capability, DisconnectReason, Error, ErrorKind, ProtocolId, SessionMetadata,
+    Capability, DisconnectReason, Error, ErrorKind, NodeId, ProtocolId,
+    SessionMetadata,
 };
 
 struct PacketSizer;
@@ -22,7 +23,7 @@ impl PacketSizerTrait for PacketSizer {
         if buf.remaining() >= ::std::mem::size_of::<u16>() {
             let size = buf.get_u16_le() as usize;
             if buf.remaining() >= size {
-                size
+                size + ::std::mem::size_of::<u16>()
             } else {
                 0
             }
@@ -57,27 +58,27 @@ const PACKET_USER: u8 = 0x10;
 
 impl Session {
     pub fn new<Message: Send + Sync + Clone + 'static>(
-        io: &IoContext<Message>, socket: TcpStream, token: StreamToken,
-    ) -> Result<Session, Error> {
-        Ok(Session {
+        io: &IoContext<Message>, socket: TcpStream, id: Option<&NodeId>,
+        token: StreamToken, host: &HostMetadata,
+    ) -> Result<Session, Error>
+    {
+        let originated = id.is_some();
+        let mut session = Session {
             metadata: SessionMetadata {
+                id: id.cloned(),
                 capabilities: Vec::new(),
                 peer_capabilities: Vec::new(),
+                originated,
             },
             connection: Connection::new(token, socket),
             sent_hello: false,
             had_hello: false,
             expired: false,
-        })
-    }
-
-    pub fn disconnect<Message: Send + Sync + Clone>(
-        &mut self, io: &IoContext<Message>, reason: DisconnectReason,
-    ) -> Error {
-        let mut buf = BytesMut::new();
-        buf.put_u8(reason as u8);
-        self.send_packet(io, None, PACKET_DISCONNECT, &buf[..]).ok();
-        ErrorKind::Disconnect(reason).into()
+        };
+        if originated {
+            session.write_hello(io, host)?;
+        }
+        Ok(session)
     }
 
     pub fn have_capability(&self, protocol: ProtocolId) -> bool {
@@ -87,7 +88,11 @@ impl Session {
             .any(|c| c.protocol == protocol)
     }
 
+    pub fn is_ready(&self) -> bool { self.had_hello }
+
     pub fn expired(&self) -> bool { self.expired }
+
+    pub fn set_expired(&mut self) { self.expired = true; }
 
     pub fn done(&self) -> bool {
         self.expired() && !self.connection().is_sending()
@@ -137,14 +142,14 @@ impl Session {
     fn read_packet<Message: Send + Sync + Clone>(
         &mut self, io: &IoContext<Message>, data: &Bytes, host: &HostMetadata,
     ) -> Result<SessionData, Error> {
-        let packet_id = data[0];
+        let packet_id = data[2];
         if packet_id != PACKET_HELLO
             && packet_id != PACKET_DISCONNECT
             && !self.had_hello
         {
             return Err(ErrorKind::BadProtocol.into());
         }
-        let data = &data[1..];
+        let data = &data[3..];
         match packet_id {
             PACKET_HELLO => {
                 let rlp = Rlp::new(&data);
@@ -218,8 +223,11 @@ impl Session {
 
         self.metadata.capabilities = caps;
         self.metadata.peer_capabilities = peer_caps;
+        if self.metadata.capabilities.is_empty() {
+            trace!(target: "network", "No common capabilities with peer.");
+            return Err(self.disconnect(io, DisconnectReason::UselessPeer));
+        }
         self.send_ping(io)?;
-
         self.had_hello = true;
         Ok(())
     }
@@ -247,12 +255,23 @@ impl Session {
         }
         let mut packet = BytesMut::with_capacity(2 + packet_size);
         packet.put_u16_le(packet_size as u16);
+        packet.put_u8(packet_id);
         if let Some(protocol) = protocol {
             packet.put_slice(&protocol);
         }
         packet.put_slice(&data);
         self.connection.send(io, &packet[..]);
         Ok(())
+    }
+
+    pub fn disconnect<Message: Send + Sync + Clone>(
+        &mut self, io: &IoContext<Message>, reason: DisconnectReason,
+    ) -> Error {
+        let mut rlp = RlpStream::new();
+        rlp.begin_list(1).append(&(reason as u32));
+        self.send_packet(io, None, PACKET_DISCONNECT, &rlp.drain())
+            .ok();
+        ErrorKind::Disconnect(reason).into()
     }
 
     fn send_ping<Message: Send + Sync + Clone>(
