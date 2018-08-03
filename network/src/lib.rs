@@ -11,6 +11,7 @@ extern crate rlp;
 
 pub type ProtocolId = [u8; 3];
 pub type PeerId = usize;
+pub type NodeId = SocketAddr;
 
 mod connection;
 mod error;
@@ -29,6 +30,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
     pub listen_address: Option<SocketAddr>,
+    pub boot_nodes: Vec<String>,
 }
 
 impl Default for NetworkConfiguration {
@@ -39,6 +41,7 @@ impl NetworkConfiguration {
     pub fn new() -> Self {
         NetworkConfiguration {
             listen_address: None,
+            boot_nodes: Vec::new(),
         }
     }
 
@@ -93,8 +96,10 @@ pub trait NetworkContext {
 
 #[derive(Debug, Clone)]
 pub struct SessionMetadata {
+    pub id: Option<NodeId>,
     pub capabilities: Vec<Capability>,
     pub peer_capabilities: Vec<Capability>,
+    pub originated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

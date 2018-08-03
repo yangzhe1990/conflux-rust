@@ -52,8 +52,12 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
                     self.recv_buf.extend_from_slice(&buf[0..size]);
                 }
                 Err(e) => {
-                    debug!(target: "network", "{}: Error reading: {:?}", self.token, e);
-                    return Err(e);
+                    if e.kind() != io::ErrorKind::WouldBlock {
+                        debug!(target: "network", "{}: Error reading: {:?}", self.token, e);
+                        println!("Error reading: {:?}", e);
+                        return Err(e);
+                    }
+                    break;
                 }
             }
         }
