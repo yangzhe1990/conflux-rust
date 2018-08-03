@@ -1,0 +1,12 @@
+[package]
+description = "Conflux account state management library"
+homepage = "http://www.conflux-chain.io"
+license = "GPL-3.0"
+name = "account-store"
+version = "0.1.0"
+authors = ["ming wu <ming@alt-chain.io>"]
+
+[dependencies]
+ethereum-types = "0.3"
+network = { path = "../network" }
+parking_lot = "0.6"

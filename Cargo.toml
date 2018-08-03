@@ -31,3 +31,4 @@ slab = "0.2"
 core = { path = "core" }
 conflux-service = { path = "core/service"}
 network = { path = "network" }
+account-store = { path = "account-store" }
