@@ -57,6 +57,15 @@ impl DagSync {
 
     /// Send Status message
     fn send_status(&mut self, io: &mut SyncIo, peer: PeerId) -> Result<(), Error> {
-        Ok(())
+        let protocol = CONFLUX_PROTOCOL_VERSION_1;
+        trace!(target: "sync", "Sending status to {}, protocol version {}", peer, protocol);
+        let ledger = io.ledger().ledger_info();
+        let mut packet = RlpStream::new_list(4);
+        packet.append(&(protocol as u32));
+        packet.append(&ledger.total_difficulty);
+        packet.append(&ledger.best_block_hash);
+        packet.append(&ledger.genesis_hash);
+
+        io.respond(STATUS_PACKET, packet.out())
     }
 }

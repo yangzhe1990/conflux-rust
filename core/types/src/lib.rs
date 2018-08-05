@@ -1,12 +1,19 @@
 extern crate ethereum_types;
 
-use ethereum_types::{H256};
+use ethereum_types::{H256, U256};
 
 /// Type for block number.
 pub type BlockNumber = u64;
 
 /// Information about the ledger gathered together.
+#[derive(Clone, Debug)]
 pub struct LedgerInfo {
+    /// Blockchain difficulty.
+	pub total_difficulty: U256,
+    /// Genesis block hash.
+	pub genesis_hash: H256,
+	/// Best blockchain block hash.
+	pub best_block_hash: H256,
     /// Best ledger block number.
     pub best_block_number: BlockNumber,
 }
