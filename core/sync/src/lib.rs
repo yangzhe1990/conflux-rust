@@ -103,11 +103,11 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
         trace!("sync::connected");
     }
 
-	fn on_peer_disconnected(&self, io: &NetworkContext, peer: PeerId) {
+    fn on_peer_disconnected(&self, io: &NetworkContext, peer: PeerId) {
         trace!("sync::disconnected");
     }
 
-	fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {
+    fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {
         trace!("sync::timeout");
     }
 }
