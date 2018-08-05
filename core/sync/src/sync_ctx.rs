@@ -1,5 +1,5 @@
 use super::{PacketId};
-use network::{NetworkContext, Error};
+use network::{PeerId, NetworkContext, Error};
 use core::LedgerEngineInterface;
 
 /// IO interface for the syncing handler.
@@ -8,6 +8,8 @@ pub trait SyncIo {
     fn respond(&mut self, packet_id: PacketId, data: Vec<u8>) -> Result<(), Error>;
     /// Get the ledger
     fn ledger(&self) -> &LedgerEngineInterface;
+    /// Disconnect peer
+    fn disconnect_peer(&mut self, peer_id: PeerId);
 }
 
 /// Wraps `NetworkContext` and the ledger engine interface
@@ -33,5 +35,9 @@ impl<'s> SyncIo for SyncIoContext<'s> {
 
     fn ledger(&self) -> &LedgerEngineInterface {
         return self.ledger;
+    }
+
+    fn disconnect_peer(&mut self, peer_id: PeerId) {
+        self.network.disconnect_peer(peer_id);
     }
 }

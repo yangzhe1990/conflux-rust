@@ -6,7 +6,6 @@ mod api;
 
 use network::Error;
 use std::collections::HashMap;
-use std::collections::hash_map::Entry::{Occupied, Vacant};
 use ethereum_types::{Address};
 use api::AccountStoreInterface;
 use std::sync::{Arc};

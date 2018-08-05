@@ -4,8 +4,10 @@ use super::{PacketId};
 use self::sync_handler::SyncHandler;
 use parking_lot::RwLock;
 use sync_ctx::SyncIo;
-use network::{PeerId};
+use network::{PeerId, Error};
 use rlp::{Rlp, RlpStream, DecoderError};
+use std::time::{Duration, Instant};
+use std::collections::HashMap;
 
 pub const CONFLUX_PROTOCOL_VERSION_1: u8 = 0x01;
 
@@ -21,12 +23,16 @@ pub type RlpResponseResult = Result<Option<(PacketId, RlpStream)>, PacketDecodeE
 
 /// Conflux DAG sync handler.
 pub struct DagSync {
+    /// Connected peers pending Status message.
+    /// Value is request timestamp.
+    handshaking_peers: HashMap<PeerId, Instant>,
 }
 
 impl DagSync {
     /// Create a new instance of syncing strategy.
     pub fn new() -> DagSync {
         let sync = DagSync {
+            handshaking_peers: HashMap::new(),
         };
 
         sync
@@ -42,5 +48,15 @@ impl DagSync {
     pub fn on_packet(&mut self, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
         debug!(target: "sync", "{} -> Dispatching packet: {}", peer, packet_id);
         SyncHandler::on_packet(self, io, peer, packet_id, data);
+    }
+
+    /// Called when a new peer is connected
+    pub fn on_peer_connected(&mut self, io: &mut SyncIo, peer: PeerId) {
+        SyncHandler::on_peer_connected(self, io, peer);
+    }
+
+    /// Send Status message
+    fn send_status(&mut self, io: &mut SyncIo, peer: PeerId) -> Result<(), Error> {
+        Ok(())
     }
 }

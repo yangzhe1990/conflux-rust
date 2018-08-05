@@ -99,6 +99,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     }
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
+        self.sync.write().on_peer_connected(&mut SyncIoContext::new(io, &*self.ledger), peer);
         trace!("sync::connected");
     }
 

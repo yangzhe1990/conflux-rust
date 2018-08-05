@@ -17,6 +17,7 @@ use bytes::Bytes;
 use types::*;
 use std::cmp;
 use ethereum_types::{H256};
+use std::time::{Instant};
 
 pub struct SyncHandler;
 
@@ -139,5 +140,16 @@ impl SyncHandler {
 
     /// Handle incoming packet from peer which does not require response
     pub fn on_packet(sync: &mut DagSync, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
+    }
+
+    /// Called when a new peer is connected
+    pub fn on_peer_connected(sync: &mut DagSync, io: &mut SyncIo, peer: PeerId) {
+        trace!(target: "sync", "== Connected {}", peer);
+        if let Err(e) = sync.send_status(io, peer) {
+            debug!(target:"sync", "Error sending status request: {:?}", e);
+            io.disconnect_peer(peer);
+        } else {
+            sync.handshaking_peers.insert(peer, Instant::now());
+        }        
     }
 }
