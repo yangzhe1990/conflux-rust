@@ -10,6 +10,10 @@ pub trait SyncIo {
     fn ledger(&self) -> &LedgerEngineInterface;
     /// Disconnect peer
     fn disconnect_peer(&mut self, peer_id: PeerId);
+    /// Check if the session is expired
+    fn is_expired(&self) -> bool;
+    /// Disable a peer
+    fn disable_peer(&mut self, peer_id: PeerId);
 }
 
 /// Wraps `NetworkContext` and the ledger engine interface
@@ -39,5 +43,12 @@ impl<'s> SyncIo for SyncIoContext<'s> {
 
     fn disconnect_peer(&mut self, peer_id: PeerId) {
         self.network.disconnect_peer(peer_id);
+    }
+
+    fn is_expired(&self) -> bool {
+        false
+    }
+
+    fn disable_peer(&mut self, peer_id: PeerId) {
     }
 }
