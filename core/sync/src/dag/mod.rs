@@ -21,8 +21,18 @@ pub const BLOCK_HEADERS_PACKET: u8 = 0x03;
 pub type PacketDecodeError = DecoderError;
 pub type RlpResponseResult = Result<Option<(PacketId, RlpStream)>, PacketDecodeError>;
 
+#[derive(Clone)]
+/// Syncing peer information
+pub struct PeerInfo {
+}
+
+pub type Peers = HashMap<PeerId, PeerInfo>;
+
 /// Conflux DAG sync handler.
 pub struct DagSync {
+    /// All connected peers
+    peers: Peers,
+
     /// Connected peers pending Status message.
     /// Value is request timestamp.
     handshaking_peers: HashMap<PeerId, Instant>,
@@ -32,6 +42,7 @@ impl DagSync {
     /// Create a new instance of syncing strategy.
     pub fn new() -> DagSync {
         let sync = DagSync {
+            peers: HashMap::new(),
             handshaking_peers: HashMap::new(),
         };
 

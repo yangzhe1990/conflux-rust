@@ -2,6 +2,7 @@ use super::{
     PacketId,
     DagSync,
     MAX_HEADERS_TO_SEND,
+    STATUS_PACKET,
     GET_BLOCK_BODIES_PACKET,
     GET_BLOCK_HEADERS_PACKET,
     BLOCK_HEADERS_PACKET,
@@ -140,6 +141,11 @@ impl SyncHandler {
 
     /// Handle incoming packet from peer which does not require response
     pub fn on_packet(sync: &mut DagSync, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
+        if packet_id != STATUS_PACKET && !sync.peers.contains_key(&peer) {
+            debug!(target:"sync", "Unexpected packet {} from unregistered peer: {}", packet_id, peer);
+            return;
+        }
+
     }
 
     /// Called when a new peer is connected
