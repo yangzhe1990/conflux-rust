@@ -22,3 +22,9 @@ impl Header {
 
 }
 
+/// Owning block body view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Body(Vec<u8>);
+
+impl Body {
+}
