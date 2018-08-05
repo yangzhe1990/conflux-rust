@@ -8,8 +8,11 @@ use super::{
     BLOCK_HEADERS_PACKET,
     RlpResponseResult,
     PacketDecodeError,
+    PeerAsking,
+    PeerInfo,
 };
 
+use block_sync::BlockSyncError;
 use parking_lot::RwLock;
 use sync_ctx::SyncIo;
 use network::{PeerId, Error};
@@ -146,6 +149,31 @@ impl SyncHandler {
             return;
         }
 
+        let rlp = Rlp::new(data);
+        let result = match packet_id {
+            STATUS_PACKET => SyncHandler::on_peer_status(sync, io, peer, &rlp),
+            _ => {
+                debug!(target: "sync", "{}: Unknown packet {}", peer, packet_id);
+                Ok(())
+            }
+        };
+
+        match result {
+            Err(BlockSyncError::Invalid) => {
+				debug!(target:"sync", "{} -> Invalid packet {}", peer, packet_id);
+				io.disable_peer(peer);
+				sync.deactivate_peer(io, peer);
+			},
+			Err(BlockSyncError::Useless) => {
+				sync.deactivate_peer(io, peer);
+			},
+			Ok(()) => {
+				// give a task to the same peer first
+				sync.sync_peer(io, peer, false);
+			},
+		}
+		// give tasks to other peers
+		sync.continue_sync(io);
     }
 
     /// Called when a new peer is connected
@@ -158,4 +186,50 @@ impl SyncHandler {
             sync.handshaking_peers.insert(peer, Instant::now());
         }        
     }
+
+    /// Called by peer to report status
+	fn on_peer_status(sync: &mut DagSync, io: &mut SyncIo, peer_id: PeerId, r: &Rlp) -> Result<(), BlockSyncError> {
+		sync.handshaking_peers.remove(&peer_id);
+		let protocol_version: u8 = r.val_at(0)?;
+		let peer = PeerInfo {
+			protocol_version: protocol_version,
+			difficulty: Some(r.val_at(1)?),
+			latest_hash: r.val_at(2)?,
+			genesis: r.val_at(3)?,
+			asking: PeerAsking::Nothing,
+			asking_blocks: Vec::new(),
+			asking_hash: None,
+			ask_time: Instant::now(),
+			expired: false,
+		};
+
+		trace!(target: "sync", "New peer {} (protocol: {}, difficulty: {:?}, latest:{}, genesis:{})",
+			peer_id, peer.protocol_version, peer.difficulty, peer.latest_hash, peer.genesis);
+		if io.is_expired() {
+			trace!(target: "sync", "Status packet from expired session {}", peer_id);
+			return Ok(());
+		}
+
+		if sync.peers.contains_key(&peer_id) {
+			debug!(target: "sync", "Unexpected status packet from {}", peer_id);
+			return Ok(());
+		}
+		let ledger_info = io.ledger().ledger_info();
+		if peer.genesis != ledger_info.genesis_hash {
+			trace!(target: "sync", "Peer {} genesis hash mismatch (ours: {}, theirs: {})", peer_id, ledger_info.genesis_hash, peer.genesis);
+			return Err(BlockSyncError::Invalid);
+		}
+
+		if sync.sync_start_time.is_none() {
+			sync.sync_start_time = Some(Instant::now());
+		}
+
+		sync.peers.insert(peer_id.clone(), peer);
+		// Don't activate peer immediatelly when searching for common block.
+		// Let the current sync round complete first.
+		sync.active_peers.insert(peer_id.clone());
+		debug!(target: "sync", "Connected {}", peer_id);
+
+		Ok(())
+	}
 }

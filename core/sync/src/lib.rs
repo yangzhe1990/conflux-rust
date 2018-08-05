@@ -15,6 +15,7 @@ use std::sync::{Arc};
 mod api;
 mod dag;
 mod sync_ctx;
+mod block_sync;
 
 pub use api::*;
 pub use dag::*;
