@@ -31,4 +31,5 @@ slab = "0.2"
 core = { path = "core" }
 network = { path = "network" }
 blockgen = { path = "blockgen" }
+vm = { path = "vm" }
 account-store = { path = "account-store" }

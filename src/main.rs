@@ -21,6 +21,10 @@ extern crate ethereum_types;
 extern crate network;
 extern crate slab;
 
+extern crate core;
+extern crate blockgen;
+extern crate vm;
+
 mod configuration;
 mod rpc;
 
@@ -34,6 +38,7 @@ use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
+use core::LedgerCore;
 
 fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let event_loop = EventLoop::spawn();
@@ -49,11 +54,27 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         None => network::NetworkConfiguration::default(),
     };
 
-    let net_svc =
+    /*let net_svc =
         network::NetworkService::new(net_conf).map_err(|e| format!("{}", e))?;
-    net_svc.start().map_err(|e| format!("{}", e))?;
+    net_svc.start().map_err(|e| format!("{}", e))?;*/
 
-    Ok(Box::new((event_loop, rpc_server, net_svc)))
+    let cfx_vm = vm::ConfluxVM::new();
+
+    let cfx_ledger_eng = core::ledger::LedgerEngine::new(cfx_vm.clone());
+
+    let cfx_sync_params = core::Params {
+        config: Default::default(),
+        network_config: net_conf,
+        ledger: cfx_ledger_eng.clone(),
+    };
+
+    let cfx_sync = core::ConfluxSync::new(cfx_sync_params).unwrap();
+
+    let cfx_blockgen = blockgen::ConfluxBlockGenerator::new(cfx_sync.clone());
+
+    cfx_sync.start();
+
+    Ok(Box::new((event_loop, rpc_server, cfx_sync, cfx_vm, cfx_blockgen)))
 }
 
 fn main() {

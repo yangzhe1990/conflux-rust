@@ -55,4 +55,18 @@ impl ConfluxLedger {
     }
 }
 
+impl Default for ConfluxLedger {
+    // FIXME: Fix this default trait as the initial state of the ledger
+    fn default() -> ConfluxLedger {
+        ConfluxLedger {
+            total_difficulty : 0.into(),
+            genesis_hash : 0.into(),
+            best_block_hash: 0.into(),
+            best_block_number: 0,
 
+            block_headers: RwLock::new(HashMap::new()),
+            block_bodies: RwLock::new(HashMap::new()),
+            block_hashes: RwLock::new(HashMap::new()),
+        }
+    }
+}

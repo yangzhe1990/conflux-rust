@@ -24,12 +24,19 @@ pub trait LedgerEngineInterface: Send + Sync {
     fn block_hash(&self, id: BlockId) -> Option<H256>;
 }
 
-pub struct LedgerEngine {    
-    ledger: RwLock<Arc<ConfluxLedger>>,
+pub struct LedgerEngine {
+    ledger: RwLock<ConfluxLedger>,
     executor: Arc<ExecEngineInterface>,
 }
 
 impl LedgerEngine {
+    pub fn new(executor: Arc<ExecEngineInterface>) -> Arc<LedgerEngine> {
+        Arc::new(LedgerEngine {
+            ledger: Default::default(),
+            executor: executor,
+        })
+    }
+
     fn block_hash(ledger: &ConfluxLedger, id: BlockId) -> Option<H256> {
 		match id {
 			BlockId::Hash(hash) => Some(hash),

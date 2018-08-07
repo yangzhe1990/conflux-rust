@@ -11,11 +11,11 @@ extern crate rlp;
 extern crate log;
 
 pub mod encoded;
+pub mod ledger;
 mod api;
 mod dag;
 mod sync_ctx;
 mod block_sync;
-mod ledger;
 
 use parking_lot::RwLock;
 use std::sync::{Arc};
@@ -116,7 +116,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     }
 }
 
-impl LedgerNotify for ConfluxSync {
+impl LedgerCore for ConfluxSync {
     fn new_blocks(
         &self,
     ) {
