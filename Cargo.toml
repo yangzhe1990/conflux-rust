@@ -1,5 +1,5 @@
 [package]
-name = "blockchain-lab"
+name = "conflux"
 version = "0.1.0"
 authors = ["Dong Zhou <dong.zhou.08@gmail.com>"]
 
