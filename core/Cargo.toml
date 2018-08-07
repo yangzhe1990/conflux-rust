@@ -14,5 +14,6 @@ parity-bytes = { git = "https://github.com/paritytech/parity-common" }
 parking_lot = "0.6"
 network = { path = "../network" }
 io = { path = "../util/io" }
+executor = {path = "../executor" }
 log = "0.3"
 rlp = { git = "https://github.com/paritytech/parity-common" }

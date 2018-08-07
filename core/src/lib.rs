@@ -6,12 +6,12 @@ extern crate parking_lot;
 extern crate network;
 extern crate io;
 extern crate rlp;
+extern crate executor;
 
 #[macro_use] 
 extern crate log;
 
 pub mod encoded;
-mod executor;
 mod api;
 mod dag;
 mod sync_ctx;
