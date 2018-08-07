@@ -6,7 +6,7 @@ pub use types::*;
 use parking_lot::RwLock;
 use std::sync::{Arc};
 use ledger::ledger::ConfluxLedger;
-use vm::ExecEngineInterface;
+use ExecEngineInterface;
 
 pub trait LedgerEngineInterface: Send + Sync {
     /// Get gathered ledger information.

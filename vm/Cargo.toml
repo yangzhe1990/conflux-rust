@@ -7,3 +7,4 @@ version = "0.1.0"
 authors = ["ming wu <ming@alt-chain.io>"]
 
 [dependencies]
+core = { path = "../core" }

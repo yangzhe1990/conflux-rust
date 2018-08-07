@@ -30,3 +30,7 @@ pub trait LedgerNotify : Send + Sync {
 		// does nothing by default
 	}
 }
+
+/// Represenets the interface an VM must implement to process transactions
+pub trait ExecEngineInterface: Sync + Send {
+}

@@ -6,7 +6,6 @@ extern crate parking_lot;
 extern crate network;
 extern crate io;
 extern crate rlp;
-extern crate vm;
 
 #[macro_use] 
 extern crate log;
