@@ -30,4 +30,5 @@ ethereum-types = "0.3"
 slab = "0.2"
 core = { path = "core" }
 network = { path = "network" }
+blockgen = { path = "blockgen" }
 account-store = { path = "account-store" }
