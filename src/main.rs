@@ -12,7 +12,7 @@ extern crate jsonrpc_tcp_server as tcp;
 extern crate parking_lot;
 #[macro_use]
 extern crate error_chain;
-extern crate ethcore_io as io;
+extern crate io;
 extern crate mio;
 extern crate parity_reactor;
 #[macro_use]

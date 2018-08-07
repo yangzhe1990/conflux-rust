@@ -1,0 +1,18 @@
+[package]
+description = "conflux chain sync"
+name = "conflux-sync"
+homepage = "http://www.conflux-chain.io"
+license = "GPL-3.0"
+version = "0.1.0"
+authors = ["ming wu <ming@alt-chain.io>"]
+
+[dependencies]
+parking_lot = "0.6"
+network = { path = "../../network" }
+io = { path = "../../util/io" }
+ethereum-types = "0.3"
+log = "0.3"
+core = { path = "../" }
+rlp = { git = "https://github.com/paritytech/parity-common" }
+common-types = { path = "../types" }
+parity-bytes = { git = "https://github.com/paritytech/parity-common" }

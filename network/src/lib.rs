@@ -1,4 +1,4 @@
-extern crate ethcore_io as io;
+extern crate io;
 #[macro_use]
 extern crate log;
 extern crate mio;
