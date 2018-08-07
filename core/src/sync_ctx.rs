@@ -1,6 +1,6 @@
 use super::{PacketId};
 use network::{PeerId, NetworkContext, Error};
-use core::LedgerEngineInterface;
+use ledger::LedgerEngineInterface;
 
 /// IO interface for the syncing handler.
 pub trait SyncIo {

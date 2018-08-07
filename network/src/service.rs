@@ -59,6 +59,14 @@ impl NetworkService {
         Ok(())
     }
 
+    pub fn add_peer(&mut self, peer: SocketAddr) {
+        unimplemented!();
+    }
+
+    pub fn drop_peer(&mut self, peer: SocketAddr) {
+        unimplemented!();
+    }
+
     pub fn local_addr(&self) -> Option<SocketAddr> {
         let inner = self.inner.read();
         inner.as_ref().map(|inner_ref| inner_ref.local_addr())
@@ -73,7 +81,7 @@ impl NetworkService {
             handler,
             protocol,
             versions: versions.to_vec(),
-        });
+        })?;
         Ok(())
     }
 }

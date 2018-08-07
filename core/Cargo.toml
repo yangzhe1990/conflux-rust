@@ -12,3 +12,7 @@ ethereum-types = "0.3"
 common-types = { path = "types" }
 parity-bytes = { git = "https://github.com/paritytech/parity-common" }
 parking_lot = "0.6"
+network = { path = "../network" }
+ethcore-io = { path = "../util/io" }
+log = "0.3"
+rlp = { git = "https://github.com/paritytech/parity-common" }

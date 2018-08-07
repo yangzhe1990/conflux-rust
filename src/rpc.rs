@@ -45,6 +45,23 @@ macro_rules! parse_u64 {
     };
 }
 
+macro_rules! parse_string {
+    ($a:expr, $k:expr, $m:expr) => {
+        {
+            let x = $a.get($k);
+            if x == None {
+                return Err(Error::invalid_params(format!("{} {} {}", $k, "not specified in", $m)));
+            }
+            let y = x.unwrap().as_string();
+            if y == None {
+                return Err(Error::invalid_params(format!("{} {} {}", $k, "must be string in", $m)));
+            }
+            y.unwrap()
+        }
+    };
+}
+
+
 pub fn new_tcp(
     conf: TcpConfiguration, dependencies: &Dependencies,
 ) -> Result<Option<TcpServer>, String> {
