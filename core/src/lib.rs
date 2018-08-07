@@ -4,7 +4,7 @@ extern crate common_types as types;
 extern crate parity_bytes as bytes;
 extern crate parking_lot;
 extern crate network;
-extern crate ethcore_io as io;
+extern crate io;
 extern crate rlp;
 
 #[macro_use] 
