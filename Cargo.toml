@@ -16,7 +16,7 @@ parking_lot = "0.6"
 parity-version = { path = "util/version" }
 panic_hook = { path = "util/panic_hook" }
 dir = { path = "util/dir" }
-ethcore-io = { path = "util/io", features = ["mio"] }
+io = { path = "util/io" }
 ethcore-crypto = { path = "crypto" }
 ethkey = { path = "ethkey" }
 ctrlc = { git = "https://github.com/paritytech/rust-ctrlc.git" }
