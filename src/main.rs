@@ -21,8 +21,8 @@ extern crate ethereum_types;
 extern crate network;
 extern crate slab;
 
-extern crate core;
 extern crate blockgen;
+extern crate core;
 extern crate vm;
 
 mod configuration;
@@ -30,6 +30,7 @@ mod rpc;
 
 use clap::{App, Arg};
 use configuration::Configuration;
+use core::LedgerCore;
 use ctrlc::CtrlC;
 use network::{NetworkConfiguration, NetworkService};
 use parity_reactor::EventLoop;
@@ -38,7 +39,6 @@ use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
-use core::LedgerCore;
 
 fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let event_loop = EventLoop::spawn();
@@ -73,9 +73,16 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
 
     let cfx_sync_ref = Arc::new(cfx_sync);
 
-    let cfx_blockgen = blockgen::ConfluxBlockGenerator::new(cfx_sync_ref.clone());
+    let cfx_blockgen =
+        blockgen::ConfluxBlockGenerator::new(cfx_sync_ref.clone());
 
-    Ok(Box::new((event_loop, rpc_server, cfx_sync_ref, cfx_vm, cfx_blockgen)))
+    Ok(Box::new((
+        event_loop,
+        rpc_server,
+        cfx_sync_ref,
+        cfx_vm,
+        cfx_blockgen,
+    )))
 }
 
 fn main() {

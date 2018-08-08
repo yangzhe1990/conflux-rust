@@ -11,12 +11,16 @@ pub struct Configuration {
 impl Configuration {
     pub fn parse(matches: &clap::ArgMatches) -> Result<Configuration, String> {
         let port = match matches.value_of("port") {
-            Some(port) => Some(port.parse().map_err(|_| "Invalid port".to_owned())?),
+            Some(port) => {
+                Some(port.parse().map_err(|_| "Invalid port".to_owned())?)
+            }
             None => None,
         };
 
         let jsonrpc_port = match matches.value_of("jsonrpc-port") {
-            Some(port) => Some(port.parse().map_err(|_| "Invalid jsonrpc-port".to_owned())?),
+            Some(port) => Some(
+                port.parse().map_err(|_| "Invalid jsonrpc-port".to_owned())?,
+            ),
             None => None,
         };
 
