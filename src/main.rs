@@ -58,9 +58,10 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         network::NetworkService::new(net_conf).map_err(|e| format!("{}", e))?;
     net_svc.start().map_err(|e| format!("{}", e))?;*/
 
-    let cfx_vm = vm::ConfluxVM::new();
+    let cfx_vm = Arc::new(vm::ConfluxVM::new());
 
-    let cfx_ledger_eng = core::ledger::LedgerEngine::new(cfx_vm.clone());
+    let cfx_ledger_eng =
+        Arc::new(core::ledger::LedgerEngine::new(cfx_vm.clone()));
 
     let cfx_sync_params = core::Params {
         config: Default::default(),

@@ -75,7 +75,7 @@ pub struct DagSync {
 
 impl DagSync {
     /// Create a new instance of syncing strategy.
-    pub fn new() -> DagSync {
+    pub fn new() -> Self {
         let sync = DagSync {
             peers: HashMap::new(),
             active_peers: HashSet::new(),

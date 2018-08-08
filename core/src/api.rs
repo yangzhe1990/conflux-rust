@@ -32,5 +32,5 @@ pub trait LedgerCore : Send + Sync {
 }
 
 /// Represenets the interface an VM must implement to process transactions
-pub trait ExecEngine: Sync + Send {
+pub trait TransactionExecutor: Sync + Send {
 }
