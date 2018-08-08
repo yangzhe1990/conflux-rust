@@ -68,7 +68,7 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         ledger: cfx_ledger_eng.clone(),
     };
 
-    let cfx_sync = core::ConfluxSync::new(cfx_sync_params).unwrap();
+    let mut cfx_sync = core::ConfluxSync::new(cfx_sync_params);
 
     let cfx_blockgen = blockgen::ConfluxBlockGenerator::new(cfx_sync.clone());
 

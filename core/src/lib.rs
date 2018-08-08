@@ -70,9 +70,9 @@ pub struct ConfluxSync {
 
 impl ConfluxSync {
     /// Create and register protocol with the network service
-    pub fn new(params: Params) -> Result<Arc<ConfluxSync>, Error> {
+    pub fn new(params: Params) -> Arc<ConfluxSync> {
         let dag_sync = DagSync::new();
-        let service = NetworkService::new(params.network_config)?;
+        let service = NetworkService::new(params.network_config);
 
         let sync = Arc::new(ConfluxSync {
             network: service,
@@ -82,7 +82,7 @@ impl ConfluxSync {
             }),
             subprotocol_name: params.config.subprotocol_name,
         });
-        Ok(sync)
+        sync
     }
 }
 
@@ -122,7 +122,7 @@ impl LedgerCore for ConfluxSync {
     ) {
     }
 
-    fn start(&self) {
+    fn start(&mut self) {
         match self.network.start() {
             Err(err) => {
                 warn!("Error starting network");

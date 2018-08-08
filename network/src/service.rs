@@ -32,27 +32,28 @@ const HOUSEKEEPING: TimerToken = SYS_TIMER + 2;
 const HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct NetworkService {
-    io_service: IoService<NetworkIoMessage>,
+    io_service: Option<IoService<NetworkIoMessage>>,
     inner: RwLock<Option<Arc<NetworkServiceInner>>>,
     config: NetworkConfiguration,
 }
 
 impl NetworkService {
-    pub fn new(config: NetworkConfiguration) -> Result<NetworkService, Error> {
-        let io_service = IoService::<NetworkIoMessage>::start()?;
-
-        Ok(NetworkService {
-            io_service: io_service,
+    pub fn new(config: NetworkConfiguration) -> NetworkService {
+        NetworkService {
+            io_service: None,
             inner: RwLock::new(None),
             config: config,
-        })
+        }
     }
 
-    pub fn start(&self) -> Result<(), Error> {
+    pub fn start(&mut self) -> Result<(), Error> {
+        let raw_io_service = IoService::<NetworkIoMessage>::start()?;
+        self.io_service = Some(raw_io_service);
+
         let mut w = self.inner.write();
         if w.is_none() {
             let inner = Arc::new(NetworkServiceInner::new(&self.config)?);
-            self.io_service.register_handler(inner.clone())?;
+            self.io_service.as_ref().unwrap().register_handler(inner.clone())?;
             *w = Some(inner);
         }
 
@@ -77,7 +78,7 @@ impl NetworkService {
         protocol: ProtocolId, versions: &[u8],
     ) -> Result<(), Error>
     {
-        self.io_service.send_message(NetworkIoMessage::AddHandler {
+        self.io_service.as_ref().unwrap().send_message(NetworkIoMessage::AddHandler {
             handler,
             protocol,
             versions: versions.to_vec(),

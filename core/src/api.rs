@@ -12,7 +12,7 @@ pub trait LedgerCore : Send + Sync {
 	}
 
 	/// fires when chain achieves active mode
-	fn start(&self) {
+	fn start(&mut self) {
 		// does nothing by default
 	}
 
