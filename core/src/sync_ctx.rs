@@ -1,13 +1,13 @@
 use super::{PacketId};
 use network::{PeerId, NetworkContext, Error};
-use ledger::LedgerEngineInterface;
+use ledger::Ledger;
 
 /// IO interface for the syncing handler.
 pub trait SyncIo {
     /// Respond to current request with a packet. Can be called from an IO handler for incoming packet.
     fn respond(&mut self, packet_id: PacketId, data: Vec<u8>) -> Result<(), Error>;
     /// Get the ledger
-    fn ledger(&self) -> &LedgerEngineInterface;
+    fn ledger(&self) -> &Ledger;
     /// Disconnect peer
     fn disconnect_peer(&mut self, peer_id: PeerId);
     /// Check if the session is expired
@@ -19,12 +19,12 @@ pub trait SyncIo {
 /// Wraps `NetworkContext` and the ledger engine interface
 pub struct SyncIoContext<'s> {
     network: &'s NetworkContext,
-    ledger: &'s LedgerEngineInterface,
+    ledger: &'s Ledger,
 }
 
 impl<'s> SyncIoContext<'s> {
     /// Creates a new instance from the `NetworkContext` and the ledger engine interface reference.
-    pub fn new(network: &'s NetworkContext, ledger: &'s LedgerEngineInterface) -> SyncIoContext<'s> {
+    pub fn new(network: &'s NetworkContext, ledger: &'s Ledger) -> SyncIoContext<'s> {
         SyncIoContext {
             network: network,
             ledger: ledger,
@@ -37,7 +37,7 @@ impl<'s> SyncIo for SyncIoContext<'s> {
         Ok(())
     }
 
-    fn ledger(&self) -> &LedgerEngineInterface {
+    fn ledger(&self) -> &Ledger {
         return self.ledger;
     }
 

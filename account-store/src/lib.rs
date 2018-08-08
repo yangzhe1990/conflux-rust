@@ -8,7 +8,7 @@ use network::Error;
 use std::collections::HashMap;
 use std::collections::BTreeMap;
 use ethereum_types::{Address};
-use api::AccountStoreInterface;
+use api::{AccountStore as AccountStoreTrait};
 use std::sync::{Arc};
 use parking_lot::RwLock;
 
@@ -36,7 +36,7 @@ impl AccountStore {
     }
 }
 
-impl AccountStoreInterface for AccountStore {
+impl AccountStoreTrait for AccountStore {
     fn update_entry(&self, ac: &Address, ent: AccountEntry) -> Option<AccountEntry> {
         let mut ac_table = self.table.write();
         ac_table.insert(ac.clone(), ent)

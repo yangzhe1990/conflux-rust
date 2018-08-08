@@ -19,7 +19,7 @@ mod block_sync;
 
 use parking_lot::RwLock;
 use std::sync::{Arc};
-use ledger::LedgerEngineInterface;
+use ledger::Ledger;
 
 pub use api::*;
 pub use dag::*;
@@ -55,7 +55,7 @@ pub struct Params {
     /// Network layer configuration.
     pub network_config: NetworkConfiguration,
     /// Ledger interface
-    pub ledger: Arc<LedgerEngineInterface>,
+    pub ledger: Arc<Ledger>,
 }
 
 /// Conflux network sync engine
@@ -87,7 +87,7 @@ impl ConfluxSync {
 
 struct SyncProtocolHandler {
     /// Shared ledger interface.
-    ledger: Arc<LedgerEngineInterface>,
+    ledger: Arc<Ledger>,
     /// Sync strategy
     sync: RwLock<DagSync>,
 }

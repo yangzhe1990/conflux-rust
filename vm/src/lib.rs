@@ -1,7 +1,7 @@
 extern crate core;
 
 use std::sync::Arc;
-use core::ExecEngineInterface;
+use core::ExecEngine;
 
 /// The VM for processing transactions in Conflux
 pub struct ConfluxVM {
@@ -14,5 +14,5 @@ impl ConfluxVM {
     }
 }
 
-impl ExecEngineInterface for ConfluxVM {
+impl ExecEngine for ConfluxVM {
 }

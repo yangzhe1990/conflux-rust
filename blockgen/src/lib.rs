@@ -4,7 +4,7 @@ use std::sync::Arc;
 use core::LedgerCore;
 
 /// The interface for a conflux block generator
-pub trait BlockGeneratorInterface {
+pub trait BlockGenerator {
     /// Start the block generator to generate blocks actively
     fn start();
 
@@ -29,7 +29,7 @@ impl<T> ConfluxBlockGenerator<T> {
     }
 }
 
-impl<T> BlockGeneratorInterface for ConfluxBlockGenerator<T> {
+impl<T> BlockGenerator for ConfluxBlockGenerator<T> {
     fn start() {
         unimplemented!();
     }

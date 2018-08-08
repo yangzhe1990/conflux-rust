@@ -6,9 +6,9 @@ pub use types::*;
 use parking_lot::RwLock;
 use std::sync::{Arc};
 use ledger::ledger::ConfluxLedger;
-use ExecEngineInterface;
+use ExecEngine;
 
-pub trait LedgerEngineInterface: Send + Sync {
+pub trait Ledger: Send + Sync {
     /// Get gathered ledger information.
     fn ledger_info(&self) -> LedgerInfo;
 
@@ -26,11 +26,11 @@ pub trait LedgerEngineInterface: Send + Sync {
 
 pub struct LedgerEngine {
     ledger: RwLock<ConfluxLedger>,
-    executor: Arc<ExecEngineInterface>,
+    executor: Arc<ExecEngine>,
 }
 
 impl LedgerEngine {
-    pub fn new(executor: Arc<ExecEngineInterface>) -> Arc<LedgerEngine> {
+    pub fn new(executor: Arc<ExecEngine>) -> Arc<LedgerEngine> {
         Arc::new(LedgerEngine {
             ledger: Default::default(),
             executor: executor,
@@ -47,7 +47,7 @@ impl LedgerEngine {
 	}
 }
 
-impl LedgerEngineInterface for LedgerEngine {
+impl Ledger for LedgerEngine {
     fn ledger_info(&self) -> LedgerInfo {
         let ledger_info = self.ledger.read().ledger_info();
         ledger_info

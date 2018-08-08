@@ -2,7 +2,7 @@ use ethereum_types::{Address};
 use super::AccountEntry;
 use std::collections::HashMap;
 
-pub trait AccountStoreInterface: Sync + Send {
+pub trait AccountStore: Sync + Send {
     /// update state of account ac, insert if ac not exists
     /// return old entry if ac exists, otherwise None
     fn update_entry(&self, ac: &Address, ent: AccountEntry) -> Option<AccountEntry>;
