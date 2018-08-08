@@ -69,12 +69,13 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
     };
 
     let mut cfx_sync = core::ConfluxSync::new(cfx_sync_params);
-
-    let cfx_blockgen = blockgen::ConfluxBlockGenerator::new(cfx_sync.clone());
-
     cfx_sync.start();
 
-    Ok(Box::new((event_loop, rpc_server, cfx_sync, cfx_vm, cfx_blockgen)))
+    let cfx_sync_ref = Arc::new(cfx_sync);
+
+    let cfx_blockgen = blockgen::ConfluxBlockGenerator::new(cfx_sync_ref.clone());
+
+    Ok(Box::new((event_loop, rpc_server, cfx_sync_ref, cfx_vm, cfx_blockgen)))
 }
 
 fn main() {

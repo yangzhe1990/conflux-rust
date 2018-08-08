@@ -70,19 +70,18 @@ pub struct ConfluxSync {
 
 impl ConfluxSync {
     /// Create and register protocol with the network service
-    pub fn new(params: Params) -> Arc<ConfluxSync> {
+    pub fn new(params: Params) -> Self {
         let dag_sync = DagSync::new();
         let service = NetworkService::new(params.network_config);
 
-        let sync = Arc::new(ConfluxSync {
+        ConfluxSync {
             network: service,
             sync_handler: Arc::new(SyncProtocolHandler {
                 ledger: params.ledger,
                 sync: RwLock::new(dag_sync),
             }),
             subprotocol_name: params.config.subprotocol_name,
-        });
-        sync
+        }
     }
 }
 
