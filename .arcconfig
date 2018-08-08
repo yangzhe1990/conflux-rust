@@ -1,4 +1,4 @@
 {
-    "phabricator.uri": "https://phab.conflux-chain.org"
+    "phabricator.uri": "https://phab.conflux-chain.org",
+    "git.default-relative-commit": "origin/master"
 }
-
