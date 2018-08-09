@@ -1,10 +1,10 @@
-use ethereum_types::{H256, U256};
-pub use types::*;
 use super::super::encoded;
+use ethereum_types::{H256, U256};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use network::PeerId;
 use super::super::header::Header;
+pub use types::*;
 
 /// Familial details concerning a block
 #[derive(Debug, Clone)]
@@ -60,16 +60,14 @@ impl ConfluxLedger {
     }
 
     /// Get best block hash.
-    pub fn best_block_hash(&self) -> H256 {
-        self.best_block.read().header.hash()
-    }
+    pub fn best_block_hash(&self) -> H256 { self.best_block.read().header.hash() }
 
     /// Get block header data
     pub fn block_header_data(&self, hash: &H256) -> Option<encoded::Header> {
-		let read = self.block_headers.read();
-		if let Some(v) = read.get(hash) {
-			return Some(v.clone());
-		} else {
+        let read = self.block_headers.read();
+        if let Some(v) = read.get(hash) {
+            return Some(v.clone());
+        } else {
             None
         }
     }
@@ -101,7 +99,6 @@ impl Default for ConfluxLedger {
                 block: encoded::Block::new(Vec::new()),
                 total_difficulty: 0.into(),
             }),
-
             block_headers: RwLock::new(HashMap::new()),
             block_bodies: RwLock::new(HashMap::new()),
             block_hashes: RwLock::new(HashMap::new()),

@@ -1,12 +1,12 @@
 mod ledger;
 
 use encoded;
-use ethereum_types::{H256};
-pub use types::*;
-use parking_lot::RwLock;
-use std::sync::{Arc};
+use ethereum_types::H256;
 use ledger::ledger::ConfluxLedger;
-use ExecEngine;
+use parking_lot::RwLock;
+use std::sync::Arc;
+pub use types::*;
+use LedgerExecutor;
 
 pub trait Ledger: Send + Sync {
     /// Get gathered ledger information.
@@ -14,7 +14,7 @@ pub trait Ledger: Send + Sync {
 
     ///////////////////////////////////////////////////////
 
-    /// Get block information 
+    /// Get block information
     /// Get raw block header data by block id.
     fn block_header(&self, id: BlockId) -> Option<encoded::Header>;
 
@@ -27,17 +27,19 @@ pub trait Ledger: Send + Sync {
 
 }
 
+pub type LedgerRef = Arc<Ledger>;
+
 pub struct LedgerEngine {
     ledger: RwLock<ConfluxLedger>,
-    executor: Arc<ExecEngine>,
+    executor: Arc<LedgerExecutor>,
 }
 
 impl LedgerEngine {
-    pub fn new(executor: Arc<ExecEngine>) -> Arc<LedgerEngine> {
-        Arc::new(LedgerEngine {
+    pub fn new(executor: Arc<LedgerExecutor>) -> Self {
+        LedgerEngine {
             ledger: Default::default(),
             executor: executor,
-        })
+        }
     }
 
     fn block_hash(ledger: &ConfluxLedger, id: BlockId) -> Option<H256> {
@@ -62,7 +64,8 @@ impl Ledger for LedgerEngine {
 
     fn block_header(&self, id: BlockId) -> Option<encoded::Header> {
         let ledger = self.ledger.read();
-        Self::block_hash(&ledger, id).and_then(|hash| ledger.block_header_data(&hash))
+        Self::block_hash(&ledger, id)
+            .and_then(|hash| ledger.block_header_data(&hash))
     }
 
     fn block_hash(&self, id: BlockId) -> Option<H256> {

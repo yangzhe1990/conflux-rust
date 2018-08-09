@@ -58,9 +58,10 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         network::NetworkService::new(net_conf).map_err(|e| format!("{}", e))?;
     net_svc.start().map_err(|e| format!("{}", e))?;*/
 
-    let cfx_vm = vm::ConfluxVM::new();
+    let cfx_vm = Arc::new(vm::ConfluxVM::new());
 
-    let cfx_ledger_eng = core::ledger::LedgerEngine::new(cfx_vm.clone());
+    let cfx_ledger_eng =
+        Arc::new(core::ledger::LedgerEngine::new(cfx_vm.clone()));
 
     let cfx_sync_params = core::Params {
         config: Default::default(),
@@ -93,15 +94,13 @@ fn main() {
                 .value_name("PORT")
                 .help("Listen for p2p connections on PORT.")
                 .takes_value(true),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("jsonrpc-port")
                 .long("jsonrpc-port")
                 .value_name("PORT")
                 .help("Specify the PORT for the TCP JSON-RPC API server.")
                 .takes_value(true),
-        )
-        .get_matches_from(std::env::args().collect::<Vec<_>>());
+        ).get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));

@@ -1,6 +1,6 @@
-use super::{PacketId};
-use network::{PeerId, NetworkContext, Error};
+use super::PacketId;
 use ledger::Ledger;
+use network::{Error, NetworkContext, PeerId};
 
 /// IO interface for the syncing handler.
 pub trait SyncIo {
@@ -24,7 +24,9 @@ pub struct SyncIoContext<'s> {
 
 impl<'s> SyncIoContext<'s> {
     /// Creates a new instance from the `NetworkContext` and the ledger engine interface reference.
-    pub fn new(network: &'s NetworkContext, ledger: &'s Ledger) -> SyncIoContext<'s> {
+    pub fn new(
+        network: &'s NetworkContext, ledger: &'s Ledger,
+    ) -> SyncIoContext<'s> {
         SyncIoContext {
             network: network,
             ledger: ledger,
@@ -33,20 +35,15 @@ impl<'s> SyncIoContext<'s> {
 }
 
 impl<'s> SyncIo for SyncIoContext<'s> {
-    fn ledger(&self) -> &Ledger {
-        return self.ledger;
-    }
+    fn ledger(&self) -> &Ledger { return self.ledger; }
 
     fn disconnect_peer(&mut self, peer_id: PeerId) {
         self.network.disconnect_peer(peer_id);
     }
 
-    fn is_expired(&self) -> bool {
-        false
-    }
+    fn is_expired(&self) -> bool { false }
 
-    fn disable_peer(&mut self, peer_id: PeerId) {
-    }
+    fn disable_peer(&mut self, peer_id: PeerId) {}
 
     fn send(&mut self, peer_id: PeerId, data: Vec<u8>) -> Result<(), Error>{
 		self.network.send(peer_id, data)

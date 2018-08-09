@@ -1,12 +1,14 @@
-use ethereum_types::{Address};
 use super::AccountEntry;
+use ethereum_types::Address;
 use std::collections::HashMap;
 
 pub trait AccountStore: Sync + Send {
     /// update state of account ac, insert if ac not exists
     /// return old entry if ac exists, otherwise None
-    fn update_entry(&self, ac: &Address, ent: AccountEntry) -> Option<AccountEntry>;
-    
+    fn update_entry(
+        &self, ac: &Address, ent: AccountEntry,
+    ) -> Option<AccountEntry>;
+
     /// update value of account ac at version ver, if ac not exists, do nothing and return false
     fn update_value(&self, ac: &Address, val: f64, ver: u64) -> bool;
 
@@ -20,7 +22,7 @@ pub trait AccountStore: Sync + Send {
     fn get_nonce(&self, ac: &Address) -> Option<u64>;
 
     /// increment nonce of account by 1
-    fn inc_nonce(&self, ac: &Address) -> Option<u64>;    
+    fn inc_nonce(&self, ac: &Address) -> Option<u64>;
 
     /// check whether account exists
     fn exist(&self, ac: &Address) -> bool;

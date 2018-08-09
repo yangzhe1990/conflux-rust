@@ -1,7 +1,7 @@
 extern crate core;
 
-use std::sync::Arc;
 use core::LedgerCore;
+use std::sync::Arc;
 
 /// The interface for a conflux block generator
 pub trait BlockGenerator {
@@ -15,7 +15,9 @@ pub trait BlockGenerator {
     fn generate_block(payload_len: u32);
 }
 
-type SharedLedgerCore<T>  where T: LedgerCore = Arc<T>;
+type SharedLedgerCore<T>
+where T: LedgerCore
+= Arc<T>;
 
 pub struct ConfluxBlockGenerator<T> {
     core: SharedLedgerCore<T>,
@@ -23,9 +25,7 @@ pub struct ConfluxBlockGenerator<T> {
 
 impl<T> ConfluxBlockGenerator<T> {
     pub fn new(core: SharedLedgerCore<T>) -> ConfluxBlockGenerator<T> {
-        ConfluxBlockGenerator {
-            core: core,
-        }
+        ConfluxBlockGenerator { core: core }
     }
 }
 

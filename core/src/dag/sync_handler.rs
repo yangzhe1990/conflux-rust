@@ -1,27 +1,19 @@
 use super::{
-    PacketId,
-    DagSync,
-    MAX_HEADERS_TO_SEND,
-    STATUS_PACKET,
-    GET_BLOCK_BODIES_PACKET,
-    GET_BLOCK_HEADERS_PACKET,
-    BLOCK_HEADERS_PACKET,
-    RlpResponseResult,
-    PacketDecodeError,
-    PeerAsking,
-    PeerInfo,
+    DagSync, PacketDecodeError, PacketId, PeerAsking, PeerInfo,
+    RlpResponseResult, BLOCK_HEADERS_PACKET, GET_BLOCK_BODIES_PACKET,
+    GET_BLOCK_HEADERS_PACKET, MAX_HEADERS_TO_SEND, STATUS_PACKET,
 };
 
 use block_sync::BlockSyncError;
-use parking_lot::RwLock;
-use sync_ctx::SyncIo;
-use network::{PeerId, Error};
-use rlp::{Rlp, RlpStream};
 use bytes::Bytes;
-use types::*;
+use ethereum_types::H256;
+use network::{Error, PeerId};
+use parking_lot::RwLock;
+use rlp::{Rlp, RlpStream};
 use std::cmp;
-use ethereum_types::{H256};
-use std::time::{Instant};
+use std::time::Instant;
+use sync_ctx::SyncIo;
+use types::*;
 
 pub struct SyncHandler;
 
@@ -29,12 +21,20 @@ impl SyncHandler {
     /// Dispatch incoming requests and responses
     pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: Rlp) {
         let result = match packet_id {
-            GET_BLOCK_BODIES_PACKET => SyncHandler::return_rlp(io, &rlp, peer,
+            GET_BLOCK_BODIES_PACKET => SyncHandler::return_rlp(
+                io,
+                &rlp,
+                peer,
                 SyncHandler::return_block_bodies,
-                |e| format!("Error sending block bodies: {:?}", e)),
-            GET_BLOCK_HEADERS_PACKET => SyncHandler::return_rlp(io, &rlp, peer,
+                |e| format!("Error sending block bodies: {:?}", e),
+            ),
+            GET_BLOCK_HEADERS_PACKET => SyncHandler::return_rlp(
+                io,
+                &rlp,
+                peer,
                 SyncHandler::return_block_headers,
-                |e| format!("Error sending block headers: {:?}", e)),
+                |e| format!("Error sending block headers: {:?}", e),
+            ),
             _ => {
                 sync.write().on_packet(io, peer, packet_id, &rlp);
                 Ok(())
@@ -42,9 +42,13 @@ impl SyncHandler {
         };
     }
 
-    fn return_rlp<FRlp, FError>(io: &mut SyncIo, rlp: &Rlp, peer: PeerId, rlp_func: FRlp, error_func: FError) -> Result<(), PacketDecodeError>
-        where FRlp : Fn(&SyncIo, &Rlp, PeerId) -> RlpResponseResult,
-            FError : FnOnce(Error) -> String
+    fn return_rlp<FRlp, FError>(
+        io: &mut SyncIo, rlp: &Rlp, peer: PeerId, rlp_func: FRlp,
+        error_func: FError,
+    ) -> Result<(), PacketDecodeError>
+    where
+        FRlp: Fn(&SyncIo, &Rlp, PeerId) -> RlpResponseResult,
+        FError: FnOnce(Error) -> String,
     {
         let response = rlp_func(io, rlp, peer);
         match response {
@@ -53,18 +57,22 @@ impl SyncHandler {
                 io.send(peer, rlp_stream.out()).unwrap_or_else(
                     |e| debug!(target: "sync", "{:?}", error_func(e)));
                 Ok(())
-            },
-            _ => Ok(())
+            }
+            _ => Ok(()),
         }
     }
 
     /// Respond to GetBlockBodies request
-    fn return_block_bodies(io: &SyncIo, r: &Rlp, peer_id: PeerId) -> RlpResponseResult {
+    fn return_block_bodies(
+        io: &SyncIo, r: &Rlp, peer_id: PeerId,
+    ) -> RlpResponseResult {
         Ok(None)
     }
-    
+
     /// Respond to GetBlockHeaders request
-    fn return_block_headers(io: &SyncIo, r: &Rlp, peer_id: PeerId) -> RlpResponseResult {
+    fn return_block_headers(
+        io: &SyncIo, r: &Rlp, peer_id: PeerId,
+    ) -> RlpResponseResult {
         // Packet layout:
 		// [ block: { P , B_32 }, maxHeaders: P, skip: P, reverse: P in { 0 , 1 } ]
 		let max_headers: usize = r.val_at(2)?;
@@ -177,14 +185,16 @@ impl SyncHandler {
     }
 
     /// Called when a new peer is connected
-    pub fn on_peer_connected(sync: &mut DagSync, io: &mut SyncIo, peer: PeerId) {
+    pub fn on_peer_connected(
+        sync: &mut DagSync, io: &mut SyncIo, peer: PeerId,
+    ) {
         trace!(target: "sync", "== Connected {}", peer);
         if let Err(e) = sync.send_status(io, peer) {
             debug!(target:"sync", "Error sending status request: {:?}", e);
             io.disconnect_peer(peer);
         } else {
             sync.handshaking_peers.insert(peer, Instant::now());
-        }        
+        }
     }
 
     /// Called by peer to report status

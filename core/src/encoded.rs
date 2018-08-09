@@ -1,8 +1,8 @@
 extern crate common_types as types;
 
-use types::*;
+use ethereum_types::H256;
 use hash::keccak;
-use ethereum_types::{H256};
+use types::*;
 
 /// Owning header view.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,15 +19,13 @@ impl Header {
     pub fn hash(&self) -> H256 { keccak(&self.0) }
     /// Number of this block.
     pub fn number(&self) -> BlockNumber { 0 }
-
 }
 
 /// Owning block body view.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Body(Vec<u8>);
 
-impl Body {
-}
+impl Body {}
 
 /// Owning block view.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,5 +37,4 @@ impl Block {
 }
 
 // forwarders to borrowed header view.
-impl Block {
-}
+impl Block {}
