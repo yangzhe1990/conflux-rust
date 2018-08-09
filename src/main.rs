@@ -23,14 +23,13 @@ extern crate slab;
 
 extern crate blockgen;
 extern crate core;
-extern crate vm;
+// extern crate vm;
 
 mod configuration;
 mod rpc;
 
 use clap::{App, Arg};
 use configuration::Configuration;
-use core::LedgerCore;
 use ctrlc::CtrlC;
 use network::{NetworkConfiguration, NetworkService};
 use parity_reactor::EventLoop;
@@ -58,31 +57,28 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         network::NetworkService::new(net_conf).map_err(|e| format!("{}", e))?;
     net_svc.start().map_err(|e| format!("{}", e))?;*/
 
-    let cfx_vm = Arc::new(vm::ConfluxVM::new());
+    let ledger = core::Ledger::new_shared();
+    // let exec_engine = ExecEngine::new_shared();
 
-    let cfx_ledger_eng =
-        Arc::new(core::ledger::LedgerEngine::new(cfx_vm.clone()));
+    // let cfx_vm = Arc::new(vm::ConfluxVM::new());
 
-    let cfx_sync_params = core::Params {
+    let sync_params = core::SyncParams {
         config: Default::default(),
         network_config: net_conf,
-        ledger: cfx_ledger_eng.clone(),
+        ledger: ledger.clone(),
     };
 
-    let mut cfx_sync = core::ConfluxSync::new(cfx_sync_params);
-    cfx_sync.start();
+    let mut sync_engine = core::SyncEngine::new(sync_params);
+    sync_engine.start();
 
-    let cfx_sync_ref = Arc::new(cfx_sync);
-
-    let cfx_blockgen =
-        blockgen::ConfluxBlockGenerator::new(cfx_sync_ref.clone());
+    let blockgen = blockgen::BlockGenerator::new(ledger.clone());
 
     Ok(Box::new((
         event_loop,
         rpc_server,
-        cfx_sync_ref,
-        cfx_vm,
-        cfx_blockgen,
+        Arc::new(sync_engine),
+        // cfx_vm,
+        blockgen,
     )))
 }
 
@@ -94,13 +90,15 @@ fn main() {
                 .value_name("PORT")
                 .help("Listen for p2p connections on PORT.")
                 .takes_value(true),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("jsonrpc-port")
                 .long("jsonrpc-port")
                 .value_name("PORT")
                 .help("Specify the PORT for the TCP JSON-RPC API server.")
                 .takes_value(true),
-        ).get_matches_from(std::env::args().collect::<Vec<_>>());
+        )
+        .get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));
