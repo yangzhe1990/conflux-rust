@@ -53,7 +53,10 @@ impl NetworkService {
         let mut w = self.inner.write();
         if w.is_none() {
             let inner = Arc::new(NetworkServiceInner::new(&self.config)?);
-            self.io_service.as_ref().unwrap().register_handler(inner.clone())?;
+            self.io_service
+                .as_ref()
+                .unwrap()
+                .register_handler(inner.clone())?;
             *w = Some(inner);
         }
 
@@ -78,11 +81,13 @@ impl NetworkService {
         protocol: ProtocolId, versions: &[u8],
     ) -> Result<(), Error>
     {
-        self.io_service.as_ref().unwrap().send_message(NetworkIoMessage::AddHandler {
-            handler,
-            protocol,
-            versions: versions.to_vec(),
-        })?;
+        self.io_service.as_ref().unwrap().send_message(
+            NetworkIoMessage::AddHandler {
+                handler,
+                protocol,
+                versions: versions.to_vec(),
+            },
+        )?;
         Ok(())
     }
 }

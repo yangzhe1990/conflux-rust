@@ -1,17 +1,13 @@
 extern crate core;
 
-use std::sync::Arc;
 use core::TransactionExecutor;
+use std::sync::Arc;
 
 /// The VM for processing transactions in Conflux
-pub struct ConfluxVM {
-}
+pub struct ConfluxVM {}
 
 impl ConfluxVM {
-    pub fn new() -> ConfluxVM {
-        ConfluxVM {}
-    }
+    pub fn new() -> ConfluxVM { ConfluxVM {} }
 }
 
-impl TransactionExecutor for ConfluxVM {
-}
+impl TransactionExecutor for ConfluxVM {}

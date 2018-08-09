@@ -1,33 +1,35 @@
-extern crate keccak_hash as hash;
-extern crate ethereum_types;
 extern crate common_types as types;
+extern crate ethereum_types;
+extern crate io;
+extern crate keccak_hash as hash;
+extern crate network;
 extern crate parity_bytes as bytes;
 extern crate parking_lot;
-extern crate network;
-extern crate io;
 extern crate rlp;
 
-#[macro_use] 
+#[macro_use]
 extern crate log;
 
+mod api;
+mod block_sync;
+mod dag;
 pub mod encoded;
 pub mod ledger;
-mod api;
-mod dag;
 mod sync_ctx;
-mod block_sync;
 
+use ledger::LedgerRef;
 use parking_lot::RwLock;
-use std::sync::{Arc};
-use ledger::Ledger;
+use std::sync::Arc;
 
 pub use api::*;
 pub use dag::*;
 
-use network::{NetworkService, NetworkProtocolHandler, NetworkContext, NetworkConfiguration,
-              PeerId, ProtocolId, Error};
-use io::{TimerToken};
 use ethereum_types::H256;
+use io::TimerToken;
+use network::{
+    Error, NetworkConfiguration, NetworkContext, NetworkProtocolHandler,
+    NetworkService, PeerId, ProtocolId,
+};
 use sync_ctx::SyncIoContext;
 
 /// Protocol handler level packet id
@@ -55,7 +57,7 @@ pub struct Params {
     /// Network layer configuration.
     pub network_config: NetworkConfiguration,
     /// Ledger interface
-    pub ledger: Arc<Ledger>,
+    pub ledger: LedgerRef,
 }
 
 /// Conflux network sync engine
@@ -87,22 +89,30 @@ impl ConfluxSync {
 
 struct SyncProtocolHandler {
     /// Shared ledger interface.
-    ledger: Arc<Ledger>,
+    ledger: LedgerRef,
     /// Sync strategy
     sync: RwLock<DagSync>,
 }
 
 impl NetworkProtocolHandler for SyncProtocolHandler {
-    fn initialize(&self, io: &NetworkContext) {
-    }
+    fn initialize(&self, io: &NetworkContext) {}
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {
         let msg_id = data[0];
-        DagSync::dispatch_packet(&self.sync, &mut SyncIoContext::new(io, &*self.ledger), peer, msg_id, &data[1..]);
+        DagSync::dispatch_packet(
+            &self.sync,
+            &mut SyncIoContext::new(io, &*self.ledger),
+            peer,
+            msg_id,
+            &data[1..],
+        );
     }
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
-        self.sync.write().on_peer_connected(&mut SyncIoContext::new(io, &*self.ledger), peer);
+        self.sync.write().on_peer_connected(
+            &mut SyncIoContext::new(io, &*self.ledger),
+            peer,
+        );
         trace!("sync::connected");
     }
 
@@ -116,30 +126,30 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
 }
 
 impl LedgerCore for ConfluxSync {
-    fn new_blocks(
-        &self,
-    ) {
-    }
+    fn new_blocks(&self) {}
 
     fn start(&mut self) {
         match self.network.start() {
             Err(err) => {
                 warn!("Error starting network");
-            },
-            _ => {},
+            }
+            _ => {}
         }
 
-        self.network.register_protocol(self.sync_handler.clone(), self.subprotocol_name, &[CONFLUX_PROTOCOL_VERSION_1])
-            .unwrap_or_else(|e| warn!("Error registering conflux protocol: {:?}", e));
+        self.network
+            .register_protocol(
+                self.sync_handler.clone(),
+                self.subprotocol_name,
+                &[CONFLUX_PROTOCOL_VERSION_1],
+            )
+            .unwrap_or_else(|e| {
+                warn!("Error registering conflux protocol: {:?}", e)
+            });
     }
 
-    fn stop(&self) {
-    }
+    fn stop(&self) {}
 
-    fn broadcast(&self,) {}
+    fn broadcast(&self) {}
 
-    fn transactions_received(&self,
-    ) {
-    }
+    fn transactions_received(&self) {}
 }
-

@@ -37,29 +37,34 @@ extern crate log;
 mod brain;
 mod brain_prefix;
 mod error;
-mod keypair;
+mod extended;
 mod keccak;
+mod keypair;
 mod prefix;
 mod random;
-mod signature;
 mod secret;
-mod extended;
+mod signature;
 
 pub mod brain_recover;
 pub mod crypto;
 pub mod math;
 
-pub use self::parity_wordlist::Error as WordlistError;
 pub use self::brain::Brain;
 pub use self::brain_prefix::BrainPrefix;
 pub use self::error::Error;
-pub use self::keypair::{KeyPair, public_to_address};
+pub use self::extended::{
+    Derivation, DerivationError, ExtendedKeyPair, ExtendedPublic,
+    ExtendedSecret,
+};
+pub use self::keypair::{public_to_address, KeyPair};
 pub use self::math::public_is_valid;
+pub use self::parity_wordlist::Error as WordlistError;
 pub use self::prefix::Prefix;
 pub use self::random::Random;
-pub use self::signature::{sign, verify_public, verify_address, recover, Signature};
 pub use self::secret::Secret;
-pub use self::extended::{ExtendedPublic, ExtendedSecret, ExtendedKeyPair, DerivationError, Derivation};
+pub use self::signature::{
+    recover, sign, verify_address, verify_public, Signature,
+};
 
 use ethereum_types::H256;
 
@@ -67,7 +72,8 @@ pub use ethereum_types::{Address, Public};
 pub type Message = H256;
 
 lazy_static! {
-	pub static ref SECP256K1: secp256k1::Secp256k1 = secp256k1::Secp256k1::new();
+    pub static ref SECP256K1: secp256k1::Secp256k1 =
+        secp256k1::Secp256k1::new();
 }
 
 /// Uninstantiatable error type for infallible generators.
@@ -76,8 +82,8 @@ pub enum Void {}
 
 /// Generates new keypair.
 pub trait Generator {
-	type Error;
+    type Error;
 
-	/// Should be called to generate new keypair.
-	fn generate(&mut self) -> Result<KeyPair, Self::Error>;
+    /// Should be called to generate new keypair.
+    fn generate(&mut self) -> Result<KeyPair, Self::Error>;
 }

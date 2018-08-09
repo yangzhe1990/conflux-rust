@@ -1,16 +1,16 @@
 extern crate ethereum_types;
-extern crate parking_lot;
 extern crate network;
+extern crate parking_lot;
 
 mod api;
 
+use api::AccountStore as AccountStoreTrait;
+use ethereum_types::Address;
 use network::Error;
-use std::collections::HashMap;
-use std::collections::BTreeMap;
-use ethereum_types::{Address};
-use api::{AccountStore as AccountStoreTrait};
-use std::sync::{Arc};
 use parking_lot::RwLock;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct AccountState {
     val: f64,
@@ -37,7 +37,9 @@ impl AccountStore {
 }
 
 impl AccountStoreTrait for AccountStore {
-    fn update_entry(&self, ac: &Address, ent: AccountEntry) -> Option<AccountEntry> {
+    fn update_entry(
+        &self, ac: &Address, ent: AccountEntry,
+    ) -> Option<AccountEntry> {
         let mut ac_table = self.table.write();
         ac_table.insert(ac.clone(), ent)
     }
@@ -48,7 +50,11 @@ impl AccountStoreTrait for AccountStore {
             if entry.latest_version < ver {
                 entry.latest_version = ver;
             }
-            entry.versioned_states.entry(ver).or_insert(AccountState { val:0.0 }).val = val;
+            entry
+                .versioned_states
+                .entry(ver)
+                .or_insert(AccountState { val: 0.0 })
+                .val = val;
             true
         } else {
             false
@@ -85,14 +91,14 @@ impl AccountStoreTrait for AccountStore {
             Some(entry.nonce)
         } else {
             None
-        }        
+        }
     }
 
     fn inc_nonce(&self, ac: &Address) -> Option<u64> {
         let mut ac_table = self.table.write();
         if let Some(entry) = ac_table.get_mut(ac) {
             entry.nonce += 1;
-            Some(entry.nonce)            
+            Some(entry.nonce)
         } else {
             None
         }
@@ -103,8 +109,7 @@ impl AccountStoreTrait for AccountStore {
         ac_table.contains_key(ac)
     }
 
-    fn rollback_to(&self, ver: u64) {
-    }
+    fn rollback_to(&self, ver: u64) {}
 
     fn get_snapshot(&self, ver: u64) -> HashMap<Address, AccountEntry> {
         HashMap::new()

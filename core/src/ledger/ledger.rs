@@ -1,8 +1,8 @@
-use ethereum_types::{H256, U256};
-pub use types::*;
 use super::super::encoded;
+use ethereum_types::{H256, U256};
 use parking_lot::RwLock;
 use std::collections::HashMap;
+pub use types::*;
 
 pub struct ConfluxLedger {
     /// Blockchain difficulty.
@@ -30,16 +30,14 @@ impl ConfluxLedger {
     }
 
     /// Get best block hash.
-    pub fn best_block_hash(&self) -> H256 {
-        self.best_block_hash
-    }
+    pub fn best_block_hash(&self) -> H256 { self.best_block_hash }
 
     /// Get block header data
     pub fn block_header_data(&self, hash: &H256) -> Option<encoded::Header> {
-		let read = self.block_headers.read();
-		if let Some(v) = read.get(hash) {
-			return Some(v.clone());
-		} else {
+        let read = self.block_headers.read();
+        if let Some(v) = read.get(hash) {
+            return Some(v.clone());
+        } else {
             None
         }
     }
@@ -59,8 +57,8 @@ impl Default for ConfluxLedger {
     // FIXME: Fix this default trait as the initial state of the ledger
     fn default() -> ConfluxLedger {
         ConfluxLedger {
-            total_difficulty : 0.into(),
-            genesis_hash : 0.into(),
+            total_difficulty: 0.into(),
+            genesis_hash: 0.into(),
             best_block_hash: 0.into(),
             best_block_number: 0,
 

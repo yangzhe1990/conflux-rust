@@ -9,11 +9,11 @@ pub type BlockNumber = u64;
 #[derive(Clone, Debug)]
 pub struct LedgerInfo {
     /// Blockchain difficulty.
-	pub total_difficulty: U256,
+    pub total_difficulty: U256,
     /// Genesis block hash.
-	pub genesis_hash: H256,
-	/// Best blockchain block hash.
-	pub best_block_hash: H256,
+    pub genesis_hash: H256,
+    /// Best blockchain block hash.
+    pub best_block_hash: H256,
     /// Best ledger block number.
     pub best_block_number: BlockNumber,
 }
@@ -29,4 +29,13 @@ pub enum BlockId {
     Earliest,
     /// Latest mined block.
     Latest,
+}
+
+#[derive(PartialEq, Clone)]
+pub struct BlockHeader {
+    pub previous_header_hash: H256,
+    pub merkle_root_hash: H256,
+    pub time: u32,
+    pub bits: u32,
+    pub nonce: u32,
 }

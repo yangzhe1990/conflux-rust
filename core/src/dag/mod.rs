@@ -1,14 +1,14 @@
 mod sync_handler;
 
-use super::{PacketId};
 use self::sync_handler::SyncHandler;
-use parking_lot::RwLock;
-use sync_ctx::SyncIo;
-use network::{PeerId, Error};
-use rlp::{Rlp, RlpStream, DecoderError};
-use std::time::{Duration, Instant};
-use std::collections::{HashMap, HashSet};
+use super::PacketId;
 use ethereum_types::{H256, U256};
+use network::{Error, PeerId};
+use parking_lot::RwLock;
+use rlp::{DecoderError, Rlp, RlpStream};
+use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
+use sync_ctx::SyncIo;
 
 pub const CONFLUX_PROTOCOL_VERSION_1: u8 = 0x01;
 
@@ -20,41 +20,42 @@ pub const GET_BLOCK_BODIES_PACKET: u8 = 0x02;
 pub const BLOCK_HEADERS_PACKET: u8 = 0x03;
 
 pub type PacketDecodeError = DecoderError;
-pub type RlpResponseResult = Result<Option<(PacketId, RlpStream)>, PacketDecodeError>;
+pub type RlpResponseResult =
+    Result<Option<(PacketId, RlpStream)>, PacketDecodeError>;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 /// Peer data type requested
 pub enum PeerAsking {
-	Nothing,
-	ForkHeader,
-	BlockHeaders,
-	BlockBodies,
-	BlockReceipts,
-	SnapshotManifest,
-	SnapshotData,
+    Nothing,
+    ForkHeader,
+    BlockHeaders,
+    BlockBodies,
+    BlockReceipts,
+    SnapshotManifest,
+    SnapshotData,
 }
 
 #[derive(Clone)]
 /// Syncing peer information
 pub struct PeerInfo {
     /// eth protocol version
-	protocol_version: u8,
-	/// Peer chain genesis hash
-	genesis: H256,
-	/// Peer best block hash
-	latest_hash: H256,
-	/// Peer total difficulty if known
-	difficulty: Option<U256>,
-	/// Type of data currenty being requested from peer.
-	asking: PeerAsking,
-	/// A set of block numbers being requested
-	asking_blocks: Vec<H256>,
-	/// Holds requested header hash if currently requesting block header by hash
-	asking_hash: Option<H256>,
-	/// Request timestamp
-	ask_time: Instant,
-	/// Pending request is expired and result should be ignored
-	expired: bool,
+    protocol_version: u8,
+    /// Peer chain genesis hash
+    genesis: H256,
+    /// Peer best block hash
+    latest_hash: H256,
+    /// Peer total difficulty if known
+    difficulty: Option<U256>,
+    /// Type of data currenty being requested from peer.
+    asking: PeerAsking,
+    /// A set of block numbers being requested
+    asking_blocks: Vec<H256>,
+    /// Holds requested header hash if currently requesting block header by hash
+    asking_hash: Option<H256>,
+    /// Request timestamp
+    ask_time: Instant,
+    /// Pending request is expired and result should be ignored
+    expired: bool,
 }
 
 pub type Peers = HashMap<PeerId, PeerInfo>;
@@ -87,13 +88,21 @@ impl DagSync {
     }
 
     /// Dispatch incoming requests and responses
-    pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
+    pub fn dispatch_packet(
+        sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId,
+        packet_id: PacketId, data: &[u8],
+    )
+    {
         SyncHandler::dispatch_packet(sync, io, peer, packet_id, data)
     }
 
     /// Handle incoming packet from peer which does not require response
     /// Require write lock on DagSync
-    pub fn on_packet(&mut self, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
+    pub fn on_packet(
+        &mut self, io: &mut SyncIo, peer: PeerId, packet_id: PacketId,
+        data: &[u8],
+    )
+    {
         debug!(target: "sync", "{} -> Dispatching packet: {}", peer, packet_id);
         SyncHandler::on_packet(self, io, peer, packet_id, data);
     }
@@ -104,7 +113,9 @@ impl DagSync {
     }
 
     /// Send Status message
-    fn send_status(&mut self, io: &mut SyncIo, peer: PeerId) -> Result<(), Error> {
+    fn send_status(
+        &mut self, io: &mut SyncIo, peer: PeerId,
+    ) -> Result<(), Error> {
         let protocol = CONFLUX_PROTOCOL_VERSION_1;
         trace!(target: "sync", "Sending status to {}, protocol version {}", peer, protocol);
         let ledger = io.ledger().ledger_info();
@@ -124,10 +135,8 @@ impl DagSync {
     }
 
     /// Find something to do for a peer. Called for a new peer or when a peer is done with its task.
-    fn sync_peer(&mut self, io: &mut SyncIo, peer_id: PeerId, force: bool) {
-    }
+    fn sync_peer(&mut self, io: &mut SyncIo, peer_id: PeerId, force: bool) {}
 
     /// Resume downloading
-    fn continue_sync(&mut self, io: &mut SyncIo) {
-    }
+    fn continue_sync(&mut self, io: &mut SyncIo) {}
 }
