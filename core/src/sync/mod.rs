@@ -1,6 +1,8 @@
+pub mod sync_ctx;
 mod sync_handler;
 mod sync_requester;
 
+use self::sync_ctx::SyncContext;
 use self::sync_handler::SyncHandler;
 use self::sync_requester::SyncRequester;
 use super::PacketId;
@@ -10,7 +12,6 @@ use parking_lot::RwLock;
 use rlp::{DecoderError, Rlp, RlpStream};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
-use sync_ctx::SyncIo;
 
 pub const CONFLUX_PROTOCOL_VERSION_1: u8 = 0x01;
 
@@ -94,25 +95,33 @@ impl SyncState {
     }
 
     /// Dispatch incoming requests and responses
-    pub fn dispatch_packet(sync: &RwLock<SyncState>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: Rlp) {
+    pub fn dispatch_packet(
+        sync: &RwLock<SyncState>, io: &mut SyncContext, peer: PeerId,
+        packet_id: PacketId, rlp: Rlp,
+    )
+    {
         SyncHandler::dispatch_packet(sync, io, peer, packet_id, rlp)
     }
 
     /// Handle incoming packet from peer which does not require response
     /// Require write lock on SyncState
-    pub fn on_packet(&mut self, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: &Rlp) {
+    pub fn on_packet(
+        &mut self, io: &mut SyncContext, peer: PeerId, packet_id: PacketId,
+        rlp: &Rlp,
+    )
+    {
         debug!(target: "sync", "{} -> Dispatching packet: {}", peer, packet_id);
         SyncHandler::on_packet(self, io, peer, packet_id, rlp);
     }
 
     /// Called when a new peer is connected
-    pub fn on_peer_connected(&mut self, io: &mut SyncIo, peer: PeerId) {
+    pub fn on_peer_connected(&mut self, io: &mut SyncContext, peer: PeerId) {
         SyncHandler::on_peer_connected(self, io, peer);
     }
 
     /// Send Status message
     fn send_status(
-        &mut self, io: &mut SyncIo, peer: PeerId,
+        &mut self, io: &mut SyncContext, peer: PeerId,
     ) -> Result<(), Error> {
         let protocol = CONFLUX_PROTOCOL_VERSION_1;
         trace!(target: "sync", "Sending status to {}, protocol version {}", peer, protocol);
@@ -128,33 +137,40 @@ impl SyncState {
     }
 
     /// Remove peer from active peer set. Peer will be reactivated on the next sync round
-    fn deactivate_peer(&mut self, _io: &mut SyncIo, peer_id: PeerId) {
+    fn deactivate_peer(&mut self, _io: &mut SyncContext, peer_id: PeerId) {
         trace!(target: "sync", "Deactivating peer {}", peer_id);
         self.active_peers.remove(&peer_id);
     }
 
-    fn peer_status_changed(&mut self, io: &mut SyncIo, peer_id: PeerId) {
+    fn peer_status_changed(&mut self, io: &mut SyncContext, peer_id: PeerId) {
         let (peer_latest, peer_difficulty) = {
-            match self.peers.get(&peer_id){
-			    Some(p) => {
-				    (p.latest_hash.clone(), p.difficulty.clone())
-                },
+            match self.peers.get(&peer_id) {
+                Some(p) => (p.latest_hash.clone(), p.difficulty.clone()),
                 _ => {
                     return;
-                },
+                }
             }
-		};
+        };
         let ledger_info = io.ledger().ledger_info();
-        let higher_difficulty = peer_difficulty.map_or(false, |pd| pd > ledger_info.total_difficulty);
+        let higher_difficulty = peer_difficulty
+            .map_or(false, |pd| pd > ledger_info.total_difficulty);
         if !higher_difficulty {
             return;
         }
-        
+
         if !io.ledger().block_header_exists(&peer_latest) {
             if !self.headers_in_fetching.contains_key(&peer_latest) {
                 self.headers_in_fetching.insert(peer_latest, peer_id);
-                SyncRequester::request_headers_by_hash(self, io, peer_id, &peer_latest, 256, 0, true);
+                SyncRequester::request_headers_by_hash(
+                    self,
+                    io,
+                    peer_id,
+                    &peer_latest,
+                    256,
+                    0,
+                    true,
+                );
             }
-        }        
+        }
     }
 }

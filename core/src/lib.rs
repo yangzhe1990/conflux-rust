@@ -12,19 +12,18 @@ extern crate log;
 
 mod api;
 mod block_sync;
-mod dag;
 pub mod encoded;
 pub mod header;
 mod ledger;
-mod sync_ctx;
+mod sync;
 
 use parking_lot::RwLock;
 use rlp::{Rlp, RlpStream};
 use std::sync::Arc;
 
 pub use api::*;
-pub use dag::*;
 pub use ledger::{Ledger, SharedLedger};
+pub use sync::*;
 
 use ethereum_types::H256;
 use io::TimerToken;
@@ -32,7 +31,7 @@ use network::{
     Error, NetworkConfiguration, NetworkContext, NetworkProtocolHandler,
     NetworkService, PeerId, ProtocolId,
 };
-use sync_ctx::SyncIoContext;
+use sync_ctx::SyncContext;
 
 /// Protocol handler level packet id
 pub type PacketId = u8;
@@ -75,14 +74,14 @@ pub struct SyncEngine {
 impl SyncEngine {
     /// Create and register protocol with the network service
     pub fn new(params: SyncParams) -> Self {
-        let dag_sync = SyncState::new();
+        let sync_state = SyncState::new();
         let service = NetworkService::new(params.network_config);
 
         SyncEngine {
             network: service,
             sync_handler: Arc::new(SyncProtocolHandler {
                 ledger: params.ledger,
-                sync: RwLock::new(dag_sync),
+                sync: RwLock::new(sync_state),
             }),
             subprotocol_name: params.config.subprotocol_name,
         }
@@ -133,7 +132,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
         }
         SyncState::dispatch_packet(
             &self.sync,
-            &mut SyncIoContext::new(io, &*self.ledger),
+            &mut SyncContext::new(io, &*self.ledger),
             peer,
             packet_id,
             rlp,
@@ -141,10 +140,9 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     }
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
-        self.sync.write().on_peer_connected(
-            &mut SyncIoContext::new(io, &*self.ledger),
-            peer,
-        );
+        self.sync
+            .write()
+            .on_peer_connected(&mut SyncContext::new(io, &*self.ledger), peer);
         trace!("sync::connected");
     }
 
