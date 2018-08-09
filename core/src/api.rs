@@ -1,4 +1,6 @@
+use ledger::LedgerRef;
 use network::ProtocolId;
+use types::BlockNumber;
 
 pub const CONFLUX_PROTOCOL: ProtocolId = *b"cfx";
 
@@ -28,5 +30,6 @@ pub trait LedgerCore: Send + Sync {
     }
 }
 
-/// Represenets the interface an VM must implement to process transactions
-pub trait TransactionExecutor: Sync + Send {}
+pub trait LedgerExecutor: Send + Sync {
+    fn on_new_best_block(&self, number: BlockNumber, ledger: LedgerRef);
+}
