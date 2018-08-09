@@ -62,7 +62,7 @@ pub struct PeerInfo {
 pub type Peers = HashMap<PeerId, PeerInfo>;
 
 /// Conflux DAG sync handler.
-pub struct DagSync {
+pub struct SyncState {
     /// All connected peers
     peers: Peers,
     /// Peers active for current sync round
@@ -78,10 +78,10 @@ pub struct DagSync {
     bodies_in_fetching: HashMap<H256, PeerId>,
 }
 
-impl DagSync {
+impl SyncState {
     /// Create a new instance of syncing strategy.
     pub fn new() -> Self {
-        let sync = DagSync {
+        let sync = SyncState {
             peers: HashMap::new(),
             active_peers: HashSet::new(),
             sync_start_time: None,
@@ -94,12 +94,12 @@ impl DagSync {
     }
 
     /// Dispatch incoming requests and responses
-    pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: Rlp) {
+    pub fn dispatch_packet(sync: &RwLock<SyncState>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: Rlp) {
         SyncHandler::dispatch_packet(sync, io, peer, packet_id, rlp)
     }
 
     /// Handle incoming packet from peer which does not require response
-    /// Require write lock on DagSync
+    /// Require write lock on SyncState
     pub fn on_packet(&mut self, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: &Rlp) {
         debug!(target: "sync", "{} -> Dispatching packet: {}", peer, packet_id);
         SyncHandler::on_packet(self, io, peer, packet_id, rlp);

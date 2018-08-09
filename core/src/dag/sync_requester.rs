@@ -7,7 +7,7 @@ use super::super::{PacketId};
 use bytes::Bytes;
 
 use super::{
-    DagSync,
+    SyncState,
     PeerAsking,
     GET_BLOCK_HEADERS_PACKET,
 };
@@ -17,7 +17,7 @@ pub struct SyncRequester;
 
 impl SyncRequester {
     /// Request headers from a peer by block hash
-	pub fn request_headers_by_hash(sync: &mut DagSync, io: &mut SyncIo, peer_id: PeerId, h: &H256, count: u64, skip: u64, reverse: bool) {
+	pub fn request_headers_by_hash(sync: &mut SyncState, io: &mut SyncIo, peer_id: PeerId, h: &H256, count: u64, skip: u64, reverse: bool) {
 		trace!(target: "sync", "{} <- GetBlockHeaders: {} entries starting from {}", peer_id, count, h);
 		let mut rlp = RlpStream::new_list(5);
         rlp.append(&(GET_BLOCK_HEADERS_PACKET as u32));
@@ -31,7 +31,7 @@ impl SyncRequester {
 	}
 
     /// Generic request sender
-	fn send_request(sync: &mut DagSync, io: &mut SyncIo, peer_id: PeerId, asking: PeerAsking, packet: Bytes) {
+	fn send_request(sync: &mut SyncState, io: &mut SyncIo, peer_id: PeerId, asking: PeerAsking, packet: Bytes) {
 		if let Some(ref mut peer) = sync.peers.get_mut(&peer_id) {
 			if peer.asking != PeerAsking::Nothing {
 				warn!(target:"sync", "Asking {:?} while requesting {:?}", peer.asking, asking);

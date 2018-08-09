@@ -1,5 +1,5 @@
 use super::{
-    DagSync, PacketDecodeError, PacketId, PeerAsking, PeerInfo,
+    SyncState, PacketDecodeError, PacketId, PeerAsking, PeerInfo,
     RlpResponseResult, BLOCK_HEADERS_PACKET, GET_BLOCK_BODIES_PACKET,
     GET_BLOCK_HEADERS_PACKET, MAX_HEADERS_TO_SEND, STATUS_PACKET,
 };
@@ -19,7 +19,7 @@ pub struct SyncHandler;
 
 impl SyncHandler {
     /// Dispatch incoming requests and responses
-    pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: Rlp) {
+    pub fn dispatch_packet(sync: &RwLock<SyncState>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: Rlp) {
         let result = match packet_id {
             GET_BLOCK_BODIES_PACKET => SyncHandler::return_rlp(
                 io,
@@ -156,7 +156,7 @@ impl SyncHandler {
     }
 
     /// Handle incoming packet from peer which does not require response
-    pub fn on_packet(sync: &mut DagSync, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: &Rlp) {
+    pub fn on_packet(sync: &mut SyncState, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: &Rlp) {
         if packet_id != STATUS_PACKET && !sync.peers.contains_key(&peer) {
             debug!(target:"sync", "Unexpected packet {} from unregistered peer: {}", packet_id, peer);
             return;
@@ -186,7 +186,7 @@ impl SyncHandler {
 
     /// Called when a new peer is connected
     pub fn on_peer_connected(
-        sync: &mut DagSync, io: &mut SyncIo, peer: PeerId,
+        sync: &mut SyncState, io: &mut SyncIo, peer: PeerId,
     ) {
         trace!(target: "sync", "== Connected {}", peer);
         if let Err(e) = sync.send_status(io, peer) {
@@ -198,7 +198,7 @@ impl SyncHandler {
     }
 
     /// Called by peer to report status
-	fn on_peer_status(sync: &mut DagSync, io: &mut SyncIo, peer_id: PeerId, r: &Rlp) -> Result<(), BlockSyncError> {
+	fn on_peer_status(sync: &mut SyncState, io: &mut SyncIo, peer_id: PeerId, r: &Rlp) -> Result<(), BlockSyncError> {
 		sync.handshaking_peers.remove(&peer_id);
 		let protocol_version: u8 = r.val_at(1)?;
 		let peer = PeerInfo {

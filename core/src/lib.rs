@@ -76,7 +76,7 @@ pub struct ConfluxSync {
 impl ConfluxSync {
     /// Create and register protocol with the network service
     pub fn new(params: Params) -> Self {
-        let dag_sync = DagSync::new();
+        let dag_sync = SyncState::new();
         let service = NetworkService::new(params.network_config);
 
         ConfluxSync {
@@ -94,7 +94,7 @@ struct SyncProtocolHandler {
     /// Shared ledger interface.
     ledger: LedgerRef,
     /// Sync strategy
-    sync: RwLock<DagSync>,
+    sync: RwLock<SyncState>,
 }
 
 impl NetworkProtocolHandler for SyncProtocolHandler {
@@ -113,7 +113,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
                 packet_id = res;
             }
         }
-        DagSync::dispatch_packet(&self.sync, &mut SyncIoContext::new(io, &*self.ledger), peer, packet_id, rlp);
+        SyncState::dispatch_packet(&self.sync, &mut SyncIoContext::new(io, &*self.ledger), peer, packet_id, rlp);
     }
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
