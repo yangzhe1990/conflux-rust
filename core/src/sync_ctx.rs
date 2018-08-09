@@ -4,8 +4,6 @@ use ledger::Ledger;
 
 /// IO interface for the syncing handler.
 pub trait SyncIo {
-    /// Respond to current request with a packet. Can be called from an IO handler for incoming packet.
-    fn respond(&mut self, packet_id: PacketId, data: Vec<u8>) -> Result<(), Error>;
     /// Get the ledger
     fn ledger(&self) -> &Ledger;
     /// Disconnect peer
@@ -14,6 +12,8 @@ pub trait SyncIo {
     fn is_expired(&self) -> bool;
     /// Disable a peer
     fn disable_peer(&mut self, peer_id: PeerId);
+    /// Send a packet to a peer.
+    fn send(&mut self, peer_id: PeerId, data: Vec<u8>) -> Result<(), Error>;
 }
 
 /// Wraps `NetworkContext` and the ledger engine interface
@@ -33,10 +33,6 @@ impl<'s> SyncIoContext<'s> {
 }
 
 impl<'s> SyncIo for SyncIoContext<'s> {
-    fn respond(&mut self, packet_id: PacketId, data: Vec<u8>) -> Result<(), Error>{
-        Ok(())
-    }
-
     fn ledger(&self) -> &Ledger {
         return self.ledger;
     }
@@ -51,4 +47,8 @@ impl<'s> SyncIo for SyncIoContext<'s> {
 
     fn disable_peer(&mut self, peer_id: PeerId) {
     }
+
+    fn send(&mut self, peer_id: PeerId, data: Vec<u8>) -> Result<(), Error>{
+		self.network.send(peer_id, data)
+	}
 }

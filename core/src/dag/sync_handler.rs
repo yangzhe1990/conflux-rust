@@ -27,8 +27,7 @@ pub struct SyncHandler;
 
 impl SyncHandler {
     /// Dispatch incoming requests and responses
-    pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
-        let rlp = Rlp::new(data);
+    pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: Rlp) {
         let result = match packet_id {
             GET_BLOCK_BODIES_PACKET => SyncHandler::return_rlp(io, &rlp, peer,
                 SyncHandler::return_block_bodies,
@@ -37,7 +36,7 @@ impl SyncHandler {
                 SyncHandler::return_block_headers,
                 |e| format!("Error sending block headers: {:?}", e)),
             _ => {
-                sync.write().on_packet(io, peer, packet_id, data);
+                sync.write().on_packet(io, peer, packet_id, &rlp);
                 Ok(())
             }
         };
@@ -50,8 +49,8 @@ impl SyncHandler {
         let response = rlp_func(io, rlp, peer);
         match response {
             Err(e) => Err(e),
-            Ok(Some((packet_id, rlp_stream))) => {
-                io.respond(packet_id, rlp_stream.out()).unwrap_or_else(
+            Ok(Some(rlp_stream)) => {
+                io.send(peer, rlp_stream.out()).unwrap_or_else(
                     |e| debug!(target: "sync", "{:?}", error_func(e)));
                 Ok(())
             },
@@ -68,13 +67,13 @@ impl SyncHandler {
     fn return_block_headers(io: &SyncIo, r: &Rlp, peer_id: PeerId) -> RlpResponseResult {
         // Packet layout:
 		// [ block: { P , B_32 }, maxHeaders: P, skip: P, reverse: P in { 0 , 1 } ]
-		let max_headers: usize = r.val_at(1)?;
-		let skip: usize = r.val_at(2)?;
-		let reverse: bool = r.val_at(3)?;
+		let max_headers: usize = r.val_at(2)?;
+		let skip: usize = r.val_at(3)?;
+		let reverse: bool = r.val_at(4)?;
 		let last = io.ledger().ledger_info().best_block_number;
-		let number = if r.at(0)?.size() == 32 {
+		let number = if r.at(1)?.size() == 32 {
 			// id is a hash
-			let hash: H256 = r.val_at(0)?;
+			let hash: H256 = r.val_at(1)?;
 			trace!(target: "sync", "{} -> GetBlockHeaders (hash: {}, max: {}, skip: {}, reverse:{})", peer_id, hash, max_headers, skip, reverse);
 			match io.ledger().block_header(BlockId::Hash(hash)) {
 				Some(hdr) => {
@@ -85,13 +84,18 @@ impl SyncHandler {
 						// Non canonical header or single header requested
 						// TODO: handle single-step reverse hashchains of non-canon hashes
 						trace!(target:"sync", "Returning single header: {:?}", hash);
-						let mut rlp = RlpStream::new_list(1);
+						let mut rlp = RlpStream::new_list(2);
+                        rlp.append(&(BLOCK_HEADERS_PACKET as u32));
 						rlp.append_raw(&hdr.into_inner(), 1);
-						return Ok(Some((BLOCK_HEADERS_PACKET, rlp)));
+						return Ok(Some(rlp));
 					}
 					number
 				}
-				None => return Ok(Some((BLOCK_HEADERS_PACKET, RlpStream::new_list(0)))) //no such header, return nothing
+				None => {
+                    let mut rlp = RlpStream::new_list(1);
+                    rlp.append(&(BLOCK_HEADERS_PACKET as u32));
+                    return Ok(Some(rlp)) //no such header, return nothing
+                }
 			}
 		} else {
 			let number = r.val_at::<BlockNumber>(0)?;
@@ -136,22 +140,22 @@ impl SyncHandler {
 				number = number.saturating_add(inc);
 			}
 		}
-		let mut rlp = RlpStream::new_list(count as usize);
+		let mut rlp = RlpStream::new_list((count + 1) as usize);
+        rlp.append(&(BLOCK_HEADERS_PACKET as u32));
 		rlp.append_raw(&data, count as usize);
 		trace!(target: "sync", "{} -> GetBlockHeaders: returned {} entries", peer_id, count);
-		Ok(Some((BLOCK_HEADERS_PACKET, rlp)))
+		Ok(Some(rlp))
     }
 
     /// Handle incoming packet from peer which does not require response
-    pub fn on_packet(sync: &mut DagSync, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
+    pub fn on_packet(sync: &mut DagSync, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: &Rlp) {
         if packet_id != STATUS_PACKET && !sync.peers.contains_key(&peer) {
             debug!(target:"sync", "Unexpected packet {} from unregistered peer: {}", packet_id, peer);
             return;
         }
 
-        let rlp = Rlp::new(data);
         let result = match packet_id {
-            STATUS_PACKET => SyncHandler::on_peer_status(sync, io, peer, &rlp),
+            STATUS_PACKET => SyncHandler::on_peer_status(sync, io, peer, rlp),
             _ => {
                 debug!(target: "sync", "{}: Unknown packet {}", peer, packet_id);
                 Ok(())
@@ -167,13 +171,9 @@ impl SyncHandler {
 			Err(BlockSyncError::Useless) => {
 				sync.deactivate_peer(io, peer);
 			},
-			Ok(()) => {
-				// give a task to the same peer first
-				sync.sync_peer(io, peer, false);
-			},
+            Ok(()) => {
+            }
 		}
-		// give tasks to other peers
-		sync.continue_sync(io);
     }
 
     /// Called when a new peer is connected
@@ -190,12 +190,12 @@ impl SyncHandler {
     /// Called by peer to report status
 	fn on_peer_status(sync: &mut DagSync, io: &mut SyncIo, peer_id: PeerId, r: &Rlp) -> Result<(), BlockSyncError> {
 		sync.handshaking_peers.remove(&peer_id);
-		let protocol_version: u8 = r.val_at(0)?;
+		let protocol_version: u8 = r.val_at(1)?;
 		let peer = PeerInfo {
 			protocol_version: protocol_version,
-			difficulty: Some(r.val_at(1)?),
-			latest_hash: r.val_at(2)?,
-			genesis: r.val_at(3)?,
+			difficulty: Some(r.val_at(2)?),
+			latest_hash: r.val_at(3)?,
+			genesis: r.val_at(4)?,
 			asking: PeerAsking::Nothing,
 			asking_blocks: Vec::new(),
 			asking_hash: None,
@@ -230,6 +230,7 @@ impl SyncHandler {
 		sync.active_peers.insert(peer_id.clone());
 		debug!(target: "sync", "Connected {}", peer_id);
 
+        sync.peer_status_changed(io, peer_id);
 		Ok(())
 	}
 }

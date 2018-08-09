@@ -18,10 +18,13 @@ pub trait Ledger: Send + Sync {
     /// Get raw block header data by block id.
     fn block_header(&self, id: BlockId) -> Option<encoded::Header>;
 
+    fn block_header_exists(&self, hash: &H256) -> bool;
+
     ///////////////////////////////////////////////////////
 
     /// Get block hash.
     fn block_hash(&self, id: BlockId) -> Option<H256>;
+
 }
 
 pub struct LedgerEngine {
@@ -45,6 +48,10 @@ impl LedgerEngine {
 			BlockId::Latest => Some(ledger.best_block_hash()),
 		}
 	}
+
+    fn block_header_exists(ledger: &ConfluxLedger, hash: &H256) -> bool {
+        ledger.block_headers.read().contains_key(hash)
+    }
 }
 
 impl Ledger for LedgerEngine {
@@ -61,5 +68,10 @@ impl Ledger for LedgerEngine {
     fn block_hash(&self, id: BlockId) -> Option<H256> {
         let ledger = self.ledger.read();
         Self::block_hash(&ledger, id)
+    }
+
+    fn block_header_exists(&self, hash: &H256) -> bool {
+        let ledger = self.ledger.read();
+        Self::block_header_exists(&ledger, hash)
     }
 }

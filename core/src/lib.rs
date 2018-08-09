@@ -16,10 +16,12 @@ mod api;
 mod dag;
 mod sync_ctx;
 mod block_sync;
+pub mod header;
 
 use parking_lot::RwLock;
 use std::sync::{Arc};
 use ledger::Ledger;
+use rlp::{Rlp, RlpStream};
 
 pub use api::*;
 pub use dag::*;
@@ -97,8 +99,19 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     }
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {
-        let msg_id = data[0];
-        DagSync::dispatch_packet(&self.sync, &mut SyncIoContext::new(io, &*self.ledger), peer, msg_id, &data[1..]);
+        let mut packet_id: u8 = 0;
+        let rlp = Rlp::new(data);
+        let result = rlp.val_at(0);
+        match result {
+            Err(e) => {
+                debug!(target: "PacketId decode error", "{:?}", e);
+                return;
+            },
+            Ok(res) => {
+                packet_id = res;
+            }
+        }
+        DagSync::dispatch_packet(&self.sync, &mut SyncIoContext::new(io, &*self.ledger), peer, packet_id, rlp);
     }
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {

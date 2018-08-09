@@ -28,3 +28,16 @@ pub struct Body(Vec<u8>);
 
 impl Body {
 }
+
+/// Owning block view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Block(Vec<u8>);
+
+impl Block {
+	/// Create a new owning block view. The raw bytes passed in must be an rlp-encoded block.
+	pub fn new(raw: Vec<u8>) -> Self { Block(raw) }
+}
+
+// forwarders to borrowed header view.
+impl Block {
+}

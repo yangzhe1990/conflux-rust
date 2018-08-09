@@ -1,7 +1,9 @@
 mod sync_handler;
+mod sync_requester;
 
 use super::{PacketId};
 use self::sync_handler::SyncHandler;
+use self::sync_requester::SyncRequester;
 use parking_lot::RwLock;
 use sync_ctx::SyncIo;
 use network::{PeerId, Error};
@@ -20,7 +22,7 @@ pub const GET_BLOCK_BODIES_PACKET: u8 = 0x02;
 pub const BLOCK_HEADERS_PACKET: u8 = 0x03;
 
 pub type PacketDecodeError = DecoderError;
-pub type RlpResponseResult = Result<Option<(PacketId, RlpStream)>, PacketDecodeError>;
+pub type RlpResponseResult = Result<Option<RlpStream>, PacketDecodeError>;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 /// Peer data type requested
@@ -71,6 +73,9 @@ pub struct DagSync {
     /// Connected peers pending Status message.
     /// Value is request timestamp.
     handshaking_peers: HashMap<PeerId, Instant>,
+
+    headers_in_fetching: HashMap<H256, PeerId>,
+    bodies_in_fetching: HashMap<H256, PeerId>,
 }
 
 impl DagSync {
@@ -81,21 +86,23 @@ impl DagSync {
             active_peers: HashSet::new(),
             sync_start_time: None,
             handshaking_peers: HashMap::new(),
+            headers_in_fetching: HashMap::new(),
+            bodies_in_fetching: HashMap::new(),
         };
 
         sync
     }
 
     /// Dispatch incoming requests and responses
-    pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
-        SyncHandler::dispatch_packet(sync, io, peer, packet_id, data)
+    pub fn dispatch_packet(sync: &RwLock<DagSync>, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: Rlp) {
+        SyncHandler::dispatch_packet(sync, io, peer, packet_id, rlp)
     }
 
     /// Handle incoming packet from peer which does not require response
     /// Require write lock on DagSync
-    pub fn on_packet(&mut self, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, data: &[u8]) {
+    pub fn on_packet(&mut self, io: &mut SyncIo, peer: PeerId, packet_id: PacketId, rlp: &Rlp) {
         debug!(target: "sync", "{} -> Dispatching packet: {}", peer, packet_id);
-        SyncHandler::on_packet(self, io, peer, packet_id, data);
+        SyncHandler::on_packet(self, io, peer, packet_id, rlp);
     }
 
     /// Called when a new peer is connected
@@ -108,13 +115,14 @@ impl DagSync {
         let protocol = CONFLUX_PROTOCOL_VERSION_1;
         trace!(target: "sync", "Sending status to {}, protocol version {}", peer, protocol);
         let ledger = io.ledger().ledger_info();
-        let mut packet = RlpStream::new_list(4);
+        let mut packet = RlpStream::new_list(5);
+        packet.append(&(STATUS_PACKET as u32));
         packet.append(&(protocol as u32));
         packet.append(&ledger.total_difficulty);
         packet.append(&ledger.best_block_hash);
         packet.append(&ledger.genesis_hash);
 
-        io.respond(STATUS_PACKET, packet.out())
+        io.send(peer, packet.out())
     }
 
     /// Remove peer from active peer set. Peer will be reactivated on the next sync round
@@ -123,11 +131,28 @@ impl DagSync {
         self.active_peers.remove(&peer_id);
     }
 
-    /// Find something to do for a peer. Called for a new peer or when a peer is done with its task.
-    fn sync_peer(&mut self, io: &mut SyncIo, peer_id: PeerId, force: bool) {
-    }
-
-    /// Resume downloading
-    fn continue_sync(&mut self, io: &mut SyncIo) {
+    fn peer_status_changed(&mut self, io: &mut SyncIo, peer_id: PeerId) {
+        let (peer_latest, peer_difficulty) = {
+            match self.peers.get(&peer_id){
+			    Some(p) => {
+				    (p.latest_hash.clone(), p.difficulty.clone())
+                },
+                _ => {
+                    return;
+                },
+            }
+		};
+        let ledger_info = io.ledger().ledger_info();
+        let higher_difficulty = peer_difficulty.map_or(false, |pd| pd > ledger_info.total_difficulty);
+        if !higher_difficulty {
+            return;
+        }
+        
+        if !io.ledger().block_header_exists(&peer_latest) {
+            if !self.headers_in_fetching.contains_key(&peer_latest) {
+                self.headers_in_fetching.insert(peer_latest, peer_id);
+                SyncRequester::request_headers_by_hash(self, io, peer_id, &peer_latest, 256, 0, true);
+            }
+        }        
     }
 }
