@@ -63,7 +63,7 @@ impl ConfluxLedger {
     pub fn best_block_hash(&self) -> H256 { self.best_block.read().header.hash() }
 
     /// Get block header data
-    pub fn block_header_data(&self, hash: &H256) -> Option<encoded::Header> {
+    pub fn block_header_data(&self, hash: &H256) -> Option<Header> {
         let read = self.block_headers.read();
         if let Some(v) = read.get(hash) {
             return Some(v.clone());
