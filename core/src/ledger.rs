@@ -1,6 +1,7 @@
 use encoded;
 use ethereum_types::{H256, U256};
 use header::Header;
+use block::Block;:
 use network::PeerId;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -43,7 +44,7 @@ pub struct Ledger {
     // All locks must be captured in the order declared here.
     best_block: RwLock<BestBlock>,
     pub block_headers: RwLock<HashMap<H256, Header>>,
-    block_bodies: RwLock<HashMap<H256, encoded::Body>>,
+    block_bodies: RwLock<HashMap<H256, Block>>,
     /// maintain the main chain blocks
     block_hashes: RwLock<HashMap<BlockNumber, H256>>,
     block_details: RwLock<HashMap<H256, BlockDetails>>,

@@ -19,6 +19,8 @@ mod ledger;
 mod state;
 mod sync;
 mod transaction;
+pub mod block;
+pub mod error;
 
 use parking_lot::RwLock;
 use rlp::{Rlp, RlpStream};
