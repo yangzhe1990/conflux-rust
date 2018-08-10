@@ -66,12 +66,10 @@ impl Ledger {
         }
     }
 
-    pub fn new_shared() -> SharedLedger {
-        Arc::new(Self::new())
-    }
+    pub fn new_shared() -> SharedLedger { Arc::new(Self::new()) }
 
     /// Get the hash of given block's number.
-    fn block_hash_of_number(&self, index: BlockNumber) -> Option<H256> {
+    fn block_hash_by_number(&self, index: BlockNumber) -> Option<H256> {
         if let Some(v) = self.block_hashes.read().get(&index) {
             Some(v.clone())
         } else {
@@ -82,8 +80,8 @@ impl Ledger {
     pub fn block_hash(&self, id: BlockId) -> Option<H256> {
         match id {
             BlockId::Hash(hash) => Some(hash),
-            BlockId::Number(number) => self.block_hash_of_number(number),
-            BlockId::Earliest => self.block_hash_of_number(0),
+            BlockId::Number(number) => self.block_hash_by_number(number),
+            BlockId::Earliest => self.block_hash_by_number(0),
             BlockId::Latest => Some(self.best_block_hash()),
         }
     }
@@ -105,7 +103,7 @@ impl Ledger {
 
     /// Returns reference to genesis hash.
     fn genesis_hash(&self) -> H256 {
-        self.block_hash_of_number(0)
+        self.block_hash_by_number(0)
             .expect("Genesis hash should always exist")
     }
 
