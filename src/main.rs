@@ -53,19 +53,14 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         None => network::NetworkConfiguration::default(),
     };
 
-    /*let net_svc =
-        network::NetworkService::new(net_conf).map_err(|e| format!("{}", e))?;
-    net_svc.start().map_err(|e| format!("{}", e))?;*/
-
     let ledger = core::Ledger::new_shared();
-    // let exec_engine = ExecEngine::new_shared();
-
-    // let cfx_vm = Arc::new(vm::ConfluxVM::new());
+    let exec_engine = Arc::new(core::ExecutionEngine::new(ledger.clone()));
 
     let sync_params = core::SyncParams {
         config: Default::default(),
         network_config: net_conf,
         ledger: ledger.clone(),
+        exec_engine: exec_engine.clone(),
     };
 
     let mut sync_engine = core::SyncEngine::new(sync_params);

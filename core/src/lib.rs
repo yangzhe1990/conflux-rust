@@ -13,16 +13,21 @@ extern crate log;
 mod api;
 mod block_sync;
 pub mod encoded;
+mod execution_engine;
 pub mod header;
 mod ledger;
+mod state;
 mod sync;
+mod transaction;
 
 use parking_lot::RwLock;
 use rlp::{Rlp, RlpStream};
 use std::sync::Arc;
 
 pub use api::*;
+pub use execution_engine::{ExecutionEngine, SharedExecutionEngine};
 pub use ledger::{Ledger, SharedLedger};
+pub use state::State;
 pub use sync::*;
 
 use ethereum_types::H256;
@@ -57,8 +62,10 @@ pub struct SyncParams {
     pub config: SyncConfig,
     /// Network layer configuration.
     pub network_config: NetworkConfiguration,
-    /// Ledger interface
+    /// Ledger
     pub ledger: SharedLedger,
+    /// Execution engine
+    pub exec_engine: SharedExecutionEngine,
 }
 
 /// Conflux network sync engine
@@ -81,6 +88,7 @@ impl SyncEngine {
             network: service,
             sync_handler: Arc::new(SyncProtocolHandler {
                 ledger: params.ledger,
+                exec_engine: params.exec_engine,
                 sync: RwLock::new(sync_state),
             }),
             subprotocol_name: params.config.subprotocol_name,
@@ -108,8 +116,10 @@ impl SyncEngine {
 }
 
 struct SyncProtocolHandler {
-    /// Shared ledger interface.
+    /// Shared ledger
     ledger: SharedLedger,
+    /// Shared execution engine,
+    exec_engine: SharedExecutionEngine,
     /// Sync strategy
     sync: RwLock<SyncState>,
 }
@@ -132,7 +142,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
         }
         SyncState::dispatch_packet(
             &self.sync,
-            &mut SyncContext::new(io, &*self.ledger),
+            &mut SyncContext::new(io, &*self.ledger, &*self.exec_engine),
             peer,
             packet_id,
             rlp,
@@ -140,9 +150,10 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     }
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
-        self.sync
-            .write()
-            .on_peer_connected(&mut SyncContext::new(io, &*self.ledger), peer);
+        self.sync.write().on_peer_connected(
+            &mut SyncContext::new(io, &*self.ledger, &*self.exec_engine),
+            peer,
+        );
         trace!("sync::connected");
     }
 
