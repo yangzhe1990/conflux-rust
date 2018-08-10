@@ -12,20 +12,18 @@ extern crate log;
 
 mod api;
 mod block_sync;
-mod dag;
 pub mod encoded;
-pub mod ledger;
-mod sync_ctx;
 pub mod header;
+mod ledger;
+mod sync;
 
-use ledger::LedgerRef;
 use parking_lot::RwLock;
-use std::sync::Arc;
-use ledger::Ledger;
 use rlp::{Rlp, RlpStream};
+use std::sync::Arc;
 
 pub use api::*;
-pub use dag::*;
+pub use ledger::{Ledger, SharedLedger};
+pub use sync::*;
 
 use ethereum_types::H256;
 use io::TimerToken;
@@ -33,7 +31,7 @@ use network::{
     Error, NetworkConfiguration, NetworkContext, NetworkProtocolHandler,
     NetworkService, PeerId, ProtocolId,
 };
-use sync_ctx::SyncIoContext;
+use sync_ctx::SyncContext;
 
 /// Protocol handler level packet id
 pub type PacketId = u8;
@@ -54,17 +52,17 @@ impl Default for SyncConfig {
 }
 
 /// ConfluxSync initialization parameters.
-pub struct Params {
+pub struct SyncParams {
     /// Configuration.
     pub config: SyncConfig,
     /// Network layer configuration.
     pub network_config: NetworkConfiguration,
     /// Ledger interface
-    pub ledger: LedgerRef,
+    pub ledger: SharedLedger,
 }
 
 /// Conflux network sync engine
-pub struct ConfluxSync {
+pub struct SyncEngine {
     /// Network service
     network: NetworkService,
     /// Main protocol handler
@@ -73,70 +71,23 @@ pub struct ConfluxSync {
     subprotocol_name: [u8; 3],
 }
 
-impl ConfluxSync {
+impl SyncEngine {
     /// Create and register protocol with the network service
-    pub fn new(params: Params) -> Self {
-        let dag_sync = SyncState::new();
+    pub fn new(params: SyncParams) -> Self {
+        let sync_state = SyncState::new();
         let service = NetworkService::new(params.network_config);
 
-        ConfluxSync {
+        SyncEngine {
             network: service,
             sync_handler: Arc::new(SyncProtocolHandler {
                 ledger: params.ledger,
-                sync: RwLock::new(dag_sync),
+                sync: RwLock::new(sync_state),
             }),
             subprotocol_name: params.config.subprotocol_name,
         }
     }
-}
 
-struct SyncProtocolHandler {
-    /// Shared ledger interface.
-    ledger: LedgerRef,
-    /// Sync strategy
-    sync: RwLock<SyncState>,
-}
-
-impl NetworkProtocolHandler for SyncProtocolHandler {
-    fn initialize(&self, io: &NetworkContext) {}
-
-    fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {
-        let mut packet_id: u8 = 0;
-        let rlp = Rlp::new(data);
-        let result = rlp.val_at(0);
-        match result {
-            Err(e) => {
-                debug!(target: "PacketId decode error", "{:?}", e);
-                return;
-            },
-            Ok(res) => {
-                packet_id = res;
-            }
-        }
-        SyncState::dispatch_packet(&self.sync, &mut SyncIoContext::new(io, &*self.ledger), peer, packet_id, rlp);
-    }
-
-    fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
-        self.sync.write().on_peer_connected(
-            &mut SyncIoContext::new(io, &*self.ledger),
-            peer,
-        );
-        trace!("sync::connected");
-    }
-
-    fn on_peer_disconnected(&self, io: &NetworkContext, peer: PeerId) {
-        trace!("sync::disconnected");
-    }
-
-    fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {
-        trace!("sync::timeout");
-    }
-}
-
-impl LedgerCore for ConfluxSync {
-    fn new_blocks(&self) {}
-
-    fn start(&mut self) {
+    pub fn start(&mut self) {
         match self.network.start() {
             Err(err) => {
                 warn!("Error starting network");
@@ -154,10 +105,52 @@ impl LedgerCore for ConfluxSync {
                 warn!("Error registering conflux protocol: {:?}", e)
             });
     }
+}
 
-    fn stop(&self) {}
+struct SyncProtocolHandler {
+    /// Shared ledger interface.
+    ledger: SharedLedger,
+    /// Sync strategy
+    sync: RwLock<SyncState>,
+}
 
-    fn broadcast(&self) {}
+impl NetworkProtocolHandler for SyncProtocolHandler {
+    fn initialize(&self, io: &NetworkContext) {}
 
-    fn transactions_received(&self) {}
+    fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {
+        let mut packet_id: u8 = 0;
+        let rlp = Rlp::new(data);
+        let result = rlp.val_at(0);
+        match result {
+            Err(e) => {
+                debug!(target: "PacketId decode error", "{:?}", e);
+                return;
+            }
+            Ok(res) => {
+                packet_id = res;
+            }
+        }
+        SyncState::dispatch_packet(
+            &self.sync,
+            &mut SyncContext::new(io, &*self.ledger),
+            peer,
+            packet_id,
+            rlp,
+        );
+    }
+
+    fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
+        self.sync
+            .write()
+            .on_peer_connected(&mut SyncContext::new(io, &*self.ledger), peer);
+        trace!("sync::connected");
+    }
+
+    fn on_peer_disconnected(&self, io: &NetworkContext, peer: PeerId) {
+        trace!("sync::disconnected");
+    }
+
+    fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {
+        trace!("sync::timeout");
+    }
 }

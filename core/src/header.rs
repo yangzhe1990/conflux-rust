@@ -145,7 +145,7 @@ impl Header {
 	}
 
 	/// Get the RLP representation of this Header.
-	fn rlp(&self) -> Bytes {
+	pub fn rlp(&self) -> Bytes {
 		let mut s = RlpStream::new();
 		self.stream_rlp(&mut s);
 		s.out()
