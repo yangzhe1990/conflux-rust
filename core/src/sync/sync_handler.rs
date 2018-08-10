@@ -114,7 +114,7 @@ impl SyncHandler {
 				}
 			}
 		} else {
-			let number = r.val_at::<BlockNumber>(0)?;
+			let number = r.val_at::<BlockNumber>(1)?;
 			trace!(target: "sync", "{} -> GetBlockHeaders (number: {}, max: {}, skip: {}, reverse:{})", peer_id, number, max_headers, skip, reverse);
 			number
 		};
@@ -128,19 +128,9 @@ impl SyncHandler {
 		let mut count = 0;
 		let mut data = Bytes::new();
 		let inc = skip.saturating_add(1) as BlockNumber;
-		//let overlay = io.chain_overlay().read();
 
-		// We are checking the `overlay` as well since it's where the ForkBlock
-		// header is cached : so peers can confirm we are on the right fork,
-		// even if we are not synced until the fork block
-		//while (number <= last || overlay.contains_key(&number)) && count < max_count {
 		while number <= last && count < max_count {
-			//if let Some(hdr) = overlay.get(&number) {
-			if false {
-				//trace!(target: "sync", "{}: Returning cached fork header", peer_id);
-				//data.extend_from_slice(hdr);
-				//count += 1;
-			} else if let Some(hdr) =
+			if let Some(hdr) =
 				io.ledger().block_header(BlockId::Number(number))
 			{
 				data.append(&mut hdr.rlp());

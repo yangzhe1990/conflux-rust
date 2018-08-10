@@ -102,6 +102,16 @@ impl Ledger {
         }
     }
 
+    /// Get block body data
+    pub fn block_body_data(&self, hash: &H256) -> Option<Block> {
+        let read = self.block_bodies.read();
+        if let Some(v) = read.get(hash) {
+            return Some(v.clone());
+        } else {
+            None
+        }
+    }
+
     /// Returns reference to genesis hash.
     fn genesis_hash(&self) -> H256 {
         self.block_hash_by_number(0)
@@ -127,6 +137,11 @@ impl Ledger {
     pub fn block_header(&self, id: BlockId) -> Option<Header> {
         self.block_hash(id)
             .and_then(|hash| self.block_header_data(&hash))
+    }
+
+    pub fn block_body(&self, id: BlockId) -> Option<Block> {
+        self.block_hash(id)
+            .and_then(|hash| self.block_body_data(&hash))
     }
 }
 
