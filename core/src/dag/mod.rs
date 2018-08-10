@@ -69,6 +69,8 @@ pub struct SyncState {
     active_peers: HashSet<PeerId>,
     /// Sync start timestamp. Measured when first peer is connected
     sync_start_time: Option<Instant>,
+    /// The max total difficulty that has been seen
+    max_seen_total_difficulty: U256,
 
     /// Connected peers pending Status message.
     /// Value is request timestamp.
@@ -85,6 +87,7 @@ impl SyncState {
             peers: HashMap::new(),
             active_peers: HashSet::new(),
             sync_start_time: None,
+            max_seen_total_difficulty: Default::default(),
             handshaking_peers: HashMap::new(),
             headers_in_fetching: HashMap::new(),
             bodies_in_fetching: HashMap::new(),
@@ -144,10 +147,14 @@ impl SyncState {
                 },
             }
 		};
-        let ledger_info = io.ledger().ledger_info();
-        let higher_difficulty = peer_difficulty.map_or(false, |pd| pd > ledger_info.total_difficulty);
+        let higher_difficulty = peer_difficulty.map_or(false, |pd| pd > self.max_seen_total_difficulty);
         if !higher_difficulty {
             return;
+        }
+
+        match peer_difficulty {
+            Some(difficulty) => { self.max_seen_total_difficulty = difficulty},
+            None => {}
         }
         
         if !io.ledger().block_header_exists(&peer_latest) {

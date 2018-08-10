@@ -42,7 +42,7 @@ pub struct ConfluxLedger {
     // All locks must be captured in the order declared here.
     best_block: RwLock<BestBlock>,
     
-    pub block_headers: RwLock<HashMap<H256, encoded::Header>>,
+    pub block_headers: RwLock<HashMap<H256, Header>>,
     block_bodies: RwLock<HashMap<H256, encoded::Body>>,
     /// maintain the main chain blocks
     block_hashes: RwLock<HashMap<BlockNumber, H256>>,

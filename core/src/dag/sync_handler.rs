@@ -164,6 +164,7 @@ impl SyncHandler {
 
         let result = match packet_id {
             STATUS_PACKET => SyncHandler::on_peer_status(sync, io, peer, rlp),
+            BLOCK_HEADERS_PACKET => SyncHandler::on_peer_block_headers(sync, io, peer, rlp),
             _ => {
                 debug!(target: "sync", "{}: Unknown packet {}", peer, packet_id);
                 Ok(())
@@ -243,4 +244,8 @@ impl SyncHandler {
         sync.peer_status_changed(io, peer_id);
 		Ok(())
 	}
+
+    fn on_peer_block_headers(sync: &mut SyncState, io: &mut SyncIo, peer_id: PeerId, r: &Rlp) -> Result<(), BlockSyncError> {
+        Ok(())
+    }
 }

@@ -16,7 +16,7 @@ pub trait Ledger: Send + Sync {
 
     /// Get block information
     /// Get raw block header data by block id.
-    fn block_header(&self, id: BlockId) -> Option<encoded::Header>;
+    fn block_header(&self, id: BlockId) -> Option<Header>;
 
     fn block_header_exists(&self, hash: &H256) -> bool;
 
@@ -62,7 +62,7 @@ impl Ledger for LedgerEngine {
         ledger_info
     }
 
-    fn block_header(&self, id: BlockId) -> Option<encoded::Header> {
+    fn block_header(&self, id: BlockId) -> Option<Header> {
         let ledger = self.ledger.read();
         Self::block_hash(&ledger, id)
             .and_then(|hash| ledger.block_header_data(&hash))
