@@ -1,7 +1,7 @@
 use encoded;
 use ethereum_types::{H256, U256};
 use header::Header;
-use block::Block;:
+use block::Block;
 use network::PeerId;
 use parking_lot::RwLock;
 use std::collections::HashMap;
