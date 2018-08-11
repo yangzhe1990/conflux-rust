@@ -276,20 +276,21 @@ impl SyncHandler {
             } 
             parent_hash = *header.parent_hash();
             headers.push(header);
-        }
+        }        
 
         for header in headers {
             let header_hash = header.hash();
             if io.ledger().block_header_exists(&header_hash) {
-                // TODO
                 return Ok(());
             } else {
+                io.ledger().add_child(header.parent_hash(), &header_hash);
                 io.ledger().add_block_header_by_hash(&header_hash, header);
+                SyncHandler::fetch_block_body(sync, io, peer_id, &header_hash);
             }
         }
 
         if io.ledger().block_header_exists(&parent_hash) {
-                
+            return Ok(());        
         } else {
             SyncRequester::request_headers_by_hash(
                 sync,
@@ -303,5 +304,9 @@ impl SyncHandler {
         }
 
         Ok(())
+    }
+
+    fn fetch_block_body(sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, hash: &H256) {
+
     }
 }

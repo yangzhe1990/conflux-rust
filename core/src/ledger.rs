@@ -45,6 +45,7 @@ pub struct Ledger {
     best_block: RwLock<BestBlock>,
     pub block_headers: RwLock<HashMap<H256, Header>>,
     block_bodies: RwLock<HashMap<H256, Block>>,
+    child_blocks: RwLock<HashMap<H256, Vec<H256>>>,
     /// maintain the main chain blocks
     block_hashes: RwLock<HashMap<BlockNumber, H256>>,
     block_details: RwLock<HashMap<H256, BlockDetails>>,
@@ -62,6 +63,7 @@ impl Ledger {
             }),
             block_headers: RwLock::new(HashMap::new()),
             block_bodies: RwLock::new(HashMap::new()),
+            child_blocks: RwLock::new(HashMap::new()),
             block_hashes: RwLock::new(HashMap::new()),
             block_details: RwLock::new(HashMap::new()),
         }
@@ -146,6 +148,21 @@ impl Ledger {
 
     pub fn add_block_header_by_hash(&self, hash: &H256, header: Header) {
         self.block_headers.write().insert(hash.clone(), header);
+    }
+
+    pub fn add_child(&self, parent: &H256, child: &H256) {
+        let mut write = self.child_blocks.write();
+        let children = write.entry(parent.clone()).or_insert(Vec::new());
+        let mut exist = false;
+        for item in children.iter() {
+            if *item == *child {
+                exist = true;
+            }
+        }
+
+        if !exist {
+            children.push(child.clone());
+        }
     }
 }
 
