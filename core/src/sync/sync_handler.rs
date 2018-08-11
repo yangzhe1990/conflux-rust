@@ -4,6 +4,8 @@ use super::{
 	GET_BLOCK_HEADERS_PACKET, MAX_HEADERS_TO_SEND, STATUS_PACKET,
 };
 
+use super::super::header::Header;
+use super::sync_requester::SyncRequester;
 use block_sync::BlockSyncError;
 use bytes::Bytes;
 use ethereum_types::H256;
@@ -168,6 +170,7 @@ impl SyncHandler {
 
 		let result = match packet_id {
 			STATUS_PACKET => SyncHandler::on_peer_status(sync, io, peer, rlp),
+            BLOCK_HEADERS_PACKET => SyncHandler::on_peer_block_headers(sync, io, peer, rlp),
 			_ => {
 				debug!(target: "sync", "{}: Unknown packet {}", peer, packet_id);
 				Ok(())
@@ -250,6 +253,55 @@ impl SyncHandler {
 	}
 
     fn on_peer_block_headers(sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, r: &Rlp) -> Result<(), BlockSyncError> {
+        let item_count = r.item_count()?;
+        if item_count < 1 {
+            return Err(BlockSyncError::Invalid);
+        } else if item_count == 1 {
+            return Ok(());
+        }
+
+        // verify the headers are organized in chain
+        let mut parent_hash: H256 = H256::new();
+        let mut headers: Vec<Header> = Vec::new();
+        for i in 1..item_count {
+            let header: Header = r.val_at(i).map_err(|e| {
+               trace!(target: "sync", "Error decoding block header RLP: {:?}", e);
+               BlockSyncError::Invalid
+            })?;
+
+            if !(i == 1) {
+                if !(parent_hash == header.hash()) {
+                    return Err(BlockSyncError::Invalid);
+                }
+            } 
+            parent_hash = *header.parent_hash();
+            headers.push(header);
+        }
+
+        for header in headers {
+            let header_hash = header.hash();
+            if io.ledger().block_header_exists(&header_hash) {
+                // TODO
+                return Ok(());
+            } else {
+                io.ledger().add_block_header_by_hash(&header_hash, header);
+            }
+        }
+
+        if io.ledger().block_header_exists(&parent_hash) {
+                
+        } else {
+            SyncRequester::request_headers_by_hash(
+                sync,
+                io,
+                peer_id,
+                &parent_hash,
+                256,
+                0,
+                true,
+            );
+        }
+
         Ok(())
     }
 }

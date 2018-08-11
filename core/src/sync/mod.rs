@@ -77,7 +77,6 @@ pub struct SyncState {
     /// Value is request timestamp.
     handshaking_peers: HashMap<PeerId, Instant>,
 
-    headers_in_fetching: HashMap<H256, PeerId>,
     bodies_in_fetching: HashMap<H256, PeerId>,
 }
 
@@ -90,7 +89,6 @@ impl SyncState {
             sync_start_time: None,
             max_seen_total_difficulty: Default::default(),
             handshaking_peers: HashMap::new(),
-            headers_in_fetching: HashMap::new(),
             bodies_in_fetching: HashMap::new(),
         };
 
@@ -165,18 +163,15 @@ impl SyncState {
         }
         
         if !io.ledger().block_header_exists(&peer_latest) {
-            if !self.headers_in_fetching.contains_key(&peer_latest) {
-                self.headers_in_fetching.insert(peer_latest, peer_id);
-                SyncRequester::request_headers_by_hash(
-                    self,
-                    io,
-                    peer_id,
-                    &peer_latest,
-                    256,
-                    0,
-                    true,
-                );
-            }
+            SyncRequester::request_headers_by_hash(
+                self,
+                io,
+                peer_id,
+                &peer_latest,
+                256,
+                0,
+                true,
+            );
         }
     }
 }

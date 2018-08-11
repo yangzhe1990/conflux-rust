@@ -143,6 +143,10 @@ impl Ledger {
         self.block_hash(id)
             .and_then(|hash| self.block_body_data(&hash))
     }
+
+    pub fn add_block_header_by_hash(&self, hash: &H256, header: Header) {
+        self.block_headers.write().insert(hash.clone(), header);
+    }
 }
 
 impl Default for Ledger {
