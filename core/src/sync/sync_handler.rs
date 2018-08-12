@@ -278,20 +278,19 @@ impl SyncHandler {
             headers.push(header);
         }        
 
+        let mut body_hashes: Vec<H256> = Vec::new();
         for header in headers {
             let header_hash = header.hash();
             if io.ledger().block_header_exists(&header_hash) {
-                return Ok(());
+                break;
             } else {
                 io.ledger().add_child(header.parent_hash(), &header_hash);
+                body_hashes.push(header_hash);
                 io.ledger().add_block_header_by_hash(&header_hash, header);
-                SyncHandler::fetch_block_body(sync, io, peer_id, &header_hash);
             }
         }
 
-        if io.ledger().block_header_exists(&parent_hash) {
-            return Ok(());        
-        } else {
+        if !io.ledger().block_header_exists(&parent_hash) {
             SyncRequester::request_headers_by_hash(
                 sync,
                 io,
@@ -302,11 +301,10 @@ impl SyncHandler {
                 true,
             );
         }
-
+        
+        if !(body_hashes.is_empty()) {
+            SyncRequester::fetch_block_bodies(sync, io, peer_id, body_hashes);
+        }
         Ok(())
-    }
-
-    fn fetch_block_body(sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, hash: &H256) {
-
     }
 }

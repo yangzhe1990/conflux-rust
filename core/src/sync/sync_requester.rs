@@ -6,7 +6,7 @@ use rlp::RlpStream;
 use std::time::Instant;
 use sync_ctx::SyncContext;
 
-use super::{PeerAsking, SyncState, GET_BLOCK_HEADERS_PACKET};
+use super::{PeerAsking, SyncState, GET_BLOCK_HEADERS_PACKET, GET_BLOCK_BODIES_PACKET};
 
 /// The Conflux Sync Requester: requesting data to other peers
 pub struct SyncRequester;
@@ -55,4 +55,16 @@ impl SyncRequester {
 			}
 		}
 	}
+
+    pub fn fetch_block_bodies(sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, hashes: Vec<H256>) {
+        let mut rlp = RlpStream::new_list(hashes.len() + 1);
+		trace!(target: "sync", "{} <- GetBlockBodies: {} entries starting from {:?}", peer_id, hashes.len(), hashes.first());
+        rlp.append(&(GET_BLOCK_BODIES_PACKET as u32));
+		for h in &hashes {
+			rlp.append(&h.clone());
+		}
+		SyncRequester::send_request(sync, io, peer_id, PeerAsking::BlockBodies, rlp.out());
+		let peer = sync.peers.get_mut(&peer_id).expect("peer_id may originate either from on_packet, where it is already validated or from enumerating self.peers. qed");
+		peer.asking_blocks = hashes;
+    }
 }
