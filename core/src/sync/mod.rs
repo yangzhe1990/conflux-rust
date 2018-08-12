@@ -16,11 +16,13 @@ use std::time::{Duration, Instant};
 pub const CONFLUX_PROTOCOL_VERSION_1: u8 = 0x01;
 
 pub const MAX_HEADERS_TO_SEND: usize = 512;
+pub const MAX_BODIES_TO_SEND: usize = 256;
 
 const STATUS_PACKET: u8 = 0x00;
 pub const GET_BLOCK_HEADERS_PACKET: u8 = 0x01;
 pub const GET_BLOCK_BODIES_PACKET: u8 = 0x02;
 pub const BLOCK_HEADERS_PACKET: u8 = 0x03;
+pub const BLOCK_BODIES_PACKET: u8 = 0x4;
 
 pub type PacketDecodeError = DecoderError;
 pub type RlpResponseResult = Result<Option<RlpStream>, PacketDecodeError>;

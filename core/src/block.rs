@@ -24,7 +24,7 @@ impl Block {
 	}
 
 	/// Get the RLP-encoding of the block with the seal.
-	pub fn rlp_bytes(&self) -> Bytes {
+	pub fn rlp(&self) -> Bytes {
 		let mut block_rlp = RlpStream::new_list(2);
 		block_rlp.append(&self.header);
 		block_rlp.append_list(&self.transactions);
@@ -37,7 +37,7 @@ impl Decodable for Block {
 		if rlp.as_raw().len() != rlp.payload_info()?.total() {
 			return Err(DecoderError::RlpIsTooBig);
 		}
-		if rlp.item_count()? != 3 {
+		if rlp.item_count()? != 2 {
 			return Err(DecoderError::RlpIncorrectListLen);
 		}
 		Ok(Block {

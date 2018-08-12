@@ -2,6 +2,7 @@ use super::{
 	PacketDecodeError, PacketId, PeerAsking, PeerInfo, RlpResponseResult,
 	SyncState, BLOCK_HEADERS_PACKET, GET_BLOCK_BODIES_PACKET,
 	GET_BLOCK_HEADERS_PACKET, MAX_HEADERS_TO_SEND, STATUS_PACKET,
+    BLOCK_BODIES_PACKET, MAX_BODIES_TO_SEND,
 };
 
 use super::super::header::Header;
@@ -73,7 +74,29 @@ impl SyncHandler {
 	fn return_block_bodies(
 		io: &SyncContext, r: &Rlp, peer_id: PeerId,
 	) -> RlpResponseResult {
-		Ok(None)
+        let mut count = r.item_count().unwrap_or(0);
+        
+		if count == 1 {
+			debug!(target: "sync", "Empty GetBlockBodies request, ignoring.");
+            let mut rlp = RlpStream::new_list(1);
+			rlp.append(&(BLOCK_BODIES_PACKET as u32));
+			return Ok(Some(rlp)); //no such header, return nothing            
+		}
+
+		count = cmp::min(count, MAX_BODIES_TO_SEND + 1);
+		let mut added = 0usize;
+		let mut data = Bytes::new();
+		for i in 1..count {
+			if let Some(body) = io.ledger().block_body(BlockId::Hash(r.val_at::<H256>(i)?)) {
+				data.append(&mut body.rlp());
+				added += 1;
+			}
+		}
+		let mut rlp = RlpStream::new_list(added + 1);
+        rlp.append(&(BLOCK_BODIES_PACKET as u32));
+		rlp.append_raw(&data, added);
+		trace!(target: "sync", "{} -> GetBlockBodies: returned {} entries", peer_id, added);
+		Ok(Some(rlp))
 	}
 
 	/// Respond to GetBlockHeaders request
