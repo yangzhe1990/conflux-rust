@@ -4,15 +4,14 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use ethereum_types::{H256, U256, Address, Bloom};
-use header::{Header};
 use rlp::{Rlp, RlpStream, Encodable, Decodable, DecoderError, encode_list};
 use transaction::{Transaction};
 
 /// A block, encoded as it is on the block chain.
 #[derive(Default, Debug, Clone)]
 pub struct Block {
-	/// The header of this block.
-	pub header: Header,
+	/// The header hash of this block.
+	pub hash: H256,
 	/// The transactions in this block.
 	pub transactions: Vec<Transaction>,
 }
@@ -26,10 +25,14 @@ impl Block {
 	/// Get the RLP-encoding of the block with the seal.
 	pub fn rlp(&self) -> Bytes {
 		let mut block_rlp = RlpStream::new_list(2);
-		block_rlp.append(&self.header);
+		block_rlp.append(&self.hash);
 		block_rlp.append_list(&self.transactions);
 		block_rlp.out()
 	}
+
+    pub fn hash(&self) -> H256 {
+        self.hash
+    }
 }
 
 impl Decodable for Block {
@@ -41,7 +44,7 @@ impl Decodable for Block {
 			return Err(DecoderError::RlpIncorrectListLen);
 		}
 		Ok(Block {
-			header: rlp.val_at(0)?,
+			hash: rlp.val_at(0)?,
 			transactions: rlp.list_at(1)?,
 		})
 	}

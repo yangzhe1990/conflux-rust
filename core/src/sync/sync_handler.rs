@@ -6,6 +6,7 @@ use super::{
 };
 
 use super::super::header::Header;
+use super::super::block::Block;
 use super::sync_requester::SyncRequester;
 use block_sync::BlockSyncError;
 use bytes::Bytes;
@@ -194,6 +195,7 @@ impl SyncHandler {
 		let result = match packet_id {
 			STATUS_PACKET => SyncHandler::on_peer_status(sync, io, peer, rlp),
             BLOCK_HEADERS_PACKET => SyncHandler::on_peer_block_headers(sync, io, peer, rlp),
+            BLOCK_BODIES_PACKET => SyncHandler::on_peer_block_bodies(sync, io, peer, rlp),
 			_ => {
 				debug!(target: "sync", "{}: Unknown packet {}", peer, packet_id);
 				Ok(())
@@ -328,6 +330,42 @@ impl SyncHandler {
         if !(body_hashes.is_empty()) {
             SyncRequester::fetch_block_bodies(sync, io, peer_id, body_hashes);
         }
+        Ok(())
+    }
+
+    fn on_peer_block_bodies(sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, r: &Rlp) -> Result<(), BlockSyncError> {
+        let item_count = r.item_count()?;
+        if item_count <= 1 {
+            return Err(BlockSyncError::Useless);
+        }
+
+        let mut blocks: Vec<Block> = Vec::new();
+        for i in 1..item_count {
+            let body = r.val_at(i).map_err(|e| {
+				trace!(target: "sync", "Error decoding block boides RLP: {:?}", e);
+			    BlockSyncError::Invalid
+			})?;
+            blocks.push(body);
+        }
+
+        let mut new_body_arrived = false;
+        for body in blocks {
+            let block_hash = body.hash();
+            if let Some(header) = io.ledger().block_header(BlockId::Hash(block_hash)) {
+                io.ledger().add_block_body_by_hash(&block_hash, body);
+                new_body_arrived = true;
+            } else {
+                debug!(target: "sync", "Skip the body without header: {:?}", block_hash);
+            }
+        }
+
+        if new_body_arrived {
+            let adjusted = io.ledger().adjust_main_chain();
+            if adjusted {
+                // TODO: trigger tx execution
+            }
+        }
+
         Ok(())
     }
 }
