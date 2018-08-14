@@ -66,4 +66,6 @@ impl State {
         self.remove_balance(&txn.sender, txn.value);
         self.add_balance(&txn.sender, txn.value);
     }
+
+    pub fn clear(&self) {}
 }
