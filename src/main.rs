@@ -85,13 +85,15 @@ fn main() {
                 .value_name("PORT")
                 .help("Listen for p2p connections on PORT.")
                 .takes_value(true),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("jsonrpc-port")
                 .long("jsonrpc-port")
                 .value_name("PORT")
                 .help("Specify the PORT for the TCP JSON-RPC API server.")
                 .takes_value(true),
-        ).get_matches_from(std::env::args().collect::<Vec<_>>());
+        )
+        .get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));

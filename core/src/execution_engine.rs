@@ -51,9 +51,30 @@ impl ExecutionEngine {
                     .block_hash(BlockId::Number(block_number))
                     .unwrap();
                 block_hashes.insert(block_number, block_hash);
+
+                let block = self.ledger.block_body_data(&block_hash).unwrap();
+                for txn in &block.transactions {
+                    self.state.execute(txn);
+                }
+
+                block_number += 1;
             }
         } else {
+            self.state.clear();
+            block_hashes.clear();
 
+            for block_number in 0..(index + 1) {
+                let block_hash = self
+                    .ledger
+                    .block_hash(BlockId::Number(block_number))
+                    .unwrap();
+                block_hashes.insert(block_number, block_hash);
+
+                let block = self.ledger.block_body_data(&block_hash).unwrap();
+                for txn in &block.transactions {
+                    self.state.execute(txn);
+                }
+            }
         }
     }
 }
