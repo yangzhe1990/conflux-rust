@@ -23,6 +23,7 @@ pub const GET_BLOCK_HEADERS_PACKET: u8 = 0x01;
 pub const GET_BLOCK_BODIES_PACKET: u8 = 0x02;
 pub const BLOCK_HEADERS_PACKET: u8 = 0x03;
 pub const BLOCK_BODIES_PACKET: u8 = 0x4;
+pub const NEW_BLOCK_PACKET: u8 = 0x5;
 
 pub type PacketDecodeError = DecoderError;
 pub type RlpResponseResult = Result<Option<RlpStream>, PacketDecodeError>;

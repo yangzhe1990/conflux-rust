@@ -132,6 +132,10 @@ impl Ledger {
         self.block_headers.read().contains_key(hash)
     }
 
+    pub fn block_body_exists(&self, hash: &H256) -> bool {
+        self.block_bodies.read().contains_key(hash)
+    }
+
     pub fn block_header(&self, id: BlockId) -> Option<Header> {
         self.block_hash(id)
             .and_then(|hash| self.block_header_data(&hash))
