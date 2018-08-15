@@ -1,8 +1,6 @@
 use core::ExecutionEngineRef;
-use ethereum_types::Address;
-use jsonrpc_core::{
-    Error, Error as RpcError, IoHandler, Params, Result as RpcResult, Value,
-};
+use ethereum_types::{Address, H256};
+use jsonrpc_core::{Error, Error as RpcError, IoHandler, Result as RpcResult};
 use parity_reactor::TokioRemote;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tcp::ServerBuilder as TcpServerBuilder;
@@ -41,6 +39,15 @@ build_rpc_trait! {
 
         #[rpc(name = "getbalance")]
         fn get_balance(&self, Address) -> RpcResult<f64>;
+
+        #[rpc(name = "getbestblockhash")]
+        fn get_best_block_hash(&self) -> RpcResult<H256>;
+
+        #[rpc(name = "getblockcount")]
+        fn get_block_count(&self) -> RpcResult<usize>;
+
+        #[rpc(name = "generate")]
+        fn generate(&self, usize) -> RpcResult<()>;
     }
 }
 
@@ -69,6 +76,12 @@ impl Rpc for RpcImpl {
             Ok(acc.unwrap().balance())
         }
     }
+
+    fn get_best_block_hash(&self) -> RpcResult<H256> { Ok(H256::zero()) }
+
+    fn get_block_count(&self) -> RpcResult<usize> { Ok(0) }
+
+    fn generate(&self, num_blocks: usize) -> RpcResult<()> { Ok(()) }
 }
 
 fn setup_apis(dependencies: &Dependencies) -> IoHandler {
@@ -87,49 +100,6 @@ pub fn new_tcp(
     if !conf.enabled {
         return Ok(None);
     }
-
-    // let mut handler = IoHandler::new();
-    // handler
-    //     .add_method("say_hello", |_| Ok(Value::String("Hello, world!".into())));
-    // handler.add_method("getbalance", |param: Params| match params {
-    //     Params::Map(m) => {
-    //         let acc = parse_string!()
-    //     }
-    //     _ => Err(Error::invalid_params("Invalid format for \"getbalance\"")),
-    // });
-    // // make_active makes the client to enter the active synchronization mode.
-    // handler.add_method("make_active", |_| {
-    //     unimplemented!();
-    //     Ok(Value::String("Not implemented!".into()))
-    // });
-    // // make_passive makes the client to enter the passive synchronization mode. Passive mode is
-    // // mainly used for debugging.
-    // handler.add_method("make_passive", |_| {
-    //     unimplemented!();
-    //     Ok(Value::String("Not implemented!".into()))
-    // });
-    // // generate_blocks makes the client to generate one or more blocks.
-    // handler.add_method("generate_blocks", |_param: Params| match _param {
-    //     Params::Map(m) => {
-    //         let num = parse_u64!(m, "num", "generate_blocks");
-    //         Ok(Value::String(format!("{}{}", "generate_blocks get ", num)))
-    //     }
-    //     _ => Err(Error::invalid_params(
-    //         "Invalid format for \"generate_blocks\"",
-    //     )),
-    // });
-    // handler.add_method("add_peer", |_param: Params| {
-    //     unimplemented!();
-    //     Ok(Value::String("Not implemented!".into()))
-    // });
-    // handler.add_method("drop_peer", |_param: Params| {
-    //     unimplemented!();
-    //     Ok(Value::String("Not implemented!".into()))
-    // });
-    // handler.add_method("sync_status", |_param: Params| {
-    //     unimplemented!();
-    //     Ok(Value::String("Not implemented!".into()))
-    // });
 
     let handler = setup_apis(dependencies);
     let remote = dependencies.remote.clone();
