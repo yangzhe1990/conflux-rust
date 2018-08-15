@@ -1,7 +1,7 @@
+use block::Block;
 use encoded;
 use ethereum_types::{H256, U256};
 use header::Header;
-use block::Block;
 use network::PeerId;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -33,7 +33,7 @@ pub struct Ledger {
     block_hashes: RwLock<HashMap<BlockNumber, H256>>,
 }
 
-pub type SharedLedger = Arc<Ledger>;
+pub type LedgerRef = Arc<Ledger>;
 
 impl Ledger {
     pub fn new() -> Self {
@@ -50,7 +50,7 @@ impl Ledger {
         }
     }
 
-    pub fn new_shared() -> SharedLedger { Arc::new(Self::new()) }
+    pub fn new_ref() -> LedgerRef { Arc::new(Self::new()) }
 
     /// Get the hash of given block's number.
     fn block_hash_by_number(&self, index: BlockNumber) -> Option<H256> {
@@ -169,9 +169,7 @@ impl Ledger {
         }
     }
 
-    pub fn adjust_main_chain(&self) -> bool {
-        false
-    }
+    pub fn adjust_main_chain(&self) -> bool { false }
 }
 
 impl Default for Ledger {

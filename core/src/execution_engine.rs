@@ -1,6 +1,6 @@
 use state::State;
 use types::{BlockId, BlockNumber};
-use SharedLedger;
+use LedgerRef;
 
 use ethereum_types::H256;
 use parking_lot::RwLock;
@@ -8,23 +8,27 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct ExecutionEngine {
-    ledger: SharedLedger,
-    state: State,
+    ledger: LedgerRef,
+    pub state: State,
 
     last_block_number: BlockNumber,
     block_hashes: Arc<RwLock<HashMap<BlockNumber, H256>>>,
 }
 
-pub type SharedExecutionEngine = Arc<ExecutionEngine>;
+pub type ExecutionEngineRef = Arc<ExecutionEngine>;
 
 impl ExecutionEngine {
-    pub fn new(ledger: SharedLedger) -> Self {
+    pub fn new(ledger: LedgerRef) -> Self {
         ExecutionEngine {
             ledger: ledger,
             state: State::new(),
             last_block_number: 0,
             block_hashes: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    pub fn new_ref(ledger: LedgerRef) -> ExecutionEngineRef {
+        Arc::new(Self::new(ledger))
     }
 
     pub fn execute_up_to(&self, index: BlockNumber) {

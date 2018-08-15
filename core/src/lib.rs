@@ -6,30 +6,32 @@ extern crate network;
 extern crate parity_bytes as bytes;
 extern crate parking_lot;
 extern crate rlp;
-
+#[macro_use]
+extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
 mod api;
+pub mod block;
 mod block_sync;
 pub mod encoded;
+pub mod error;
 mod execution_engine;
 pub mod header;
 mod ledger;
 mod state;
 mod sync;
 mod transaction;
-pub mod block;
-pub mod error;
 
 use parking_lot::RwLock;
 use rlp::{Rlp, RlpStream};
 use std::sync::Arc;
 
 pub use api::*;
-pub use execution_engine::{ExecutionEngine, SharedExecutionEngine};
-pub use ledger::{Ledger, SharedLedger};
+pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
+pub use ledger::{Ledger, LedgerRef};
 pub use state::State;
+pub use state::COINBASE_ADDRESS;
 pub use sync::*;
 
 use ethereum_types::H256;
@@ -65,9 +67,9 @@ pub struct SyncParams {
     /// Network layer configuration.
     pub network_config: NetworkConfiguration,
     /// Ledger
-    pub ledger: SharedLedger,
+    pub ledger: LedgerRef,
     /// Execution engine
-    pub exec_engine: SharedExecutionEngine,
+    pub execution_engine: ExecutionEngineRef,
 }
 
 /// Conflux network sync engine
@@ -90,7 +92,7 @@ impl SyncEngine {
             network: service,
             sync_handler: Arc::new(SyncProtocolHandler {
                 ledger: params.ledger,
-                exec_engine: params.exec_engine,
+                execution_engine: params.execution_engine,
                 sync: RwLock::new(sync_state),
             }),
             subprotocol_name: params.config.subprotocol_name,
@@ -119,9 +121,9 @@ impl SyncEngine {
 
 struct SyncProtocolHandler {
     /// Shared ledger
-    ledger: SharedLedger,
+    ledger: LedgerRef,
     /// Shared execution engine,
-    exec_engine: SharedExecutionEngine,
+    execution_engine: ExecutionEngineRef,
     /// Sync strategy
     sync: RwLock<SyncState>,
 }
@@ -144,7 +146,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
         }
         SyncState::dispatch_packet(
             &self.sync,
-            &mut SyncContext::new(io, &*self.ledger, &*self.exec_engine),
+            &mut SyncContext::new(io, &*self.ledger, &*self.execution_engine),
             peer,
             packet_id,
             rlp,
@@ -153,7 +155,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
         self.sync.write().on_peer_connected(
-            &mut SyncContext::new(io, &*self.ledger, &*self.exec_engine),
+            &mut SyncContext::new(io, &*self.ledger, &*self.execution_engine),
             peer,
         );
         trace!("sync::connected");

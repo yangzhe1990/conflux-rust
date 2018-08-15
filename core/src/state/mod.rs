@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use transaction::Transaction;
 
+lazy_static! {
+    pub static ref COINBASE_ADDRESS: Address = Address::zero();
+}
+
 /// Single account in the system
 pub struct Account {
     balance: f64,
@@ -14,20 +18,31 @@ impl Account {
     fn new() -> Self {
         Account {
             balance: 0f64,
-            nonce: 064,
+            nonce: 0u64,
         }
     }
+
+    pub fn balance(&self) -> f64 { self.balance }
 }
 
 /// Representation of the entire state of all accounts in the system.
 pub struct State {
-    accounts: Arc<RwLock<HashMap<Address, Account>>>,
+    pub accounts: Arc<RwLock<HashMap<Address, Account>>>,
 }
 
 impl State {
     pub fn new() -> State {
+        let mut accounts: HashMap<Address, Account> = HashMap::new();
+        accounts.insert(
+            *COINBASE_ADDRESS,
+            Account {
+                balance: 1_000_000_000f64,
+                nonce: 0,
+            },
+        );
+
         State {
-            accounts: Arc::new(RwLock::new(HashMap::new())),
+            accounts: Arc::new(RwLock::new(accounts)),
         }
     }
 
@@ -45,7 +60,7 @@ impl State {
         }
     }
 
-    fn remove_balance(&self, a: &Address, value: f64) {
+    pub fn remove_balance(&self, a: &Address, value: f64) {
         let mut accounts = self.accounts.write();
         let acc = accounts.get_mut(a);
         if let Some(acc) = acc {
@@ -53,7 +68,7 @@ impl State {
         }
     }
 
-    fn add_balance(&self, a: &Address, value: f64) {
+    pub fn add_balance(&self, a: &Address, value: f64) {
         let mut accounts = self.accounts.write();
         let acc = accounts.entry(*a).or_insert(Account::new());
         acc.balance += value;

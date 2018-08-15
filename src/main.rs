@@ -8,6 +8,8 @@ extern crate serde_json;
 extern crate serde_derive;
 extern crate ctrlc;
 extern crate jsonrpc_core;
+#[macro_use]
+extern crate jsonrpc_macros;
 extern crate jsonrpc_tcp_server as tcp;
 extern crate parking_lot;
 #[macro_use]
@@ -38,35 +40,37 @@ use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
+use std::{thread, time};
 
 fn start(conf: Configuration) -> Result<Box<Any>, String> {
-    let event_loop = EventLoop::spawn();
-
-    let rpc_deps = rpc::Dependencies {
-        remote: event_loop.raw_remote(),
-    };
-    let rpc_server =
-        rpc::new_tcp(rpc::TcpConfiguration::new(conf.jsonrpc_port), &rpc_deps)?;
-
     let net_conf = match conf.port {
         Some(port) => network::NetworkConfiguration::new_with_port(port),
         None => network::NetworkConfiguration::default(),
     };
 
-    let ledger = core::Ledger::new_shared();
-    let exec_engine = Arc::new(core::ExecutionEngine::new(ledger.clone()));
+    let ledger = core::Ledger::new_ref();
+    let execution_engine = core::ExecutionEngine::new_ref(ledger.clone());
 
     let sync_params = core::SyncParams {
         config: Default::default(),
         network_config: net_conf,
         ledger: ledger.clone(),
-        exec_engine: exec_engine.clone(),
+        execution_engine: execution_engine.clone(),
     };
 
     let mut sync_engine = core::SyncEngine::new(sync_params);
     sync_engine.start();
 
     let blockgen = blockgen::BlockGenerator::new(ledger.clone());
+
+    let event_loop = EventLoop::spawn();
+
+    let rpc_deps = rpc::Dependencies {
+        remote: event_loop.raw_remote(),
+        execution_engine: execution_engine,
+    };
+    let rpc_server =
+        rpc::new_tcp(rpc::TcpConfiguration::new(conf.jsonrpc_port), &rpc_deps)?;
 
     Ok(Box::new((
         event_loop,

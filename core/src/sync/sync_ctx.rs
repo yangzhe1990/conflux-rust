@@ -7,26 +7,26 @@ use network::{Error, NetworkContext, PeerId};
 pub struct SyncContext<'s> {
     network: &'s NetworkContext,
     ledger: &'s Ledger,
-    exec_engine: &'s ExecutionEngine,
+    execution_engine: &'s ExecutionEngine,
 }
 
 impl<'s> SyncContext<'s> {
     /// Creates a new instance from the `NetworkContext` and the ledger engine interface reference.
     pub fn new(
         network: &'s NetworkContext, ledger: &'s Ledger,
-        exec_engine: &'s ExecutionEngine,
+        execution_engine: &'s ExecutionEngine,
     ) -> SyncContext<'s>
     {
         SyncContext {
             network: network,
             ledger: ledger,
-            exec_engine: exec_engine,
+            execution_engine: execution_engine,
         }
     }
 
     pub fn ledger(&self) -> &Ledger { self.ledger }
 
-    pub fn execution_engine(&self) -> &ExecutionEngine { self.exec_engine }
+    pub fn execution_engine(&self) -> &ExecutionEngine { self.execution_engine }
 
     pub fn disconnect_peer(&mut self, peer_id: PeerId) {
         self.network.disconnect_peer(peer_id);
