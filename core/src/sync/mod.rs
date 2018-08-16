@@ -154,17 +154,18 @@ impl SyncState {
                     return;
                 }
             }
-		};
-        let higher_difficulty = peer_difficulty.map_or(false, |pd| pd > self.max_seen_total_difficulty);
+        };
+        let higher_difficulty = peer_difficulty
+            .map_or(false, |pd| pd > self.max_seen_total_difficulty);
         if !higher_difficulty {
             return;
         }
 
         match peer_difficulty {
-            Some(difficulty) => { self.max_seen_total_difficulty = difficulty},
+            Some(difficulty) => self.max_seen_total_difficulty = difficulty,
             None => {}
         }
-        
+
         if !io.ledger().block_header_exists(&peer_latest) {
             SyncRequester::request_headers_by_hash(
                 self,

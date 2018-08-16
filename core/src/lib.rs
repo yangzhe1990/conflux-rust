@@ -112,8 +112,7 @@ impl SyncEngine {
                 self.sync_handler.clone(),
                 self.subprotocol_name,
                 &[CONFLUX_PROTOCOL_VERSION_1],
-            )
-            .unwrap_or_else(|e| {
+            ).unwrap_or_else(|e| {
                 warn!("Error registering conflux protocol: {:?}", e)
             });
     }
