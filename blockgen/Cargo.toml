@@ -8,3 +8,6 @@ authors = ["ming wu <ming@alt-chain.io>"]
 
 [dependencies]
 core = { path = "../core" }
+ethereum-types = "0.3"
+keccak-hash = { git = "https://github.com/paritytech/parity-common" }
+common-types = { path = "../core/types" }

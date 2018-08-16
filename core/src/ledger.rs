@@ -90,6 +90,15 @@ impl Ledger {
         self.best_block.read().header.number()
     }
 
+    pub fn best_block(&self) -> BestBlock {
+        let read = self.best_block.read();
+        BestBlock {
+            header: read.header.clone(),
+            block: read.block.clone(),
+            total_difficulty: read.total_difficulty,
+        }
+    }
+
     /// Get block header data
     pub fn block_header_data(&self, hash: &H256) -> Option<Header> {
         let read = self.block_headers.read();
