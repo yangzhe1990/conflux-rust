@@ -10,7 +10,7 @@ use super::super::header::Header;
 use super::sync_requester::SyncRequester;
 use block_sync::BlockSyncError;
 use bytes::Bytes;
-use ethereum_types::H256;
+use ethereum_types::{H256, U256};
 use network::{Error, PeerId};
 use parking_lot::RwLock;
 use rlp::{Rlp, RlpStream};
@@ -201,6 +201,9 @@ impl SyncHandler {
             BLOCK_BODIES_PACKET => {
                 SyncHandler::on_peer_block_bodies(sync, io, peer, rlp)
             }
+            NEW_BLOCK_PACKET => {
+                SyncHandler::on_peer_new_block(sync, io, peer, rlp)
+            }
             _ => {
                 debug!(target: "sync", "{}: Unknown packet {}", peer, packet_id);
                 Ok(())
@@ -371,6 +374,54 @@ impl SyncHandler {
         }
 
         if new_body_arrived {
+            let adjusted = io.ledger().adjust_main_chain();
+            if adjusted {
+                // TODO: trigger tx execution
+            }
+        }
+
+        Ok(())
+    }
+
+    fn on_peer_new_block(
+        sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, r: &Rlp,
+    ) -> Result<(), BlockSyncError> {
+        let new_block_total_difficulty: U256 = r.val_at(1)?;
+        let new_header: Header = r.val_at(2)?;
+        let new_body: Block = r.val_at(3)?;
+
+        if new_header.hash() != new_body.hash() {
+            debug!(target: "sync", "hashes in header and body do not match!");
+            return Err(BlockSyncError::Invalid);
+        }
+
+        let hash = new_header.hash();
+        let parent_hash = *(new_header.parent_hash());
+
+        let mut new_block_arrived = false;
+        if !io.ledger().block_header_exists(&hash) {
+            new_block_arrived = true;
+            io.ledger().add_block_header_by_hash(&hash, new_header);
+        }
+
+        if !io.ledger().block_body_exists(&hash) {
+            new_block_arrived = true;
+            io.ledger().add_block_body_by_hash(&hash, new_body);
+        }
+
+        if !io.ledger().block_header_exists(&parent_hash) {
+            SyncRequester::request_headers_by_hash(
+                sync,
+                io,
+                peer_id,
+                &parent_hash,
+                256,
+                0,
+                true,
+            );
+        }
+
+        if new_block_arrived {
             let adjusted = io.ledger().adjust_main_chain();
             if adjusted {
                 // TODO: trigger tx execution
