@@ -539,8 +539,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                         Token(TCP_ACCEPT),
                         Ready::all(),
                         PollOpt::edge(),
-                    )
-                    .expect("Error registering stream");
+                    ).expect("Error registering stream");
             }
             _ => warn!("Unexpected stream registeration"),
         }
@@ -588,8 +587,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                     Token(TCP_ACCEPT),
                     Ready::all(),
                     PollOpt::edge(),
-                )
-                .expect("Error reregistering stream"),
+                ).expect("Error reregistering stream"),
             _ => warn!("Unexpected stream update"),
         }
     }
