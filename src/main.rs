@@ -73,6 +73,7 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         remote: event_loop.raw_remote(),
         ledger: ledger.clone(),
         execution_engine: execution_engine.clone(),
+        sync_engine: sync_engine_ref.clone(),
     };
     let rpc_tcp_server = rpc::new_tcp(
         rpc::TcpConfiguration::new(conf.jsonrpc_tcp_port),

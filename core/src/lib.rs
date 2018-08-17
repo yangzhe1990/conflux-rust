@@ -26,6 +26,8 @@ pub mod transaction;
 use parking_lot::RwLock;
 use rlp::{Rlp, RlpStream};
 use std::sync::Arc;
+use std::net::SocketAddr;
+use network::NodeId;
 
 pub use api::*;
 pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
@@ -132,6 +134,14 @@ impl SyncEngine {
                 total_difficulties,
             );
         });
+    }
+
+    pub fn add_peer(&self, addr: SocketAddr) -> Result<NodeId, Error> {
+        self.network.add_peer(addr)
+    }
+
+    pub fn drop_peer(&self, id: NodeId) -> Result<(), Error> {
+        self.network.drop_peer(id)
     }
 }
 

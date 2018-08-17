@@ -63,16 +63,20 @@ impl NetworkService {
         Ok(())
     }
 
-    pub fn add_peer(&self, peer: SocketAddr) {
+    pub fn add_peer(&self, peer: SocketAddr) -> Result<NodeId, Error> {
         if let Some(ref x) = self.inner {
-            x.add_node(peer).unwrap();
+            x.add_node(peer)
+        } else {
+            Err("Network service not started yet!".into())
         } 
     }
 
-    pub fn drop_peer(&self, peer: SocketAddr) {
+    pub fn drop_peer(&self, peer: SocketAddr) -> Result<(), Error> {
         if let Some(ref x) = self.inner {
-            x.drop_node(peer).unwrap();
-        } 
+            x.drop_node(peer)
+        } else {
+            Err("Network service not started yet!".into())
+        }
     }
 
     pub fn local_addr(&self) -> Option<SocketAddr> {

@@ -1,8 +1,10 @@
-use core::{ExecutionEngineRef, LedgerRef};
+use core::{ExecutionEngineRef, LedgerRef, SyncEngineRef};
 use ethereum_types::{Address, H256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
 use parity_reactor::TokioRemote;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use network::NodeId;
+use network::{Error as NetworkError};
 
 use http::Server as HttpServer;
 use http::ServerBuilder as HttpServerBuilder;
@@ -16,6 +18,7 @@ pub struct Dependencies {
     pub remote: TokioRemote,
     pub ledger: LedgerRef,
     pub execution_engine: ExecutionEngineRef,
+    pub sync_engine: SyncEngineRef,
 }
 
 #[derive(Debug, PartialEq)]
@@ -71,19 +74,27 @@ build_rpc_trait! {
 
         #[rpc(name = "generate")]
         fn generate(&self, usize) -> RpcResult<()>;
+
+        #[rpc(name = "add_peer")]
+        fn add_peer(&self, SocketAddr) -> RpcResult<NodeId>;
+    
+        #[rpc(name = "drop_peer")]
+        fn drop_peer(&self, NodeId) -> RpcResult<()>;
     }
 }
 
 struct RpcImpl {
     ledger: LedgerRef,
     execution_engine: ExecutionEngineRef,
+    sync_engine: SyncEngineRef,
 }
 
 impl RpcImpl {
-    fn new(ledger: LedgerRef, execution_engine: ExecutionEngineRef) -> Self {
+    fn new(ledger: LedgerRef, execution_engine: ExecutionEngineRef, sync_engine: SyncEngineRef) -> Self {
         RpcImpl {
             ledger: ledger,
             execution_engine: execution_engine,
+            sync_engine: sync_engine,
         }
     }
 }
@@ -112,6 +123,19 @@ impl Rpc for RpcImpl {
         Ok(self.ledger.best_block_number() as usize)
     }
 
+    fn add_peer(&self, addr : SocketAddr) ->RpcResult<NodeId> {
+        println!("addpeer {:?}", addr);
+        // FIXME: I should figure out how to deal with errors
+        let id = self.sync_engine.add_peer(addr).unwrap();
+        Ok(id)
+    }
+
+    fn drop_peer(&self, id : NodeId) ->RpcResult<()> {
+        println!("droppeer {:?}", id);
+        self.sync_engine.drop_peer(id);
+        Ok(())
+    }
+    
     fn generate(&self, num_blocks: usize) -> RpcResult<()> { Ok(()) }
 }
 
@@ -123,6 +147,7 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
         RpcImpl::new(
             dependencies.ledger.clone(),
             dependencies.execution_engine.clone(),
+            dependencies.sync_engine.clone(),
         ).to_delegate(),
     );
 
