@@ -1,6 +1,6 @@
-use core::ExecutionEngineRef;
+use core::{ExecutionEngineRef, LedgerRef};
 use ethereum_types::{Address, H256};
-use jsonrpc_core::{Error, Error as RpcError, IoHandler, Result as RpcResult};
+use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
 use parity_reactor::TokioRemote;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tcp::ServerBuilder as TcpServerBuilder;
@@ -11,6 +11,7 @@ const DEFAULT_TCP_PORT: u16 = 32324;
 
 pub struct Dependencies {
     pub remote: TokioRemote,
+    pub ledger: LedgerRef,
     pub execution_engine: ExecutionEngineRef,
 }
 
@@ -52,12 +53,14 @@ build_rpc_trait! {
 }
 
 struct RpcImpl {
+    ledger: LedgerRef,
     execution_engine: ExecutionEngineRef,
 }
 
 impl RpcImpl {
-    fn new(execution_engine: ExecutionEngineRef) -> Self {
+    fn new(ledger: LedgerRef, execution_engine: ExecutionEngineRef) -> Self {
         RpcImpl {
+            ledger: ledger,
             execution_engine: execution_engine,
         }
     }
@@ -77,9 +80,13 @@ impl Rpc for RpcImpl {
         }
     }
 
-    fn get_best_block_hash(&self) -> RpcResult<H256> { Ok(H256::zero()) }
+    fn get_best_block_hash(&self) -> RpcResult<H256> {
+        Ok(self.ledger.best_block_hash())
+    }
 
-    fn get_block_count(&self) -> RpcResult<usize> { Ok(0) }
+    fn get_block_count(&self) -> RpcResult<usize> {
+        Ok(self.ledger.best_block_number() as usize)
+    }
 
     fn generate(&self, num_blocks: usize) -> RpcResult<()> { Ok(()) }
 }
@@ -88,7 +95,10 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
     let mut handler = IoHandler::new();
 
     handler.extend_with(
-        RpcImpl::new(dependencies.execution_engine.clone()).to_delegate(),
+        RpcImpl::new(
+            dependencies.ledger.clone(),
+            dependencies.execution_engine.clone(),
+        ).to_delegate(),
     );
 
     handler
