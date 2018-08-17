@@ -41,6 +41,8 @@ use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
+use blockgen::BlockGenerator;
+use std::thread;
 
 fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let net_conf = match conf.port {
@@ -61,8 +63,6 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let mut sync_engine = core::SyncEngine::new(sync_params);
     sync_engine.start();
 
-    let blockgen = blockgen::BlockGenerator::new(ledger.clone());
-
     let event_loop = EventLoop::spawn();
 
     let rpc_deps = rpc::Dependencies {
@@ -79,12 +79,19 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         &rpc_deps,
     )?;
 
+    let blockgen = Arc::new(BlockGenerator::new(ledger.clone()));
+    let bgen = blockgen.clone();
+    let block_gen_handle = thread::spawn(move || {
+        BlockGenerator::start_mining(bgen, 0);
+    });
+
     Ok(Box::new((
         event_loop,
         rpc_tcp_server,
         rpc_http_server,
         Arc::new(sync_engine),
         blockgen,
+        block_gen_handle,
     )))
 }
 
