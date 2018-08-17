@@ -44,6 +44,7 @@ use std::sync::Arc;
 use blockgen::BlockGenerator;
 use std::thread;
 
+// Start all key components of Conflux and pass out their handles
 fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let net_conf = match conf.port {
         Some(port) => network::NetworkConfiguration::new_with_port(port),

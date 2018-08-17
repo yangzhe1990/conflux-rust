@@ -10,7 +10,7 @@ use tcp::Server as TcpServer;
 use tcp::ServerBuilder as TcpServerBuilder;
 
 const DEFAULT_TCP_PORT: u16 = 32324;
-const DEFAULT_HTTP_PORT: u16 = 32335;
+const DEFAULT_HTTP_PORT: u16 = 32325;
 
 pub struct Dependencies {
     pub remote: TokioRemote,
@@ -54,6 +54,7 @@ impl HttpConfiguration {
     }
 }
 
+// The macro from jsonrpc_core to facilitate the definition of handlers
 build_rpc_trait! {
     pub trait Rpc {
         #[rpc(name = "say_hello")]
@@ -102,10 +103,12 @@ impl Rpc for RpcImpl {
     }
 
     fn get_best_block_hash(&self) -> RpcResult<H256> {
+        println!("getbestblockhash");
         Ok(self.ledger.best_block_hash())
     }
 
     fn get_block_count(&self) -> RpcResult<usize> {
+        println!("getblockcount");
         Ok(self.ledger.best_block_number() as usize)
     }
 
@@ -115,6 +118,7 @@ impl Rpc for RpcImpl {
 fn setup_apis(dependencies: &Dependencies) -> IoHandler {
     let mut handler = IoHandler::new();
 
+    // extend_with maps each method in RpcImpl object into a RPC handler
     handler.extend_with(
         RpcImpl::new(
             dependencies.ledger.clone(),
