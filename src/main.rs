@@ -10,6 +10,7 @@ extern crate ctrlc;
 extern crate jsonrpc_core;
 #[macro_use]
 extern crate jsonrpc_macros;
+extern crate jsonrpc_http_server as http;
 extern crate jsonrpc_tcp_server as tcp;
 extern crate parking_lot;
 #[macro_use]
@@ -33,14 +34,13 @@ mod rpc;
 use clap::{App, Arg};
 use configuration::Configuration;
 use ctrlc::CtrlC;
-use network::{NetworkConfiguration, NetworkService};
+use network::NetworkConfiguration;
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
 use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
-use std::{thread, time};
 
 fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let net_conf = match conf.port {
@@ -70,14 +70,20 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         ledger: ledger.clone(),
         execution_engine: execution_engine.clone(),
     };
-    let rpc_server =
-        rpc::new_tcp(rpc::TcpConfiguration::new(conf.jsonrpc_port), &rpc_deps)?;
+    let rpc_tcp_server = rpc::new_tcp(
+        rpc::TcpConfiguration::new(conf.jsonrpc_tcp_port),
+        &rpc_deps,
+    )?;
+    let rpc_http_server = rpc::new_http(
+        rpc::HttpConfiguration::new(conf.jsonrpc_http_port),
+        &rpc_deps,
+    )?;
 
     Ok(Box::new((
         event_loop,
-        rpc_server,
+        rpc_tcp_server,
+        rpc_http_server,
         Arc::new(sync_engine),
-        // cfx_vm,
         blockgen,
     )))
 }
@@ -90,13 +96,22 @@ fn main() {
                 .value_name("PORT")
                 .help("Listen for p2p connections on PORT.")
                 .takes_value(true),
-        ).arg(
-            Arg::with_name("jsonrpc-port")
-                .long("jsonrpc-port")
+        )
+        .arg(
+            Arg::with_name("jsonrpc-tcp-port")
+                .long("jsonrpc-tcp-port")
                 .value_name("PORT")
                 .help("Specify the PORT for the TCP JSON-RPC API server.")
                 .takes_value(true),
-        ).get_matches_from(std::env::args().collect::<Vec<_>>());
+        )
+        .arg(
+            Arg::with_name("jsonrpc-http-port")
+                .long("jsonrpc-http-port")
+                .value_name("PORT")
+                .help("Specify the PORT for the HTTP JSON-RPC API server.")
+                .takes_value(true),
+        )
+        .get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));

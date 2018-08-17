@@ -3,11 +3,14 @@ use ethereum_types::{Address, H256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
 use parity_reactor::TokioRemote;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+
+use http::Server as HttpServer;
+use http::ServerBuilder as HttpServerBuilder;
+use tcp::Server as TcpServer;
 use tcp::ServerBuilder as TcpServerBuilder;
 
-pub use tcp::Server as TcpServer;
-
 const DEFAULT_TCP_PORT: u16 = 32324;
+const DEFAULT_HTTP_PORT: u16 = 32335;
 
 pub struct Dependencies {
     pub remote: TokioRemote,
@@ -18,16 +21,34 @@ pub struct Dependencies {
 #[derive(Debug, PartialEq)]
 pub struct TcpConfiguration {
     pub enabled: bool,
-    pub socket_addr: SocketAddr,
+    pub address: SocketAddr,
 }
 
 impl TcpConfiguration {
     pub fn new(port: Option<u16>) -> Self {
         TcpConfiguration {
             enabled: true,
-            socket_addr: SocketAddr::V4(SocketAddrV4::new(
+            address: SocketAddr::V4(SocketAddrV4::new(
                 Ipv4Addr::new(0, 0, 0, 0),
                 port.unwrap_or(DEFAULT_TCP_PORT),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct HttpConfiguration {
+    pub enabled: bool,
+    pub address: SocketAddr,
+}
+
+impl HttpConfiguration {
+    pub fn new(port: Option<u16>) -> Self {
+        HttpConfiguration {
+            enabled: true,
+            address: SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(0, 0, 0, 0),
+                port.unwrap_or(DEFAULT_HTTP_PORT),
             )),
         }
     }
@@ -116,9 +137,28 @@ pub fn new_tcp(
 
     match TcpServerBuilder::new(handler)
         .event_loop_remote(remote)
-        .start(&conf.socket_addr)
+        .start(&conf.address)
     {
         Ok(server) => Ok(Some(server)),
         Err(io_error) => Err(format!("TCP error: {}", io_error)),
+    }
+}
+
+pub fn new_http(
+    conf: HttpConfiguration, dependencies: &Dependencies,
+) -> Result<Option<HttpServer>, String> {
+    if !conf.enabled {
+        return Ok(None);
+    }
+
+    let handler = setup_apis(dependencies);
+    let remote = dependencies.remote.clone();
+
+    match HttpServerBuilder::new(handler)
+        .event_loop_remote(remote)
+        .start_http(&conf.address)
+    {
+        Ok(server) => Ok(Some(server)),
+        Err(io_error) => Err(format!("HTTP error: {}", io_error)),
     }
 }
