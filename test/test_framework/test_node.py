@@ -35,6 +35,10 @@ class TestNode:
     def __init__(self, index, datadir, rpchost, confluxd, rpc_timeout=None):
         self.index = index
         self.datadir = datadir
+        if not os.path.exists(os.path.join(self.datadir, "stdout")):
+            os.makedirs(os.path.join(self.datadir, "stdout"))
+        if not os.path.exists(os.path.join(self.datadir, "stderr")):
+            os.makedirs(os.path.join(self.datadir, "stderr"))
         self.stdout_dir = os.path.join(self.datadir, "stdout")
         self.stderr_dir = os.path.join(self.datadir, "stderr")
         self.rpchost = rpchost

@@ -19,6 +19,8 @@ use std::time::Instant;
 use sync_ctx::SyncContext;
 use types::*;
 
+/// SyncHandler is a collection of functions which handles incoming requests from peers from
+/// SyncState
 pub struct SyncHandler;
 
 impl SyncHandler {

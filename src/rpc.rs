@@ -54,6 +54,7 @@ impl HttpConfiguration {
     }
 }
 
+// The macro from jsonrpc_core to facilitate the definition of handlers
 build_rpc_trait! {
     pub trait Rpc {
         #[rpc(name = "say_hello")]
@@ -117,6 +118,7 @@ impl Rpc for RpcImpl {
 fn setup_apis(dependencies: &Dependencies) -> IoHandler {
     let mut handler = IoHandler::new();
 
+    // extend_with maps each method in RpcImpl object into a RPC handler
     handler.extend_with(
         RpcImpl::new(
             dependencies.ledger.clone(),

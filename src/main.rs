@@ -42,6 +42,7 @@ use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
 
+// Start all key components of Conflux and pass out their handles
 fn start(conf: Configuration) -> Result<Box<Any>, String> {
     let net_conf = match conf.port {
         Some(port) => network::NetworkConfiguration::new_with_port(port),

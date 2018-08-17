@@ -131,7 +131,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     fn initialize(&self, io: &NetworkContext) {}
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {
-        let mut packet_id: u8 = 0;
+        let packet_id: u8;
         let rlp = Rlp::new(data);
         let result = rlp.val_at(0);
         match result {
