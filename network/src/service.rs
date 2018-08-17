@@ -7,6 +7,7 @@ use parking_lot::{Mutex, RwLock};
 use session::Session;
 use session::SessionData;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -65,17 +66,13 @@ impl NetworkService {
     pub fn add_peer(&self, peer: SocketAddr) {
         if let Some(ref x) = self.inner {
             x.add_node(peer).unwrap();
-        } else {
-            unimplemented!();
-        }
+        } 
     }
 
     pub fn drop_peer(&self, peer: SocketAddr) {
         if let Some(ref x) = self.inner {
             x.drop_node(peer).unwrap();
-        } else {
-            unimplemented!();
-        }
+        } 
     }
 
     pub fn local_addr(&self) -> Option<SocketAddr> {
@@ -119,6 +116,7 @@ pub struct HostMetadata {
 struct NodeEntry {
     id: NodeId,
     local_address: SocketAddr,
+    stream_token: Option<StreamToken>,
 }
 
 struct NetworkServiceInner {
@@ -127,6 +125,7 @@ struct NetworkServiceInner {
     sessions: Arc<RwLock<Slab<SharedSession>>>,
     handlers: RwLock<HashMap<ProtocolId, Arc<NetworkProtocolHandler + Sync>>>,
     nodes: RwLock<HashMap<NodeId, NodeEntry>>,
+    dropped_nodes: RwLock<HashSet<StreamToken>>,
 }
 
 impl NetworkServiceInner {
@@ -160,6 +159,7 @@ impl NetworkServiceInner {
             ))),
             handlers: RwLock::new(HashMap::new()),
             nodes: RwLock::new(HashMap::new()),
+            dropped_nodes: RwLock::new(HashSet::new()),
         };
 
         for n in &config.boot_nodes {
@@ -178,17 +178,28 @@ impl NetworkServiceInner {
         let node = NodeEntry {
             id: id,
             local_address: local_address,
+            stream_token: None,
         };
         self.nodes.write().insert(node.id, node);
         Ok(id)
     }
 
     fn drop_node(&self, local_id: NodeId) -> Result<(), Error> { 
-        unimplemented!();
+        let mut wn = self.nodes.write();
+        if wn.contains_key(&local_id) {
+            let entry = wn.get(&local_id).unwrap();
+            if let Some(stream_token) = entry.stream_token {
+                let mut wd = self.dropped_nodes.write();
+                wd.insert(stream_token);
+            }
+        }
+        wn.remove(&local_id);
+        Ok(())
     }
 
     fn on_housekeeping(&self, io: &IoContext<NetworkIoMessage>) {
         self.connect_peers(io);
+        self.drop_peers(io);
     }
 
     fn connect_peers(&self, io: &IoContext<NetworkIoMessage>) {
@@ -198,6 +209,19 @@ impl NetworkServiceInner {
         for id in &nodes {
             self.connect_peer(&id, io);
         }
+    }
+
+    fn drop_peers(&self, io: &IoContext<NetworkIoMessage>) {
+        {
+            if self.dropped_nodes.read().len() == 0 {
+                return;
+            }
+        }
+        let mut w = self.dropped_nodes.write();
+        for token in w.iter() {
+            self.kill_connection(*token, io, true);
+        }
+        w.clear();
     }
 
     fn have_session(&self, id: &NodeId) -> bool {
@@ -278,6 +302,13 @@ impl NetworkServiceInner {
 
         match token {
             Some(token) => {
+                if let Some(id) = id {
+                    let mut w = self.nodes.write();
+                    let mut entry = w.get_mut(id);
+                    if let Some(entry) = entry {
+                        entry.stream_token = Some(token);
+                    }
+                }
                 io.register_stream(token).map(|_| ()).map_err(Into::into)
             }
             None => {
@@ -297,6 +328,14 @@ impl NetworkServiceInner {
     fn session_readable(
         &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
+        // We check dropped_nodes first to make sure we stop processing communications from any
+        // dropped peers
+        let to_drop = { self.dropped_nodes.read().contains(&stream) };
+        self.drop_peers(io);
+        if to_drop {
+            return;
+        }
+
         let mut ready_protocols: Vec<ProtocolId> = Vec::new();
         let mut messages: Vec<(ProtocolId, Vec<u8>)> = Vec::new();
         let mut kill = false;
@@ -372,6 +411,14 @@ impl NetworkServiceInner {
     fn session_writable(
         &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
+        // We check dropped_nodes first to make sure we stop processing communications from any
+        // dropped peers
+        let to_drop = { self.dropped_nodes.read().contains(&stream) };
+        self.drop_peers(io);
+        if to_drop {
+            return;
+        }
+
         let session = self.sessions.read().get(stream).cloned();
 
         if let Some(session) = session {
