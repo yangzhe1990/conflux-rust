@@ -101,8 +101,7 @@ impl NetworkService {
     pub fn with_context<F>(&self, protocol: ProtocolId, action: F)
     where F: FnOnce(&NetworkContext) {
         let io = IoContext::new(self.io_service.as_ref().unwrap().channel(), 0);
-        let inner = self.inner.read();
-        if let Some(ref inner) = inner.as_ref() {
+        if let Some(ref inner) = self.inner {
             inner.with_context(protocol, &io, action);
         };
     }
