@@ -34,7 +34,7 @@ pub use state::State;
 pub use state::COINBASE_ADDRESS;
 pub use sync::*;
 
-use ethereum_types::H256;
+use ethereum_types::{H256, U256};
 use io::TimerToken;
 use network::{
     Error, NetworkConfiguration, NetworkContext, NetworkProtocolHandler,
@@ -71,6 +71,8 @@ pub struct SyncParams {
     /// Execution engine
     pub execution_engine: ExecutionEngineRef,
 }
+
+pub type SyncEngineRef = Arc<SyncEngine>;
 
 /// Conflux network sync engine
 pub struct SyncEngine {
@@ -115,6 +117,21 @@ impl SyncEngine {
             ).unwrap_or_else(|e| {
                 warn!("Error registering conflux protocol: {:?}", e)
             });
+    }
+
+    pub fn new_blocks(&self, blocks: &[H256], total_difficulties: &[U256]) {
+        self.network.with_context(self.subprotocol_name, |context| {
+            let mut sync = self.sync_handler.sync.write();
+            sync.new_chain_blocks(
+                &mut SyncContext::new(
+                    context,
+                    &*self.sync_handler.ledger,
+                    &*self.sync_handler.execution_engine,
+                ),
+                blocks,
+                total_difficulties,
+            );
+        });
     }
 }
 

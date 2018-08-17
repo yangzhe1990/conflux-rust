@@ -65,6 +65,7 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
 
     let mut sync_engine = core::SyncEngine::new(sync_params);
     sync_engine.start();
+    let sync_engine_ref = Arc::new(sync_engine);
 
     let event_loop = EventLoop::spawn();
 
@@ -82,7 +83,8 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         &rpc_deps,
     )?;
 
-    let blockgen = Arc::new(BlockGenerator::new(ledger.clone()));
+    let blockgen =
+        Arc::new(BlockGenerator::new(ledger.clone(), sync_engine_ref.clone()));
     let bgen = blockgen.clone();
     let block_gen_handle = thread::spawn(move || {
         BlockGenerator::start_mining(bgen, 0);
@@ -92,7 +94,7 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         event_loop,
         rpc_tcp_server,
         rpc_http_server,
-        Arc::new(sync_engine),
+        sync_engine_ref,
         blockgen,
         block_gen_handle,
     )))

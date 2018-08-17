@@ -20,10 +20,10 @@ impl SyncPropagator {
     /// propagates new latest block to a set of peers
     pub fn propagate_new_blocks(
         sync: &mut SyncState, io: &mut SyncContext, blocks: &[H256],
-        total_difficulties: &[U256], peers: &[PeerId],
+        total_difficulties: &[U256],
     ) -> usize
     {
-        trace!(target: "sync", "Sending NewBlocks to {:?}", peers);
+        trace!(target: "sync", "Sending NewBlocks to peers.");
         let mut sent = 0;
 
         if blocks.len() != total_difficulties.len() {
@@ -32,7 +32,7 @@ impl SyncPropagator {
 
         let block_count = blocks.len();
 
-        for peer_id in peers {
+        for peer_id in sync.peers.keys() {
             let mut i = 0;
             while i != block_count {
                 let h = blocks[i];

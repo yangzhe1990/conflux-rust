@@ -1,9 +1,11 @@
 pub mod sync_ctx;
 mod sync_handler;
+mod sync_propagator;
 mod sync_requester;
 
 use self::sync_ctx::SyncContext;
 use self::sync_handler::SyncHandler;
+use self::sync_propagator::SyncPropagator;
 use self::sync_requester::SyncRequester;
 use super::PacketId;
 use ethereum_types::{H256, U256};
@@ -177,5 +179,18 @@ impl SyncState {
                 true,
             );
         }
+    }
+
+    pub fn new_chain_blocks(
+        &mut self, io: &mut SyncContext, blocks: &[H256],
+        total_difficulties: &[U256],
+    )
+    {
+        SyncPropagator::propagate_new_blocks(
+            self,
+            io,
+            blocks,
+            total_difficulties,
+        );
     }
 }
