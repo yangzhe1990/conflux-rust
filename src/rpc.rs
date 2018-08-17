@@ -10,7 +10,7 @@ use tcp::Server as TcpServer;
 use tcp::ServerBuilder as TcpServerBuilder;
 
 const DEFAULT_TCP_PORT: u16 = 32324;
-const DEFAULT_HTTP_PORT: u16 = 32335;
+const DEFAULT_HTTP_PORT: u16 = 32325;
 
 pub struct Dependencies {
     pub remote: TokioRemote,
@@ -102,10 +102,12 @@ impl Rpc for RpcImpl {
     }
 
     fn get_best_block_hash(&self) -> RpcResult<H256> {
+        println!("getbestblockhash");
         Ok(self.ledger.best_block_hash())
     }
 
     fn get_block_count(&self) -> RpcResult<usize> {
+        println!("getblockcount");
         Ok(self.ledger.best_block_number() as usize)
     }
 
