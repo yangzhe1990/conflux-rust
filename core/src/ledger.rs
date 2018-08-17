@@ -1,11 +1,13 @@
 use block::Block;
 use encoded;
-use ethereum_types::{H256, U256};
+use ethereum_types::{Address, H256, U256};
+use hash::{keccak, KECCAK_NULL_RLP};
 use header::Header;
 use network::PeerId;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
+use transaction::Transaction;
 pub use types::*;
 
 /// Contains information on a best block that is specific to the consensus engine.
@@ -38,19 +40,51 @@ pub type LedgerRef = Arc<Ledger>;
 impl Ledger {
     pub fn new() -> Self {
         Ledger {
-            best_block: RwLock::new(BestBlock {
-                header: Default::default(),
-                block: Default::default(),
-                total_difficulty: 0.into(),
-            }),
             block_headers: RwLock::new(HashMap::new()),
             block_bodies: RwLock::new(HashMap::new()),
             child_blocks: RwLock::new(HashMap::new()),
             block_hashes: RwLock::new(HashMap::new()),
+
+            best_block: RwLock::new(BestBlock {
+                header: Header::new(),
+                block: Block::default(),
+                total_difficulty: 0.into(),
+            }),
         }
     }
 
     pub fn new_ref() -> LedgerRef { Arc::new(Self::new()) }
+
+    pub fn initialize_with_genesis(&self) {
+        let mut genesis_header = Header::new();
+        genesis_header.set_parent_hash(0.into());
+        genesis_header.set_timestamp(0);
+        genesis_header.set_number(0);
+        genesis_header.set_author(Address::default());
+        genesis_header.set_transactions_root(KECCAK_NULL_RLP);
+        genesis_header.set_state_root(KECCAK_NULL_RLP);
+        genesis_header.set_difficulty(0.into());
+
+        genesis_header.compute_hash();
+        let hash = genesis_header.hash();
+
+        let txs: Vec<Transaction> = Vec::new();
+        let genesis_body = Block {
+            hash: hash,
+            transactions: txs,
+        };
+
+        self.block_headers
+            .write()
+            .insert(hash, genesis_header.clone());
+        self.block_bodies.write().insert(hash, genesis_body.clone());
+        self.block_hashes.write().insert(0, hash);
+
+        let mut write = self.best_block.write();
+        write.header = genesis_header;
+        write.block = genesis_body;
+        write.total_difficulty = 0.into();
+    }
 
     /// Get the hash of given block's number.
     fn block_hash_by_number(&self, index: BlockNumber) -> Option<H256> {

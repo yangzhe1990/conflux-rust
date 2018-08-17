@@ -31,6 +31,7 @@ extern crate core;
 mod configuration;
 mod rpc;
 
+use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
 use ctrlc::CtrlC;
@@ -41,7 +42,6 @@ use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
-use blockgen::BlockGenerator;
 use std::thread;
 
 // Start all key components of Conflux and pass out their handles
@@ -52,6 +52,8 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
     };
 
     let ledger = core::Ledger::new_ref();
+    ledger.initialize_with_genesis();
+
     let execution_engine = core::ExecutionEngine::new_ref(ledger.clone());
 
     let sync_params = core::SyncParams {
@@ -104,22 +106,19 @@ fn main() {
                 .value_name("PORT")
                 .help("Listen for p2p connections on PORT.")
                 .takes_value(true),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("jsonrpc-tcp-port")
                 .long("jsonrpc-tcp-port")
                 .value_name("PORT")
                 .help("Specify the PORT for the TCP JSON-RPC API server.")
                 .takes_value(true),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("jsonrpc-http-port")
                 .long("jsonrpc-http-port")
                 .value_name("PORT")
                 .help("Specify the PORT for the HTTP JSON-RPC API server.")
                 .takes_value(true),
-        )
-        .get_matches_from(std::env::args().collect::<Vec<_>>());
+        ).get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));
