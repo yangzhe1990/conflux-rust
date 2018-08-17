@@ -125,15 +125,18 @@ impl Rpc for RpcImpl {
 
     fn add_peer(&self, addr : SocketAddr) ->RpcResult<NodeId> {
         println!("addpeer {:?}", addr);
-        // FIXME: I should figure out how to deal with errors
-        let id = self.sync_engine.add_peer(addr).unwrap();
-        Ok(id)
+        match self.sync_engine.add_peer(addr) {
+            Ok(x) => Ok(x),
+            Err(_) => Err(RpcError::internal_error()),
+        }
     }
 
     fn drop_peer(&self, id : NodeId) ->RpcResult<()> {
         println!("droppeer {:?}", id);
-        self.sync_engine.drop_peer(id);
-        Ok(())
+        match self.sync_engine.drop_peer(id) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(RpcError::internal_error()),
+        }
     }
     
     fn generate(&self, num_blocks: usize) -> RpcResult<()> { Ok(()) }
