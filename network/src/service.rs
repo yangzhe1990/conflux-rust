@@ -33,7 +33,7 @@ const HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct NetworkService {
     io_service: Option<IoService<NetworkIoMessage>>,
-    inner: RwLock<Option<Arc<NetworkServiceInner>>>,
+    inner: Option<Arc<NetworkServiceInner>>,
     config: NetworkConfiguration,
 }
 
@@ -41,7 +41,7 @@ impl NetworkService {
     pub fn new(config: NetworkConfiguration) -> NetworkService {
         NetworkService {
             io_service: None,
-            inner: RwLock::new(None),
+            inner: None,
             config: config,
         }
     }
@@ -50,30 +50,36 @@ impl NetworkService {
         let raw_io_service = IoService::<NetworkIoMessage>::start()?;
         self.io_service = Some(raw_io_service);
 
-        let mut w = self.inner.write();
-        if w.is_none() {
+        if self.inner.is_none() {
             let inner = Arc::new(NetworkServiceInner::new(&self.config)?);
             self.io_service
                 .as_ref()
                 .unwrap()
                 .register_handler(inner.clone())?;
-            *w = Some(inner);
+            self.inner = Some(inner);
         }
 
         Ok(())
     }
 
-    pub fn add_peer(&mut self, peer: SocketAddr) {
-        unimplemented!();
+    pub fn add_peer(&self, peer: SocketAddr) {
+        if let Some(ref x) = self.inner {
+            x.add_node(peer).unwrap();
+        } else {
+            unimplemented!();
+        }
     }
 
-    pub fn drop_peer(&mut self, peer: SocketAddr) {
-        unimplemented!();
+    pub fn drop_peer(&self, peer: SocketAddr) {
+        if let Some(ref x) = self.inner {
+            x.drop_node(peer).unwrap();
+        } else {
+            unimplemented!();
+        }
     }
 
     pub fn local_addr(&self) -> Option<SocketAddr> {
-        let inner = self.inner.read();
-        inner.as_ref().map(|inner_ref| inner_ref.local_addr())
+        self.inner.as_ref().map(|inner_ref| inner_ref.local_addr())
     }
 
     pub fn register_protocol(
@@ -132,7 +138,7 @@ impl NetworkServiceInner {
         );
         debug!(target: "network", "Listening at {:?}", listen_address);
 
-        let mut inner = NetworkServiceInner {
+        let inner = NetworkServiceInner {
             metadata: RwLock::new(HostMetadata {
                 config: config.clone(),
                 capabilities: Vec::new(),
@@ -148,7 +154,7 @@ impl NetworkServiceInner {
         };
 
         for n in &config.boot_nodes {
-            inner.add_node(n);
+            inner.add_node(n.parse()?)?;
         }
 
         Ok(inner)
@@ -158,14 +164,18 @@ impl NetworkServiceInner {
         self.metadata.read().local_address
     }
 
-    fn add_node(&mut self, n: &str) -> Result<(), Error> {
-        let local_address = n.parse()?;
+    fn add_node(&self, local_address: SocketAddr) -> Result<NodeId, Error> {
+        let id = local_address;
         let node = NodeEntry {
-            id: local_address,
+            id: id,
             local_address: local_address,
         };
         self.nodes.write().insert(node.id, node);
-        Ok(())
+        Ok(id)
+    }
+
+    fn drop_node(&self, local_id: NodeId) -> Result<(), Error> { 
+        unimplemented!();
     }
 
     fn on_housekeeping(&self, io: &IoContext<NetworkIoMessage>) {
