@@ -90,6 +90,16 @@ impl NetworkService {
         )?;
         Ok(())
     }
+
+    /// Executes action in the network context
+    pub fn with_context<F>(&self, protocol: ProtocolId, action: F)
+    where F: FnOnce(&NetworkContext) {
+        let io = IoContext::new(self.io_service.as_ref().unwrap().channel(), 0);
+        let inner = self.inner.read();
+        if let Some(ref inner) = inner.as_ref() {
+            inner.with_context(protocol, &io, action);
+        };
+    }
 }
 
 type SharedSession = Arc<Mutex<Session>>;
@@ -427,6 +437,16 @@ impl NetworkServiceInner {
                 debug!("Error deregistering stream {:?}", e);
             })
         }
+    }
+
+    pub fn with_context<F>(
+        &self, protocol: ProtocolId, io: &IoContext<NetworkIoMessage>,
+        action: F,
+    ) where
+        F: FnOnce(&NetworkContext),
+    {
+        let context = NetworkContext::new(io, protocol, self.sessions.clone());
+        action(&context);
     }
 }
 
