@@ -39,15 +39,19 @@ class TestNode:
             os.makedirs(os.path.join(self.datadir, "stdout"))
         if not os.path.exists(os.path.join(self.datadir, "stderr")):
             os.makedirs(os.path.join(self.datadir, "stderr"))
+        if not os.path.exists(os.path.join(self.datadir, "cfxlog")):
+            os.makedirs(os.path.join(self.datadir, "cfxlog"))
+
         self.stdout_dir = os.path.join(self.datadir, "stdout")
         self.stderr_dir = os.path.join(self.datadir, "stderr")
+        self.cfxlog = os.path.join(os.path.join(self.datadir, "cfxlog"), "tmp_" + str(index) + ".log");
         self.rpchost = rpchost
         self.syncport = syncport
         self.rpcport_tcp = rpcport_tcp
         self.rpcport = rpcport
         self.rpc_timeout = CONFLUX_RPC_WAIT_TIMEOUT if rpc_timeout is None else rpc_timeout
         self.binary = confluxd
-        self.args = [self.binary, "--port", str(syncport), "--jsonrpc-tcp-port", str(rpcport_tcp), "--jsonrpc-http-port", str(rpcport)]
+        self.args = [self.binary, "--port", str(syncport), "--jsonrpc-tcp-port", str(rpcport_tcp), "--jsonrpc-http-port", str(rpcport), "--log-file", str(self.cfxlog)]
 
         self.running = False
         self.process = None

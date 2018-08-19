@@ -385,8 +385,8 @@ impl NetworkServiceInner {
         if !ready_protocols.is_empty() {
             for protocol in ready_protocols {
                 if let Some(handler) = handlers.get(&protocol).clone() {
-                    println!(
-                        "{}: peer {} connected",
+                    debug!(
+                        "Network Service: {}: peer {} connected",
                         self.local_addr(),
                         stream
                     );

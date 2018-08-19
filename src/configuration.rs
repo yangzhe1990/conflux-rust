@@ -1,4 +1,5 @@
 use clap;
+use simplelog::LevelFilter;
 
 const DEFAULT_PORT: u16 = 32323;
 
@@ -7,6 +8,8 @@ pub struct Configuration {
     pub port: Option<u16>,
     pub jsonrpc_tcp_port: Option<u16>,
     pub jsonrpc_http_port: Option<u16>,
+    pub log_file: Option<String>,
+    pub log_level: LevelFilter,
 }
 
 impl Configuration {
@@ -34,10 +37,24 @@ impl Configuration {
             None => None,
         };
 
+        let log_file = matches.value_of("log-file");
+
+        let log_level = match matches.value_of("log-level") {
+            Some("error") => LevelFilter::Error,
+            Some("warn") => LevelFilter::Warn,
+            Some("info") => LevelFilter::Info,
+            Some("debug") => LevelFilter::Debug,
+            Some("trace") => LevelFilter::Trace,
+            Some(_) => LevelFilter::Info,
+            None => LevelFilter::Info,
+        };
+
         Ok(Configuration {
             port: port,
             jsonrpc_tcp_port: jsonrpc_tcp_port,
             jsonrpc_http_port: jsonrpc_http_port,
+            log_file: log_file.map(|s| s.to_string()),
+            log_level: log_level,
         })
     }
 }

@@ -32,7 +32,7 @@ extern crate core;
 mod configuration;
 mod rpc;
 
-use simplelog::{CombinedLogger, TermLogger, LevelFilter, Config as LogConfig};
+use simplelog::{CombinedLogger, TermLogger, WriteLogger, Config as LogConfig};
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
@@ -44,6 +44,7 @@ use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
+use std::fs::File;
 use std::thread;
 
 // Start all key components of Conflux and pass out their handles
@@ -105,11 +106,6 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
 }
 
 fn main() {
-   CombinedLogger::init(
-        vec![
-            TermLogger::new(LevelFilter::Info, LogConfig::default()).unwrap()
-        ]
-    ).unwrap();
     let matches = App::new("conflux")
         .arg(
             Arg::with_name("port")
@@ -129,8 +125,34 @@ fn main() {
                 .value_name("PORT")
                 .help("Specify the PORT for the HTTP JSON-RPC API server.")
                 .takes_value(true),
+        ).arg(
+            Arg::with_name("log-file")
+                 .long("log-file")
+                 .value_name("FILE")
+                 .help("Specify the filename for the log. Stdout will be used by default if omitted.")
+                 .takes_value(true),
+        ).arg(
+            Arg::with_name("log-level")
+                 .long("log-level")
+                 .value_name("LEVEL")
+                 .help("Can be error/warn/info/debug/trace. Default is the info level.")
+                 .takes_value(true),
         ).get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
+
+    if conf.log_file.is_none() {
+        CombinedLogger::init(
+            vec![
+                TermLogger::new(conf.log_level.clone(), LogConfig::default()).unwrap()
+            ]
+        ).unwrap();
+    } else {
+        CombinedLogger::init(
+            vec![
+                WriteLogger::new(conf.log_level.clone(), LogConfig::default(), File::create(conf.log_file.clone().unwrap()).unwrap())
+            ]
+        ).unwrap();
+    }
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));
 
