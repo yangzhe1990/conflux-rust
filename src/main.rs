@@ -20,6 +20,7 @@ extern crate mio;
 extern crate parity_reactor;
 #[macro_use]
 extern crate log;
+extern crate env_logger;
 extern crate ethereum_types;
 extern crate network;
 extern crate slab;
@@ -103,6 +104,7 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
 }
 
 fn main() {
+    env_logger::init();
     let matches = App::new("conflux")
         .arg(
             Arg::with_name("port")

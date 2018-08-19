@@ -65,13 +65,13 @@ build_rpc_trait! {
         #[rpc(name = "say_hello")]
         fn say_hello(&self) -> RpcResult<String>;
 
-        #[rpc(name = "getbalance")]
+        #[rpc(name = "get_balance")]
         fn get_balance(&self, Address) -> RpcResult<f64>;
 
-        #[rpc(name = "getbestblockhash")]
+        #[rpc(name = "get_best_block_hash")]
         fn get_best_block_hash(&self) -> RpcResult<H256>;
 
-        #[rpc(name = "getblockcount")]
+        #[rpc(name = "get_block_count")]
         fn get_block_count(&self) -> RpcResult<usize>;
 
         #[rpc(name = "generate")]
@@ -107,6 +107,7 @@ impl Rpc for RpcImpl {
     fn say_hello(&self) -> RpcResult<String> { Ok("Hello, world".into()) }
 
     fn get_balance(&self, addr: Address) -> RpcResult<f64> {
+        info!("RPC Request: get_balance({:?})", addr);
         let state = self.execution_engine.state.accounts.read();
 
         let acc = state.get(&addr);
@@ -118,17 +119,17 @@ impl Rpc for RpcImpl {
     }
 
     fn get_best_block_hash(&self) -> RpcResult<H256> {
-        println!("getbestblockhash");
+        info!("RPC Request: get_best_block_hash()");
         Ok(self.ledger.best_block_hash())
     }
 
     fn get_block_count(&self) -> RpcResult<usize> {
-        println!("getblockcount");
+        info!("RPC Request: get_block_count()");
         Ok(self.ledger.best_block_number() as usize)
     }
 
     fn add_peer(&self, addr : SocketAddr) ->RpcResult<NodeId> {
-        println!("addpeer {:?}", addr);
+        info!("RPC Request: add_peer({:?})", addr);
         match self.sync_engine.add_peer(addr) {
             Ok(x) => Ok(x),
             Err(_) => Err(RpcError::internal_error())
@@ -136,7 +137,7 @@ impl Rpc for RpcImpl {
     }
 
     fn drop_peer(&self, id : NodeId) ->RpcResult<()> {
-        println!("droppeer {:?}", id);
+        info!("RPC Request: drop_peer({:?})", id);
         match self.sync_engine.drop_peer(id) {
             Ok(_) => Ok(()),
             Err(_) => Err(RpcError::internal_error())
@@ -144,6 +145,7 @@ impl Rpc for RpcImpl {
     }
     
     fn generate(&self, num_txs: usize) -> RpcResult<()> {
+        info!("RPC Request: generate({:?})", num_txs);
         self.block_gen.generate_block(num_txs);
         Ok(())
     }

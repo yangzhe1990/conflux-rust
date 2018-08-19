@@ -110,8 +110,8 @@ class TestNode:
                     'conflux exited with status {} during initialization'.format(self.process.returncode)))
             try:
                 self.rpc = get_rpc_proxy(rpc_url(self.datadir, self.index, self.rpchost, self.rpcport), self.index, timeout=self.rpc_timeout)
-                self.rpc.getbestblockhash()
-                # If the call to getblockcount() succeeds then the RPC connection is up
+                self.rpc.get_best_block_hash()
+                # If the call to get_best_block_hash() succeeds then the RPC connection is up
                 self.rpc_connected = True
                 self.url = self.rpc.url
                 self.log.debug("RPC successfully started")

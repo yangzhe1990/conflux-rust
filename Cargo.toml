@@ -32,4 +32,5 @@ slab = "0.2"
 core = { path = "core" }
 network = { path = "network" }
 blockgen = { path = "blockgen" }
+env_logger = "0.5.12"
 # account-store = { path = "account-store" }
