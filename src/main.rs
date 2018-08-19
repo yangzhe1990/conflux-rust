@@ -20,7 +20,7 @@ extern crate mio;
 extern crate parity_reactor;
 #[macro_use]
 extern crate log;
-extern crate env_logger;
+extern crate simplelog;
 extern crate ethereum_types;
 extern crate network;
 extern crate slab;
@@ -32,6 +32,7 @@ extern crate core;
 mod configuration;
 mod rpc;
 
+use simplelog::{CombinedLogger, TermLogger, LevelFilter, Config as LogConfig};
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
@@ -104,7 +105,11 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
 }
 
 fn main() {
-    env_logger::init();
+   CombinedLogger::init(
+        vec![
+            TermLogger::new(LevelFilter::Info, LogConfig::default()).unwrap()
+        ]
+    ).unwrap();
     let matches = App::new("conflux")
         .arg(
             Arg::with_name("port")

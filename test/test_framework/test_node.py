@@ -84,9 +84,9 @@ class TestNode:
     def start(self, extra_args=None, *, stdout=None, stderr=None, **kwargs):
         # Add a new stdout and stderr file each time conflux is started
         if stderr is None:
-            stderr = tempfile.NamedTemporaryFile(dir=self.stderr_dir, delete=False)
+            stderr = tempfile.NamedTemporaryFile(dir=self.stderr_dir, suffix="_" + str(self.index), delete=False)
         if stdout is None:
-            stdout = tempfile.NamedTemporaryFile(dir=self.stdout_dir, delete=False)
+            stdout = tempfile.NamedTemporaryFile(dir=self.stdout_dir, suffix="_" + str(self.index), delete=False)
         self.stderr = stderr
         self.stdout = stdout
 
