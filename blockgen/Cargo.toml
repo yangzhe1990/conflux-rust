@@ -12,3 +12,4 @@ ethereum-types = "0.3"
 keccak-hash = { git = "https://github.com/paritytech/parity-common" }
 common-types = { path = "../core/types" }
 parking_lot = "0.6"
+rlp = { git = "https://github.com/paritytech/parity-common" }

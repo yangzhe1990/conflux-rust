@@ -3,6 +3,7 @@ extern crate core;
 extern crate ethereum_types;
 extern crate keccak_hash as hash;
 extern crate parking_lot;
+extern crate rlp;
 
 use core::block::Block;
 use core::header::Header;
@@ -12,6 +13,7 @@ use core::LedgerRef;
 use core::SyncEngineRef;
 use ethereum_types::{Address, H256, U256};
 use hash::{keccak, KECCAK_NULL_RLP};
+use rlp::RlpStream;
 use parking_lot::RwLock;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -30,6 +32,8 @@ pub struct BlockGenerator {
     state: RwLock<MiningState>,
 }
 
+pub type BlockGeneratorRef = Arc<BlockGenerator>;
+
 impl BlockGenerator {
     pub fn new(ledger: LedgerRef, sync: SyncEngineRef) -> Self {
         BlockGenerator {
@@ -44,7 +48,7 @@ impl BlockGenerator {
 
     pub fn set_problem(&self) {}
 
-    pub fn gnerate_block(&self) {
+    pub fn generate_block(&self, tx_len: usize) {
         let best_block_info = self.ledger.best_block();
         let best_hash = best_block_info.header.hash();
         let best_number = best_block_info.header.number();
@@ -55,23 +59,25 @@ impl BlockGenerator {
         header.set_timestamp(0);
         header.set_number(best_number + 1);
         header.set_author(Address::default());
-        header.set_transactions_root(KECCAK_NULL_RLP);
         header.set_state_root(KECCAK_NULL_RLP);
         header.set_difficulty(10.into());
         total_difficulty = total_difficulty + 10.into();
 
-        header.compute_hash();
-        let hash = header.hash();
-
         let mut txs: Vec<Transaction> = Vec::new();
-        for i in 0..100 {
-            txs.push(Transaction {
+        let mut tx_rlp = RlpStream::new_list(tx_len);
+        for _i in 0..tx_len {
+            let tx = Transaction {
                 nonce: 0,
                 value: 0.0,
                 sender: Address::default(),
                 receiver: Address::default(),
-            });
+            };
+            tx_rlp.append(&tx);
+            txs.push(tx);
         }
+        header.set_transactions_root(keccak(tx_rlp.out()));
+        header.compute_hash();
+        let hash = header.hash();
 
         let body = Block {
             hash: hash,
@@ -127,7 +133,7 @@ impl BlockGenerator {
                     let hash = header.hash();
 
                     let mut txs: Vec<Transaction> = Vec::new();
-                    for i in 0..100 {
+                    for _i in 0..100 {
                         txs.push(Transaction {
                             nonce: 0,
                             value: 0.0,

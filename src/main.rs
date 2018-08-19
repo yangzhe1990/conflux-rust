@@ -69,11 +69,19 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
 
     let event_loop = EventLoop::spawn();
 
+    let blockgen =
+        Arc::new(BlockGenerator::new(ledger.clone(), sync_engine_ref.clone()));
+    /*let bgen = blockgen.clone();
+    let block_gen_handle = thread::spawn(move || {
+        BlockGenerator::start_mining(bgen, 0);
+    });*/
+
     let rpc_deps = rpc::Dependencies {
         remote: event_loop.raw_remote(),
         ledger: ledger.clone(),
         execution_engine: execution_engine.clone(),
         sync_engine: sync_engine_ref.clone(),
+        block_gen: blockgen.clone()
     };
     let rpc_tcp_server = rpc::new_tcp(
         rpc::TcpConfiguration::new(conf.jsonrpc_tcp_port),
@@ -84,20 +92,13 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         &rpc_deps,
     )?;
 
-    let blockgen =
-        Arc::new(BlockGenerator::new(ledger.clone(), sync_engine_ref.clone()));
-    let bgen = blockgen.clone();
-    let block_gen_handle = thread::spawn(move || {
-        BlockGenerator::start_mining(bgen, 0);
-    });
-
     Ok(Box::new((
         event_loop,
         rpc_tcp_server,
         rpc_http_server,
         sync_engine_ref,
         blockgen,
-        block_gen_handle,
+        //block_gen_handle,
     )))
 }
 

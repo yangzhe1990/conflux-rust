@@ -1,4 +1,5 @@
 use core::{ExecutionEngineRef, LedgerRef, SyncEngineRef};
+use blockgen::BlockGeneratorRef;
 use ethereum_types::{Address, H256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
 use parity_reactor::TokioRemote;
@@ -19,6 +20,7 @@ pub struct Dependencies {
     pub ledger: LedgerRef,
     pub execution_engine: ExecutionEngineRef,
     pub sync_engine: SyncEngineRef,
+    pub block_gen: BlockGeneratorRef,
 }
 
 #[derive(Debug, PartialEq)]
@@ -87,14 +89,16 @@ struct RpcImpl {
     ledger: LedgerRef,
     execution_engine: ExecutionEngineRef,
     sync_engine: SyncEngineRef,
+    block_gen: BlockGeneratorRef,
 }
 
 impl RpcImpl {
-    fn new(ledger: LedgerRef, execution_engine: ExecutionEngineRef, sync_engine: SyncEngineRef) -> Self {
+    fn new(ledger: LedgerRef, execution_engine: ExecutionEngineRef, sync_engine: SyncEngineRef, block_gen: BlockGeneratorRef) -> Self {
         RpcImpl {
             ledger: ledger,
             execution_engine: execution_engine,
             sync_engine: sync_engine,
+            block_gen: block_gen,
         }
     }
 }
@@ -127,7 +131,7 @@ impl Rpc for RpcImpl {
         println!("addpeer {:?}", addr);
         match self.sync_engine.add_peer(addr) {
             Ok(x) => Ok(x),
-            Err(_) => Err(RpcError::internal_error()),
+            Err(_) => Err(RpcError::internal_error())
         }
     }
 
@@ -135,11 +139,14 @@ impl Rpc for RpcImpl {
         println!("droppeer {:?}", id);
         match self.sync_engine.drop_peer(id) {
             Ok(_) => Ok(()),
-            Err(_) => Err(RpcError::internal_error()),
+            Err(_) => Err(RpcError::internal_error())
         }
     }
     
-    fn generate(&self, num_blocks: usize) -> RpcResult<()> { Ok(()) }
+    fn generate(&self, num_txs: usize) -> RpcResult<()> {
+        self.block_gen.generate_block(num_txs);
+        Ok(())
+    }
 }
 
 fn setup_apis(dependencies: &Dependencies) -> IoHandler {
@@ -151,6 +158,7 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
             dependencies.ledger.clone(),
             dependencies.execution_engine.clone(),
             dependencies.sync_engine.clone(),
+            dependencies.block_gen.clone(),
         ).to_delegate(),
     );
 
