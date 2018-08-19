@@ -15,6 +15,7 @@ use network::{Error, PeerId};
 use parking_lot::RwLock;
 use rlp::{Rlp, RlpStream};
 use std::cmp;
+use std::collections::VecDeque;
 use std::time::Instant;
 use sync_ctx::SyncContext;
 use types::*;
@@ -362,6 +363,7 @@ impl SyncHandler {
             blocks.push(body);
         }
 
+        let mut blocks_to_adjust: VecDeque<H256> = VecDeque::new();
         let mut new_body_arrived = false;
         for body in blocks {
             let block_hash = body.hash();
@@ -369,6 +371,7 @@ impl SyncHandler {
                 io.ledger().block_header(BlockId::Hash(block_hash))
             {
                 io.ledger().add_block_body_by_hash(&block_hash, body);
+                blocks_to_adjust.push_back(block_hash);
                 new_body_arrived = true;
             } else {
                 debug!(target: "sync", "Skip the body without header: {:?}", block_hash);
@@ -376,7 +379,7 @@ impl SyncHandler {
         }
 
         if new_body_arrived {
-            let adjusted = io.ledger().adjust_main_chain();
+            let adjusted = io.ledger().adjust_main_chain(blocks_to_adjust);
             if adjusted {
                 // TODO: trigger tx execution
             }
@@ -406,6 +409,8 @@ impl SyncHandler {
             io.ledger().add_block_header_by_hash(&hash, new_header);
         }
 
+        io.ledger().add_child(&parent_hash, &hash);
+
         if !io.ledger().block_body_exists(&hash) {
             new_block_arrived = true;
             io.ledger().add_block_body_by_hash(&hash, new_body);
@@ -423,8 +428,11 @@ impl SyncHandler {
             );
         }
 
+        let mut blocks_to_adjust: VecDeque<H256> = VecDeque::new();
+        blocks_to_adjust.push_back(hash);
+
         if new_block_arrived {
-            let adjusted = io.ledger().adjust_main_chain();
+            let adjusted = io.ledger().adjust_main_chain(blocks_to_adjust);
             if adjusted {
                 // TODO: trigger tx execution
             }

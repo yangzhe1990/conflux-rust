@@ -6,6 +6,7 @@ use header::Header;
 use network::PeerId;
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use transaction::Transaction;
 pub use types::*;
@@ -25,12 +26,18 @@ pub struct BestBlock {
     pub total_difficulty: U256,
 }
 
+pub struct BlockDetail {
+    to_genesis: bool,
+    total_difficulty: U256,
+    children: Vec<H256>,
+}
+
 pub struct Ledger {
     // All locks must be captured in the order declared here.
     best_block: RwLock<BestBlock>,
     pub block_headers: RwLock<HashMap<H256, Header>>,
     block_bodies: RwLock<HashMap<H256, Block>>,
-    child_blocks: RwLock<HashMap<H256, Vec<H256>>>,
+    child_blocks: RwLock<HashMap<H256, BlockDetail>>,
     /// maintain the main chain blocks
     block_hashes: RwLock<HashMap<BlockNumber, H256>>,
 }
@@ -74,16 +81,23 @@ impl Ledger {
             transactions: txs,
         };
 
+        let mut write = self.best_block.write();
+        write.header = genesis_header.clone();
+        write.block = genesis_body.clone();
+        write.total_difficulty = 0.into();
+
         self.block_headers
             .write()
             .insert(hash, genesis_header.clone());
         self.block_bodies.write().insert(hash, genesis_body.clone());
-        self.block_hashes.write().insert(0, hash);
 
-        let mut write = self.best_block.write();
-        write.header = genesis_header;
-        write.block = genesis_body;
-        write.total_difficulty = 0.into();
+        let genesis_block_detail = BlockDetail {
+            to_genesis: true,
+            total_difficulty: 0.into(),
+            children: Vec::new(),
+        };
+        self.child_blocks.write().insert(hash, genesis_block_detail);
+        self.block_hashes.write().insert(0, hash);
     }
 
     /// Get the hash of given block's number.
@@ -199,20 +213,104 @@ impl Ledger {
 
     pub fn add_child(&self, parent: &H256, child: &H256) {
         let mut write = self.child_blocks.write();
-        let children = write.entry(parent.clone()).or_insert(Vec::new());
+        let block_detail = write.entry(parent.clone()).or_insert(BlockDetail {
+            to_genesis: false,
+            total_difficulty: 0.into(),
+            children: Vec::new(),
+        });
+
         let mut exist = false;
-        for item in children.iter() {
+        for item in block_detail.children.iter() {
             if *item == *child {
                 exist = true;
             }
         }
 
         if !exist {
-            children.push(child.clone());
+            block_detail.children.push(child.clone());
         }
     }
 
-    pub fn adjust_main_chain(&self) -> bool { false }
+    pub fn adjust_main_chain(
+        &self, mut blocks_to_adjust: VecDeque<H256>,
+    ) -> bool {
+        let mut best_block = self.best_block.write();
+        let headers = self.block_headers.read();
+        let bodies = self.block_bodies.read();
+        let mut ledger_structure = self.child_blocks.write();
+
+        let mut max_total_difficulty = 0.into();
+        let mut hash_in_longest_chain = H256::default();
+        let mut number_in_longest_chain = 0;
+
+        while !blocks_to_adjust.is_empty() {
+            let hash = blocks_to_adjust.pop_front().unwrap();
+            let header = headers.get(&hash).unwrap().clone();
+            let parent_hash = header.parent_hash();
+
+            if ledger_structure.contains_key(parent_hash) {
+                let parent_total_difficulty;
+                let to_genesis;
+                {
+                    let parent = ledger_structure.get(parent_hash).unwrap();
+                    to_genesis = parent.to_genesis;
+                    parent_total_difficulty = parent.total_difficulty;
+                }
+
+                if to_genesis {
+                    let mut me =
+                        ledger_structure.entry(hash).or_insert(BlockDetail {
+                            to_genesis: false,
+                            total_difficulty: 0.into(),
+                            children: Vec::new(),
+                        });
+
+                    me.to_genesis = true;
+                    me.total_difficulty =
+                        parent_total_difficulty + *header.difficulty();
+
+                    if me.total_difficulty > max_total_difficulty {
+                        max_total_difficulty = me.total_difficulty;
+                        hash_in_longest_chain = hash;
+                        number_in_longest_chain = header.number();
+                    }
+
+                    for child in me.children.iter() {
+                        blocks_to_adjust.push_back(*child);
+                    }
+                }
+            }
+        }
+
+        let mut adjusted = false;
+
+        if max_total_difficulty > best_block.total_difficulty {
+            best_block.header =
+                headers.get(&hash_in_longest_chain).unwrap().clone();
+            best_block.block =
+                bodies.get(&hash_in_longest_chain).unwrap().clone();
+            best_block.total_difficulty = max_total_difficulty;
+
+            let mut main_chain = self.block_hashes.write();
+            let mut cur_hash = hash_in_longest_chain;
+            loop {
+                let header = headers.get(&cur_hash).unwrap().clone();
+                let number = header.number();
+                let parent_hash = header.parent_hash();
+                if !main_chain.contains_key(&number)
+                    || *(main_chain.get(&number).unwrap()) != cur_hash
+                {
+                    main_chain.insert(number, cur_hash);
+                    cur_hash = *parent_hash;
+                    adjusted = true;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        adjusted
+    }
 }
 
 impl Default for Ledger {

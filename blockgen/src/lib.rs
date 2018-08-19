@@ -13,6 +13,7 @@ use core::SyncEngineRef;
 use ethereum_types::{Address, H256, U256};
 use hash::{keccak, KECCAK_NULL_RLP};
 use parking_lot::RwLock;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::{thread, time};
 use types::*;
@@ -80,7 +81,10 @@ impl BlockGenerator {
         self.ledger.add_block_header_by_hash(&hash, header);
         self.ledger.add_block_body_by_hash(&hash, body);
         self.ledger.add_child(&best_hash, &hash);
-        self.ledger.adjust_main_chain();
+
+        let mut blocks_to_adjust: VecDeque<H256> = VecDeque::new();
+        blocks_to_adjust.push_back(hash);
+        self.ledger.adjust_main_chain(blocks_to_adjust);
 
         let mut hashes: Vec<H256> = Vec::new();
         hashes.push(hash);
@@ -140,7 +144,12 @@ impl BlockGenerator {
                     bg.ledger.add_block_header_by_hash(&hash, header);
                     bg.ledger.add_block_body_by_hash(&hash, body);
                     bg.ledger.add_child(&parent_hash, &hash);
-                    bg.ledger.adjust_main_chain();
+
+                    let mut blocks_to_adjust: VecDeque<
+                        H256,
+                    > = VecDeque::new();
+                    blocks_to_adjust.push_back(hash);
+                    bg.ledger.adjust_main_chain(blocks_to_adjust);
 
                     let mut hashes: Vec<H256> = Vec::new();
                     hashes.push(hash);
