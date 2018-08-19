@@ -432,6 +432,14 @@ impl SyncHandler {
         blocks_to_adjust.push_back(hash);
 
         if new_block_arrived {
+            // replay to peers
+            let mut hashes: Vec<H256> = Vec::new();
+            hashes.push(hash);
+            let mut total_difficulties: Vec<U256> = Vec::new();
+            total_difficulties.push(new_block_total_difficulty);
+            sync.new_chain_blocks(io, &hashes[..], &total_difficulties[..]);
+
+            // adjust main chain
             let adjusted = io.ledger().adjust_main_chain(blocks_to_adjust);
             if adjusted {
                 // TODO: trigger tx execution
