@@ -32,7 +32,7 @@ class ErrorMatch(Enum):
     PARTIAL_REGEX = 3
 
 class TestNode:
-    def __init__(self, index, datadir, rpchost, confluxd, rpc_timeout=None):
+    def __init__(self, index, datadir, rpchost, syncport, rpcport_tcp, rpcport, confluxd, rpc_timeout=None):
         self.index = index
         self.datadir = datadir
         if not os.path.exists(os.path.join(self.datadir, "stdout")):
@@ -42,9 +42,12 @@ class TestNode:
         self.stdout_dir = os.path.join(self.datadir, "stdout")
         self.stderr_dir = os.path.join(self.datadir, "stderr")
         self.rpchost = rpchost
+        self.syncport = syncport
+        self.rpcport_tcp = rpcport_tcp
+        self.rpcport = rpcport
         self.rpc_timeout = CONFLUX_RPC_WAIT_TIMEOUT if rpc_timeout is None else rpc_timeout
         self.binary = confluxd
-        self.args = [self.binary]
+        self.args = [self.binary, "--port", str(syncport), "--jsonrpc-tcp-port", str(rpcport_tcp), "--jsonrpc-http-port", str(rpcport)]
 
         self.running = False
         self.process = None
@@ -106,7 +109,7 @@ class TestNode:
                 raise FailedToStartError(self._node_msg(
                     'conflux exited with status {} during initialization'.format(self.process.returncode)))
             try:
-                self.rpc = get_rpc_proxy(rpc_url(self.datadir, self.index, self.rpchost), self.index, timeout=self.rpc_timeout)
+                self.rpc = get_rpc_proxy(rpc_url(self.datadir, self.index, self.rpchost, self.rpcport), self.index, timeout=self.rpc_timeout)
                 self.rpc.getbestblockhash()
                 # If the call to getblockcount() succeeds then the RPC connection is up
                 self.rpc_connected = True

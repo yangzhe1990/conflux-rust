@@ -26,7 +26,7 @@ impl Configuration {
             None => None,
         };
 
-        let jsonrpc_http_port = match matches.value_of("jsonrpc-http_port") {
+        let jsonrpc_http_port = match matches.value_of("jsonrpc-http-port") {
             Some(port) => Some(
                 port.parse()
                     .map_err(|_| "Invalid jsonrpc-http-port".to_owned())?,

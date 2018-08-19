@@ -48,6 +48,9 @@ def get_rpc_proxy(url, node_number, timeout=None, coveragedir=None):
 
     return coverage.AuthServiceProxyWrapper(proxy, coverage_logfile)
 
-def rpc_url(datadir, i, rpchost=None):
-    return "http://localhost:32325"
+def rpc_url(datadir, i, rpchost=None, rpcport=None):
+    if rpchost == None or rpcport == None:
+        return "http://localhost:32325"
+    else:
+        return "http://" + rpchost + ":" + str(rpcport)
 
