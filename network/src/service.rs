@@ -4,6 +4,7 @@ use mio::deprecated::EventLoop;
 use mio::tcp::*;
 use mio::*;
 use parking_lot::{Mutex, RwLock};
+use session;
 use session::Session;
 use session::SessionData;
 use std::collections::HashMap;
@@ -68,7 +69,7 @@ impl NetworkService {
             x.add_node(peer)
         } else {
             Err("Network service not started yet!".into())
-        } 
+        }
     }
 
     pub fn drop_peer(&self, peer: SocketAddr) -> Result<(), Error> {
@@ -188,7 +189,7 @@ impl NetworkServiceInner {
         Ok(id)
     }
 
-    fn drop_node(&self, local_id: NodeId) -> Result<(), Error> { 
+    fn drop_node(&self, local_id: NodeId) -> Result<(), Error> {
         let mut wn = self.nodes.write();
         if wn.contains_key(&local_id) {
             let entry = wn.get(&local_id).unwrap();
@@ -620,7 +621,8 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                         Token(TCP_ACCEPT),
                         Ready::all(),
                         PollOpt::edge(),
-                    ).expect("Error registering stream");
+                    )
+                    .expect("Error registering stream");
             }
             _ => warn!("Unexpected stream registeration"),
         }
@@ -668,7 +670,8 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                     Token(TCP_ACCEPT),
                     Ready::all(),
                     PollOpt::edge(),
-                ).expect("Error reregistering stream"),
+                )
+                .expect("Error reregistering stream"),
             _ => warn!("Unexpected stream update"),
         }
     }
@@ -695,7 +698,19 @@ impl<'a> NetworkContext<'a> {
 }
 
 impl<'a> NetworkContextTrait for NetworkContext<'a> {
-    fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error> { Ok(()) }
+    fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error> {
+        let session = { self.sessions.read().get(peer).cloned() };
+        trace!(target: "network", "Sending {} bytes to {}", msg.len(), peer);
+        if let Some(session) = session {
+            session.lock().send_packet(
+                self.io,
+                Some(self.protocol),
+                0x10,
+                &msg,
+            )?;
+        }
+        Ok(())
+    }
 
     fn disconnect_peer(&self, peer: PeerId) {}
 }
