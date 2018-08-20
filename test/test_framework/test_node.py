@@ -51,7 +51,7 @@ class TestNode:
         self.rpcport = rpcport
         self.rpc_timeout = CONFLUX_RPC_WAIT_TIMEOUT if rpc_timeout is None else rpc_timeout
         self.binary = confluxd
-        self.args = [self.binary, "--port", str(syncport), "--jsonrpc-tcp-port", str(rpcport_tcp), "--jsonrpc-http-port", str(rpcport), "--log-file", str(self.cfxlog)]
+        self.args = [self.binary, "--port", str(syncport), "--jsonrpc-tcp-port", str(rpcport_tcp), "--jsonrpc-http-port", str(rpcport), "--log-file", str(self.cfxlog), "--log-level", "trace"]
 
         self.running = False
         self.process = None

@@ -170,6 +170,7 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
                 packet_id = res;
             }
         }
+        debug!(target: "sync", "on_message(), peer {:}, packet_id {:}", peer, packet_id);
         SyncState::dispatch_packet(
             &self.sync,
             &mut SyncContext::new(io, &*self.ledger, &*self.execution_engine),
@@ -180,18 +181,18 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     }
 
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
+        trace!(target: "sync", "on_peer_connected {:?}", peer);
         self.sync.write().on_peer_connected(
             &mut SyncContext::new(io, &*self.ledger, &*self.execution_engine),
             peer,
         );
-        trace!("sync::connected");
     }
 
     fn on_peer_disconnected(&self, io: &NetworkContext, peer: PeerId) {
-        trace!("sync::disconnected");
+        trace!(target: "sync", "on_peer_disconnected {:?}", peer);
     }
 
     fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {
-        trace!("sync::timeout");
+        trace!(target: "sync", "on_timeout()");
     }
 }

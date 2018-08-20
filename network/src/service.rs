@@ -348,10 +348,11 @@ impl NetworkServiceInner {
         // if let Some(session) = session.clone()
         if let Some(session) = session {
             loop {
-                let data = session.lock().readable(io, &self.metadata.read());
+                let mut sess = session.lock();
+                let data = sess.readable(io, &self.metadata.read());
                 match data {
                     Ok(SessionData::Ready) => {
-                        let mut sess = session.lock();
+                        //let mut sess = session.lock();
                         for (protocol, _) in self.handlers.read().iter() {
                             if sess.have_capability(*protocol) {
                                 ready_protocols.push(*protocol);
@@ -368,8 +369,8 @@ impl NetworkServiceInner {
                     }
                     Ok(SessionData::Continue) => (),
                     Ok(SessionData::None) => break,
-                    Err(e) => {
-                        let sess = session.lock();
+                    Err(_) => {
+                        //let sess = session.lock();
                         kill = true;
                         break;
                     }

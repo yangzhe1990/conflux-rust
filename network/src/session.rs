@@ -77,6 +77,7 @@ impl Session {
         };
         if originated {
             session.write_hello(io, host)?;
+            session.sent_hello = true;
         }
         Ok(session)
     }
@@ -130,6 +131,7 @@ impl Session {
             return Ok(SessionData::None);
         }
         if !self.sent_hello {
+            debug!(target: "network", "{} Write Hello, sent_hello {}", self.token(), self.sent_hello);
             self.write_hello(io, host)?;
             self.sent_hello = true;
         }
@@ -152,6 +154,7 @@ impl Session {
         let data = &data[3..];
         match packet_id {
             PACKET_HELLO => {
+                debug!(target: "network", "{}: Hello", self.token());
                 let rlp = Rlp::new(&data);
                 self.read_hello(io, &rlp, host)?;
                 Ok(SessionData::Ready)
@@ -289,6 +292,7 @@ impl Session {
     fn write_hello<Message: Send + Sync + Clone>(
         &mut self, io: &IoContext<Message>, host: &HostMetadata,
     ) -> Result<(), Error> {
+        debug!(target: "network", "{} Sending Hello", self.token());
         let mut rlp = RlpStream::new();
         rlp.begin_list(2)
             .append_list(&host.capabilities)
