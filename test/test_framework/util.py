@@ -269,19 +269,15 @@ def wait_until(predicate,
 
 def initialize_datadir(dirname, n):
     datadir = get_datadir_path(dirname, n)
+    print("datadir={} n={}".format(datadir, n))
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
     with open(
-            os.path.join(datadir, "bitcoin.conf"), 'w', encoding='utf8') as f:
-        f.write("regtest=1\n")
-        f.write("[regtest]\n")
+            os.path.join(datadir, "conflux.conf"), 'w', encoding='utf8') as f:
         f.write("port=" + str(p2p_port(n)) + "\n")
-        f.write("rpcport=" + str(rpc_port(n)) + "\n")
-        f.write("server=1\n")
-        f.write("keypool=1\n")
-        f.write("discover=0\n")
-        f.write("listenonion=0\n")
-        f.write("printtoconsole=0\n")
+        f.write("jsonrpc-http-port=" + str(rpc_port(n)) + "\n")
+        f.write("log-file=\"" + os.path.join(datadir, "conflux.log") + "\"\n")
+        f.write("log-level=\"trace\"\n")
         os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)
         os.makedirs(os.path.join(datadir, 'stdout'), exist_ok=True)
     return datadir
@@ -362,10 +358,12 @@ def disconnect_nodes(from_connection, node_num):
 
 def connect_nodes(from_connection, node_num):
     ip_port = "127.0.0.1:" + str(p2p_port(node_num))
-    from_connection.addnode(ip_port, "onetry")
+    from_connection.add_peer(ip_port)
     # poll until version handshake complete to avoid race conditions
     # with transaction relaying
-    wait_until(lambda:  all(peer['version'] != 0 for peer in from_connection.getpeerinfo()))
+
+    # TODO: implement getpeerinfo
+    # wait_until(lambda:  all(peer['version'] != 0 for peer in from_connection.getpeerinfo()))
 
 
 def connect_nodes_bi(nodes, a, b):
@@ -463,8 +461,8 @@ def rpc_port(n):
         PORT_RANGE - 1 - MAX_NODES)
 
 
-def rpc_url(datadir, i, rpchost=None, rpcport=None):
-    if rpchost == None or rpcport == None:
-        return "http://localhost:32325"
-    else:
-        return "http://" + rpchost + ":" + str(rpcport)
+def rpc_url(datadir, i, rpchost=None):
+    host = '127.0.0.1'
+    port = rpc_port(i)
+    print("i={} port={}".format(i, port))
+    return "http://%s:%d" % (host, int(port))

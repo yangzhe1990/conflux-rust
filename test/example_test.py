@@ -3,14 +3,13 @@
 """
 
 from test_framework.test_framework import ConfluxTestFramework
-
-# from test_framework.util import (assert_equal, connect_nodes, wait_util)
+from test_framework.util import (assert_equal, connect_nodes, wait_until)
 
 
 class ExampleTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 3
+        self.num_nodes = 2
 
     def setup_network(self):
         """Setup the test network topology
@@ -27,12 +26,12 @@ class ExampleTest(ConfluxTestFramework):
         # sync_all() should not include node2, since we're not expecting it to
         # sync.
         connect_nodes(self.nodes[0], 1)
-        self.sync_all([self.nodes[0:1]])
+        # self.sync_all([self.nodes[0:1]])
 
     def run_test(self):
         # Generating a block on one of the nodes will get us out of IBD
-        blocks = [int(self.nodes[0].generate(nblocks=1)[0], 16)]
-        self.sync_all([self.nodes[0:1]])
+        # blocks = [int(self.nodes[0].generate(nblocks=1)[0], 16)]
+        # self.sync_all([self.nodes[0:1]])
 
         # Notice above how we called an RPC by calling a method with the same
         # name on the node object. Notice also how we used a keyword argument

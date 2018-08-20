@@ -1,19 +1,16 @@
-use core::{ExecutionEngineRef, LedgerRef, SyncEngineRef};
 use blockgen::BlockGeneratorRef;
+use core::{ExecutionEngineRef, LedgerRef, SyncEngineRef};
 use ethereum_types::{Address, H256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
+use network::Error as NetworkError;
+use network::NodeId;
 use parity_reactor::TokioRemote;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use network::NodeId;
-use network::{Error as NetworkError};
 
 use http::Server as HttpServer;
 use http::ServerBuilder as HttpServerBuilder;
 use tcp::Server as TcpServer;
 use tcp::ServerBuilder as TcpServerBuilder;
-
-const DEFAULT_TCP_PORT: u16 = 32324;
-const DEFAULT_HTTP_PORT: u16 = 32325;
 
 pub struct Dependencies {
     pub remote: TokioRemote,
@@ -32,10 +29,10 @@ pub struct TcpConfiguration {
 impl TcpConfiguration {
     pub fn new(port: Option<u16>) -> Self {
         TcpConfiguration {
-            enabled: true,
+            enabled: port.is_some(),
             address: SocketAddr::V4(SocketAddrV4::new(
                 Ipv4Addr::new(0, 0, 0, 0),
-                port.unwrap_or(DEFAULT_TCP_PORT),
+                port.unwrap_or(0),
             )),
         }
     }
@@ -50,10 +47,10 @@ pub struct HttpConfiguration {
 impl HttpConfiguration {
     pub fn new(port: Option<u16>) -> Self {
         HttpConfiguration {
-            enabled: true,
+            enabled: port.is_some(),
             address: SocketAddr::V4(SocketAddrV4::new(
                 Ipv4Addr::new(0, 0, 0, 0),
-                port.unwrap_or(DEFAULT_HTTP_PORT),
+                port.unwrap_or(0),
             )),
         }
     }
@@ -79,7 +76,7 @@ build_rpc_trait! {
 
         #[rpc(name = "add_peer")]
         fn add_peer(&self, SocketAddr) -> RpcResult<NodeId>;
-    
+
         #[rpc(name = "drop_peer")]
         fn drop_peer(&self, NodeId) -> RpcResult<()>;
     }
@@ -93,7 +90,11 @@ struct RpcImpl {
 }
 
 impl RpcImpl {
-    fn new(ledger: LedgerRef, execution_engine: ExecutionEngineRef, sync_engine: SyncEngineRef, block_gen: BlockGeneratorRef) -> Self {
+    fn new(
+        ledger: LedgerRef, execution_engine: ExecutionEngineRef,
+        sync_engine: SyncEngineRef, block_gen: BlockGeneratorRef,
+    ) -> Self
+    {
         RpcImpl {
             ledger: ledger,
             execution_engine: execution_engine,
@@ -128,22 +129,22 @@ impl Rpc for RpcImpl {
         Ok(self.ledger.best_block_number() as usize)
     }
 
-    fn add_peer(&self, addr : SocketAddr) ->RpcResult<NodeId> {
+    fn add_peer(&self, addr: SocketAddr) -> RpcResult<NodeId> {
         info!("RPC Request: add_peer({:?})", addr);
         match self.sync_engine.add_peer(addr) {
             Ok(x) => Ok(x),
-            Err(_) => Err(RpcError::internal_error())
+            Err(_) => Err(RpcError::internal_error()),
         }
     }
 
-    fn drop_peer(&self, id : NodeId) ->RpcResult<()> {
+    fn drop_peer(&self, id: NodeId) -> RpcResult<()> {
         info!("RPC Request: drop_peer({:?})", id);
         match self.sync_engine.drop_peer(id) {
             Ok(_) => Ok(()),
-            Err(_) => Err(RpcError::internal_error())
+            Err(_) => Err(RpcError::internal_error()),
         }
     }
-    
+
     fn generate(&self, num_txs: usize) -> RpcResult<()> {
         info!("RPC Request: generate({:?})", num_txs);
         self.block_gen.generate_block(num_txs);
@@ -182,7 +183,9 @@ pub fn new_tcp(
         .start(&conf.address)
     {
         Ok(server) => Ok(Some(server)),
-        Err(io_error) => Err(format!("TCP error: {}", io_error)),
+        Err(io_error) => {
+            Err(format!("TCP error: {} (addr = {})", io_error, conf.address))
+        }
     }
 }
 
@@ -201,6 +204,9 @@ pub fn new_http(
         .start_http(&conf.address)
     {
         Ok(server) => Ok(Some(server)),
-        Err(io_error) => Err(format!("HTTP error: {}", io_error)),
+        Err(io_error) => Err(format!(
+            "HTTP error: {} (addr = {})",
+            io_error, conf.address
+        )),
     }
 }

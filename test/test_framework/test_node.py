@@ -15,11 +15,7 @@ import time
 import urllib.parse
 
 from .authproxy import JSONRPCException
-from .util import (
-    delete_cookie_file,
-    get_rpc_proxy,
-    rpc_url,
-)
+from .util import (delete_cookie_file, get_rpc_proxy, rpc_url, wait_until)
 
 CONFLUX_RPC_WAIT_TIMEOUT = 60
 
@@ -35,41 +31,20 @@ class ErrorMatch(Enum):
 
 
 class TestNode:
-    def __init__(self,
-                 index,
-                 datadir,
-                 rpchost,
-                 syncport,
-                 rpcport_tcp,
-                 rpcport,
-                 confluxd,
-                 rpc_timeout=None):
+    def __init__(self, index, datadir, rpchost, confluxd, rpc_timeout=None):
         self.index = index
         self.datadir = datadir
-        if not os.path.exists(os.path.join(self.datadir, "stdout")):
-            os.makedirs(os.path.join(self.datadir, "stdout"))
-        if not os.path.exists(os.path.join(self.datadir, "stderr")):
-            os.makedirs(os.path.join(self.datadir, "stderr"))
-        if not os.path.exists(os.path.join(self.datadir, "cfxlog")):
-            os.makedirs(os.path.join(self.datadir, "cfxlog"))
-
         self.stdout_dir = os.path.join(self.datadir, "stdout")
         self.stderr_dir = os.path.join(self.datadir, "stderr")
-        self.cfxlog = os.path.join(
-            os.path.join(self.datadir, "cfxlog"), "tmp_" + str(index) + ".log")
+        self.log = os.path.join(self.datadir, "node" + str(index) + ".log")
         self.rpchost = rpchost
-        self.syncport = syncport
-        self.rpcport_tcp = rpcport_tcp
-        self.rpcport = rpcport
         self.rpc_timeout = CONFLUX_RPC_WAIT_TIMEOUT if rpc_timeout is None else rpc_timeout
         self.binary = confluxd
         self.args = [
-            self.binary, "--port",
-            str(syncport), "--jsonrpc-tcp-port",
-            str(rpcport_tcp), "--jsonrpc-http-port",
-            str(rpcport), "--log-file",
-            str(self.cfxlog)
+            self.binary, "--config",
+            os.path.join(self.datadir, "conflux.conf")
         ]
+        print(self.args)
 
         self.running = False
         self.process = None
@@ -136,14 +111,14 @@ class TestNode:
         poll_per_s = 4
         for _ in range(poll_per_s * self.rpc_timeout):
             if self.process.poll() is not None:
+                print("self.index={}".format(self.index))
                 raise FailedToStartError(
                     self._node_msg(
                         'conflux exited with status {} during initialization'.
                         format(self.process.returncode)))
             try:
                 self.rpc = get_rpc_proxy(
-                    rpc_url(self.datadir, self.index, self.rpchost,
-                            self.rpcport),
+                    rpc_url(self.datadir, self.index, self.rpchost),
                     self.index,
                     timeout=self.rpc_timeout)
                 self.rpc.get_best_block_hash()
@@ -170,7 +145,8 @@ class TestNode:
             return
         self.log.debug("Stopping node")
         try:
-            self.stop()
+            # self.stop()
+            pass
         except http.client.CannotSendRequest:
             self.log.exception("Unable to stop node.")
 
@@ -207,6 +183,9 @@ class TestNode:
         self.rpc = None
         self.log.debug("Node stopped")
         return True
+
+    def wait_until_stopped(self, timeout=CONFLUX_RPC_WAIT_TIMEOUT):
+        wait_until(self.is_node_stopped, timeout=timeout)
 
     def assert_start_raises_init_error(self,
                                        extra_args=None,

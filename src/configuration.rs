@@ -16,9 +16,9 @@ pub struct Configuration {
 impl Default for Configuration {
     fn default() -> Self {
         Configuration {
-            port: Some(32323),
-            jsonrpc_tcp_port: Some(32324),
-            jsonrpc_http_port: Some(32325),
+            port: None,
+            jsonrpc_tcp_port: None,
+            jsonrpc_http_port: None,
             log_file: None,
             log_level: LevelFilter::Info,
         }
@@ -40,34 +40,29 @@ impl Configuration {
                 .expect("Error reading config file");
 
             let config_value = config_str.parse::<toml::Value>().unwrap();
-            if let Some(port) = config_value["port"].as_str() {
-                config.port =
-                    Some(port.parse().map_err(|_| "Invalid port".to_owned())?);
+            if let Some(port) = config_value.get("port") {
+                config.port = port.as_integer().map(|x| x as u16);
             }
-            if let Some(port) = config_value["jsonrpc-tcp-port"].as_str() {
-                config.jsonrpc_tcp_port = Some(
-                    port.parse()
-                        .map_err(|_| "Invalid jsonrpc-tcp-port".to_owned())?,
-                );
+            if let Some(port) = config_value.get("jsonrpc-tcp-port") {
+                config.jsonrpc_tcp_port = port.as_integer().map(|x| x as u16);
             }
-            if let Some(port) = config_value["jsonrpc-http-port"].as_str() {
-                config.jsonrpc_http_port = Some(
-                    port.parse()
-                        .map_err(|_| "Invalid jsonrpc-http-port".to_owned())?,
-                );
+            if let Some(port) = config_value.get("jsonrpc-http-port") {
+                config.jsonrpc_http_port = port.as_integer().map(|x| x as u16);
             }
-            if let Some(log_file) = config_value["log-file"].as_str() {
-                config.log_file = Some(log_file.to_owned());
+            if let Some(log_file) = config_value.get("log-file") {
+                config.log_file = log_file.as_str().map(|x| x.to_owned());
             }
-            config.log_level = match matches.value_of("log-level") {
-                Some("error") => LevelFilter::Error,
-                Some("warn") => LevelFilter::Warn,
-                Some("info") => LevelFilter::Info,
-                Some("debug") => LevelFilter::Debug,
-                Some("trace") => LevelFilter::Trace,
-                Some(_) => LevelFilter::Info,
-                None => LevelFilter::Info,
-            };
+            if let Some(log_level) = config_value.get("log-level") {
+                config.log_level = match log_level.as_str() {
+                    Some("error") => LevelFilter::Error,
+                    Some("warn") => LevelFilter::Warn,
+                    Some("info") => LevelFilter::Info,
+                    Some("debug") => LevelFilter::Debug,
+                    Some("trace") => LevelFilter::Trace,
+                    Some(_) => LevelFilter::Info,
+                    None => LevelFilter::Info,
+                };
+            }
         }
 
         if let Some(port) = matches.value_of("port") {

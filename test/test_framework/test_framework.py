@@ -194,7 +194,6 @@ class ConfluxTestFramework:
             pdb.set_trace()
 
         self.log.debug('Closing down network thread')
-        self.network_thread.close()
         if not self.options.noshutdown:
             self.log.info("Stopping nodes")
             if self.nodes:
@@ -262,13 +261,10 @@ class ConfluxTestFramework:
 
     def setup_nodes(self):
         """Override this method to customize test node setup"""
-        extra_args = None
-        if hasattr(self, "extra_args"):
-            extra_args = self.extra_args
-        self.add_nodes(self.num_nodes, extra_args)
+        self.add_nodes(self.num_nodes)
         self.start_nodes()
 
-    def add_nodes(self, num_nodes, *, rpchost=None, binary=None):
+    def add_nodes(self, num_nodes, rpchost=None, binary=None):
         """Instantiate TestNode objects"""
         if binary is None:
             binary = [self.options.conflux] * num_nodes
@@ -297,12 +293,9 @@ class ConfluxTestFramework:
     def start_nodes(self, extra_args=None, *args, **kwargs):
         """Start multiple bitcoinds"""
 
-        if extra_args is None:
-            extra_args = [None] * self.num_nodes
-        assert_equal(len(extra_args), self.num_nodes)
         try:
             for i, node in enumerate(self.nodes):
-                node.start(extra_args[i], *args, **kwargs)
+                node.start(*args, **kwargs)
             for node in self.nodes:
                 node.wait_for_rpc_connection()
         except:
