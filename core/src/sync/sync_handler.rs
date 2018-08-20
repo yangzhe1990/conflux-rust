@@ -31,6 +31,7 @@ impl SyncHandler {
         packet_id: PacketId, rlp: Rlp,
     )
     {
+        trace!(target: "sync", "dispatch packet, packet_id {:}", packet_id);
         let result = match packet_id {
             GET_BLOCK_BODIES_PACKET => SyncHandler::return_rlp(
                 io,

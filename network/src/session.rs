@@ -54,7 +54,7 @@ const PACKET_HELLO: u8 = 0x80;
 const PACKET_DISCONNECT: u8 = 0x01;
 const PACKET_PING: u8 = 0x02;
 const PACKET_PONG: u8 = 0x03;
-const PACKET_USER: u8 = 0x10;
+pub const PACKET_USER: u8 = 0x10;
 
 impl Session {
     pub fn new<Message: Send + Sync + Clone + 'static>(
@@ -77,6 +77,7 @@ impl Session {
         };
         if originated {
             session.write_hello(io, host)?;
+            session.sent_hello = true;
         }
         Ok(session)
     }
@@ -100,7 +101,7 @@ impl Session {
 
     fn connection(&self) -> &Connection { &self.connection }
 
-    fn token(&self) -> StreamToken { self.connection().token() }
+    pub fn token(&self) -> StreamToken { self.connection().token() }
 
     pub fn register_socket<H: Handler>(
         &self, reg: Token, event_loop: &mut EventLoop<H>,
@@ -130,6 +131,7 @@ impl Session {
             return Ok(SessionData::None);
         }
         if !self.sent_hello {
+            debug!(target: "network", "{} Write Hello, sent_hello {}", self.token(), self.sent_hello);
             self.write_hello(io, host)?;
             self.sent_hello = true;
         }
@@ -152,6 +154,7 @@ impl Session {
         let data = &data[3..];
         match packet_id {
             PACKET_HELLO => {
+                debug!(target: "network", "{}: Hello", self.token());
                 let rlp = Rlp::new(&data);
                 self.read_hello(io, &rlp, host)?;
                 Ok(SessionData::Ready)
@@ -289,6 +292,7 @@ impl Session {
     fn write_hello<Message: Send + Sync + Clone>(
         &mut self, io: &IoContext<Message>, host: &HostMetadata,
     ) -> Result<(), Error> {
+        debug!(target: "network", "{} Sending Hello", self.token());
         let mut rlp = RlpStream::new();
         rlp.begin_list(2)
             .append_list(&host.capabilities)

@@ -4,6 +4,7 @@ use mio::deprecated::EventLoop;
 use mio::tcp::*;
 use mio::*;
 use parking_lot::{Mutex, RwLock};
+use session;
 use session::Session;
 use session::SessionData;
 use std::collections::HashMap;
@@ -68,7 +69,7 @@ impl NetworkService {
             x.add_node(peer)
         } else {
             Err("Network service not started yet!".into())
-        } 
+        }
     }
 
     pub fn drop_peer(&self, peer: SocketAddr) -> Result<(), Error> {
@@ -188,7 +189,7 @@ impl NetworkServiceInner {
         Ok(id)
     }
 
-    fn drop_node(&self, local_id: NodeId) -> Result<(), Error> { 
+    fn drop_node(&self, local_id: NodeId) -> Result<(), Error> {
         let mut wn = self.nodes.write();
         if wn.contains_key(&local_id) {
             let entry = wn.get(&local_id).unwrap();
@@ -223,7 +224,7 @@ impl NetworkServiceInner {
         }
         let mut w = self.dropped_nodes.write();
         for token in w.iter() {
-            self.kill_connection(*token, io, true);
+            self.kill_connection(*token, io);
         }
         w.clear();
     }
@@ -326,7 +327,7 @@ impl NetworkServiceInner {
         &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
         trace!(target: "network", "Connection closed: {}", stream);
-        self.kill_connection(stream, io, true);
+        self.kill_connection(stream, io);
     }
 
     fn session_readable(
@@ -348,10 +349,11 @@ impl NetworkServiceInner {
         // if let Some(session) = session.clone()
         if let Some(session) = session {
             loop {
-                let data = session.lock().readable(io, &self.metadata.read());
+                let mut sess = session.lock();
+                let data = sess.readable(io, &self.metadata.read());
                 match data {
                     Ok(SessionData::Ready) => {
-                        let mut sess = session.lock();
+                        //let mut sess = session.lock();
                         for (protocol, _) in self.handlers.read().iter() {
                             if sess.have_capability(*protocol) {
                                 ready_protocols.push(*protocol);
@@ -368,8 +370,8 @@ impl NetworkServiceInner {
                     }
                     Ok(SessionData::Continue) => (),
                     Ok(SessionData::None) => break,
-                    Err(e) => {
-                        let sess = session.lock();
+                    Err(_) => {
+                        //let sess = session.lock();
                         kill = true;
                         break;
                     }
@@ -378,7 +380,7 @@ impl NetworkServiceInner {
         }
 
         if kill {
-            self.kill_connection(stream, io, true);
+            self.kill_connection(stream, io);
         }
 
         let handlers = self.handlers.read();
@@ -457,8 +459,7 @@ impl NetworkServiceInner {
     }
 
     fn kill_connection(
-        &self, token: StreamToken, io: &IoContext<NetworkIoMessage>,
-        remote: bool,
+        &self, token: StreamToken, io: &IoContext<NetworkIoMessage>
     )
     {
         let mut to_disconnect: Vec<ProtocolId> = Vec::new();
@@ -480,7 +481,7 @@ impl NetworkServiceInner {
                     }
                     sess.set_expired();
                 }
-                deregister = remote || sess.done();
+                deregister = sess.done();
             }
         }
         for p in to_disconnect {
@@ -619,7 +620,8 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                         Token(TCP_ACCEPT),
                         Ready::all(),
                         PollOpt::edge(),
-                    ).expect("Error registering stream");
+                    )
+                    .expect("Error registering stream");
             }
             _ => warn!("Unexpected stream registeration"),
         }
@@ -667,7 +669,8 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                     Token(TCP_ACCEPT),
                     Ready::all(),
                     PollOpt::edge(),
-                ).expect("Error reregistering stream"),
+                )
+                .expect("Error reregistering stream"),
             _ => warn!("Unexpected stream update"),
         }
     }
@@ -694,7 +697,33 @@ impl<'a> NetworkContext<'a> {
 }
 
 impl<'a> NetworkContextTrait for NetworkContext<'a> {
-    fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error> { Ok(()) }
+    fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error> {
+        let session = { self.sessions.read().get(peer).cloned() };
+        trace!(target: "network", "Sending {} bytes to {}", msg.len(), peer);
+        if let Some(session) = session {
+            session.lock().send_packet(
+                self.io,
+                Some(self.protocol),
+                session::PACKET_USER,
+                &msg,
+            )?;
+        }
+        Ok(())
+    }
 
-    fn disconnect_peer(&self, peer: PeerId) {}
+    fn disconnect_peer(&self, peer: PeerId) {
+        // FIXME: Here we cannot get the handler to call on_peer_disconnected()
+        let sessions = self.sessions.read();
+        if let Some(session) = sessions.get(peer).cloned() {
+            let mut sess = session.lock();
+            if !sess.expired() {
+                sess.set_expired();
+            }
+            if sess.done() {
+                self.io.deregister_stream(sess.token()).unwrap_or_else(|e| {
+                    debug!("Error deregistering stream {:?}", e);
+                })
+            }
+        }
+    }
 }
