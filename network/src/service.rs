@@ -224,7 +224,7 @@ impl NetworkServiceInner {
         }
         let mut w = self.dropped_nodes.write();
         for token in w.iter() {
-            self.kill_connection(*token, io, true);
+            self.kill_connection(*token, io);
         }
         w.clear();
     }
@@ -327,7 +327,7 @@ impl NetworkServiceInner {
         &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
         trace!(target: "network", "Connection closed: {}", stream);
-        self.kill_connection(stream, io, true);
+        self.kill_connection(stream, io);
     }
 
     fn session_readable(
@@ -380,7 +380,7 @@ impl NetworkServiceInner {
         }
 
         if kill {
-            self.kill_connection(stream, io, true);
+            self.kill_connection(stream, io);
         }
 
         let handlers = self.handlers.read();
@@ -459,8 +459,7 @@ impl NetworkServiceInner {
     }
 
     fn kill_connection(
-        &self, token: StreamToken, io: &IoContext<NetworkIoMessage>,
-        remote: bool,
+        &self, token: StreamToken, io: &IoContext<NetworkIoMessage>
     )
     {
         let mut to_disconnect: Vec<ProtocolId> = Vec::new();
@@ -482,7 +481,7 @@ impl NetworkServiceInner {
                     }
                     sess.set_expired();
                 }
-                deregister = remote || sess.done();
+                deregister = sess.done();
             }
         }
         for p in to_disconnect {
@@ -712,5 +711,19 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
         Ok(())
     }
 
-    fn disconnect_peer(&self, peer: PeerId) { }
+    fn disconnect_peer(&self, peer: PeerId) {
+        // FIXME: Here we cannot get the handler to call on_peer_disconnected()
+        let sessions = self.sessions.read();
+        if let Some(session) = sessions.get(peer).cloned() {
+            let mut sess = session.lock();
+            if !sess.expired() {
+                sess.set_expired();
+            }
+            if sess.done() {
+                self.io.deregister_stream(sess.token()).unwrap_or_else(|e| {
+                    debug!("Error deregistering stream {:?}", e);
+                })
+            }
+        }
+    }
 }

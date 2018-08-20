@@ -101,7 +101,7 @@ impl Session {
 
     fn connection(&self) -> &Connection { &self.connection }
 
-    fn token(&self) -> StreamToken { self.connection().token() }
+    pub fn token(&self) -> StreamToken { self.connection().token() }
 
     pub fn register_socket<H: Handler>(
         &self, reg: Token, event_loop: &mut EventLoop<H>,
