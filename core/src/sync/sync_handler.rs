@@ -436,7 +436,7 @@ impl SyncHandler {
         blocks_to_adjust.push_back(hash);
 
         if new_block_arrived {
-            // replay to peers
+            // relay to peers
             let mut hashes: Vec<H256> = Vec::new();
             hashes.push(hash);
             let mut total_difficulties: Vec<U256> = Vec::new();
