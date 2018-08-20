@@ -14,8 +14,8 @@ import tempfile
 import time
 import urllib.parse
 
-from authproxy import JSONRPCException
-from util import (
+from .authproxy import JSONRPCException
+from .util import (
     delete_cookie_file,
     get_rpc_proxy,
     rpc_url,
@@ -23,16 +23,27 @@ from util import (
 
 CONFLUX_RPC_WAIT_TIMEOUT = 60
 
+
 class FailedToStartError(Exception):
     """Raised when a node fails to start correctly."""
+
 
 class ErrorMatch(Enum):
     FULL_TEXT = 1
     FULL_REGEX = 2
     PARTIAL_REGEX = 3
 
+
 class TestNode:
-    def __init__(self, index, datadir, rpchost, syncport, rpcport_tcp, rpcport, confluxd, rpc_timeout=None):
+    def __init__(self,
+                 index,
+                 datadir,
+                 rpchost,
+                 syncport,
+                 rpcport_tcp,
+                 rpcport,
+                 confluxd,
+                 rpc_timeout=None):
         self.index = index
         self.datadir = datadir
         if not os.path.exists(os.path.join(self.datadir, "stdout")):
@@ -44,14 +55,21 @@ class TestNode:
 
         self.stdout_dir = os.path.join(self.datadir, "stdout")
         self.stderr_dir = os.path.join(self.datadir, "stderr")
-        self.cfxlog = os.path.join(os.path.join(self.datadir, "cfxlog"), "tmp_" + str(index) + ".log");
+        self.cfxlog = os.path.join(
+            os.path.join(self.datadir, "cfxlog"), "tmp_" + str(index) + ".log")
         self.rpchost = rpchost
         self.syncport = syncport
         self.rpcport_tcp = rpcport_tcp
         self.rpcport = rpcport
         self.rpc_timeout = CONFLUX_RPC_WAIT_TIMEOUT if rpc_timeout is None else rpc_timeout
         self.binary = confluxd
-        self.args = [self.binary, "--port", str(syncport), "--jsonrpc-tcp-port", str(rpcport_tcp), "--jsonrpc-http-port", str(rpcport), "--log-file", str(self.cfxlog)]
+        self.args = [
+            self.binary, "--port",
+            str(syncport), "--jsonrpc-tcp-port",
+            str(rpcport_tcp), "--jsonrpc-http-port",
+            str(rpcport), "--log-file",
+            str(self.cfxlog)
+        ]
 
         self.running = False
         self.process = None
@@ -82,15 +100,22 @@ class TestNode:
 
     def __getattr__(self, name):
         """Dispatches any unrecognised messages to the RPC connection."""
-        assert self.rpc_connected and self.rpc is not None, self._node_msg("Error: no RPC connection")
+        assert self.rpc_connected and self.rpc is not None, self._node_msg(
+            "Error: no RPC connection")
         return getattr(self.rpc, name)
 
     def start(self, extra_args=None, *, stdout=None, stderr=None, **kwargs):
         # Add a new stdout and stderr file each time conflux is started
         if stderr is None:
-            stderr = tempfile.NamedTemporaryFile(dir=self.stderr_dir, suffix="_" + str(self.index), delete=False)
+            stderr = tempfile.NamedTemporaryFile(
+                dir=self.stderr_dir,
+                suffix="_" + str(self.index),
+                delete=False)
         if stdout is None:
-            stdout = tempfile.NamedTemporaryFile(dir=self.stdout_dir, suffix="_" + str(self.index), delete=False)
+            stdout = tempfile.NamedTemporaryFile(
+                dir=self.stdout_dir,
+                suffix="_" + str(self.index),
+                delete=False)
         self.stderr = stderr
         self.stdout = stdout
 
@@ -99,7 +124,8 @@ class TestNode:
         # potentially interfere with our attempt to authenticate
         delete_cookie_file(self.datadir)
 
-        self.process = subprocess.Popen(self.args, stdout=stdout, stderr=stderr, **kwargs)
+        self.process = subprocess.Popen(
+            self.args, stdout=stdout, stderr=stderr, **kwargs)
 
         self.running = True
         self.log.debug("conflux started, waiting for RPC to come up")
@@ -110,10 +136,16 @@ class TestNode:
         poll_per_s = 4
         for _ in range(poll_per_s * self.rpc_timeout):
             if self.process.poll() is not None:
-                raise FailedToStartError(self._node_msg(
-                    'conflux exited with status {} during initialization'.format(self.process.returncode)))
+                raise FailedToStartError(
+                    self._node_msg(
+                        'conflux exited with status {} during initialization'.
+                        format(self.process.returncode)))
             try:
-                self.rpc = get_rpc_proxy(rpc_url(self.datadir, self.index, self.rpchost, self.rpcport), self.index, timeout=self.rpc_timeout)
+                self.rpc = get_rpc_proxy(
+                    rpc_url(self.datadir, self.index, self.rpchost,
+                            self.rpcport),
+                    self.index,
+                    timeout=self.rpc_timeout)
                 self.rpc.get_best_block_hash()
                 # If the call to get_best_block_hash() succeeds then the RPC connection is up
                 self.rpc_connected = True
@@ -146,7 +178,8 @@ class TestNode:
         self.stderr.seek(0)
         stderr = self.stderr.read().decode('utf-8').strip()
         if stderr != expected_stderr:
-            raise AssertionError("Unexpected stderr {} != {}".format(stderr, expected_stderr))
+            raise AssertionError("Unexpected stderr {} != {}".format(
+                stderr, expected_stderr))
 
         self.stdout.close()
         self.stderr.close()
@@ -166,7 +199,8 @@ class TestNode:
 
         # process has stopped. Assert that it didn't return an error code.
         assert return_code == 0, self._node_msg(
-            "Node returned non-zero exit code (%d) when stopping" % return_code)
+            "Node returned non-zero exit code (%d) when stopping" %
+            return_code)
         self.running = False
         self.process = None
         self.rpc_connected = False
@@ -174,7 +208,12 @@ class TestNode:
         self.log.debug("Node stopped")
         return True
 
-    def assert_start_raises_init_error(self, extra_args=None, expected_msg=None, match=ErrorMatch.FULL_TEXT, *args, **kwargs):
+    def assert_start_raises_init_error(self,
+                                       extra_args=None,
+                                       expected_msg=None,
+                                       match=ErrorMatch.FULL_TEXT,
+                                       *args,
+                                       **kwargs):
         """Attempt to start the node and expect it to raise an error.
 
         extra_args: extra arguments to pass through to bitcoind
@@ -185,7 +224,12 @@ class TestNode:
         with tempfile.NamedTemporaryFile(dir=self.stderr_dir, delete=False) as log_stderr, \
              tempfile.NamedTemporaryFile(dir=self.stdout_dir, delete=False) as log_stdout:
             try:
-                self.start(extra_args, stdout=log_stdout, stderr=log_stderr, *args, **kwargs)
+                self.start(
+                    extra_args,
+                    stdout=log_stdout,
+                    stderr=log_stderr,
+                    *args,
+                    **kwargs)
                 self.wait_for_rpc_connection()
                 self.stop_node()
                 self.wait_until_stopped()
@@ -198,21 +242,25 @@ class TestNode:
                     log_stderr.seek(0)
                     stderr = log_stderr.read().decode('utf-8').strip()
                     if match == ErrorMatch.PARTIAL_REGEX:
-                        if re.search(expected_msg, stderr, flags=re.MULTILINE) is None:
+                        if re.search(
+                                expected_msg, stderr,
+                                flags=re.MULTILINE) is None:
                             self._raise_assertion_error(
-                                'Expected message "{}" does not partially match stderr:\n"{}"'.format(expected_msg, stderr))
+                                'Expected message "{}" does not partially match stderr:\n"{}"'.
+                                format(expected_msg, stderr))
                     elif match == ErrorMatch.FULL_REGEX:
                         if re.fullmatch(expected_msg, stderr) is None:
                             self._raise_assertion_error(
-                                'Expected message "{}" does not fully match stderr:\n"{}"'.format(expected_msg, stderr))
+                                'Expected message "{}" does not fully match stderr:\n"{}"'.
+                                format(expected_msg, stderr))
                     elif match == ErrorMatch.FULL_TEXT:
                         if expected_msg != stderr:
                             self._raise_assertion_error(
-                                'Expected message "{}" does not fully match stderr:\n"{}"'.format(expected_msg, stderr))
+                                'Expected message "{}" does not fully match stderr:\n"{}"'.
+                                format(expected_msg, stderr))
             else:
                 if expected_msg is None:
                     assert_msg = "bitcoind should have exited with an error"
                 else:
                     assert_msg = "bitcoind should have exited with expected error " + expected_msg
                 self._raise_assertion_error(assert_msg)
-

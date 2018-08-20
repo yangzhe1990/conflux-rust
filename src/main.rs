@@ -20,10 +20,11 @@ extern crate mio;
 extern crate parity_reactor;
 #[macro_use]
 extern crate log;
-extern crate simplelog;
 extern crate ethereum_types;
 extern crate network;
+extern crate simplelog;
 extern crate slab;
+extern crate toml;
 
 extern crate blockgen;
 extern crate core;
@@ -32,7 +33,6 @@ extern crate core;
 mod configuration;
 mod rpc;
 
-use simplelog::{CombinedLogger, TermLogger, WriteLogger, Config as LogConfig};
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
@@ -40,11 +40,12 @@ use ctrlc::CtrlC;
 use network::NetworkConfiguration;
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
+use simplelog::{CombinedLogger, Config as LogConfig, TermLogger, WriteLogger};
 use std::any::Any;
+use std::fs::File;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
-use std::fs::File;
 use std::thread;
 
 // Start all key components of Conflux and pass out their handles
@@ -84,7 +85,7 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         ledger: ledger.clone(),
         execution_engine: execution_engine.clone(),
         sync_engine: sync_engine_ref.clone(),
-        block_gen: blockgen.clone()
+        block_gen: blockgen.clone(),
     };
     let rpc_tcp_server = rpc::new_tcp(
         rpc::TcpConfiguration::new(conf.jsonrpc_tcp_port),
@@ -113,13 +114,15 @@ fn main() {
                 .value_name("PORT")
                 .help("Listen for p2p connections on PORT.")
                 .takes_value(true),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("jsonrpc-tcp-port")
                 .long("jsonrpc-tcp-port")
                 .value_name("PORT")
                 .help("Specify the PORT for the TCP JSON-RPC API server.")
                 .takes_value(true),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("jsonrpc-http-port")
                 .long("jsonrpc-http-port")
                 .value_name("PORT")
@@ -137,21 +140,29 @@ fn main() {
                  .value_name("LEVEL")
                  .help("Can be error/warn/info/debug/trace. Default is the info level.")
                  .takes_value(true),
-        ).get_matches_from(std::env::args().collect::<Vec<_>>());
+        )
+        .arg(
+            Arg::with_name("config")
+                .short("c")
+                .long("config")
+                .value_name("FILE")
+                .help("Sets a custom config file")
+                .takes_value(true),
+        )
+        .get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
     if conf.log_file.is_none() {
-        CombinedLogger::init(
-            vec![
-                TermLogger::new(conf.log_level.clone(), LogConfig::default()).unwrap()
-            ]
-        ).unwrap();
+        CombinedLogger::init(vec![
+            TermLogger::new(conf.log_level.clone(), LogConfig::default())
+                .unwrap(),
+        ]).unwrap();
     } else {
-        CombinedLogger::init(
-            vec![
-                WriteLogger::new(conf.log_level.clone(), LogConfig::default(), File::create(conf.log_file.clone().unwrap()).unwrap())
-            ]
-        ).unwrap();
+        CombinedLogger::init(vec![WriteLogger::new(
+            conf.log_level.clone(),
+            LogConfig::default(),
+            File::create(conf.log_file.clone().unwrap()).unwrap(),
+        )]).unwrap();
     }
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));
