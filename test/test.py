@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from test_framework.test_node import TestNode
-from test_framework.util import (PortSeed, p2p_port, get_datadir_path,
-                                 initialize_datadir, connect_nodes)
+from test_framework.util import *
 from time import sleep
 import tempfile
 import os
@@ -25,17 +24,18 @@ nodes[0].start()
 nodes[1].start()
 nodes[0].wait_for_rpc_connection()
 nodes[1].wait_for_rpc_connection()
-print(nodes[0].get_block_count())
+print(nodes[0].getblockcount())
 nodes[0].generate(1)
-print(nodes[0].get_block_count())
+print(nodes[0].getblockcount())
 nodes[0].generate(2)
-print(nodes[0].get_block_count())
+print(nodes[0].getblockcount())
 nodes[0].generate(3)
-print(nodes[0].get_block_count())
-print(nodes[0].get_best_block_hash())
-print(nodes[1].get_block_count())
-print(nodes[1].get_best_block_hash())
+print(nodes[0].getblockcount())
+print(nodes[0].getbestblockhash())
+print(nodes[1].getblockcount())
+print(nodes[1].getbestblockhash())
 connect_nodes(nodes[0], 1)
-print(nodes[0].get_peer_info())
-print(nodes[1].get_block_count())
-print(nodes[1].get_best_block_hash())
+sync_blocks(nodes[0:2])
+print(nodes[0].getpeerinfo())
+print(nodes[1].getblockcount())
+print(nodes[1].getbestblockhash())
