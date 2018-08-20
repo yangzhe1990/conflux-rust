@@ -2,7 +2,7 @@ use super::{
     PacketDecodeError, PacketId, PeerAsking, PeerInfo, RlpResponseResult,
     SyncState, BLOCK_BODIES_PACKET, BLOCK_HEADERS_PACKET,
     GET_BLOCK_BODIES_PACKET, GET_BLOCK_HEADERS_PACKET, MAX_BODIES_TO_SEND,
-    MAX_HEADERS_TO_SEND, STATUS_PACKET,
+    MAX_HEADERS_TO_SEND, STATUS_PACKET, NEW_BLOCK_PACKET
 };
 
 use super::super::block::Block;
@@ -52,6 +52,9 @@ impl SyncHandler {
                 Ok(())
             }
         };
+        if let Err(e) = result {
+            warn!("{:?}", e);
+        }
     }
 
     fn return_rlp<FRlp, FError>(
@@ -348,7 +351,7 @@ impl SyncHandler {
     }
 
     fn on_peer_block_bodies(
-        sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, r: &Rlp,
+        _sync: &mut SyncState, io: &mut SyncContext, _peer_id: PeerId, r: &Rlp,
     ) -> Result<(), BlockSyncError> {
         let item_count = r.item_count()?;
         if item_count <= 1 {
@@ -368,7 +371,7 @@ impl SyncHandler {
         let mut new_body_arrived = false;
         for body in blocks {
             let block_hash = body.hash();
-            if let Some(header) =
+            if let Some(_header) =
                 io.ledger().block_header(BlockId::Hash(block_hash))
             {
                 io.ledger().add_block_body_by_hash(&block_hash, body);

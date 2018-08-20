@@ -13,7 +13,7 @@ use network::{Error, PeerId};
 use parking_lot::RwLock;
 use rlp::{DecoderError, Rlp, RlpStream};
 use std::collections::{HashMap, HashSet};
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 
 pub const CONFLUX_PROTOCOL_VERSION_1: u8 = 0x01;
 
@@ -81,7 +81,7 @@ pub struct SyncState {
     /// Connected peers pending Status message.
     /// Value is request timestamp.
     handshaking_peers: HashMap<PeerId, Instant>,
-
+    #[allow(unused)]
     bodies_in_fetching: HashMap<H256, PeerId>,
 }
 

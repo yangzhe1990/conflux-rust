@@ -1,10 +1,6 @@
-use std::cmp;
-use std::collections::HashSet;
-use std::sync::Arc;
-
 use bytes::Bytes;
-use ethereum_types::{Address, Bloom, H256, U256};
-use rlp::{encode_list, Decodable, DecoderError, Encodable, Rlp, RlpStream};
+use ethereum_types::{H256};
+use rlp::{Decodable, DecoderError, Rlp, RlpStream};
 use transaction::Transaction;
 
 /// A block, encoded as it is on the block chain.

@@ -22,9 +22,9 @@ impl DisconnectReason {
 impl fmt::Display for DisconnectReason {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match *self {
-            DisconnectRequested => "disconnect requested",
-            UselessPeer => "useless peer",
-            Unknown => "unknown",
+            DisconnectReason::DisconnectRequested => "disconnect requested",
+            DisconnectReason::UselessPeer => "useless peer",
+            DisconnectReason::Unknown => "unknown",
         };
 
         f.write_str(msg)

@@ -1,4 +1,3 @@
-use ledger::Ledger;
 use network::ProtocolId;
 use types::BlockNumber;
 

@@ -22,5 +22,8 @@ impl Decodable for Transaction {
 }
 
 impl Encodable for Transaction {
-    fn rlp_append(&self, s: &mut RlpStream) {}
+    fn rlp_append(&self, _s: &mut RlpStream) {
+        // FIXME: Implement this
+        unimplemented!();
+    }
 }

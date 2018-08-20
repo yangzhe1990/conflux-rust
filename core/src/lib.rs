@@ -24,7 +24,7 @@ mod sync;
 pub mod transaction;
 
 use parking_lot::RwLock;
-use rlp::{Rlp, RlpStream};
+use rlp::{Rlp};
 use std::sync::Arc;
 use std::net::SocketAddr;
 use network::NodeId;
@@ -40,7 +40,7 @@ use ethereum_types::{H256, U256};
 use io::TimerToken;
 use network::{
     Error, NetworkConfiguration, NetworkContext, NetworkProtocolHandler,
-    NetworkService, PeerId, ProtocolId,
+    NetworkService, PeerId,
 };
 use sync_ctx::SyncContext;
 
@@ -105,7 +105,7 @@ impl SyncEngine {
 
     pub fn start(&mut self) {
         match self.network.start() {
-            Err(err) => {
+            Err(_err) => {
                 warn!("Error starting network");
             }
             _ => {}
@@ -155,7 +155,7 @@ struct SyncProtocolHandler {
 }
 
 impl NetworkProtocolHandler for SyncProtocolHandler {
-    fn initialize(&self, io: &NetworkContext) {}
+    fn initialize(&self, _io: &NetworkContext) {}
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {
         let packet_id: u8;
@@ -188,11 +188,11 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
         );
     }
 
-    fn on_peer_disconnected(&self, io: &NetworkContext, peer: PeerId) {
+    fn on_peer_disconnected(&self, _io: &NetworkContext, peer: PeerId) {
         trace!(target: "sync", "on_peer_disconnected {:?}", peer);
     }
 
-    fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {
+    fn on_timeout(&self, _io: &NetworkContext, _timer: TimerToken) {
         trace!(target: "sync", "on_timeout()");
     }
 }

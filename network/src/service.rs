@@ -1,4 +1,3 @@
-use bytes::BufMut;
 use io::*;
 use mio::deprecated::EventLoop;
 use mio::tcp::*;
@@ -9,12 +8,12 @@ use session::Session;
 use session::SessionData;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::io::{self, Read, Write};
+use std::io::{self};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use std::time::Duration;
 use {
-    Capability, DisconnectReason, Error, ErrorKind, NetworkConfiguration,
+    Capability, DisconnectReason, Error, NetworkConfiguration,
     NetworkContext as NetworkContextTrait, NetworkIoMessage,
     NetworkProtocolHandler, NodeId, PeerId, ProtocolId,
 };
@@ -112,6 +111,7 @@ impl NetworkService {
 type SharedSession = Arc<Mutex<Session>>;
 
 pub struct HostMetadata {
+    #[allow(unused)]
     config: NetworkConfiguration,
     pub capabilities: Vec<Capability>,
     pub local_address: SocketAddr,
@@ -269,6 +269,7 @@ impl NetworkServiceInner {
         }
     }
 
+    #[allow(unused)]
     pub fn connected_peers(&self) -> Vec<PeerId> {
         let sessions = self.sessions.read();
         let sessions = &*sessions;
@@ -463,13 +464,11 @@ impl NetworkServiceInner {
     )
     {
         let mut to_disconnect: Vec<ProtocolId> = Vec::new();
-        let mut expired_session = None;
         let mut deregister = false;
 
         if let FIRST_SESSION...LAST_SESSION = token {
             let sessions = self.sessions.read();
             if let Some(session) = sessions.get(token).cloned() {
-                expired_session = Some(session.clone());
                 let mut sess = session.lock();
                 if !sess.expired() {
                     if sess.is_ready() {
@@ -594,7 +593,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                 trace!(target: "network", "Disconnect requested {}", peer);
                 //self.kill_connection(*peer, io, false);
             }
-            _ => {}
+            //_ => {}
         }
     }
 

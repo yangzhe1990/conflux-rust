@@ -1,15 +1,14 @@
-use bytes::{Buf, Bytes};
+use bytes::{Bytes};
 use io::{IoContext, StreamToken};
 use mio::deprecated::*;
 use mio::tcp::*;
 use mio::*;
 use std::collections::VecDeque;
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, Read, Write};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
-use session;
-use {Error, ErrorKind};
+use {Error};
 
 #[derive(PartialEq, Eq)]
 pub enum WriteStatus {
@@ -46,7 +45,7 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
             match self.socket.read(&mut buf) {
                 Ok(size) => {
                     trace!(target: "network", "{}: Read {} bytes", self.token, size);
-                    if (size == 0) {
+                    if size == 0 {
                         break;
                     }
                     self.recv_buf.extend_from_slice(&buf[0..size]);
@@ -86,7 +85,7 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
             }
             match self.socket.write(&buf.0[pos..]) {
                 Ok(size) => {
-                    if (pos + size < len) {
+                    if pos + size < len {
                         buf.1 += size as u64;
                         Ok(WriteStatus::Ongoing)
                     } else {
@@ -124,7 +123,7 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
     pub fn is_sending(&self) -> bool { self.interest.is_writable() }
 }
 
-pub type Connection<Sizer: PacketSizer> = GenericConnection<TcpStream, Sizer>;
+pub type Connection<Sizer> = GenericConnection<TcpStream, Sizer>;
 
 impl<Sizer: PacketSizer> Connection<Sizer> {
     pub fn new(token: StreamToken, socket: TcpStream) -> Self {

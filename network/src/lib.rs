@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 extern crate io;
 #[macro_use]
 extern crate log;
@@ -77,7 +78,7 @@ pub enum NetworkIoMessage {
 }
 
 pub trait NetworkProtocolHandler: Sync + Send {
-    fn initialize(&self, io: &NetworkContext) {}
+    fn initialize(&self, _io: &NetworkContext) {}
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]);
 

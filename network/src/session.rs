@@ -7,9 +7,9 @@ use io::*;
 use mio::deprecated::*;
 use mio::tcp::*;
 use mio::*;
-use rlp::{DecoderError, Rlp, RlpStream, EMPTY_LIST_RLP};
+use rlp::{Rlp, RlpStream};
 use service::HostMetadata;
-use std::{io, str};
+use std::str;
 use {
     Capability, DisconnectReason, Error, ErrorKind, NodeId, ProtocolId,
     SessionMetadata,
@@ -195,7 +195,7 @@ impl Session {
     fn read_hello<Message: Send + Sync + Clone>(
         &mut self, io: &IoContext<Message>, rlp: &Rlp, host: &HostMetadata,
     ) -> Result<(), Error> {
-        let mut peer_caps: Vec<Capability> = rlp.list_at(0)?;
+        let peer_caps: Vec<Capability> = rlp.list_at(0)?;
 
         let mut caps: Vec<Capability> = Vec::new();
         for hc in &host.capabilities {

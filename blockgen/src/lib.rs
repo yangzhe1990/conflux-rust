@@ -7,7 +7,6 @@ extern crate rlp;
 
 use core::block::Block;
 use core::header::Header;
-use core::sync_ctx::SyncContext;
 use core::transaction::Transaction;
 use core::LedgerRef;
 use core::SyncEngineRef;
@@ -101,7 +100,7 @@ impl BlockGenerator {
         self.sync.new_blocks(&hashes[..], &total_difficulties[..]);
     }
 
-    pub fn start_mining(bg: Arc<BlockGenerator>, payload_len: u32) {
+    pub fn start_mining(bg: Arc<BlockGenerator>, _payload_len: u32) {
         let target_interval_count: u32 = 5;
         let mut current_interval_count: u32 = 0;
         let mut current_mining_hash: Option<H256> = None;

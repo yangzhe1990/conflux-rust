@@ -1,4 +1,3 @@
-use super::PacketId;
 use execution_engine::ExecutionEngine;
 use ledger::Ledger;
 use network::{Error, NetworkContext, PeerId};
@@ -34,7 +33,9 @@ impl<'s> SyncContext<'s> {
 
     pub fn is_expired(&self) -> bool { false }
 
-    pub fn disable_peer(&mut self, peer_id: PeerId) {}
+    pub fn disable_peer(&mut self, _peer_id: PeerId) {
+        // FIXME: Implement this!
+    }
 
     pub fn send(
         &mut self, peer_id: PeerId, data: Vec<u8>,

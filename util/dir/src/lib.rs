@@ -15,7 +15,7 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 #![warn(missing_docs)]
-
+#![allow(deprecated)]
 //! Dir utilities for platform-specific operations
 extern crate app_dirs;
 extern crate ethereum_types;

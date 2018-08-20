@@ -1,6 +1,6 @@
 use bytes::Bytes;
-use ethereum_types::{Address, Bloom, H256, U256};
-use hash::{keccak, KECCAK_EMPTY_LIST_RLP, KECCAK_NULL_RLP};
+use ethereum_types::{Address, H256, U256};
+use hash::{keccak, KECCAK_NULL_RLP};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::cmp;
 
@@ -173,7 +173,7 @@ where T: PartialEq<T> {
 
 impl Decodable for Header {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
-        let mut blockheader = Header {
+        let blockheader = Header {
             parent_hash: r.val_at(0)?,
             author: r.val_at(1)?,
             state_root: r.val_at(2)?,

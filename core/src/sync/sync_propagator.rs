@@ -1,15 +1,11 @@
 use super::{
-    PacketDecodeError, PacketId, PeerAsking, SyncState, NEW_BLOCK_PACKET,
+    SyncState, NEW_BLOCK_PACKET,
 };
 
-use super::super::block::Block;
-use super::super::header::Header;
-use block_sync::BlockSyncError;
 use bytes::Bytes;
 use ethereum_types::{H256, U256};
-use network::{Error, PeerId};
-use parking_lot::RwLock;
-use rlp::{Rlp, RlpStream};
+use network::{PeerId};
+use rlp::{RlpStream};
 use sync_ctx::SyncContext;
 use types::*;
 

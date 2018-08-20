@@ -1,4 +1,3 @@
-use super::super::PacketId;
 use bytes::Bytes;
 use ethereum_types::H256;
 use network::PeerId;

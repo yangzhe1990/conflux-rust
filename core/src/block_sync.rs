@@ -1,4 +1,4 @@
-use rlp::{self, Rlp};
+use rlp;
 
 #[derive(Eq, PartialEq, Debug)]
 pub enum BlockSyncError {

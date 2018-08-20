@@ -1,11 +1,8 @@
 #![allow(deprecated)]
 
-#[macro_use]
 extern crate clap;
 extern crate serde;
 extern crate serde_json;
-#[macro_use]
-extern crate serde_derive;
 extern crate ctrlc;
 extern crate jsonrpc_core;
 #[macro_use]
@@ -13,7 +10,6 @@ extern crate jsonrpc_macros;
 extern crate jsonrpc_http_server as http;
 extern crate jsonrpc_tcp_server as tcp;
 extern crate parking_lot;
-#[macro_use]
 extern crate error_chain;
 extern crate io;
 extern crate mio;
@@ -37,7 +33,6 @@ use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
 use ctrlc::CtrlC;
-use network::NetworkConfiguration;
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
 use simplelog::{CombinedLogger, Config as LogConfig, TermLogger, WriteLogger};
@@ -46,7 +41,6 @@ use std::fs::File;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
-use std::thread;
 
 // Start all key components of Conflux and pass out their handles
 fn start(conf: Configuration) -> Result<Box<Any>, String> {

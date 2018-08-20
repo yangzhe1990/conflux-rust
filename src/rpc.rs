@@ -2,7 +2,6 @@ use blockgen::BlockGeneratorRef;
 use core::{ExecutionEngineRef, LedgerRef, SyncEngineRef};
 use ethereum_types::{Address, H256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
-use network::Error as NetworkError;
 use network::NodeId;
 use parity_reactor::TokioRemote;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};

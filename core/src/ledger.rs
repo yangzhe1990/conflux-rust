@@ -1,9 +1,7 @@
 use block::Block;
-use encoded;
 use ethereum_types::{Address, H256, U256};
-use hash::{keccak, KECCAK_NULL_RLP};
+use hash::{KECCAK_NULL_RLP};
 use header::Header;
-use network::PeerId;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -241,7 +239,7 @@ impl Ledger {
 
         let mut max_total_difficulty = 0.into();
         let mut hash_in_longest_chain = H256::default();
-        let mut number_in_longest_chain = 0;
+        //let mut number_in_longest_chain = 0;
 
         while !blocks_to_adjust.is_empty() {
             let hash = blocks_to_adjust.pop_front().unwrap();
@@ -258,7 +256,7 @@ impl Ledger {
                 }
 
                 if to_genesis {
-                    let mut me =
+                    let me =
                         ledger_structure.entry(hash).or_insert(BlockDetail {
                             to_genesis: false,
                             total_difficulty: 0.into(),
@@ -272,7 +270,7 @@ impl Ledger {
                     if me.total_difficulty > max_total_difficulty {
                         max_total_difficulty = me.total_difficulty;
                         hash_in_longest_chain = hash;
-                        number_in_longest_chain = header.number();
+                        //number_in_longest_chain = header.number();
                     }
 
                     for child in me.children.iter() {
