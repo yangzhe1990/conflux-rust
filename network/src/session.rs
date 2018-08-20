@@ -54,7 +54,7 @@ const PACKET_HELLO: u8 = 0x80;
 const PACKET_DISCONNECT: u8 = 0x01;
 const PACKET_PING: u8 = 0x02;
 const PACKET_PONG: u8 = 0x03;
-const PACKET_USER: u8 = 0x10;
+pub const PACKET_USER: u8 = 0x10;
 
 impl Session {
     pub fn new<Message: Send + Sync + Clone + 'static>(

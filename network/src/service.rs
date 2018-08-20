@@ -705,12 +705,12 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
             session.lock().send_packet(
                 self.io,
                 Some(self.protocol),
-                0x10,
+                session::PACKET_USER,
                 &msg,
             )?;
         }
         Ok(())
     }
 
-    fn disconnect_peer(&self, peer: PeerId) {}
+    fn disconnect_peer(&self, peer: PeerId) { }
 }
