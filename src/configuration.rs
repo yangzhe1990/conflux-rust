@@ -1,5 +1,5 @@
 use clap;
-use simplelog::LevelFilter;
+use log::LevelFilter;
 use std::fs::File;
 use std::io::prelude::*;
 use toml;

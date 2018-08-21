@@ -17,8 +17,8 @@ extern crate parking_lot;
 #[macro_use]
 extern crate log;
 extern crate ethereum_types;
+extern crate log4rs;
 extern crate network;
-extern crate simplelog;
 extern crate slab;
 extern crate toml;
 
@@ -33,11 +33,13 @@ use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
 use ctrlc::CtrlC;
+use log::LevelFilter;
+use log4rs::append::console::ConsoleAppender;
+use log4rs::append::file::FileAppender;
+use log4rs::config::{Appender, Config as LogConfig, Logger, Root};
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
-use simplelog::{CombinedLogger, Config as LogConfig, TermLogger, WriteLogger};
 use std::any::Any;
-use std::fs::File;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
@@ -149,18 +151,49 @@ fn main() {
         .get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
-    if conf.log_file.is_none() {
-        CombinedLogger::init(vec![
-            TermLogger::new(conf.log_level.clone(), LogConfig::default())
-                .unwrap(),
-        ]).unwrap();
+    let stdout = ConsoleAppender::builder().build();
+
+    let log_config = if conf.log_file.is_none() {
+        LogConfig::builder()
+            .appender(Appender::builder().build("stdout", Box::new(stdout)))
+            .logger(
+                Logger::builder()
+                    .appender("stdout")
+                    .additive(false)
+                    .build("network", conf.log_level),
+            )
+            .logger(
+                Logger::builder()
+                    .appender("stdout")
+                    .additive(false)
+                    .build("rpc", conf.log_level),
+            )
+            .build(Root::builder().appender("stdout").build(LevelFilter::Info))
+            .unwrap()
     } else {
-        CombinedLogger::init(vec![WriteLogger::new(
-            conf.log_level.clone(),
-            LogConfig::default(),
-            File::create(conf.log_file.clone().unwrap()).unwrap(),
-        )]).unwrap();
-    }
+        let log_file = FileAppender::builder()
+            .build(conf.log_file.as_ref().unwrap())
+            .unwrap();
+
+        LogConfig::builder()
+            .appender(Appender::builder().build("stdout", Box::new(stdout)))
+            .appender(Appender::builder().build("logfile", Box::new(log_file)))
+            .logger(
+                Logger::builder()
+                    .appender("logfile")
+                    .additive(false)
+                    .build("network", conf.log_level),
+            )
+            .logger(
+                Logger::builder()
+                    .appender("logfile")
+                    .additive(false)
+                    .build("rpc", conf.log_level),
+            )
+            .build(Root::builder().appender("stdout").build(LevelFilter::Info))
+            .unwrap()
+    };
+    log4rs::init_config(log_config).unwrap();
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));
 
