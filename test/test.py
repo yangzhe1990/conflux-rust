@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from test_framework.test_node import TestNode
 from test_framework.util import (PortSeed, p2p_port, get_datadir_path,
-                                 initialize_datadir)
+                                 initialize_datadir, connect_nodes)
 from time import sleep
 import tempfile
 import os
@@ -35,9 +35,7 @@ print(nodes[0].get_block_count())
 print(nodes[0].get_best_block_hash())
 print(nodes[1].get_block_count())
 print(nodes[1].get_best_block_hash())
-ip_port = "127.0.0.1:" + str(p2p_port(1))
-nodes[0].add_peer(ip_port)
-sleep(5)
-print("After sleep!")
+connect_nodes(nodes[0], 1)
+print(nodes[0].get_peer_info())
 print(nodes[1].get_block_count())
 print(nodes[1].get_best_block_hash())

@@ -282,9 +282,11 @@ impl NetworkServiceInner {
         for i in (0..MAX_SESSIONS).map(|x| x + FIRST_SESSION) {
             let session = sessions.get(i);
             if session.is_some() {
+                let sess = session.unwrap().lock();
                 peers.push(PeerInfo {
                     id: i,
-                    addr: session.unwrap().lock().address(),
+                    addr: sess.address(),
+                    caps: sess.metadata.peer_capabilities.clone(),
                 })
             }
         }

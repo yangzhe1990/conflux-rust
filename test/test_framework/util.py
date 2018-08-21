@@ -355,14 +355,20 @@ def disconnect_nodes(from_connection, node_num):
     wait_until(lambda: [peer['id'] for peer in from_connection.getpeerinfo() if "testnode%d" % node_num in peer['subver']] == [], timeout=5)
 
 
-def connect_nodes(from_connection, node_num):
-    ip_port = "127.0.0.1:" + str(p2p_port(node_num))
-    from_connection.add_peer(ip_port)
-    # poll until version handshake complete to avoid race conditions
-    # with transaction relaying
+def check_handshake(from_connection, target_addr):
+    peers = from_connection.get_peer_info()
+    for peer in peers:
+        if (peer['addr'] == target_addr) and (peer['caps'] != None):
+            return True
+    return False
 
-    # TODO: implement getpeerinfo
-    # wait_until(lambda:  all(peer['version'] != 0 for peer in from_connection.getpeerinfo()))
+
+def connect_nodes(from_connection, node_num):
+    peer_addr = "127.0.0.1:" + str(p2p_port(node_num))
+    from_connection.add_peer(peer_addr)
+    # poll until hello handshake complete to avoid race conditions
+    # with transaction relaying
+    wait_until(lambda: check_handshake(from_connection, peer_addr))
 
 
 def connect_nodes_bi(nodes, a, b):
