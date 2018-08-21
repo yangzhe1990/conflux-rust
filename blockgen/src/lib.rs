@@ -3,6 +3,7 @@ extern crate core;
 extern crate ethereum_types;
 extern crate keccak_hash as hash;
 extern crate parking_lot;
+extern crate rand;
 extern crate rlp;
 
 use core::block::Block;
@@ -12,8 +13,9 @@ use core::LedgerRef;
 use core::SyncEngineRef;
 use ethereum_types::{Address, H256, U256};
 use hash::{keccak, KECCAK_NULL_RLP};
-use rlp::RlpStream;
 use parking_lot::RwLock;
+use rand::prelude::*;
+use rlp::RlpStream;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::{thread, time};
@@ -55,7 +57,7 @@ impl BlockGenerator {
 
         let mut header = Header::new();
         header.set_parent_hash(best_hash);
-        header.set_timestamp(0);
+        header.set_timestamp(random::<u64>());
         header.set_number(best_number + 1);
         header.set_author(Address::default());
         header.set_state_root(KECCAK_NULL_RLP);

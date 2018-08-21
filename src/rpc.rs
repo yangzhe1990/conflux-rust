@@ -156,9 +156,11 @@ impl Rpc for RpcImpl {
         }
     }
 
-    fn generate(&self, num_txs: usize) -> RpcResult<()> {
-        info!("RPC Request: generate({:?})", num_txs);
-        self.block_gen.generate_block(num_txs);
+    fn generate(&self, num_blocks: usize) -> RpcResult<()> {
+        info!("RPC Request: generate({:?})", num_blocks);
+        for _i in 0..num_blocks {
+            self.block_gen.generate_block(0usize);
+        }
         Ok(())
     }
 
