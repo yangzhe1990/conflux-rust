@@ -2,13 +2,14 @@ use blockgen::BlockGeneratorRef;
 use core::PeerInfo;
 use core::{ExecutionEngineRef, LedgerRef, SyncEngineRef};
 use ethereum_types::{Address, H256};
+use http::Server as HttpServer;
+use http::ServerBuilder as HttpServerBuilder;
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
 use network::NodeId;
 use parity_reactor::TokioRemote;
+use parking_lot::{Condvar, Mutex};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-
-use http::Server as HttpServer;
-use http::ServerBuilder as HttpServerBuilder;
+use std::sync::Arc;
 use tcp::Server as TcpServer;
 use tcp::ServerBuilder as TcpServerBuilder;
 
@@ -18,6 +19,7 @@ pub struct Dependencies {
     pub execution_engine: ExecutionEngineRef,
     pub sync_engine: SyncEngineRef,
     pub block_gen: BlockGeneratorRef,
+    pub exit: Arc<(Mutex<bool>, Condvar)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -59,29 +61,32 @@ impl HttpConfiguration {
 // The macro from jsonrpc_core to facilitate the definition of handlers
 build_rpc_trait! {
     pub trait Rpc {
-        #[rpc(name = "say_hello")]
+        #[rpc(name = "sayhello")]
         fn say_hello(&self) -> RpcResult<String>;
 
-        #[rpc(name = "get_balance")]
+        #[rpc(name = "getbalance")]
         fn get_balance(&self, Address) -> RpcResult<f64>;
 
-        #[rpc(name = "get_best_block_hash")]
+        #[rpc(name = "getbestblockhash")]
         fn get_best_block_hash(&self) -> RpcResult<H256>;
 
-        #[rpc(name = "get_block_count")]
+        #[rpc(name = "getblockcount")]
         fn get_block_count(&self) -> RpcResult<usize>;
 
         #[rpc(name = "generate")]
         fn generate(&self, usize) -> RpcResult<()>;
 
-        #[rpc(name = "add_peer")]
+        #[rpc(name = "addnode")]
         fn add_peer(&self, SocketAddr) -> RpcResult<NodeId>;
 
-        #[rpc(name = "drop_peer")]
+        #[rpc(name = "removenode")]
         fn drop_peer(&self, NodeId) -> RpcResult<()>;
 
-        #[rpc(name = "get_peer_info")]
+        #[rpc(name = "getpeerinfo")]
         fn get_peer_info(&self) -> RpcResult<Vec<PeerInfo>>;
+
+        #[rpc(name = "stop")]
+        fn stop(&self) -> RpcResult<()>;
     }
 }
 
@@ -90,12 +95,14 @@ struct RpcImpl {
     execution_engine: ExecutionEngineRef,
     sync_engine: SyncEngineRef,
     block_gen: BlockGeneratorRef,
+    exit: Arc<(Mutex<bool>, Condvar)>,
 }
 
 impl RpcImpl {
     fn new(
         ledger: LedgerRef, execution_engine: ExecutionEngineRef,
         sync_engine: SyncEngineRef, block_gen: BlockGeneratorRef,
+        exit: Arc<(Mutex<bool>, Condvar)>,
     ) -> Self
     {
         RpcImpl {
@@ -103,6 +110,7 @@ impl RpcImpl {
             execution_engine: execution_engine,
             sync_engine: sync_engine,
             block_gen: block_gen,
+            exit: exit,
         }
     }
 }
@@ -158,6 +166,13 @@ impl Rpc for RpcImpl {
         info!("RPC Request: get_peer_info");
         Ok(self.sync_engine.get_peer_info())
     }
+
+    fn stop(&self) -> RpcResult<()> {
+        *self.exit.0.lock() = true;
+        self.exit.1.notify_all();
+
+        Ok(())
+    }
 }
 
 fn setup_apis(dependencies: &Dependencies) -> IoHandler {
@@ -170,6 +185,7 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
             dependencies.execution_engine.clone(),
             dependencies.sync_engine.clone(),
             dependencies.block_gen.clone(),
+            dependencies.exit.clone(),
         ).to_delegate(),
     );
 

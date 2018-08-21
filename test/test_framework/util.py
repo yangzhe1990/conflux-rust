@@ -356,7 +356,7 @@ def disconnect_nodes(from_connection, node_num):
 
 
 def check_handshake(from_connection, target_addr):
-    peers = from_connection.get_peer_info()
+    peers = from_connection.getpeerinfo()
     for peer in peers:
         if (peer['addr'] == target_addr) and (peer['caps'] != None):
             return True
@@ -365,7 +365,7 @@ def check_handshake(from_connection, target_addr):
 
 def connect_nodes(from_connection, node_num):
     peer_addr = "127.0.0.1:" + str(p2p_port(node_num))
-    from_connection.add_peer(peer_addr)
+    from_connection.addnode(peer_addr)
     # poll until hello handshake complete to avoid race conditions
     # with transaction relaying
     wait_until(lambda: check_handshake(from_connection, peer_addr))

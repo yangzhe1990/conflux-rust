@@ -1,19 +1,19 @@
 #![allow(deprecated)]
 
 extern crate clap;
-extern crate serde;
-extern crate serde_json;
 extern crate ctrlc;
 extern crate jsonrpc_core;
+extern crate serde;
+extern crate serde_json;
 #[macro_use]
 extern crate jsonrpc_macros;
-extern crate jsonrpc_http_server as http;
-extern crate jsonrpc_tcp_server as tcp;
-extern crate parking_lot;
 extern crate error_chain;
 extern crate io;
+extern crate jsonrpc_http_server as http;
+extern crate jsonrpc_tcp_server as tcp;
 extern crate mio;
 extern crate parity_reactor;
+extern crate parking_lot;
 #[macro_use]
 extern crate log;
 extern crate ethereum_types;
@@ -43,7 +43,9 @@ use std::process;
 use std::sync::Arc;
 
 // Start all key components of Conflux and pass out their handles
-fn start(conf: Configuration) -> Result<Box<Any>, String> {
+fn start(
+    conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
+) -> Result<Box<Any>, String> {
     let network_config = match conf.port {
         Some(port) => network::NetworkConfiguration::new_with_port(port),
         None => network::NetworkConfiguration::default(),
@@ -80,6 +82,7 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
         execution_engine: execution_engine.clone(),
         sync_engine: sync_engine_ref.clone(),
         block_gen: blockgen.clone(),
+        exit: exit,
     };
     let rpc_tcp_server = rpc::new_tcp(
         rpc::TcpConfiguration::new(conf.jsonrpc_tcp_port),
@@ -161,7 +164,7 @@ fn main() {
 
     let exit = Arc::new((Mutex::new(false), Condvar::new()));
 
-    process::exit(match start(conf) {
+    process::exit(match start(conf, exit.clone()) {
         Ok(keep_alive) => {
             CtrlC::set_handler({
                 let e = exit.clone();

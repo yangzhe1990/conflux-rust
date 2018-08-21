@@ -119,7 +119,7 @@ class TestNode:
                     rpc_url(self.datadir, self.index, self.rpchost),
                     self.index,
                     timeout=self.rpc_timeout)
-                self.rpc.get_best_block_hash()
+                self.rpc.getbestblockhash()
                 # If the call to get_best_block_hash() succeeds then the RPC connection is up
                 self.rpc_connected = True
                 self.url = self.rpc.url
@@ -143,7 +143,7 @@ class TestNode:
             return
         self.log.debug("Stopping node")
         try:
-            # self.stop()
+            self.stop()
             pass
         except http.client.CannotSendRequest:
             self.log.exception("Unable to stop node.")
