@@ -269,7 +269,6 @@ def wait_until(predicate,
 
 def initialize_datadir(dirname, n):
     datadir = get_datadir_path(dirname, n)
-    print("datadir={} n={}".format(datadir, n))
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
     with open(
@@ -464,5 +463,4 @@ def rpc_port(n):
 def rpc_url(datadir, i, rpchost=None):
     host = '127.0.0.1'
     port = rpc_port(i)
-    print("i={} port={}".format(i, port))
     return "http://%s:%d" % (host, int(port))

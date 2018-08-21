@@ -154,7 +154,6 @@ class ConfluxTestFramework:
             default=os.path.join(
                 os.path.dirname(os.path.realpath(__file__)),
                 "../../target/debug/conflux"))
-        print(self.options.conflux)
 
         # Set up temp directory and start logging
         if self.options.tmpdir:
@@ -461,20 +460,3 @@ class SkipTest(Exception):
 
     def __init__(self, message):
         self.message = message
-
-
-def skip_if_no_py3_zmq():
-    """Attempt to import the zmq package and skip the test if the import fails."""
-    try:
-        import zmq  # noqa
-    except ImportError:
-        raise SkipTest("python3-zmq module not available.")
-
-
-def skip_if_no_bitcoind_zmq(test_instance):
-    """Skip the running test if bitcoind has not been compiled with zmq support."""
-    config = configparser.ConfigParser()
-    config.read_file(open(test_instance.options.configfile))
-
-    if not config["components"].getboolean("ENABLE_ZMQ"):
-        raise SkipTest("bitcoind has not been built with zmq enabled.")

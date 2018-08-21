@@ -283,7 +283,7 @@ impl NetworkServiceInner {
             let session = sessions.get(i);
             if session.is_some() {
                 peers.push(PeerInfo {
-                    peer: i,
+                    id: i,
                     addr: session.unwrap().lock().address(),
                 })
             }

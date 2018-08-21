@@ -151,6 +151,6 @@ impl Ord for Capability {
 
 #[derive(Serialize)]
 pub struct PeerInfo {
-    pub peer: PeerId,
+    pub id: PeerId,
     pub addr: SocketAddr,
 }

@@ -44,7 +44,6 @@ class TestNode:
             self.binary, "--config",
             os.path.join(self.datadir, "conflux.conf")
         ]
-        print(self.args)
 
         self.running = False
         self.process = None
@@ -111,7 +110,6 @@ class TestNode:
         poll_per_s = 4
         for _ in range(poll_per_s * self.rpc_timeout):
             if self.process.poll() is not None:
-                print("self.index={}".format(self.index))
                 raise FailedToStartError(
                     self._node_msg(
                         'conflux exited with status {} during initialization'.
