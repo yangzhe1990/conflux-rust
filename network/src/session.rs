@@ -9,6 +9,7 @@ use mio::tcp::*;
 use mio::*;
 use rlp::{Rlp, RlpStream};
 use service::HostMetadata;
+use std::net::SocketAddr;
 use std::str;
 use {
     Capability, DisconnectReason, Error, ErrorKind, NodeId, ProtocolId,
@@ -37,6 +38,7 @@ type Connection = TcpConnection<PacketSizer>;
 
 pub struct Session {
     pub metadata: SessionMetadata,
+    address: SocketAddr,
     connection: Connection,
     sent_hello: bool,
     had_hello: bool,
@@ -58,8 +60,8 @@ pub const PACKET_USER: u8 = 0x10;
 
 impl Session {
     pub fn new<Message: Send + Sync + Clone + 'static>(
-        io: &IoContext<Message>, socket: TcpStream, id: Option<&NodeId>,
-        token: StreamToken, host: &HostMetadata,
+        io: &IoContext<Message>, socket: TcpStream, address: SocketAddr,
+        id: Option<&NodeId>, token: StreamToken, host: &HostMetadata,
     ) -> Result<Session, Error>
     {
         let originated = id.is_some();
@@ -70,6 +72,7 @@ impl Session {
                 peer_capabilities: Vec::new(),
                 originated,
             },
+            address,
             connection: Connection::new(token, socket),
             sent_hello: false,
             had_hello: false,
@@ -102,6 +105,8 @@ impl Session {
     fn connection(&self) -> &Connection { &self.connection }
 
     pub fn token(&self) -> StreamToken { self.connection().token() }
+
+    pub fn address(&self) -> SocketAddr { self.address }
 
     pub fn register_socket<H: Handler>(
         &self, reg: Token, event_loop: &mut EventLoop<H>,

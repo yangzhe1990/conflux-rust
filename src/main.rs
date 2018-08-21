@@ -44,7 +44,7 @@ use std::sync::Arc;
 
 // Start all key components of Conflux and pass out their handles
 fn start(conf: Configuration) -> Result<Box<Any>, String> {
-    let net_conf = match conf.port {
+    let network_config = match conf.port {
         Some(port) => network::NetworkConfiguration::new_with_port(port),
         None => network::NetworkConfiguration::default(),
     };
@@ -56,7 +56,7 @@ fn start(conf: Configuration) -> Result<Box<Any>, String> {
 
     let sync_params = core::SyncParams {
         config: Default::default(),
-        network_config: net_conf,
+        network_config,
         ledger: ledger.clone(),
         execution_engine: execution_engine.clone(),
     };

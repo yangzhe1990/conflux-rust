@@ -10,6 +10,8 @@ extern crate rlp;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate serde_derive;
 
 mod api;
 pub mod block;
@@ -23,15 +25,17 @@ mod state;
 mod sync;
 pub mod transaction;
 
-use parking_lot::RwLock;
-use rlp::{Rlp};
-use std::sync::Arc;
-use std::net::SocketAddr;
 use network::NodeId;
+use parking_lot::RwLock;
+use rlp::Rlp;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::sync::Arc;
 
 pub use api::*;
 pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
 pub use ledger::{Ledger, LedgerRef};
+pub use network::PeerInfo;
 pub use state::State;
 pub use state::COINBASE_ADDRESS;
 pub use sync::*;
@@ -116,7 +120,8 @@ impl SyncEngine {
                 self.sync_handler.clone(),
                 self.subprotocol_name,
                 &[CONFLUX_PROTOCOL_VERSION_1],
-            ).unwrap_or_else(|e| {
+            )
+            .unwrap_or_else(|e| {
                 warn!("Error registering conflux protocol: {:?}", e)
             });
     }
@@ -142,6 +147,10 @@ impl SyncEngine {
 
     pub fn drop_peer(&self, id: NodeId) -> Result<(), Error> {
         self.network.drop_peer(id)
+    }
+
+    pub fn get_peer_info(&self) -> Vec<PeerInfo> {
+        self.network.get_peer_info().unwrap()
     }
 }
 

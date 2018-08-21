@@ -1,4 +1,5 @@
 use blockgen::BlockGeneratorRef;
+use core::PeerInfo;
 use core::{ExecutionEngineRef, LedgerRef, SyncEngineRef};
 use ethereum_types::{Address, H256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
@@ -78,6 +79,9 @@ build_rpc_trait! {
 
         #[rpc(name = "drop_peer")]
         fn drop_peer(&self, NodeId) -> RpcResult<()>;
+
+        #[rpc(name = "get_peer_info")]
+        fn get_peer_info(&self) -> RpcResult<Vec<PeerInfo>>;
     }
 }
 
@@ -148,6 +152,11 @@ impl Rpc for RpcImpl {
         info!("RPC Request: generate({:?})", num_txs);
         self.block_gen.generate_block(num_txs);
         Ok(())
+    }
+
+    fn get_peer_info(&self) -> RpcResult<Vec<PeerInfo>> {
+        info!("RPC Request: get_peer_info");
+        Ok(self.sync_engine.get_peer_info())
     }
 }
 

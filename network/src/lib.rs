@@ -9,6 +9,9 @@ extern crate slab;
 extern crate error_chain;
 extern crate bytes;
 extern crate rlp;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 pub type ProtocolId = [u8; 3];
 pub type PeerId = usize;
@@ -144,4 +147,10 @@ impl Ord for Capability {
     fn cmp(&self, other: &Capability) -> Ordering {
         return self.protocol.cmp(&other.protocol);
     }
+}
+
+#[derive(Serialize)]
+pub struct PeerInfo {
+    pub peer: PeerId,
+    pub addr: SocketAddr,
 }

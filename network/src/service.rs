@@ -8,14 +8,14 @@ use session::Session;
 use session::SessionData;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::io::{self};
+use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use std::time::Duration;
 use {
     Capability, DisconnectReason, Error, NetworkConfiguration,
     NetworkContext as NetworkContextTrait, NetworkIoMessage,
-    NetworkProtocolHandler, NodeId, PeerId, ProtocolId,
+    NetworkProtocolHandler, NodeId, PeerId, PeerInfo, ProtocolId,
 };
 
 type Slab<T> = ::slab::Slab<T, usize>;
@@ -106,6 +106,10 @@ impl NetworkService {
             inner.with_context(protocol, &io, action);
         };
     }
+
+    pub fn get_peer_info(&self) -> Option<Vec<PeerInfo>> {
+        self.inner.as_ref().map(|inner| inner.get_peer_info())
+    }
 }
 
 type SharedSession = Arc<Mutex<Session>>;
@@ -120,7 +124,7 @@ pub struct HostMetadata {
 #[derive(Debug)]
 struct NodeEntry {
     id: NodeId,
-    local_address: SocketAddr,
+    address: SocketAddr,
     stream_token: Option<StreamToken>,
 }
 
@@ -178,11 +182,12 @@ impl NetworkServiceInner {
         self.metadata.read().local_address
     }
 
-    fn add_node(&self, local_address: SocketAddr) -> Result<NodeId, Error> {
-        let id = local_address;
+    fn add_node(&self, address: SocketAddr) -> Result<NodeId, Error> {
+        // TODO: replace address with real node identifier
+        let id = address;
         let node = NodeEntry {
             id: id,
-            local_address: local_address,
+            address: address,
             stream_token: None,
         };
         self.nodes.write().insert(node.id, node);
@@ -242,11 +247,11 @@ impl NetworkServiceInner {
             return;
         }
 
-        let socket = {
+        let (socket, address) = {
             let address = {
                 let mut nodes = self.nodes.write();
                 if let Some(node) = nodes.get_mut(id) {
-                    node.local_address
+                    node.address
                 } else {
                     debug!(target: "network", "Abort connect. Node expired");
                     return;
@@ -255,7 +260,7 @@ impl NetworkServiceInner {
             match TcpStream::connect(&address) {
                 Ok(socket) => {
                     trace!(target: "network", "{}: connecting to {:?}", id, address);
-                    socket
+                    (socket, address)
                 }
                 Err(e) => {
                     debug!(target: "network", "{}: can't connect o address {:?} {:?}", id, address, e);
@@ -264,9 +269,26 @@ impl NetworkServiceInner {
             }
         };
 
-        if let Err(e) = self.create_connection(socket, Some(id), io) {
+        if let Err(e) = self.create_connection(socket, address, Some(id), io) {
             debug!(target: "network", "Can't create connection: {:?}", e);
         }
+    }
+
+    pub fn get_peer_info(&self) -> Vec<PeerInfo> {
+        let sessions = self.sessions.read();
+        let sessions = &*sessions;
+
+        let mut peers = Vec::with_capacity(sessions.count());
+        for i in (0..MAX_SESSIONS).map(|x| x + FIRST_SESSION) {
+            let session = sessions.get(i);
+            if session.is_some() {
+                peers.push(PeerInfo {
+                    peer: i,
+                    addr: session.unwrap().lock().address(),
+                })
+            }
+        }
+        peers
     }
 
     #[allow(unused)]
@@ -289,7 +311,7 @@ impl NetworkServiceInner {
     }
 
     fn create_connection(
-        &self, socket: TcpStream, id: Option<&NodeId>,
+        &self, socket: TcpStream, address: SocketAddr, id: Option<&NodeId>,
         io: &IoContext<NetworkIoMessage>,
     ) -> Result<(), Error>
     {
@@ -297,7 +319,14 @@ impl NetworkServiceInner {
 
         let token = sessions.insert_with_opt(|token| {
             trace!(target: "network", "{}: Initiating session", token);
-            match Session::new(io, socket, id, token, &self.metadata.read()) {
+            match Session::new(
+                io,
+                socket,
+                address,
+                id,
+                token,
+                &self.metadata.read(),
+            ) {
                 Ok(sess) => Some(Arc::new(Mutex::new(sess))),
                 Err(e) => {
                     debug!(target: "network", "Error creating session: {:?}", e);
@@ -444,8 +473,8 @@ impl NetworkServiceInner {
     fn accept(&self, io: &IoContext<NetworkIoMessage>) {
         trace!(target: "network", "Accepting incoming connection");
         loop {
-            let socket = match self.tcp_listener.lock().accept() {
-                Ok((sock, _addr)) => sock,
+            let (socket, address) = match self.tcp_listener.lock().accept() {
+                Ok((sock, addr)) => (sock, addr),
                 Err(e) => {
                     if e.kind() != io::ErrorKind::WouldBlock {
                         debug!(target: "network", "Error accepting connection: {:?}", e);
@@ -453,16 +482,15 @@ impl NetworkServiceInner {
                     break;
                 }
             };
-            if let Err(e) = self.create_connection(socket, None, io) {
+            if let Err(e) = self.create_connection(socket, address, None, io) {
                 debug!(target: "netweork", "Can't accept connection: {:?}", e);
             }
         }
     }
 
     fn kill_connection(
-        &self, token: StreamToken, io: &IoContext<NetworkIoMessage>
-    )
-    {
+        &self, token: StreamToken, io: &IoContext<NetworkIoMessage>,
+    ) {
         let mut to_disconnect: Vec<ProtocolId> = Vec::new();
         let mut deregister = false;
 
@@ -592,8 +620,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                 }
                 trace!(target: "network", "Disconnect requested {}", peer);
                 //self.kill_connection(*peer, io, false);
-            }
-            //_ => {}
+            } //_ => {}
         }
     }
 
