@@ -10,8 +10,6 @@ extern crate rlp;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate serde_derive;
 
 mod api;
 pub mod block;
@@ -29,7 +27,6 @@ use network::NodeId;
 use parking_lot::RwLock;
 use rlp::Rlp;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::Arc;
 
 pub use api::*;
