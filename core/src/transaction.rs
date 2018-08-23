@@ -8,22 +8,6 @@ use std::ops::Deref;
 /// Fake address for unsigned transactions.
 pub const UNSIGNED_SENDER: Address = H160([0xff; 20]);
 
-/// Replay protection logic for v part of transaction's signature
-pub mod signature {
-    pub fn add_chain_replay_protection(v: u64) -> u64 { v + 27 }
-
-    /// Returns refined v
-    /// 0 if `v` would have been 27 under "Electrum" notation, 1 if 28 or 4 if invalid.
-    pub fn check_replay_protection(v: u64) -> u8 {
-        match v {
-            v if v == 27 => 0,
-            v if v == 28 => 1,
-            v if v > 36 => ((v - 1) % 2) as u8,
-            _ => 4,
-        }
-    }
-}
-
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Transaction {
     pub nonce: u64,
@@ -52,7 +36,7 @@ impl Transaction {
             unsigned: self,
             r: sig.r().into(),
             s: sig.s().into(),
-            v: signature::add_chain_replay_protection(sig.v() as u64),
+            v: sig.v(),
             hash: 0.into(),
         }.compute_hash()
     }
@@ -88,9 +72,8 @@ impl Encodable for Transaction {
 pub struct TransactionWithSignature {
     /// Plain Transaction.
     unsigned: Transaction,
-    /// The V field of the signature; the LS bit described which half of the curve our point falls
-    /// in. The MS bits describe which chain this transaction is for. If 27/28, its for all chains.
-    v: u64,
+    /// The V field of the signature; helps describe which half of the curve our point falls in.
+    v: u8,
     /// The R field of the signature; helps describe the point on the curve.
     r: U256,
     /// The S field of the signature; helps describe the point on the curve.
@@ -161,13 +144,9 @@ impl TransactionWithSignature {
         s.append(&self.s);
     }
 
-    pub fn standard_v(&self) -> u8 {
-        signature::check_replay_protection(self.v)
-    }
-
     /// Construct a signature object from the sig.
     pub fn signature(&self) -> Signature {
-        Signature::from_rsv(&self.r.into(), &self.s.into(), self.standard_v())
+        Signature::from_rsv(&self.r.into(), &self.s.into(), self.v)
     }
 
     /// Recovers the public key of the sender.
