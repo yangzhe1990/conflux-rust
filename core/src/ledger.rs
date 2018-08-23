@@ -1,6 +1,6 @@
 use block::Block;
 use ethereum_types::{Address, H256, U256};
-use hash::{KECCAK_NULL_RLP};
+use hash::KECCAK_NULL_RLP;
 use header::Header;
 use parking_lot::RwLock;
 use std::collections::HashMap;

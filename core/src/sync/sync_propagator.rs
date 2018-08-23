@@ -1,11 +1,9 @@
-use super::{
-    SyncState, NEW_BLOCK_PACKET,
-};
+use super::{SyncState, NEW_BLOCK_PACKET};
 
 use bytes::Bytes;
 use ethereum_types::{H256, U256};
-use network::{PeerId};
-use rlp::{RlpStream};
+use network::PeerId;
+use rlp::RlpStream;
 use sync_ctx::SyncContext;
 use types::*;
 

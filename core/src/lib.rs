@@ -1,5 +1,6 @@
 extern crate common_types as types;
 extern crate ethereum_types;
+extern crate ethkey;
 extern crate io;
 extern crate keccak_hash as hash;
 extern crate network;
@@ -117,8 +118,7 @@ impl SyncEngine {
                 self.sync_handler.clone(),
                 self.subprotocol_name,
                 &[CONFLUX_PROTOCOL_VERSION_1],
-            )
-            .unwrap_or_else(|e| {
+            ).unwrap_or_else(|e| {
                 warn!("Error registering conflux protocol: {:?}", e)
             });
     }

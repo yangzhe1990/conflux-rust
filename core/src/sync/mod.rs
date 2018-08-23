@@ -13,7 +13,7 @@ use network::{Error, PeerId};
 use parking_lot::RwLock;
 use rlp::{DecoderError, Rlp, RlpStream};
 use std::collections::{HashMap, HashSet};
-use std::time::{Instant};
+use std::time::Instant;
 
 pub const CONFLUX_PROTOCOL_VERSION_1: u8 = 0x01;
 

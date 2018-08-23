@@ -2,7 +2,7 @@ use super::{
     PacketDecodeError, PacketId, PeerAsking, PeerInfo, RlpResponseResult,
     SyncState, BLOCK_BODIES_PACKET, BLOCK_HEADERS_PACKET,
     GET_BLOCK_BODIES_PACKET, GET_BLOCK_HEADERS_PACKET, MAX_BODIES_TO_SEND,
-    MAX_HEADERS_TO_SEND, STATUS_PACKET, NEW_BLOCK_PACKET
+    MAX_HEADERS_TO_SEND, NEW_BLOCK_PACKET, STATUS_PACKET,
 };
 
 use super::super::block::Block;
