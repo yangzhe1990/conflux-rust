@@ -1,4 +1,4 @@
-use state::State;
+use state::AccountStateRef;
 use types::{BlockId, BlockNumber};
 use LedgerRef;
 
@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 pub struct ExecutionEngine {
     ledger: LedgerRef,
-    pub state: State,
+    pub state: AccountStateRef,
 
     last_block_number: BlockNumber,
     block_hashes: Arc<RwLock<HashMap<BlockNumber, H256>>>,
@@ -18,17 +18,19 @@ pub struct ExecutionEngine {
 pub type ExecutionEngineRef = Arc<ExecutionEngine>;
 
 impl ExecutionEngine {
-    pub fn new(ledger: LedgerRef) -> Self {
+    pub fn new(ledger: LedgerRef, state: AccountStateRef) -> Self {
         ExecutionEngine {
             ledger: ledger,
-            state: State::new(),
+            state: state,
             last_block_number: 0,
             block_hashes: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    pub fn new_ref(ledger: LedgerRef) -> ExecutionEngineRef {
-        Arc::new(Self::new(ledger))
+    pub fn new_ref(
+        ledger: LedgerRef, state: AccountStateRef,
+    ) -> ExecutionEngineRef {
+        Arc::new(Self::new(ledger, state))
     }
 
     pub fn execute_up_to(&self, index: BlockNumber) {

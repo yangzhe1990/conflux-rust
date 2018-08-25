@@ -7,20 +7,22 @@ extern crate network;
 extern crate parity_bytes as bytes;
 extern crate parking_lot;
 extern crate rlp;
+extern crate secret_store;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate rand;
 
 mod api;
 pub mod block;
 mod block_sync;
 pub mod encoded;
 pub mod error;
-mod execution_engine;
+pub mod execution_engine;
 pub mod header;
 mod ledger;
-mod state;
+pub mod state;
 mod sync;
 pub mod transaction;
 
@@ -34,7 +36,6 @@ pub use api::*;
 pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
 pub use ledger::{Ledger, LedgerRef};
 pub use network::PeerInfo;
-pub use state::State;
 pub use state::COINBASE_ADDRESS;
 pub use sync::*;
 

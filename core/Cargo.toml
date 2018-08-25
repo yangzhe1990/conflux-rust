@@ -19,3 +19,5 @@ rlp = { git = "https://github.com/paritytech/parity-common" }
 lazy_static = "1.1.0"
 serde_derive = "1.0"
 ethkey = { path = "../ethkey" }
+secret-store = { path = "../secret_store" }
+rand = "0.5"
