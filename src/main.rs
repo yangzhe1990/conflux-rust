@@ -24,6 +24,7 @@ extern crate toml;
 
 extern crate blockgen;
 extern crate core;
+extern crate secret_store;
 // extern crate vm;
 
 mod configuration;
@@ -39,6 +40,7 @@ use log4rs::append::file::FileAppender;
 use log4rs::config::{Appender, Config as LogConfig, Logger, Root};
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
+use secret_store::{SecretStore, SecretStoreRef};
 use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
@@ -46,8 +48,7 @@ use std::sync::Arc;
 
 // Start all key components of Conflux and pass out their handles
 fn start(
-    conf: Configuration,
-    exit: Arc<(Mutex<bool>, Condvar)>,
+    conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<Box<Any>, String> {
     let network_config = match conf.port {
         Some(port) => network::NetworkConfiguration::new_with_port(port),
@@ -57,7 +58,10 @@ fn start(
     let ledger = core::Ledger::new_ref();
     ledger.initialize_with_genesis();
 
-    let execution_engine = core::ExecutionEngine::new_ref(ledger.clone());
+    let secret_store = SecretStore::new_ref();
+
+    let execution_engine =
+        core::ExecutionEngine::new_ref(ledger.clone(), secret_store.clone());
 
     let sync_params = core::SyncParams {
         config: Default::default(),
@@ -102,6 +106,7 @@ fn start(
         rpc_http_server,
         sync_engine_ref,
         blockgen,
+        secret_store.clone(),
         //block_gen_handle,
     )))
 }
@@ -162,14 +167,12 @@ fn main() {
                     .appender("stdout")
                     .additive(false)
                     .build("network", conf.log_level),
-            )
-            .logger(
+            ).logger(
                 Logger::builder()
                     .appender("stdout")
                     .additive(false)
                     .build("rpc", conf.log_level),
-            )
-            .build(Root::builder().appender("stdout").build(LevelFilter::Info))
+            ).build(Root::builder().appender("stdout").build(LevelFilter::Info))
             .unwrap()
     } else {
         let log_file = FileAppender::builder()
@@ -184,14 +187,12 @@ fn main() {
                     .appender("logfile")
                     .additive(false)
                     .build("network", conf.log_level),
-            )
-            .logger(
+            ).logger(
                 Logger::builder()
                     .appender("logfile")
                     .additive(false)
                     .build("rpc", conf.log_level),
-            )
-            .build(Root::builder().appender("stdout").build(LevelFilter::Info))
+            ).build(Root::builder().appender("stdout").build(LevelFilter::Info))
             .unwrap()
     };
     log4rs::init_config(log_config).unwrap();

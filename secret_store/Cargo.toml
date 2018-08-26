@@ -2,7 +2,7 @@
 description = "Conflux secret key management library"
 homepage = "http://www.conflux-chain.io"
 license = "GPL-3.0"
-name = "secret_store"
+name = "secret-store"
 version = "0.1.0"
 authors = ["ming wu <ming@alt-chain.io>"]
 

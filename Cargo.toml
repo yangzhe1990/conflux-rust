@@ -33,6 +33,6 @@ core = { path = "core" }
 network = { path = "network" }
 blockgen = { path = "blockgen" }
 txgen = { path = "transactiongen" }
-secret_store = { path = "secret_store" }
+secret-store = { path = "secret_store" }
 log4rs = "0.8"
 # account-store = { path = "account-store" }

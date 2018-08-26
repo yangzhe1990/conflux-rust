@@ -1,6 +1,10 @@
 use ethereum_types::Address;
+use ethkey::{public_to_address, Generator, KeyPair, Random};
+use network::Error;
 use parking_lot::RwLock;
-use std::collections::HashMap;
+use rand::prelude::*;
+use secret_store::SecretStoreRef;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use transaction::Transaction;
 
@@ -83,4 +87,43 @@ impl State {
     }
 
     pub fn clear(&self) {}
+
+    // This is for purpose of test
+    pub fn import_random_accounts(
+        &self, secret_store: SecretStoreRef,
+    ) -> Result<(), Error> {
+        let mut account_count: u32 = 0;
+        let mut account_set: HashSet<Address> = HashSet::new();
+
+        loop {
+            account_count += 1;
+
+            let kp = Random.generate()?;
+            let account_address = public_to_address(kp.public());
+
+            let mut rng = thread_rng();
+            let mut balance: f64 = rng.gen();
+            balance *= 10_000f64;
+
+            if account_set.contains(&account_address) {
+                account_count -= 1;
+            } else {
+                account_set.insert(account_address);
+                secret_store.insert(kp);
+                self.accounts.write().insert(
+                    account_address,
+                    Account {
+                        balance: balance,
+                        nonce: 0,
+                    },
+                );
+            }
+
+            if account_count >= 10 {
+                break;
+            }
+        }
+
+        Ok(())
+    }
 }

@@ -4,6 +4,7 @@ use LedgerRef;
 
 use ethereum_types::H256;
 use parking_lot::RwLock;
+use secret_store::SecretStoreRef;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -18,17 +19,22 @@ pub struct ExecutionEngine {
 pub type ExecutionEngineRef = Arc<ExecutionEngine>;
 
 impl ExecutionEngine {
-    pub fn new(ledger: LedgerRef) -> Self {
+    pub fn new(ledger: LedgerRef, secret_store: SecretStoreRef) -> Self {
+        let state = State::new();
+        state.import_random_accounts(secret_store.clone());
+
         ExecutionEngine {
             ledger: ledger,
-            state: State::new(),
+            state: state,
             last_block_number: 0,
             block_hashes: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    pub fn new_ref(ledger: LedgerRef) -> ExecutionEngineRef {
-        Arc::new(Self::new(ledger))
+    pub fn new_ref(
+        ledger: LedgerRef, secret_store: SecretStoreRef,
+    ) -> ExecutionEngineRef {
+        Arc::new(Self::new(ledger, secret_store))
     }
 
     pub fn execute_up_to(&self, index: BlockNumber) {

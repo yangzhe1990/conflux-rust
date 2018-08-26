@@ -4,9 +4,9 @@ extern crate rustc_hex;
 
 use ethkey::{KeyPair, Secret};
 use parking_lot::RwLock;
+use rustc_hex::ToHex;
 use std::collections::HashMap;
 use std::sync::Arc;
-use rustc_hex::ToHex;
 
 pub struct StoreInner {
     account_vec: Vec<KeyPair>,
@@ -33,9 +33,7 @@ impl StoreInner {
         true
     }
 
-    pub fn count(&self) -> usize {
-        self.account_vec.len()
-    }
+    pub fn count(&self) -> usize { self.account_vec.len() }
 
     pub fn get_keypair(&self, index: usize) -> KeyPair {
         self.account_vec[index].clone()
@@ -55,16 +53,13 @@ impl SecretStore {
         }
     }
 
-    pub fn insert(&self, kp: KeyPair) -> bool {
-        self.store.write().insert(kp)
-    }
+    pub fn new_ref() -> SecretStoreRef { Arc::new(Self::new()) }
 
-    pub fn count(&self) -> usize {
-        self.store.read().count()
-    }
+    pub fn insert(&self, kp: KeyPair) -> bool { self.store.write().insert(kp) }
+
+    pub fn count(&self) -> usize { self.store.read().count() }
 
     pub fn get_keypair(&self, index: usize) -> KeyPair {
         self.store.read().get_keypair(index)
     }
 }
-

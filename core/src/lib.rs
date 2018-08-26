@@ -7,10 +7,12 @@ extern crate network;
 extern crate parity_bytes as bytes;
 extern crate parking_lot;
 extern crate rlp;
+extern crate secret_store;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate rand;
 
 mod api;
 pub mod block;
