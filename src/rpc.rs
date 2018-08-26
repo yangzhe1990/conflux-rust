@@ -100,11 +100,12 @@ struct RpcImpl {
 
 impl RpcImpl {
     fn new(
-        ledger: LedgerRef, execution_engine: ExecutionEngineRef,
-        sync_engine: SyncEngineRef, block_gen: BlockGeneratorRef,
+        ledger: LedgerRef,
+        execution_engine: ExecutionEngineRef,
+        sync_engine: SyncEngineRef,
+        block_gen: BlockGeneratorRef,
         exit: Arc<(Mutex<bool>, Condvar)>,
-    ) -> Self
-    {
+    ) -> Self {
         RpcImpl {
             ledger: ledger,
             execution_engine: execution_engine,
@@ -116,7 +117,9 @@ impl RpcImpl {
 }
 
 impl Rpc for RpcImpl {
-    fn say_hello(&self) -> RpcResult<String> { Ok("Hello, world".into()) }
+    fn say_hello(&self) -> RpcResult<String> {
+        Ok("Hello, world".into())
+    }
 
     fn get_balance(&self, addr: Address) -> RpcResult<f64> {
         info!("RPC Request: get_balance({:?})", addr);
@@ -195,7 +198,8 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
 }
 
 pub fn new_tcp(
-    conf: TcpConfiguration, dependencies: &Dependencies,
+    conf: TcpConfiguration,
+    dependencies: &Dependencies,
 ) -> Result<Option<TcpServer>, String> {
     if !conf.enabled {
         return Ok(None);
@@ -216,7 +220,8 @@ pub fn new_tcp(
 }
 
 pub fn new_http(
-    conf: HttpConfiguration, dependencies: &Dependencies,
+    conf: HttpConfiguration,
+    dependencies: &Dependencies,
 ) -> Result<Option<HttpServer>, String> {
     if !conf.enabled {
         return Ok(None);

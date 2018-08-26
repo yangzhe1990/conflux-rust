@@ -17,7 +17,7 @@ pub mod block;
 mod block_sync;
 pub mod encoded;
 pub mod error;
-mod execution_engine;
+pub mod execution_engine;
 pub mod header;
 mod ledger;
 mod state;

@@ -46,7 +46,8 @@ use std::sync::Arc;
 
 // Start all key components of Conflux and pass out their handles
 fn start(
-    conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
+    conf: Configuration,
+    exit: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<Box<Any>, String> {
     let network_config = match conf.port {
         Some(port) => network::NetworkConfiguration::new_with_port(port),
