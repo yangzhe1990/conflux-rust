@@ -6,7 +6,7 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use transaction::Transaction;
+use transaction::SignedTransaction;
 pub use types::*;
 
 /// Contains information on a best block that is specific to the consensus engine.
@@ -73,7 +73,7 @@ impl Ledger {
         genesis_header.compute_hash();
         let hash = genesis_header.hash();
 
-        let txs: Vec<Transaction> = Vec::new();
+        let txs: Vec<SignedTransaction> = Vec::new();
         let genesis_body = Block {
             hash: hash,
             transactions: txs,

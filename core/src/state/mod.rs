@@ -6,7 +6,7 @@ use rand::prelude::*;
 use secret_store::SecretStoreRef;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use transaction::Transaction;
+use transaction::SignedTransaction;
 
 lazy_static! {
     pub static ref COINBASE_ADDRESS: Address = Address::zero();
@@ -54,7 +54,7 @@ impl AccountState {
 
     pub fn new_ref() -> AccountStateRef { Arc::new(Self::new()) }
 
-    fn verify(&self, txn: &Transaction) -> bool {
+    fn verify(&self, txn: &SignedTransaction) -> bool {
         let accounts = self.accounts.read();
         let sender = accounts.get(&txn.sender);
         if let Some(sender) = sender {
@@ -66,6 +66,26 @@ impl AccountState {
         } else {
             false
         }
+    }
+
+    pub fn get_nonce(&self, a: &Address) -> Option<u64> {
+        let accounts = self.accounts.read();
+        let acc = accounts.get(a);
+        if let Some(acc) = acc {
+            return Some(acc.nonce);
+        }
+
+        None
+    }
+
+    pub fn get_balance(&self, a: &Address) -> Option<f64> {
+        let accounts = self.accounts.read();
+        let acc = accounts.get(a);
+        if let Some(acc) = acc {
+            return Some(acc.balance);
+        }
+
+        None
     }
 
     pub fn remove_balance(&self, a: &Address, value: f64) {
@@ -82,7 +102,7 @@ impl AccountState {
         acc.balance += value;
     }
 
-    pub fn execute(&self, txn: &Transaction) {
+    pub fn execute(&self, txn: &SignedTransaction) {
         if !self.verify(txn) {
             return;
         }

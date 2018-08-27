@@ -1,6 +1,7 @@
 extern crate common_types as types;
 extern crate core;
 extern crate ethereum_types;
+extern crate ethkey;
 extern crate keccak_hash as hash;
 extern crate parking_lot;
 extern crate rand;
@@ -8,10 +9,11 @@ extern crate rlp;
 
 use core::block::Block;
 use core::header::Header;
-use core::transaction::Transaction;
+use core::transaction::{SignedTransaction, Transaction};
 use core::LedgerRef;
 use core::SyncEngineRef;
 use ethereum_types::{Address, H256, U256};
+use ethkey::Secret;
 use hash::{keccak, KECCAK_NULL_RLP};
 use parking_lot::RwLock;
 use rand::prelude::*;
@@ -64,15 +66,18 @@ impl BlockGenerator {
         header.set_difficulty(10.into());
         total_difficulty = total_difficulty + 10.into();
 
-        let mut txs: Vec<Transaction> = Vec::new();
+        let mut txs: Vec<SignedTransaction> = Vec::new();
         let mut tx_rlp = RlpStream::new_list(tx_len);
         for _i in 0..tx_len {
             let tx = Transaction {
                 nonce: 0,
+                gas_price: 0.001,
+                gas: 200,
                 value: 0.0,
-                sender: Address::default(),
                 receiver: Address::default(),
             };
+            let secret = Secret::zero();
+            let tx = tx.sign(&secret);
             tx_rlp.append(&tx);
             txs.push(tx);
         }
@@ -133,14 +138,18 @@ impl BlockGenerator {
                     header.compute_hash();
                     let hash = header.hash();
 
-                    let mut txs: Vec<Transaction> = Vec::new();
+                    let mut txs: Vec<SignedTransaction> = Vec::new();
                     for _i in 0..100 {
-                        txs.push(Transaction {
+                        let tx = Transaction {
                             nonce: 0,
+                            gas_price: 0.001,
+                            gas: 200,
                             value: 0.0,
-                            sender: Address::default(),
                             receiver: Address::default(),
-                        });
+                        };
+                        let secret = Secret::zero();
+                        let tx = tx.sign(&secret);
+                        txs.push(tx);
                     }
 
                     let body = Block {
