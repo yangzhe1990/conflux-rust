@@ -25,6 +25,7 @@ extern crate toml;
 extern crate blockgen;
 extern crate core;
 extern crate secret_store;
+extern crate txgen;
 // extern crate vm;
 
 mod configuration;
@@ -33,6 +34,7 @@ mod rpc;
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
+use core::state::{AccountState, AccountStateRef};
 use ctrlc::CtrlC;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
@@ -45,6 +47,8 @@ use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
 use std::sync::Arc;
+use std::thread;
+use txgen::TransactionGenerator;
 
 // Start all key components of Conflux and pass out their handles
 fn start(
@@ -60,8 +64,11 @@ fn start(
 
     let secret_store = SecretStore::new_ref();
 
+    let account_state = AccountState::new_ref();
+    account_state.import_random_accounts(secret_store.clone());
+
     let execution_engine =
-        core::ExecutionEngine::new_ref(ledger.clone(), secret_store.clone());
+        core::ExecutionEngine::new_ref(ledger.clone(), account_state.clone());
 
     let sync_params = core::SyncParams {
         config: Default::default(),
@@ -100,6 +107,15 @@ fn start(
         &rpc_deps,
     )?;
 
+    let txgen = Arc::new(TransactionGenerator::new(
+        execution_engine.clone(),
+        secret_store.clone(),
+        account_state.clone(),
+    ));
+    let txgen_handle = thread::spawn(move || {
+        TransactionGenerator::generate_transactions(txgen);
+    });
+
     Ok(Box::new((
         event_loop,
         rpc_tcp_server,
@@ -108,6 +124,7 @@ fn start(
         blockgen,
         secret_store.clone(),
         //block_gen_handle,
+        txgen_handle,
     )))
 }
 

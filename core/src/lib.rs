@@ -22,7 +22,7 @@ pub mod error;
 pub mod execution_engine;
 pub mod header;
 mod ledger;
-mod state;
+pub mod state;
 mod sync;
 pub mod transaction;
 
@@ -36,7 +36,6 @@ pub use api::*;
 pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
 pub use ledger::{Ledger, LedgerRef};
 pub use network::PeerInfo;
-pub use state::State;
 pub use state::COINBASE_ADDRESS;
 pub use sync::*;
 

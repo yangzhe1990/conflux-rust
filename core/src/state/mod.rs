@@ -30,12 +30,14 @@ impl Account {
 }
 
 /// Representation of the entire state of all accounts in the system.
-pub struct State {
-    pub accounts: Arc<RwLock<HashMap<Address, Account>>>,
+pub struct AccountState {
+    pub accounts: RwLock<HashMap<Address, Account>>,
 }
 
-impl State {
-    pub fn new() -> State {
+pub type AccountStateRef = Arc<AccountState>;
+
+impl AccountState {
+    pub fn new() -> AccountState {
         let mut accounts: HashMap<Address, Account> = HashMap::new();
         accounts.insert(
             *COINBASE_ADDRESS,
@@ -45,10 +47,12 @@ impl State {
             },
         );
 
-        State {
-            accounts: Arc::new(RwLock::new(accounts)),
+        AccountState {
+            accounts: RwLock::new(accounts),
         }
     }
+
+    pub fn new_ref() -> AccountStateRef { Arc::new(Self::new()) }
 
     fn verify(&self, txn: &Transaction) -> bool {
         let accounts = self.accounts.read();
