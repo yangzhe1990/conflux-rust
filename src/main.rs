@@ -88,6 +88,7 @@ fn start(
     let blockgen = Arc::new(BlockGenerator::new(
         ledger.clone(),
         txpool.clone(),
+        execution_engine.clone(),
         sync_engine_ref.clone(),
     ));
     /*let bgen = blockgen.clone();

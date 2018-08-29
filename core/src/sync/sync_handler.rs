@@ -385,7 +385,8 @@ impl SyncHandler {
         if new_body_arrived {
             let adjusted = io.ledger().adjust_main_chain(blocks_to_adjust);
             if adjusted {
-                // TODO: trigger tx execution
+                let block_number = io.ledger().best_block_number();
+                io.execution_engine().execute_up_to(block_number);
             }
         }
 
@@ -446,7 +447,8 @@ impl SyncHandler {
             // adjust main chain
             let adjusted = io.ledger().adjust_main_chain(blocks_to_adjust);
             if adjusted {
-                // TODO: trigger tx execution
+                let block_number = io.ledger().best_block_number();
+                io.execution_engine().execute_up_to(block_number);
             }
         }
 

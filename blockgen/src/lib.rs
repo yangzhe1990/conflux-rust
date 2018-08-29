@@ -8,6 +8,7 @@ extern crate rand;
 extern crate rlp;
 
 use core::block::Block;
+use core::execution_engine::ExecutionEngineRef;
 use core::header::Header;
 use core::transaction::{SignedTransaction, Transaction};
 use core::transaction_pool::{TransactionPool, TransactionPoolRef};
@@ -33,6 +34,7 @@ enum MiningState {
 pub struct BlockGenerator {
     ledger: LedgerRef,
     txpool: TransactionPoolRef,
+    engine: ExecutionEngineRef,
     sync: SyncEngineRef,
     state: RwLock<MiningState>,
 }
@@ -41,11 +43,14 @@ pub type BlockGeneratorRef = Arc<BlockGenerator>;
 
 impl BlockGenerator {
     pub fn new(
-        ledger: LedgerRef, txpool: TransactionPoolRef, sync: SyncEngineRef,
-    ) -> Self {
+        ledger: LedgerRef, txpool: TransactionPoolRef,
+        engine: ExecutionEngineRef, sync: SyncEngineRef,
+    ) -> Self
+    {
         BlockGenerator {
             ledger,
             txpool,
+            engine,
             sync,
             state: RwLock::new(MiningState::Start),
         }
@@ -191,6 +196,8 @@ impl BlockGenerator {
                 let mut blocks_to_adjust: VecDeque<H256> = VecDeque::new();
                 blocks_to_adjust.push_back(hash);
                 bg.ledger.adjust_main_chain(blocks_to_adjust);
+                let block_number = bg.ledger.best_block_number();
+                bg.engine.execute_up_to(block_number);
 
                 let mut hashes: Vec<H256> = Vec::new();
                 hashes.push(hash);
