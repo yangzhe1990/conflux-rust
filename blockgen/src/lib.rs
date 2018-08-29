@@ -10,6 +10,7 @@ extern crate rlp;
 use core::block::Block;
 use core::header::Header;
 use core::transaction::{SignedTransaction, Transaction};
+use core::transaction_pool::{TransactionPool, TransactionPoolRef};
 use core::LedgerRef;
 use core::SyncEngineRef;
 use ethereum_types::{Address, H256, U256};
@@ -31,6 +32,7 @@ enum MiningState {
 /// The interface for a conflux block generator
 pub struct BlockGenerator {
     ledger: LedgerRef,
+    txpool: TransactionPoolRef,
     sync: SyncEngineRef,
     state: RwLock<MiningState>,
 }
@@ -38,9 +40,12 @@ pub struct BlockGenerator {
 pub type BlockGeneratorRef = Arc<BlockGenerator>;
 
 impl BlockGenerator {
-    pub fn new(ledger: LedgerRef, sync: SyncEngineRef) -> Self {
+    pub fn new(
+        ledger: LedgerRef, txpool: TransactionPoolRef, sync: SyncEngineRef,
+    ) -> Self {
         BlockGenerator {
             ledger,
+            txpool,
             sync,
             state: RwLock::new(MiningState::Start),
         }
@@ -110,9 +115,15 @@ impl BlockGenerator {
     pub fn start_mining(bg: Arc<BlockGenerator>, _payload_len: u32) {
         let target_interval_count: u32 = 5;
         let mut current_interval_count: u32 = 0;
-        let mut current_mining_hash: Option<H256> = None;
-        let mut current_mining_number: BlockNumber = 0;
+        let mut parent_hash: H256 = 0.into();
+        let mut parent_number: BlockNumber = 0;
+        let mut parent_total_difficulty: U256 = 0.into();
         let mut current_total_difficulty: U256 = 0.into();
+        let mut current_mining_header = Header::new();
+        let mut current_mining_body = Block {
+            hash: 0.into(),
+            transactions: Vec::new(),
+        };
         let one_second = time::Duration::from_millis(1000);
 
         loop {
@@ -121,73 +132,82 @@ impl BlockGenerator {
                 _ => {}
             }
 
+            if current_interval_count == 0 {
+                // start to mine new block
+                let best_block_info = bg.ledger.best_block();
+                let best_hash = best_block_info.header.hash();
+                let best_number = best_block_info.header.number();
+                let total_difficulty = best_block_info.total_difficulty;
+
+                parent_hash = best_hash;
+                parent_number = best_number;
+
+                let mut txs: Vec<SignedTransaction> = Vec::new();
+                for _i in 0..100 {
+                    let tx = bg.txpool.fetch_transaction();
+                    if let Some(tx) = tx {
+                        txs.push(tx);
+                    } else {
+                        break;
+                    }
+                }
+
+                let txs = txs;
+                let mut tx_rlp = RlpStream::new_list(txs.len());
+                for tx in txs.iter() {
+                    tx_rlp.append(tx);
+                }
+
+                current_mining_header
+                    .set_transactions_root(keccak(tx_rlp.out()));
+                current_mining_header.set_parent_hash(parent_hash);
+                current_mining_header.set_timestamp(0);
+                current_mining_header.set_number(parent_number + 1);
+                current_mining_header.set_author(Address::default());
+                current_mining_header.set_state_root(KECCAK_NULL_RLP);
+                current_mining_header.set_difficulty(10.into());
+                current_total_difficulty = total_difficulty + 10.into();
+
+                current_mining_header.compute_hash();
+                let hash = current_mining_header.hash();
+                current_mining_body.hash = hash;
+                current_mining_body.transactions = txs;
+
+                bg.set_problem();
+                thread::sleep(one_second);
+                current_interval_count += 1;
+                continue;
+            }
+
             // check if mined a block
             if current_interval_count == target_interval_count {
                 // mined one block
-                if let Some(parent_hash) = current_mining_hash {
-                    let mut header = Header::new();
-                    header.set_parent_hash(parent_hash);
-                    header.set_timestamp(0);
-                    header.set_number(current_mining_number + 1);
-                    header.set_author(Address::default());
-                    header.set_transactions_root(KECCAK_NULL_RLP);
-                    header.set_state_root(KECCAK_NULL_RLP);
-                    header.set_difficulty(10.into());
-                    let total_difficulty = current_total_difficulty + 10.into();
+                let hash = current_mining_header.hash();
+                bg.ledger
+                    .add_block_header_by_hash(&hash, current_mining_header);
+                bg.ledger.add_block_body_by_hash(&hash, current_mining_body);
+                bg.ledger.add_child(&parent_hash, &hash);
 
-                    header.compute_hash();
-                    let hash = header.hash();
+                let mut blocks_to_adjust: VecDeque<H256> = VecDeque::new();
+                blocks_to_adjust.push_back(hash);
+                bg.ledger.adjust_main_chain(blocks_to_adjust);
 
-                    let mut txs: Vec<SignedTransaction> = Vec::new();
-                    for _i in 0..100 {
-                        let tx = Transaction {
-                            nonce: 0,
-                            gas_price: 0.001,
-                            gas: 200,
-                            value: 0.0,
-                            receiver: Address::default(),
-                        };
-                        let secret = Secret::zero();
-                        let tx = tx.sign(&secret);
-                        txs.push(tx);
-                    }
+                let mut hashes: Vec<H256> = Vec::new();
+                hashes.push(hash);
 
-                    let body = Block {
-                        hash: hash,
-                        transactions: txs,
-                    };
+                let mut total_difficulties: Vec<U256> = Vec::new();
+                total_difficulties.push(current_total_difficulty);
 
-                    bg.ledger.add_block_header_by_hash(&hash, header);
-                    bg.ledger.add_block_body_by_hash(&hash, body);
-                    bg.ledger.add_child(&parent_hash, &hash);
+                bg.sync.new_blocks(&hashes[..], &total_difficulties[..]);
 
-                    let mut blocks_to_adjust: VecDeque<
-                        H256,
-                    > = VecDeque::new();
-                    blocks_to_adjust.push_back(hash);
-                    bg.ledger.adjust_main_chain(blocks_to_adjust);
-
-                    let mut hashes: Vec<H256> = Vec::new();
-                    hashes.push(hash);
-
-                    let mut total_difficulties: Vec<U256> = Vec::new();
-                    total_difficulties.push(total_difficulty);
-
-                    bg.sync.new_blocks(&hashes[..], &total_difficulties[..]);
-
-                    // start to mine new block
-                    current_interval_count = 0;
-                    let best_block_info = bg.ledger.best_block();
-                    current_mining_hash = Some(best_block_info.header.hash());
-                    current_mining_number = best_block_info.header.number();
-                    current_total_difficulty = best_block_info.total_difficulty;
-                    bg.set_problem();
-                    thread::sleep(one_second);
-                    current_interval_count += 1;
-                    continue;
-                } else {
-                    panic!("What are you mining?");
-                }
+                // start to mine new block
+                current_mining_header = Header::new();
+                current_mining_body = Block {
+                    hash: 0.into(),
+                    transactions: Vec::new(),
+                };
+                current_interval_count = 0;
+                continue;
             }
 
             let best_block_info = bg.ledger.best_block();
@@ -195,30 +215,14 @@ impl BlockGenerator {
             let best_number = best_block_info.header.number();
             let total_difficulty = best_block_info.total_difficulty;
 
-            if let Some(hash) = current_mining_hash {
-                if hash == best_hash {
-                    // mining on the current best block
-                    if current_interval_count < target_interval_count {
-                        // still mining
-                        thread::sleep(one_second);
-                        current_interval_count += 1;
-                        continue;
-                    } else {
-                        panic!("How could this be?");
-                    }
-                }
+            if current_mining_header.hash() == best_hash {
+                thread::sleep(one_second);
+                current_interval_count += 1;
+                continue;
             }
 
             // main chain changed
-            // or, mining process just starts
-            // start to mine new block
             current_interval_count = 0;
-            current_mining_hash = Some(best_hash);
-            current_mining_number = best_number;
-            current_total_difficulty = total_difficulty;
-            bg.set_problem();
-            thread::sleep(one_second);
-            current_interval_count += 1;
         }
     }
 }

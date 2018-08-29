@@ -107,4 +107,18 @@ impl TransactionPool {
 
         true
     }
+
+    pub fn fetch_transaction(&self) -> Option<SignedTransaction> {
+        let mut pool_write = self.pool.write();
+
+        if pool_write.tx_priority_queue.is_empty() {
+            return None;
+        }
+
+        let tx_ref = pool_write.tx_priority_queue.pop().unwrap();
+        pool_write
+            .tx_hash_map
+            .remove(&tx_ref.transaction.transaction.hash());
+        Some((*tx_ref.transaction).clone())
+    }
 }

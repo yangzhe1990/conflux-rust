@@ -35,6 +35,7 @@ use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
 use core::state::{AccountState, AccountStateRef};
+use core::transaction_pool::{TransactionPool, TransactionPoolRef};
 use ctrlc::CtrlC;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
@@ -62,6 +63,7 @@ fn start(
     let ledger = core::Ledger::new_ref();
     ledger.initialize_with_genesis();
 
+    let txpool = TransactionPool::new_ref(10000);
     let secret_store = SecretStore::new_ref();
 
     let account_state = AccountState::new_ref();
@@ -83,8 +85,11 @@ fn start(
 
     let event_loop = EventLoop::spawn();
 
-    let blockgen =
-        Arc::new(BlockGenerator::new(ledger.clone(), sync_engine_ref.clone()));
+    let blockgen = Arc::new(BlockGenerator::new(
+        ledger.clone(),
+        txpool.clone(),
+        sync_engine_ref.clone(),
+    ));
     /*let bgen = blockgen.clone();
     let block_gen_handle = thread::spawn(move || {
         BlockGenerator::start_mining(bgen, 0);
@@ -109,6 +114,7 @@ fn start(
 
     let txgen = Arc::new(TransactionGenerator::new(
         execution_engine.clone(),
+        txpool.clone(),
         secret_store.clone(),
         account_state.clone(),
     ));
