@@ -164,6 +164,8 @@ impl TransactionWithSignature {
         Signature::from_rsv(&self.r.into(), &self.s.into(), self.v)
     }
 
+    pub fn hash(&self) -> H256 { self.hash }
+
     /// Recovers the public key of the sender.
     pub fn recover_public(&self) -> Result<Public, ethkey::Error> {
         Ok(recover(&self.signature(), &self.unsigned.hash())?)
@@ -173,7 +175,7 @@ impl TransactionWithSignature {
 /// A signed transaction with successfully recovered `sender`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SignedTransaction {
-    transaction: TransactionWithSignature,
+    pub transaction: TransactionWithSignature,
     pub sender: Address,
     public: Option<Public>,
 }
@@ -212,6 +214,9 @@ impl SignedTransaction {
         }
     }
 
-    /// Checks is signature is empty.
+    /// Returns transaction sender.
+    pub fn sender(&self) -> Address { self.sender }
+
+    /// Checks if signature is empty.
     pub fn is_unsigned(&self) -> bool { self.transaction.is_unsigned() }
 }
