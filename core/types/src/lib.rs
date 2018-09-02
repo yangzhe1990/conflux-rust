@@ -39,3 +39,13 @@ pub struct BlockHeader {
     pub bits: u32,
     pub nonce: u32,
 }
+
+#[derive(PartialEq, Clone)]
+pub struct MegaBlockHeader {
+    pub parental_header_hash: H256,
+    pub reference_header_hashes: Vec<H256>,
+    pub merkle_root_hash: H256,
+    pub time: u32,
+    pub bits: u32,
+    pub nonce: u32,
+}

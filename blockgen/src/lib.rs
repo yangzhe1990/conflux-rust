@@ -9,7 +9,7 @@ extern crate rlp;
 
 use core::block::Block;
 use core::execution_engine::ExecutionEngineRef;
-use core::header::Header;
+use core::header::{Header, HeaderBuilder};
 use core::transaction::{SignedTransaction, Transaction};
 use core::transaction_pool::{TransactionPool, TransactionPoolRef};
 use core::LedgerRef;
@@ -67,15 +67,6 @@ impl BlockGenerator {
         let best_number = best_block_info.header.number();
         let mut total_difficulty = best_block_info.total_difficulty;
 
-        let mut header = Header::new();
-        header.set_parent_hash(best_hash);
-        header.set_timestamp(random::<u64>());
-        header.set_number(best_number + 1);
-        header.set_author(Address::default());
-        header.set_state_root(KECCAK_NULL_RLP);
-        header.set_difficulty(10.into());
-        total_difficulty = total_difficulty + 10.into();
-
         let mut txs: Vec<SignedTransaction> = Vec::new();
         let mut tx_rlp = RlpStream::new_list(tx_len);
         for _i in 0..tx_len {
@@ -91,7 +82,17 @@ impl BlockGenerator {
             tx_rlp.append(&tx);
             txs.push(tx);
         }
-        header.set_transactions_root(keccak(tx_rlp.out()));
+        let mut header = HeaderBuilder::new()
+            .with_parent_hash(best_hash)
+            .with_timestamp(random::<u64>())
+            .with_number(best_number + 1)
+            .with_author(Address::default())
+            .with_state_root(KECCAK_NULL_RLP)
+            .with_difficulty(10.into())
+            .with_transactions_root(keccak(tx_rlp.out()))
+            .build();
+        total_difficulty = total_difficulty + 10.into();
+
         header.compute_hash();
         let hash = header.hash();
 
@@ -124,7 +125,7 @@ impl BlockGenerator {
         let mut parent_number: BlockNumber = 0;
         let mut parent_total_difficulty: U256 = 0.into();
         let mut current_total_difficulty: U256 = 0.into();
-        let mut current_mining_header = Header::new();
+        let mut current_mining_header_builder = HeaderBuilder::new();
         let mut current_mining_body = Block {
             hash: 0.into(),
             transactions: Vec::new(),
@@ -163,16 +164,17 @@ impl BlockGenerator {
                     tx_rlp.append(tx);
                 }
 
-                current_mining_header
-                    .set_transactions_root(keccak(tx_rlp.out()));
-                current_mining_header.set_parent_hash(parent_hash);
-                current_mining_header.set_timestamp(0);
-                current_mining_header.set_number(parent_number + 1);
-                current_mining_header.set_author(Address::default());
-                current_mining_header.set_state_root(KECCAK_NULL_RLP);
-                current_mining_header.set_difficulty(10.into());
+                current_mining_header_builder
+                    .with_transactions_root(keccak(tx_rlp.out()))
+                    .with_parent_hash(parent_hash)
+                    .with_timestamp(0)
+                    .with_number(parent_number + 1)
+                    .with_author(Address::default())
+                    .with_state_root(KECCAK_NULL_RLP)
+                    .with_difficulty(10.into());
                 current_total_difficulty = total_difficulty + 10.into();
 
+                let mut current_mining_header = current_mining_header_builder.build();
                 current_mining_header.compute_hash();
                 let hash = current_mining_header.hash();
                 current_mining_body.hash = hash;
@@ -187,6 +189,7 @@ impl BlockGenerator {
             // check if mined a block
             if current_interval_count == target_interval_count {
                 // mined one block
+                let current_mining_header = current_mining_header_builder.build();
                 let hash = current_mining_header.hash();
                 bg.ledger
                     .add_block_header_by_hash(&hash, current_mining_header);
@@ -208,7 +211,7 @@ impl BlockGenerator {
                 bg.sync.new_blocks(&hashes[..], &total_difficulties[..]);
 
                 // start to mine new block
-                current_mining_header = Header::new();
+                current_mining_header_builder = HeaderBuilder::new();
                 current_mining_body = Block {
                     hash: 0.into(),
                     transactions: Vec::new(),
@@ -222,7 +225,7 @@ impl BlockGenerator {
             let best_number = best_block_info.header.number();
             let total_difficulty = best_block_info.total_difficulty;
 
-            if current_mining_header.hash() == best_hash {
+            if current_mining_header.build().hash() == best_hash {
                 thread::sleep(one_second);
                 current_interval_count += 1;
                 continue;

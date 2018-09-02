@@ -1,7 +1,7 @@
 use block::Block;
 use ethereum_types::{Address, H256, U256};
 use hash::KECCAK_NULL_RLP;
-use header::Header;
+use header::{Header, HeaderBuilder};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -61,14 +61,15 @@ impl Ledger {
     pub fn new_ref() -> LedgerRef { Arc::new(Self::new()) }
 
     pub fn initialize_with_genesis(&self) {
-        let mut genesis_header = Header::new();
-        genesis_header.set_parent_hash(0.into());
-        genesis_header.set_timestamp(0);
-        genesis_header.set_number(0);
-        genesis_header.set_author(Address::default());
-        genesis_header.set_transactions_root(KECCAK_NULL_RLP);
-        genesis_header.set_state_root(KECCAK_NULL_RLP);
-        genesis_header.set_difficulty(0.into());
+        let mut genesis_header = HeaderBuilder::new()
+            .with_parent_hash(0.into())
+            .with_timestamp(0)
+            .with_number(0)
+            .with_author(Address::default())
+            .with_transactions_root(KECCAK_NULL_RLP)
+            .with_state_root(KECCAK_NULL_RLP)
+            .with_difficulty(0.into())
+            .build();
 
         genesis_header.compute_hash();
         let hash = genesis_header.hash();
