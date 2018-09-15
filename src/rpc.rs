@@ -73,6 +73,9 @@ build_rpc_trait! {
         #[rpc(name = "getblockcount")]
         fn get_block_count(&self) -> RpcResult<usize>;
 
+        #[rpc(name = "getblock")]
+        fn get_block(&self) -> RpcResult<String>;
+
         #[rpc(name = "generate")]
         fn generate(&self, usize) -> RpcResult<()>;
 
@@ -138,6 +141,10 @@ impl Rpc for RpcImpl {
     fn get_block_count(&self) -> RpcResult<usize> {
         info!("RPC Request: get_block_count()");
         Ok(self.ledger.best_block_number() as usize)
+    }
+
+    fn get_block(&self) -> RpcResult<String> {
+        Ok(String::new())
     }
 
     fn add_peer(&self, addr: SocketAddr) -> RpcResult<NodeId> {

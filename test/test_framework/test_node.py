@@ -15,7 +15,8 @@ import time
 import urllib.parse
 
 from .authproxy import JSONRPCException
-from .util import (delete_cookie_file, get_rpc_proxy, rpc_url, wait_until)
+from .util import (delete_cookie_file, get_rpc_proxy,
+                   rpc_url, wait_until, p2p_port)
 
 CONFLUX_RPC_WAIT_TIMEOUT = 60
 
@@ -198,7 +199,7 @@ class TestNode:
         Will throw if bitcoind starts without an error.
         Will throw if an expected_msg is provided and it does not match bitcoind's stdout."""
         with tempfile.NamedTemporaryFile(dir=self.stderr_dir, delete=False) as log_stderr, \
-             tempfile.NamedTemporaryFile(dir=self.stdout_dir, delete=False) as log_stdout:
+                tempfile.NamedTemporaryFile(dir=self.stdout_dir, delete=False) as log_stdout:
             try:
                 self.start(
                     extra_args,
@@ -240,3 +241,36 @@ class TestNode:
                 else:
                     assert_msg = "bitcoind should have exited with expected error " + expected_msg
                 self._raise_assertion_error(assert_msg)
+
+    def add_p2p_connection(self, p2p_conn, *args, **kwargs):
+        """Add a p2p connection to the node.
+
+        This method adds the p2p connection to the self.p2ps list and also
+        returns the connection to the caller."""
+        if 'dstport' not in kwargs:
+            kwargs['dstport'] = p2p_port(self.index)
+        if 'dstaddr' not in kwargs:
+            kwargs['dstaddr'] = '127.0.0.1'
+
+        # if self.ip is not None:
+        #     kwargs['dstaddr'] = self.ip
+        # print(args, kwargs)
+        p2p_conn.peer_connect(*args, **kwargs)
+        self.p2ps.append(p2p_conn)
+
+        return p2p_conn
+
+    @property
+    def p2p(self):
+        """Return the first p2p connection
+
+        Convenience property - most tests only use a single p2p connection to each
+        node, so this saves having to write node.p2ps[0] many times."""
+        assert self.p2ps, "No p2p connection"
+        return self.p2ps[0]
+
+    def disconnect_p2ps(self):
+        """Close all p2p connections to the node."""
+        for p in self.p2ps:
+            p.peer_disconnect()
+        del self.p2ps[:]

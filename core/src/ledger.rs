@@ -58,7 +58,9 @@ impl Ledger {
         }
     }
 
-    pub fn new_ref() -> LedgerRef { Arc::new(Self::new()) }
+    pub fn new_ref() -> LedgerRef {
+        Arc::new(Self::new())
+    }
 
     pub fn initialize_with_genesis(&self) {
         let mut genesis_header = HeaderBuilder::new()
@@ -231,7 +233,8 @@ impl Ledger {
     }
 
     pub fn adjust_main_chain(
-        &self, mut blocks_to_adjust: VecDeque<H256>,
+        &self,
+        mut blocks_to_adjust: VecDeque<H256>,
     ) -> bool {
         let mut best_block = self.best_block.write();
         let headers = self.block_headers.read();
@@ -314,5 +317,7 @@ impl Ledger {
 
 impl Default for Ledger {
     // FIXME: Fix this default trait as the initial state of the ledger
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

@@ -61,15 +61,15 @@ impl BlockGenerator {
 
     pub fn set_problem(&self) {}
 
-    pub fn generate_block(&self, tx_len: usize) {
+    pub fn generate_block(&self, num_txs: usize) {
         let best_block_info = self.ledger.best_block();
         let best_hash = best_block_info.header.hash();
         let best_number = best_block_info.header.number();
         let mut total_difficulty = best_block_info.total_difficulty;
 
         let mut txs: Vec<SignedTransaction> = Vec::new();
-        let mut tx_rlp = RlpStream::new_list(tx_len);
-        for _i in 0..tx_len {
+        let mut tx_rlp = RlpStream::new_list(num_txs);
+        for _i in 0..num_txs {
             let tx = Transaction {
                 nonce: 0,
                 gas_price: 0.001,
@@ -225,7 +225,7 @@ impl BlockGenerator {
             let best_number = best_block_info.header.number();
             let total_difficulty = best_block_info.total_difficulty;
 
-            if current_mining_header.build().hash() == best_hash {
+            if current_mining_header_builder.build().hash() == best_hash {
                 thread::sleep(one_second);
                 current_interval_count += 1;
                 continue;

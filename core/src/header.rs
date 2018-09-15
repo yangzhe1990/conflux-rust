@@ -210,20 +210,9 @@ impl HeaderBuilder {
     }
 }
 
-/// Alter value of given field, reset memoised hash if changed.
-fn change_field<T>(hash: &mut Option<H256>, field: &mut T, value: T)
-    where
-        T: PartialEq<T>,
-{
-    if field != &value {
-        *field = value;
-        *hash = None;
-    }
-}
-
 impl Decodable for Header {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
-        let blockheader = Header {
+        Ok(Header {
             parent_hash: r.val_at(0)?,
             author: r.val_at(1)?,
             state_root: r.val_at(2)?,
@@ -233,9 +222,7 @@ impl Decodable for Header {
             timestamp: cmp::min(r.val_at::<U256>(6)?, u64::max_value().into())
                 .as_u64(),
             hash: keccak(r.as_raw()).into(),
-        };
-
-        Ok(blockheader)
+        })
     }
 }
 
@@ -374,5 +361,85 @@ impl Decodable for MegaHeader {
 impl Encodable for MegaHeader {
     fn rlp_append(&self, stream: &mut RlpStream) {
         self.stream_rlp(stream);
+    }
+}
+
+pub struct MegaHeaderBuilder {
+    parent_hash: H256,
+    reference_hashes: Vec<H256>,
+    state_root: H256,
+    transactions_root: H256,
+    timestamp: u64,
+    number: BlockNumber,
+    author: Address,
+    difficulty: U256,
+}
+
+impl MegaHeaderBuilder {
+    pub fn new() -> Self {
+        Self {
+            parent_hash: H256::default(),
+            reference_hashes: Vec::new(),
+            state_root: H256::default(),
+            transactions_root: H256::default(),
+            timestamp: 0,
+            number: 0,
+            author: Address::default(),
+            difficulty: U256::default(),
+        }
+    }
+
+    pub fn with_parent_hash(&mut self, parent_hash: H256) -> &mut Self {
+        self.parent_hash = parent_hash;
+        self
+    }
+
+    pub fn with_reference_hashes(&mut self, reference_hashes: Vec<H256>) -> &mut Self {
+        self.reference_hashes = reference_hashes;
+        self
+    }
+
+    pub fn with_state_root(&mut self, state_root: H256) -> &mut Self {
+        self.state_root = state_root;
+        self
+    }
+
+    pub fn with_transactions_root(&mut self, transactions_root: H256) -> &mut Self {
+        self.transactions_root = transactions_root;
+        self
+    }
+
+    pub fn with_timestamp(&mut self, timestamp: u64) -> &mut Self {
+        self.timestamp = timestamp;
+        self
+    }
+
+    pub fn with_number(&mut self, number: u64) -> &mut Self {
+        self.number = number;
+        self
+    }
+
+    pub fn with_author(&mut self, author: Address) -> &mut Self {
+        self.author = author;
+        self
+    }
+
+    pub fn with_difficulty(&mut self, difficulty: U256) -> &mut Self {
+        self.difficulty = difficulty;
+        self
+    }
+
+    pub fn build(&self) -> MegaHeader {
+        MegaHeader {
+            parent_hash: self.parent_hash,
+            reference_hashes: self.reference_hashes.clone(),
+            timestamp: self.timestamp,
+            number: self.number,
+            author: self.author,
+            transactions_root: self.transactions_root,
+            state_root: self.state_root,
+            difficulty: self.difficulty,
+            hash: None,
+        }
     }
 }
