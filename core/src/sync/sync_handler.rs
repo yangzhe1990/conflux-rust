@@ -6,7 +6,7 @@ use super::{
 };
 
 use super::super::block::Block;
-use super::super::header::Header;
+use super::super::block_header::BlockHeader;
 use super::sync_requester::SyncRequester;
 use block_sync::BlockSyncError;
 use bytes::Bytes;
@@ -304,9 +304,9 @@ impl SyncHandler {
 
         // verify the headers are organized in chain
         let mut parent_hash: H256 = H256::new();
-        let mut headers: Vec<Header> = Vec::new();
+        let mut headers: Vec<BlockHeader> = Vec::new();
         for i in 1..item_count {
-            let header: Header = r.val_at(i).map_err(|e| {
+            let header: BlockHeader = r.val_at(i).map_err(|e| {
                trace!(target: "sync", "Error decoding block header RLP: {:?}", e);
                BlockSyncError::Invalid
             })?;
@@ -397,7 +397,7 @@ impl SyncHandler {
         sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, r: &Rlp,
     ) -> Result<(), BlockSyncError> {
         let new_block_total_difficulty: U256 = r.val_at(1)?;
-        let new_header: Header = r.val_at(2)?;
+        let new_header: BlockHeader = r.val_at(2)?;
         let new_body: Block = r.val_at(3)?;
 
         if new_header.hash() != new_body.hash() {

@@ -35,4 +35,5 @@ blockgen = { path = "blockgen" }
 txgen = { path = "transactiongen" }
 secret-store = { path = "secret_store" }
 log4rs = "0.8"
+rpc = { path = "rpc" }
 # account-store = { path = "account-store" }

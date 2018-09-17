@@ -2,7 +2,7 @@ extern crate ethkey;
 extern crate parking_lot;
 extern crate rustc_hex;
 
-use ethkey::{KeyPair, Secret};
+use ethkey::KeyPair;
 use parking_lot::RwLock;
 use rustc_hex::ToHex;
 use std::collections::HashMap;

@@ -34,8 +34,8 @@ mod rpc;
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
-use core::state::{AccountState, AccountStateRef};
-use core::transaction_pool::{TransactionPool, TransactionPoolRef};
+use core::state::AccountState;
+use core::transaction_pool::TransactionPool;
 use ctrlc::CtrlC;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
@@ -43,7 +43,7 @@ use log4rs::append::file::FileAppender;
 use log4rs::config::{Appender, Config as LogConfig, Logger, Root};
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
-use secret_store::{SecretStore, SecretStoreRef};
+use secret_store::SecretStore;
 use std::any::Any;
 use std::io::{self as stdio, Write};
 use std::process;
@@ -67,7 +67,7 @@ fn start(
     let secret_store = SecretStore::new_ref();
 
     let account_state = AccountState::new_ref();
-    account_state.import_random_accounts(secret_store.clone());
+    account_state.import_random_accounts(secret_store.clone()).unwrap();
 
     let execution_engine =
         core::ExecutionEngine::new_ref(ledger.clone(), account_state.clone());
@@ -120,7 +120,7 @@ fn start(
         account_state.clone(),
     ));
     let txgen_handle = thread::spawn(move || {
-        TransactionGenerator::generate_transactions(txgen);
+        TransactionGenerator::generate_transactions(txgen).unwrap();
     });
 
     Ok(Box::new((

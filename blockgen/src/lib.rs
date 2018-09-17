@@ -9,7 +9,7 @@ extern crate rlp;
 
 use core::block::Block;
 use core::execution_engine::ExecutionEngineRef;
-use core::header::{Header, HeaderBuilder};
+use core::block_header::{BlockHeader, BlockHeaderBuilder};
 use core::transaction::{SignedTransaction, Transaction};
 use core::transaction_pool::{TransactionPool, TransactionPoolRef};
 use core::LedgerRef;
@@ -82,7 +82,7 @@ impl BlockGenerator {
             tx_rlp.append(&tx);
             txs.push(tx);
         }
-        let mut header = HeaderBuilder::new()
+        let mut header = BlockHeaderBuilder::new()
             .with_parent_hash(best_hash)
             .with_timestamp(random::<u64>())
             .with_number(best_number + 1)
@@ -125,7 +125,7 @@ impl BlockGenerator {
         let mut parent_number: BlockNumber = 0;
         let mut parent_total_difficulty: U256 = 0.into();
         let mut current_total_difficulty: U256 = 0.into();
-        let mut current_mining_header_builder = HeaderBuilder::new();
+        let mut current_mining_header_builder = BlockHeaderBuilder::new();
         let mut current_mining_body = Block {
             hash: 0.into(),
             transactions: Vec::new(),
@@ -211,7 +211,7 @@ impl BlockGenerator {
                 bg.sync.new_blocks(&hashes[..], &total_difficulties[..]);
 
                 // start to mine new block
-                current_mining_header_builder = HeaderBuilder::new();
+                current_mining_header_builder = BlockHeaderBuilder::new();
                 current_mining_body = Block {
                     hash: 0.into(),
                     transactions: Vec::new(),

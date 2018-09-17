@@ -16,11 +16,11 @@ extern crate rand;
 
 mod api;
 pub mod block;
+pub mod block_header;
 mod block_sync;
 pub mod encoded;
 pub mod error;
 pub mod execution_engine;
-pub mod header;
 mod ledger;
 pub mod state;
 mod sync;

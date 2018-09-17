@@ -1,7 +1,7 @@
 use block::Block;
 use ethereum_types::{Address, H256, U256};
 use hash::KECCAK_NULL_RLP;
-use header::{Header, HeaderBuilder};
+use block_header::{BlockHeader, BlockHeaderBuilder};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -17,7 +17,7 @@ pub use types::*;
 /// Sometimes refered as 'latest block'.
 pub struct BestBlock {
     /// Best block decoded header.
-    pub header: Header,
+    pub header: BlockHeader,
     /// Best block uncompressed bytes.
     pub block: Block,
     /// Best block total difficulty.
@@ -33,7 +33,7 @@ pub struct BlockDetail {
 pub struct Ledger {
     // All locks must be captured in the order declared here.
     best_block: RwLock<BestBlock>,
-    pub block_headers: RwLock<HashMap<H256, Header>>,
+    pub block_headers: RwLock<HashMap<H256, BlockHeader>>,
     block_bodies: RwLock<HashMap<H256, Block>>,
     child_blocks: RwLock<HashMap<H256, BlockDetail>>,
     /// maintain the main chain blocks
@@ -51,7 +51,7 @@ impl Ledger {
             block_hashes: RwLock::new(HashMap::new()),
 
             best_block: RwLock::new(BestBlock {
-                header: Header::new(),
+                header: BlockHeader::new(),
                 block: Block::default(),
                 total_difficulty: 0.into(),
             }),
@@ -63,7 +63,7 @@ impl Ledger {
     }
 
     pub fn initialize_with_genesis(&self) {
-        let mut genesis_header = HeaderBuilder::new()
+        let mut genesis_header = BlockHeaderBuilder::new()
             .with_parent_hash(0.into())
             .with_timestamp(0)
             .with_number(0)
@@ -149,7 +149,7 @@ impl Ledger {
     }
 
     /// Get block header data
-    pub fn block_header_data(&self, hash: &H256) -> Option<Header> {
+    pub fn block_header_data(&self, hash: &H256) -> Option<BlockHeader> {
         let read = self.block_headers.read();
         if let Some(v) = read.get(hash) {
             return Some(v.clone());
@@ -194,7 +194,7 @@ impl Ledger {
         self.block_bodies.read().contains_key(hash)
     }
 
-    pub fn block_header(&self, id: BlockId) -> Option<Header> {
+    pub fn block_header(&self, id: BlockId) -> Option<BlockHeader> {
         self.block_hash(id)
             .and_then(|hash| self.block_header_data(&hash))
     }
@@ -204,7 +204,7 @@ impl Ledger {
             .and_then(|hash| self.block_body_data(&hash))
     }
 
-    pub fn add_block_header_by_hash(&self, hash: &H256, header: Header) {
+    pub fn add_block_header_by_hash(&self, hash: &H256, header: BlockHeader) {
         self.block_headers.write().insert(hash.clone(), header);
     }
 

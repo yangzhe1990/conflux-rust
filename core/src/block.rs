@@ -35,7 +35,7 @@ impl Decodable for Block {
         if rlp.item_count()? != 2 {
             return Err(DecoderError::RlpIncorrectListLen);
         }
-        let mut txs_with_sig: Vec<TransactionWithSignature> = rlp.list_at(1)?;
+        let txs_with_sig: Vec<TransactionWithSignature> = rlp.list_at(1)?;
         let mut signed_txs: Vec<SignedTransaction> = Vec::new();
         for tx_with_sig in txs_with_sig {
             let public = tx_with_sig.recover_public();

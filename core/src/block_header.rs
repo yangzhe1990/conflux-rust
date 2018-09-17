@@ -8,7 +8,7 @@ pub use types::BlockNumber;
 
 /// A block header.
 #[derive(Debug, Clone, Eq)]
-pub struct Header {
+pub struct BlockHeader {
     /// Parent hash.
     parent_hash: H256,
     /// Block timestamp.
@@ -27,8 +27,8 @@ pub struct Header {
     hash: Option<H256>,
 }
 
-impl PartialEq for Header {
-    fn eq(&self, c: &Header) -> bool {
+impl PartialEq for BlockHeader {
+    fn eq(&self, c: &BlockHeader) -> bool {
         if let (&Some(ref h1), &Some(ref h2)) = (&self.hash, &c.hash) {
             if h1 == h2 {
                 return true;
@@ -45,9 +45,9 @@ impl PartialEq for Header {
     }
 }
 
-impl Default for Header {
+impl Default for BlockHeader {
     fn default() -> Self {
-        Header {
+        BlockHeader {
             parent_hash: H256::default(),
             timestamp: 0,
             number: 0,
@@ -60,7 +60,7 @@ impl Default for Header {
     }
 }
 
-impl Header {
+impl BlockHeader {
     /// Create a new, default-valued, header.
     pub fn new() -> Self {
         Self::default()
@@ -138,7 +138,7 @@ impl Header {
     }
 }
 
-pub struct HeaderBuilder {
+pub struct BlockHeaderBuilder {
     parent_hash: H256,
     state_root: H256,
     transactions_root: H256,
@@ -148,7 +148,7 @@ pub struct HeaderBuilder {
     difficulty: U256,
 }
 
-impl HeaderBuilder {
+impl BlockHeaderBuilder {
     pub fn new() -> Self {
         Self {
             parent_hash: H256::default(),
@@ -196,8 +196,8 @@ impl HeaderBuilder {
         self
     }
 
-    pub fn build(&self) -> Header {
-        Header {
+    pub fn build(&self) -> BlockHeader {
+        BlockHeader {
             parent_hash: self.parent_hash,
             timestamp: self.timestamp,
             number: self.number,
@@ -210,9 +210,9 @@ impl HeaderBuilder {
     }
 }
 
-impl Decodable for Header {
+impl Decodable for BlockHeader {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
-        Ok(Header {
+        Ok(BlockHeader {
             parent_hash: r.val_at(0)?,
             author: r.val_at(1)?,
             state_root: r.val_at(2)?,
@@ -226,7 +226,7 @@ impl Decodable for Header {
     }
 }
 
-impl Encodable for Header {
+impl Encodable for BlockHeader {
     fn rlp_append(&self, s: &mut RlpStream) {
         self.stream_rlp(s);
     }
