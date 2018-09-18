@@ -8,7 +8,7 @@ authors = ["ming wu <ming@alt-chain.io>"]
 
 [dependencies]
 keccak-hash = { git = "https://github.com/paritytech/parity-common" }
-ethereum-types = "0.3"
+ethereum-types = "0.4"
 common-types = { path = "types" }
 parity-bytes = { git = "https://github.com/paritytech/parity-common" }
 parking_lot = "0.6"

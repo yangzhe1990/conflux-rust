@@ -91,7 +91,7 @@ impl BlockGenerator {
             .with_difficulty(10.into())
             .with_transactions_root(keccak(tx_rlp.out()))
             .build();
-        total_difficulty = total_difficulty + 10.into();
+        total_difficulty = total_difficulty + U256::from(10u64);
 
         header.compute_hash();
         let hash = header.hash();
@@ -172,7 +172,7 @@ impl BlockGenerator {
                     .with_author(Address::default())
                     .with_state_root(KECCAK_NULL_RLP)
                     .with_difficulty(10.into());
-                current_total_difficulty = total_difficulty + 10.into();
+                current_total_difficulty = total_difficulty + U256::from(10u64);
 
                 let mut current_mining_header = current_mining_header_builder.build();
                 current_mining_header.compute_hash();

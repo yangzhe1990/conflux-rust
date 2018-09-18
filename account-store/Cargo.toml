@@ -7,6 +7,6 @@ version = "0.1.0"
 authors = ["ming wu <ming@alt-chain.io>"]
 
 [dependencies]
-ethereum-types = "0.3"
+ethereum-types = "0.4"
 network = { path = "../network" }
 parking_lot = "0.6"

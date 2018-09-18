@@ -27,7 +27,7 @@ jsonrpc-http-server = { git = "https://github.com/paritytech/jsonrpc", branch = 
 parity-reactor = { path = "util/reactor" }
 error-chain = { version = "0.12" }
 log = "0.4"
-ethereum-types = "0.3"
+ethereum-types = "0.4"
 slab = "0.2"
 core = { path = "core" }
 network = { path = "network" }

@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Parity Technologies <admin@parity.io>"]
 
 [dependencies]
-ethereum-types = "0.3"
+ethereum-types = "0.4"
 quick-error = "1.2"
 ring = "0.12"
 rust-crypto = "0.2.36"

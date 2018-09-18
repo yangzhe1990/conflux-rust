@@ -5,4 +5,4 @@ version = "0.1.0"
 authors = ["Conflux Technologies"]
 
 [dependencies]
-ethereum-types = "0.3"
+ethereum-types = "0.4"
