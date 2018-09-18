@@ -1,5 +1,5 @@
 use ethereum_types::Address;
-use ethkey::{public_to_address, Generator, KeyPair, Random};
+use ethkey::{public_to_address, Generator, Random};
 use network::Error;
 use parking_lot::RwLock;
 use rand::prelude::*;

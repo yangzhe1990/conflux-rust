@@ -44,7 +44,7 @@ impl Decodable for Block {
                 Ok(p) => {
                     signed_tx = SignedTransaction::new(p, tx_with_sig);
                 }
-                Err(err) => {
+                Err(_) => {
                     return Err(DecoderError::RlpIncorrectListLen);
                 }
             }
