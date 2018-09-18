@@ -48,12 +48,12 @@ macro_rules! impl_hash {
 			}
 		}
 
-//		impl<T> From<T> for $name where $other: From<T> {
-//			fn from(o: T) -> Self {
-//				$name($other::from(o).0)
-//			}
-//		}
-//
+		impl<T> From<T> for $name where $other: From<T> {
+			fn from(o: T) -> Self {
+				$name($other::from(o).0)
+			}
+		}
+
 		impl FromStr for $name {
 			type Err = <$other as FromStr>::Err;
 

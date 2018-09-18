@@ -26,6 +26,7 @@ extern crate blockgen;
 extern crate core;
 extern crate secret_store;
 extern crate txgen;
+extern crate rpc as conflux_rpc;
 // extern crate vm;
 
 mod configuration;

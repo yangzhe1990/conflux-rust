@@ -12,6 +12,7 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use tcp::Server as TcpServer;
 use tcp::ServerBuilder as TcpServerBuilder;
+use conflux_rpc::types::{Block as RpcBlock, BlockTransactions, Transaction as RpcTransaction};
 
 pub struct Dependencies {
     pub remote: TokioRemote,
@@ -74,7 +75,7 @@ build_rpc_trait! {
         fn get_block_count(&self) -> RpcResult<usize>;
 
         #[rpc(name = "getblock")]
-        fn get_block(&self, H256) -> RpcResult<String>;
+        fn get_block(&self, H256) -> RpcResult<RpcBlock>;
 
         #[rpc(name = "generate")]
         fn generate(&self, usize) -> RpcResult<()>;
@@ -146,9 +147,32 @@ impl Rpc for RpcImpl {
         Ok(self.ledger.best_block_number() as usize)
     }
 
-    fn get_block(&self, block_hash: H256) -> RpcResult<String> {
+    fn get_block(&self, block_hash: H256) -> RpcResult<RpcBlock> {
         info!("RPC Request: get_block({:?})", block_hash);
-        Ok(String::new())
+
+        if let Some(block_header) = self.ledger.block_header_by_hash(&block_hash) {
+            if let Some(block_body) = self.ledger.block_body_by_hash(&block_hash) {
+                return Ok(RpcBlock {
+                    hash: block_header.hash().into(),
+                    parent_hash: block_header.parent_hash().clone().into(),
+                    author: block_header.author().clone().into(),
+                    state_root: block_header.state_root().clone().into(),
+                    transactions_root: block_header.transactions_root().clone().into(),
+                    number: Some(block_header.number().into()),
+                    gas_used: U256::zero().into(),
+                    gas_limit: U256::zero().into(),
+                    timestamp: block_header.timestamp().into(),
+                    difficulty: block_header.difficulty().into(),
+                    total_difficulty: None,
+                    transactions: BlockTransactions::Full(
+                        block_body.transactions.iter().map(|signed_tx|
+                            RpcTransaction::from_signed(signed_tx)).collect()
+                    ),
+                    size: None,
+                });
+            }
+        }
+        Err(RpcError::invalid_params("Invalid block"))
     }
 
     fn add_peer(&self, addr: SocketAddr) -> RpcResult<NodeId> {

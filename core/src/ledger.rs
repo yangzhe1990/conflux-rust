@@ -149,7 +149,7 @@ impl Ledger {
     }
 
     /// Get block header data
-    pub fn block_header_data(&self, hash: &H256) -> Option<BlockHeader> {
+    pub fn block_header_by_hash(&self, hash: &H256) -> Option<BlockHeader> {
         let read = self.block_headers.read();
         if let Some(v) = read.get(hash) {
             return Some(v.clone());
@@ -159,7 +159,7 @@ impl Ledger {
     }
 
     /// Get block body data
-    pub fn block_body_data(&self, hash: &H256) -> Option<Block> {
+    pub fn block_body_by_hash(&self, hash: &H256) -> Option<Block> {
         let read = self.block_bodies.read();
         if let Some(v) = read.get(hash) {
             return Some(v.clone());
@@ -196,12 +196,12 @@ impl Ledger {
 
     pub fn block_header(&self, id: BlockId) -> Option<BlockHeader> {
         self.block_hash(id)
-            .and_then(|hash| self.block_header_data(&hash))
+            .and_then(|hash| self.block_header_by_hash(&hash))
     }
 
     pub fn block_body(&self, id: BlockId) -> Option<Block> {
         self.block_hash(id)
-            .and_then(|hash| self.block_body_data(&hash))
+            .and_then(|hash| self.block_body_by_hash(&hash))
     }
 
     pub fn add_block_header_by_hash(&self, hash: &H256, header: BlockHeader) {

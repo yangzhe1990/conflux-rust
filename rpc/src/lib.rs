@@ -6,4 +6,6 @@ extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 
-mod types;
+extern crate core as conflux_core;
+
+pub mod types;
