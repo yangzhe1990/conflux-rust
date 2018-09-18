@@ -71,10 +71,10 @@ impl BlockGenerator {
         let mut tx_rlp = RlpStream::new_list(num_txs);
         for _i in 0..num_txs {
             let tx = Transaction {
-                nonce: 0,
-                gas_price: 0.001,
-                gas: 200,
-                value: 0.0,
+                nonce: U256::zero(),
+                gas_price: U256::from(1_000_000_000_000_000u64),
+                gas: U256::from(200u64),
+                value: U256::zero(),
                 receiver: Address::default(),
             };
             let secret = Secret::zero();

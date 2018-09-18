@@ -1,7 +1,7 @@
 use blockgen::BlockGeneratorRef;
 use core::PeerInfo;
 use core::{ExecutionEngineRef, LedgerRef, SyncEngineRef};
-use ethereum_types::{Address, H256};
+use ethereum_types::{Address, H256, U256};
 use http::Server as HttpServer;
 use http::ServerBuilder as HttpServerBuilder;
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
@@ -65,7 +65,7 @@ build_rpc_trait! {
         fn say_hello(&self) -> RpcResult<String>;
 
         #[rpc(name = "getbalance")]
-        fn get_balance(&self, Address) -> RpcResult<f64>;
+        fn get_balance(&self, Address) -> RpcResult<U256>;
 
         #[rpc(name = "getbestblockhash")]
         fn get_best_block_hash(&self) -> RpcResult<H256>;
@@ -124,7 +124,7 @@ impl Rpc for RpcImpl {
         Ok("Hello, world".into())
     }
 
-    fn get_balance(&self, addr: Address) -> RpcResult<f64> {
+    fn get_balance(&self, addr: Address) -> RpcResult<U256> {
         info!("RPC Request: get_balance({:?})", addr);
         let state = self.execution_engine.state.accounts.read();
 

@@ -37,7 +37,7 @@ pub use api::*;
 pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
 pub use ledger::{Ledger, LedgerRef};
 pub use network::PeerInfo;
-pub use state::COINBASE_ADDRESS;
+pub use state::TEST_ADDRESS;
 pub use sync::*;
 
 use ethereum_types::{H256, U256};

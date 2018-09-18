@@ -1,4 +1,4 @@
-use ethereum_types::Address;
+use ethereum_types::{Address, U256};
 use ethkey::{public_to_address, Generator, Random};
 use network::Error;
 use parking_lot::RwLock;
@@ -9,24 +9,24 @@ use std::sync::Arc;
 use transaction::SignedTransaction;
 
 lazy_static! {
-    pub static ref COINBASE_ADDRESS: Address = Address::zero();
+    pub static ref TEST_ADDRESS: Address = Address::zero();
 }
 
 /// Single account in the system
 pub struct Account {
-    balance: f64,
-    nonce: u64,
+    balance: U256,
+    nonce: U256,
 }
 
 impl Account {
     fn new() -> Self {
         Account {
-            balance: 0f64,
-            nonce: 0u64,
+            balance: U256::zero(),
+            nonce: U256::zero(),
         }
     }
 
-    pub fn balance(&self) -> f64 { self.balance }
+    pub fn balance(&self) -> U256 { self.balance }
 }
 
 /// Representation of the entire state of all accounts in the system.
@@ -40,10 +40,10 @@ impl AccountState {
     pub fn new() -> AccountState {
         let mut accounts: HashMap<Address, Account> = HashMap::new();
         accounts.insert(
-            *COINBASE_ADDRESS,
+            *TEST_ADDRESS,
             Account {
-                balance: 1_000_000_000f64,
-                nonce: 0,
+                balance: U256::from(1_000_000_000u64),
+                nonce: U256::zero(),
             },
         );
 
@@ -68,7 +68,7 @@ impl AccountState {
         }
     }
 
-    pub fn get_nonce(&self, a: &Address) -> Option<u64> {
+    pub fn get_nonce(&self, a: &Address) -> Option<U256> {
         let accounts = self.accounts.read();
         let acc = accounts.get(a);
         if let Some(acc) = acc {
@@ -78,7 +78,7 @@ impl AccountState {
         None
     }
 
-    pub fn get_balance(&self, a: &Address) -> Option<f64> {
+    pub fn get_balance(&self, a: &Address) -> Option<U256> {
         let accounts = self.accounts.read();
         let acc = accounts.get(a);
         if let Some(acc) = acc {
@@ -88,7 +88,7 @@ impl AccountState {
         None
     }
 
-    pub fn remove_balance(&self, a: &Address, value: f64) {
+    pub fn remove_balance(&self, a: &Address, value: U256) {
         let mut accounts = self.accounts.write();
         let acc = accounts.get_mut(a);
         if let Some(acc) = acc {
@@ -96,7 +96,7 @@ impl AccountState {
         }
     }
 
-    pub fn add_balance(&self, a: &Address, value: f64) {
+    pub fn add_balance(&self, a: &Address, value: U256) {
         let mut accounts = self.accounts.write();
         let acc = accounts.entry(*a).or_insert(Account::new());
         acc.balance += value;
@@ -126,8 +126,7 @@ impl AccountState {
             let account_address = public_to_address(kp.public());
 
             let mut rng = thread_rng();
-            let mut balance: f64 = rng.gen();
-            balance *= 10_000f64;
+            let mut balance = U256::from(rng.gen::<u64>());
 
             if account_set.contains(&account_address) {
                 account_count -= 1;
@@ -138,7 +137,7 @@ impl AccountState {
                     account_address,
                     Account {
                         balance: balance,
-                        nonce: 0,
+                        nonce: U256::zero(),
                     },
                 );
             }

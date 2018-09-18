@@ -10,10 +10,15 @@ pub const UNSIGNED_SENDER: Address = H160([0xff; 20]);
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Transaction {
-    pub nonce: u64,
-    pub gas_price: f64,
-    pub gas: u64,
-    pub value: f64,
+    /// Nonce.
+    pub nonce: U256,
+    /// Gas price.
+    pub gas_price: U256,
+    /// Gas paid up front for transaction execution.
+    pub gas: U256,
+    /// Transferred value.
+    pub value: U256,
+    /// Receiver's address.
     pub receiver: Address,
 }
 
@@ -48,31 +53,23 @@ impl Transaction {
 
 impl Decodable for Transaction {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
-        let gas_price_int: u64 = r.val_at(1)?;
-        let gas_price = unsafe { transmute::<u64, f64>(gas_price_int) };
-        let val_int: u64 = r.val_at(3)?;
-        let val = unsafe { transmute::<u64, f64>(val_int) };
-        let txn = Transaction {
+        Ok(Transaction {
             nonce: r.val_at(0)?,
-            gas_price: gas_price,
+            gas_price: r.val_at(1)?,
             gas: r.val_at(2)?,
-            value: val,
+            value: r.val_at(3)?,
             receiver: r.val_at(4)?,
-        };
-        Ok(txn)
+        })
     }
 }
 
 impl Encodable for Transaction {
     fn rlp_append(&self, s: &mut RlpStream) {
-        let gas_price_int = unsafe { transmute::<f64, u64>(self.gas_price) };
-        let val_int = unsafe { transmute::<f64, u64>(self.value) };
-
         s.begin_list(5);
         s.append(&self.nonce);
-        s.append(&gas_price_int);
+        s.append(&self.gas_price);
         s.append(&self.gas);
-        s.append(&val_int);
+        s.append(&self.value);
         s.append(&self.receiver);
     }
 }
@@ -105,17 +102,12 @@ impl Decodable for TransactionWithSignature {
         }
         let hash = keccak(d.as_raw());
 
-        let gas_price_int: u64 = d.val_at(1)?;
-        let gas_price = unsafe { transmute::<u64, f64>(gas_price_int) };
-        let val_int: u64 = d.val_at(3)?;
-        let val = unsafe { transmute::<u64, f64>(val_int) };
-
         Ok(TransactionWithSignature {
             unsigned: Transaction {
                 nonce: d.val_at(0)?,
-                gas_price: gas_price,
+                gas_price: d.val_at(1)?,
                 gas: d.val_at(2)?,
-                value: val,
+                value: d.val_at(3)?,
                 receiver: d.val_at(4)?,
             },
             v: d.val_at(5)?,
@@ -145,14 +137,11 @@ impl TransactionWithSignature {
 
     /// Append object with a signature into RLP stream
     fn rlp_append_sealed_transaction(&self, s: &mut RlpStream) {
-        let gas_price_int = unsafe { transmute::<f64, u64>(self.gas_price) };
-        let val_int = unsafe { transmute::<f64, u64>(self.value) };
-
         s.begin_list(8);
         s.append(&self.nonce);
-        s.append(&gas_price_int);
+        s.append(&self.gas_price);
         s.append(&self.gas);
-        s.append(&val_int);
+        s.append(&self.value);
         s.append(&self.receiver);
         s.append(&self.v);
         s.append(&self.r);

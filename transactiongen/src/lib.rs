@@ -10,7 +10,7 @@ pub use core::execution_engine::{ExecutionEngine, ExecutionEngineRef};
 use core::state::AccountStateRef;
 use core::transaction::Transaction;
 use core::transaction_pool::{TransactionPool, TransactionPoolRef};
-use ethereum_types::Address;
+use ethereum_types::{Address, U256};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
 use network::Error;
 use parking_lot::RwLock;
@@ -52,7 +52,7 @@ impl TransactionGenerator {
         txgen: Arc<TransactionGenerator>,
     ) -> Result<(), Error> {
         let interval = time::Duration::from_millis(100);
-        let mut nonce_map: HashMap<Address, u64> = HashMap::new();
+        let mut nonce_map: HashMap<Address, U256> = HashMap::new();
 
         loop {
             match *txgen.state.read() {
@@ -99,7 +99,7 @@ impl TransactionGenerator {
             let sender_balance = sender_balance.unwrap();
 
             let mut rng = thread_rng();
-            let mut balance_to_transfer: f64 = rng.gen();
+            let mut balance_to_transfer: U256 = U256::from(rng.gen::<u64>());
             balance_to_transfer *= sender_balance;
 
             // Generate nonce for the transaction
@@ -113,14 +113,14 @@ impl TransactionGenerator {
             }
 
             let sender_nonce = *entry;
-            *entry += 1;
+            *entry += U256::one();
 
             // Generate the transaction, sign it, and push into the transaction pool
             let receiver_address = public_to_address(receiver_kp.public());
             let tx = Transaction {
                 nonce: sender_nonce,
-                gas_price: 0.001,
-                gas: 200,
+                gas_price: U256::from(1_000_000_000_000_000u64),
+                gas: U256::from(200u64),
                 value: balance_to_transfer,
                 receiver: receiver_address,
             };
