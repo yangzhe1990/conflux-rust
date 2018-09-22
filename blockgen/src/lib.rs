@@ -9,9 +9,9 @@ extern crate rlp;
 
 use core::block::Block;
 use core::execution_engine::ExecutionEngineRef;
-use core::block_header::{BlockHeader, BlockHeaderBuilder};
+use core::block_header::BlockHeaderBuilder;
 use core::transaction::{SignedTransaction, Transaction};
-use core::transaction_pool::{TransactionPool, TransactionPoolRef};
+use core::transaction_pool::TransactionPoolRef;
 use core::LedgerRef;
 use core::SyncEngineRef;
 use ethereum_types::{Address, H256, U256};
@@ -123,7 +123,7 @@ impl BlockGenerator {
         let mut current_interval_count: u32 = 0;
         let mut parent_hash: H256 = 0.into();
         let mut parent_number: BlockNumber = 0;
-        let mut parent_total_difficulty: U256 = 0.into();
+        let parent_total_difficulty: U256 = 0.into();
         let mut current_total_difficulty: U256 = 0.into();
         let mut current_mining_header_builder = BlockHeaderBuilder::new();
         let mut current_mining_body = Block {
@@ -222,8 +222,6 @@ impl BlockGenerator {
 
             let best_block_info = bg.ledger.best_block();
             let best_hash = best_block_info.header.hash();
-            let best_number = best_block_info.header.number();
-            let total_difficulty = best_block_info.total_difficulty;
 
             if current_mining_header_builder.build().hash() == best_hash {
                 thread::sleep(one_second);

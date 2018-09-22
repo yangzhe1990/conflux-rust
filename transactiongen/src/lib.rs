@@ -9,7 +9,7 @@ extern crate secret_store;
 pub use core::execution_engine::{ExecutionEngine, ExecutionEngineRef};
 use core::state::AccountStateRef;
 use core::transaction::Transaction;
-use core::transaction_pool::{TransactionPool, TransactionPoolRef};
+use core::transaction_pool::TransactionPoolRef;
 use ethereum_types::{Address, U256};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
 use network::Error;
@@ -27,7 +27,6 @@ enum TransGenState {
 
 pub struct TransactionGenerator {
     state: RwLock<TransGenState>,
-    exec_engine: ExecutionEngineRef,
     txpool: TransactionPoolRef,
     secret_store: SecretStoreRef,
     account_state: AccountStateRef,
@@ -40,7 +39,6 @@ impl TransactionGenerator {
     ) -> Self
     {
         TransactionGenerator {
-            exec_engine: engine,
             state: RwLock::new(TransGenState::Start),
             txpool,
             secret_store,

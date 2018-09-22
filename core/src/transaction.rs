@@ -2,7 +2,6 @@ use ethereum_types::{Address, H160, H256, U256};
 use ethkey::{self, public_to_address, recover, Public, Secret, Signature};
 use hash::keccak;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use std::mem::*;
 use std::ops::Deref;
 
 /// Fake address for unsigned transactions.
