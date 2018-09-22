@@ -1,0 +1,6 @@
+default_config = dict(
+    GENESIS_DIFFICULTY=131072,
+    GENESIS_GAS_LIMIT=3141592,
+    GENESIS_PREVHASH=b'\x00' * 32,
+    GENESIS_COINBASE=b'\x00' * 20,
+)
