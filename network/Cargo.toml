@@ -12,5 +12,9 @@ io = { path = "../util/io" }
 error-chain = { version = "0.12", default-features = false }
 bytes = "0.4"
 rlp = { git = "https://github.com/paritytech/parity-common" }
+ipnetwork = "0.12.6"
 serde = "1.0"
 serde_derive = "1.0"
+ethereum-types = "0.4"
+igd = "0.7"
+libc = "0.2.7"

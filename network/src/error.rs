@@ -37,6 +37,18 @@ error_chain! {
     }
 
     errors {
+        #[doc = "Error concerning the network address parsing subsystem."]
+		AddressParse {
+			description("Failed to parse network address"),
+			display("Failed to parse network address"),
+		}
+
+		#[doc = "Error concerning the network address resolution subsystem."]
+		AddressResolve(err: Option<io::Error>) {
+			description("Failed to resolve network address"),
+			display("Failed to resolve network address {}", err.as_ref().map_or("".to_string(), |e| e.to_string())),
+		}
+
         BadProtocol {
             description("Bad protocol"),
             display("Bad protocol"),

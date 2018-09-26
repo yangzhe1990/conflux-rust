@@ -9,9 +9,13 @@ extern crate slab;
 extern crate error_chain;
 extern crate bytes;
 extern crate rlp;
+extern crate ipnetwork;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate ethereum_types;
+extern crate igd;
+extern crate libc;
 
 pub type ProtocolId = [u8; 3];
 pub type PeerId = usize;
@@ -21,6 +25,8 @@ mod connection;
 mod error;
 mod service;
 mod session;
+mod node_table;
+mod ip_utils;
 
 pub use error::{DisconnectReason, Error, ErrorKind};
 pub use io::TimerToken;
@@ -30,10 +36,13 @@ use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::cmp::Ordering;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
+use ipnetwork::{IpNetwork, IpNetworkError};
+use std::str::{self, FromStr};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
     pub listen_address: Option<SocketAddr>,
+    pub udp_port: Option<u16>,
     pub boot_nodes: Vec<String>,
 }
 
@@ -45,6 +54,7 @@ impl NetworkConfiguration {
     pub fn new() -> Self {
         NetworkConfiguration {
             listen_address: None,
+            udp_port: None,
             boot_nodes: Vec::new(),
         }
     }
@@ -154,4 +164,57 @@ pub struct PeerInfo {
     pub id: PeerId,
     pub addr: SocketAddr,
     pub caps: Vec<Capability>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IpFilter {
+    pub predefined: AllowIP,
+    pub custom_allow: Vec<IpNetwork>,
+    pub custom_block: Vec<IpNetwork>,
+}
+
+impl Default for IpFilter {
+    fn default() -> Self {
+        IpFilter {
+            predefined: AllowIP::All,
+            custom_allow: vec![],
+            custom_block: vec![],
+        }
+    }
+}
+
+impl IpFilter {
+    /// Attempt to parse the peer mode from a string.
+    pub fn parse(s: &str) -> Result<IpFilter, IpNetworkError> {
+        let mut filter = IpFilter::default();
+        for f in s.split_whitespace() {
+            match f {
+                "all" => filter.predefined = AllowIP::All,
+                "private" => filter.predefined = AllowIP::Private,
+                "public" => filter.predefined = AllowIP::Public,
+                "none" => filter.predefined = AllowIP::None,
+                custom => {
+                    if custom.starts_with("-") {
+                        filter.custom_block.push(IpNetwork::from_str(&custom.to_owned().split_off(1))?)
+                    } else {
+                        filter.custom_allow.push(IpNetwork::from_str(custom)?)
+                    }
+                }
+            }
+        }
+        Ok(filter)
+    }
+}
+
+/// IP fiter
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AllowIP {
+	/// Connect to any address
+	All,
+	/// Connect to private network only
+	Private,
+	/// Connect to public network only
+	Public,
+    /// Block all addresses
+    None,
 }

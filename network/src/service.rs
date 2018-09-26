@@ -1,8 +1,10 @@
 use io::*;
 use mio::deprecated::EventLoop;
 use mio::tcp::*;
+use mio::udp::*;
 use mio::*;
 use parking_lot::{Mutex, RwLock};
+use node_table::*;
 use session;
 use session::Session;
 use session::SessionData;
@@ -119,6 +121,10 @@ pub struct HostMetadata {
     config: NetworkConfiguration,
     pub capabilities: Vec<Capability>,
     pub local_address: SocketAddr,
+    /// Local address + discovery port
+	pub local_endpoint: NodeEndpoint,
+	/// Public address + discovery port
+	pub public_endpoint: Option<NodeEndpoint>,
 }
 
 #[derive(Debug)]
@@ -130,6 +136,7 @@ struct NodeEntry {
 
 struct NetworkServiceInner {
     metadata: RwLock<HostMetadata>,
+    udp_socket: Mutex<Option<UdpSocket>>,
     tcp_listener: Mutex<TcpListener>,
     sessions: Arc<RwLock<Slab<SharedSession>>>,
     handlers: RwLock<HashMap<ProtocolId, Arc<NetworkProtocolHandler + Sync>>>,
@@ -154,13 +161,18 @@ impl NetworkServiceInner {
             tcp_listener.local_addr()?.port(),
         );
         debug!(target: "network", "Listening at {:?}", listen_address);
+        let udp_port = config.udp_port.unwrap_or_else(|| listen_address.port());
+		let local_endpoint = NodeEndpoint { address: listen_address, udp_port };
 
         let inner = NetworkServiceInner {
             metadata: RwLock::new(HostMetadata {
                 config: config.clone(),
                 capabilities: Vec::new(),
                 local_address: listen_address,
+                local_endpoint,
+                public_endpoint: None,
             }),
+            udp_socket: Mutex::new(None),
             tcp_listener: Mutex::new(tcp_listener),
             sessions: Arc::new(RwLock::new(Slab::new_starting_at(
                 FIRST_SESSION,

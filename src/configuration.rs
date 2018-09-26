@@ -7,6 +7,7 @@ use toml;
 #[derive(Debug, PartialEq, Clone)]
 pub struct Configuration {
     pub port: Option<u16>,
+    pub udp_port: Option<u16>,
     pub jsonrpc_tcp_port: Option<u16>,
     pub jsonrpc_http_port: Option<u16>,
     pub log_file: Option<String>,
@@ -17,6 +18,7 @@ impl Default for Configuration {
     fn default() -> Self {
         Configuration {
             port: None,
+            udp_port: None,
             jsonrpc_tcp_port: None,
             jsonrpc_http_port: None,
             log_file: None,
@@ -43,6 +45,9 @@ impl Configuration {
             if let Some(port) = config_value.get("port") {
                 config.port = port.as_integer().map(|x| x as u16);
             }
+            if let Some(port) = config_value.get("udp-port") {
+                config.udp_port = port.as_integer().map(|x| x as u16);
+            }
             if let Some(port) = config_value.get("jsonrpc-tcp-port") {
                 config.jsonrpc_tcp_port = port.as_integer().map(|x| x as u16);
             }
@@ -68,6 +73,10 @@ impl Configuration {
         if let Some(port) = matches.value_of("port") {
             config.port =
                 Some(port.parse().map_err(|_| "Invalid port".to_owned())?);
+        }
+        if let Some(port) = matches.value_of("udp-port") {
+            config.udp_port = 
+                Some(port.parse().map_err(|_| "Invalid udp-port".to_owned())?);
         }
         if let Some(port) = matches.value_of("jsonrpc-tcp-port") {
             config.jsonrpc_tcp_port = Some(

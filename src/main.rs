@@ -146,6 +146,13 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("udp-port")
+                .long("udp-port")
+                .value_name("PORT")
+                .help("UDP port for peer discovery.")
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("jsonrpc-tcp-port")
                 .long("jsonrpc-tcp-port")
                 .value_name("PORT")
