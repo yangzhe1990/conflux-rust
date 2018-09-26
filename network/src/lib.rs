@@ -14,8 +14,10 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate ethereum_types;
+extern crate ethkey;
 extern crate igd;
 extern crate libc;
+extern crate parity_path;
 
 pub type ProtocolId = [u8; 3];
 pub type PeerId = usize;
@@ -27,6 +29,7 @@ mod service;
 mod session;
 mod node_table;
 mod ip_utils;
+mod discovery;
 
 pub use error::{DisconnectReason, Error, ErrorKind};
 pub use io::TimerToken;
@@ -38,12 +41,25 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use ipnetwork::{IpNetwork, IpNetworkError};
 use std::str::{self, FromStr};
+use ethkey::Secret;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
+    /// Directory path to store general network configuration. None means nothing will be saved
+	pub config_path: Option<String>,
     pub listen_address: Option<SocketAddr>,
+    /// IP address to advertise. Detected automatically if none.
+	pub public_address: Option<SocketAddr>,
     pub udp_port: Option<u16>,
+    /// Enable NAT configuration
+	pub nat_enabled: bool,
+    /// Enable discovery
+	pub discovery_enabled: bool,
     pub boot_nodes: Vec<String>,
+    /// Use provided node key instead of default
+	pub use_secret: Option<Secret>,
+    /// IP filter
+	pub ip_filter: IpFilter,
 }
 
 impl Default for NetworkConfiguration {
@@ -53,9 +69,15 @@ impl Default for NetworkConfiguration {
 impl NetworkConfiguration {
     pub fn new() -> Self {
         NetworkConfiguration {
+            config_path: Some("./config".to_string()),
             listen_address: None,
+            public_address: None,
             udp_port: None,
+            nat_enabled: true,
+            discovery_enabled: true,
             boot_nodes: Vec::new(),
+            use_secret: None,
+            ip_filter: IpFilter::default(),
         }
     }
 

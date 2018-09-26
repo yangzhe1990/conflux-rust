@@ -1,5 +1,5 @@
 use io::IoError;
-use rlp;
+use {rlp, ethkey};
 use std::{fmt, io, net};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -49,6 +49,12 @@ error_chain! {
 			display("Failed to resolve network address {}", err.as_ref().map_or("".to_string(), |e| e.to_string())),
 		}
 
+        #[doc = "Authentication failure"]
+		Auth {
+			description("Authentication failure"),
+			display("Authentication failure"),
+		}
+
         BadProtocol {
             description("Bad protocol"),
             display("Bad protocol"),
@@ -92,6 +98,18 @@ impl From<io::Error> for Error {
 
 impl From<rlp::DecoderError> for Error {
     fn from(_err: rlp::DecoderError) -> Self { ErrorKind::Decoder.into() }
+}
+
+impl From<ethkey::Error> for Error {
+	fn from(_err: ethkey::Error) -> Self {
+		ErrorKind::Auth.into()
+	}
+}
+
+impl From<ethkey::crypto::Error> for Error {
+	fn from(_err: ethkey::crypto::Error) -> Self {
+		ErrorKind::Auth.into()
+	}
 }
 
 impl From<net::AddrParseError> for Error {
