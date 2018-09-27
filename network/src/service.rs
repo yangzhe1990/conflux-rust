@@ -7,7 +7,7 @@ use mio::tcp::*;
 use mio::udp::*;
 use mio::*;
 use node_table::*;
-use parity_bytes::Bytes;
+use ethcore_bytes::Bytes;
 use parity_path::restrict_permissions_owner;
 use parking_lot::{Mutex, RwLock};
 use session;

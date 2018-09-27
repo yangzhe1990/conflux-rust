@@ -4,7 +4,7 @@ extern crate ethkey;
 extern crate io;
 extern crate keccak_hash as hash;
 extern crate network;
-extern crate parity_bytes as bytes;
+extern crate ethcore_bytes as bytes;
 extern crate parking_lot;
 extern crate rlp;
 extern crate secret_store;

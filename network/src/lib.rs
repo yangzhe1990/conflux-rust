@@ -17,7 +17,7 @@ extern crate ethereum_types;
 extern crate ethkey;
 extern crate igd;
 extern crate libc;
-extern crate parity_bytes;
+extern crate ethcore_bytes;
 extern crate parity_path;
 
 pub type ProtocolId = [u8; 3];

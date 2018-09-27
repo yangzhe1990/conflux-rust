@@ -20,4 +20,4 @@ igd = "0.7"
 libc = "0.2.7"
 parity-path = "0.1"
 ethkey = { path = "../ethkey" }
-parity-bytes = "0.1"
+ethcore-bytes = { path = "../util/bytes" }
