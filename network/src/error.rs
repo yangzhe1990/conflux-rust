@@ -1,6 +1,6 @@
 use io::IoError;
-use {rlp, ethkey};
 use std::{fmt, io, net};
+use {ethkey, rlp};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DisconnectReason {
@@ -38,22 +38,22 @@ error_chain! {
 
     errors {
         #[doc = "Error concerning the network address parsing subsystem."]
-		AddressParse {
-			description("Failed to parse network address"),
-			display("Failed to parse network address"),
-		}
+        AddressParse {
+            description("Failed to parse network address"),
+            display("Failed to parse network address"),
+        }
 
-		#[doc = "Error concerning the network address resolution subsystem."]
-		AddressResolve(err: Option<io::Error>) {
-			description("Failed to resolve network address"),
-			display("Failed to resolve network address {}", err.as_ref().map_or("".to_string(), |e| e.to_string())),
-		}
+        #[doc = "Error concerning the network address resolution subsystem."]
+        AddressResolve(err: Option<io::Error>) {
+            description("Failed to resolve network address"),
+            display("Failed to resolve network address {}", err.as_ref().map_or("".to_string(), |e| e.to_string())),
+        }
 
         #[doc = "Authentication failure"]
-		Auth {
-			description("Authentication failure"),
-			display("Authentication failure"),
-		}
+        Auth {
+            description("Authentication failure"),
+            display("Authentication failure"),
+        }
 
         BadProtocol {
             description("Bad protocol"),
@@ -101,15 +101,11 @@ impl From<rlp::DecoderError> for Error {
 }
 
 impl From<ethkey::Error> for Error {
-	fn from(_err: ethkey::Error) -> Self {
-		ErrorKind::Auth.into()
-	}
+    fn from(_err: ethkey::Error) -> Self { ErrorKind::Auth.into() }
 }
 
 impl From<ethkey::crypto::Error> for Error {
-	fn from(_err: ethkey::crypto::Error) -> Self {
-		ErrorKind::Auth.into()
-	}
+    fn from(_err: ethkey::crypto::Error) -> Self { ErrorKind::Auth.into() }
 }
 
 impl From<net::AddrParseError> for Error {

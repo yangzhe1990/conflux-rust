@@ -8,8 +8,8 @@ extern crate slab;
 #[macro_use]
 extern crate error_chain;
 extern crate bytes;
-extern crate rlp;
 extern crate ipnetwork;
+extern crate rlp;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -17,6 +17,7 @@ extern crate ethereum_types;
 extern crate ethkey;
 extern crate igd;
 extern crate libc;
+extern crate parity_bytes;
 extern crate parity_path;
 
 pub type ProtocolId = [u8; 3];
@@ -24,42 +25,42 @@ pub type PeerId = usize;
 pub type NodeId = SocketAddr;
 
 mod connection;
+mod discovery;
 mod error;
+mod ip_utils;
+mod node_table;
 mod service;
 mod session;
-mod node_table;
-mod ip_utils;
-mod discovery;
 
 pub use error::{DisconnectReason, Error, ErrorKind};
 pub use io::TimerToken;
 pub use service::NetworkService;
 
+use ethkey::Secret;
+use ipnetwork::{IpNetwork, IpNetworkError};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::cmp::Ordering;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::sync::Arc;
-use ipnetwork::{IpNetwork, IpNetworkError};
 use std::str::{self, FromStr};
-use ethkey::Secret;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
     /// Directory path to store general network configuration. None means nothing will be saved
-	pub config_path: Option<String>,
+    pub config_path: Option<String>,
     pub listen_address: Option<SocketAddr>,
     /// IP address to advertise. Detected automatically if none.
-	pub public_address: Option<SocketAddr>,
+    pub public_address: Option<SocketAddr>,
     pub udp_port: Option<u16>,
     /// Enable NAT configuration
-	pub nat_enabled: bool,
+    pub nat_enabled: bool,
     /// Enable discovery
-	pub discovery_enabled: bool,
+    pub discovery_enabled: bool,
     pub boot_nodes: Vec<String>,
     /// Use provided node key instead of default
-	pub use_secret: Option<Secret>,
+    pub use_secret: Option<Secret>,
     /// IP filter
-	pub ip_filter: IpFilter,
+    pub ip_filter: IpFilter,
 }
 
 impl Default for NetworkConfiguration {
@@ -217,7 +218,9 @@ impl IpFilter {
                 "none" => filter.predefined = AllowIP::None,
                 custom => {
                     if custom.starts_with("-") {
-                        filter.custom_block.push(IpNetwork::from_str(&custom.to_owned().split_off(1))?)
+                        filter.custom_block.push(IpNetwork::from_str(
+                            &custom.to_owned().split_off(1),
+                        )?)
                     } else {
                         filter.custom_allow.push(IpNetwork::from_str(custom)?)
                     }
@@ -231,12 +234,12 @@ impl IpFilter {
 /// IP fiter
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AllowIP {
-	/// Connect to any address
-	All,
-	/// Connect to private network only
-	Private,
-	/// Connect to public network only
-	Public,
+    /// Connect to any address
+    All,
+    /// Connect to private network only
+    Private,
+    /// Connect to public network only
+    Public,
     /// Block all addresses
     None,
 }

@@ -1,31 +1,30 @@
+use discovery::Discovery;
+use ethkey::{Generator, KeyPair, Random, Secret};
 use io::*;
-use std::str::FromStr;
+use ip_utils::{map_external_address, select_public_address};
 use mio::deprecated::EventLoop;
 use mio::tcp::*;
 use mio::udp::*;
 use mio::*;
-use parking_lot::{Mutex, RwLock};
 use node_table::*;
+use parity_bytes::Bytes;
+use parity_path::restrict_permissions_owner;
+use parking_lot::{Mutex, RwLock};
 use session;
 use session::Session;
 use session::SessionData;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::io::{Read, Write, self};
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::sync::Arc;
-use std::path::{Path, PathBuf};
-use std::time::Duration;
-use discovery::{Discovery};
-use ethkey::{KeyPair, Secret, Random, Generator};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use ip_utils::{map_external_address, select_public_address};
-use parity_path::restrict_permissions_owner;
+use std::io::{self, Read, Write};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
 use {
-    Capability, DisconnectReason, Error, NetworkConfiguration,
+    Capability, DisconnectReason, Error, IpFilter, NetworkConfiguration,
     NetworkContext as NetworkContextTrait, NetworkIoMessage,
     NetworkProtocolHandler, NodeId, PeerId, PeerInfo, ProtocolId,
-    IpFilter,
 };
 
 type Slab<T> = ::slab::Slab<T, usize>;
@@ -39,8 +38,46 @@ const LAST_SESSION: StreamToken = FIRST_SESSION + MAX_SESSIONS - 1;
 const SYS_TIMER: TimerToken = LAST_SESSION + 1;
 const TCP_ACCEPT: StreamToken = SYS_TIMER + 1;
 const HOUSEKEEPING: TimerToken = SYS_TIMER + 2;
+const UDP_MESSAGE: StreamToken = SYS_TIMER + 3;
 
 const HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(1);
+
+pub const MAX_DATAGRAM_SIZE: usize = 1280;
+
+pub struct Datagram {
+    pub payload: Bytes,
+    pub address: SocketAddr,
+}
+
+pub struct UdpChannel {
+    pub send_queue: VecDeque<Datagram>,
+}
+
+impl UdpChannel {
+    pub fn new() -> UdpChannel {
+        UdpChannel {
+            send_queue: VecDeque::new(),
+        }
+    }
+
+    pub fn dequeue_send(&mut self) -> Option<Datagram> {
+        self.send_queue.pop_front()
+    }
+
+    pub fn requeue_send(&mut self, datagram: Datagram) {
+        self.send_queue.push_front(datagram)
+    }
+}
+
+pub struct UdpIOContext<'a> {
+    channel: &'a RwLock<UdpChannel>,
+}
+
+impl<'a> UdpIOContext<'a> {
+    pub fn new(channel: &'a RwLock<UdpChannel>) -> UdpIOContext<'a> {
+        UdpIOContext { channel }
+    }
+}
 
 pub struct NetworkService {
     io_service: Option<IoService<NetworkIoMessage>>,
@@ -127,15 +164,14 @@ type SharedSession = Arc<Mutex<Session>>;
 pub struct HostMetadata {
     #[allow(unused)]
     /// Our private and public keys.
-	keys: KeyPair,
+    keys: KeyPair,
     config: NetworkConfiguration,
     pub capabilities: Vec<Capability>,
     pub local_address: SocketAddr,
     /// Local address + discovery port
-	pub local_endpoint: NodeEndpoint,
-	/// Public address + discovery port
-	pub public_endpoint: NodeEndpoint,
-    pub discovery_initialized: bool,
+    pub local_endpoint: NodeEndpoint,
+    /// Public address + discovery port
+    pub public_endpoint: NodeEndpoint,
 }
 
 #[derive(Debug)]
@@ -147,9 +183,11 @@ struct NodeEntry {
 
 struct NetworkServiceInner {
     metadata: RwLock<HostMetadata>,
-    udp_socket: Mutex<Option<UdpSocket>>,
+    udp_socket: Mutex<UdpSocket>,
     tcp_listener: Mutex<TcpListener>,
     sessions: Arc<RwLock<Slab<SharedSession>>>,
+    udp_channel: RwLock<UdpChannel>,
+    discovery: Mutex<Option<Discovery>>,
     handlers: RwLock<HashMap<ProtocolId, Arc<NetworkProtocolHandler + Sync>>>,
     nodes: RwLock<HashMap<NodeId, NodeEntry>>,
     dropped_nodes: RwLock<HashSet<StreamToken>>,
@@ -168,18 +206,28 @@ impl NetworkServiceInner {
         };
 
         let keys = if let Some(ref secret) = config.use_secret {
-			KeyPair::from_secret(secret.clone())?
-		} else {
-			config.config_path.clone().and_then(|ref p| load_key(Path::new(&p)))
-				.map_or_else(|| {
-				let key = Random.generate().expect("Error generating random key pair");
-				if let Some(path) = config.config_path.clone() {
-					save_key(Path::new(&path), key.secret());
-				}
-				key
-			},
-			|s| KeyPair::from_secret(s).expect("Error creating node secret key"))
-		};
+            KeyPair::from_secret(secret.clone())?
+        } else {
+            config
+                .config_path
+                .clone()
+                .and_then(|ref p| load_key(Path::new(&p)))
+                .map_or_else(
+                    || {
+                        let key = Random
+                            .generate()
+                            .expect("Error generating random key pair");
+                        if let Some(path) = config.config_path.clone() {
+                            save_key(Path::new(&path), key.secret());
+                        }
+                        key
+                    },
+                    |s| {
+                        KeyPair::from_secret(s)
+                            .expect("Error creating node secret key")
+                    },
+                )
+        };
 
         let tcp_listener = TcpListener::bind(&listen_address)?;
         listen_address = SocketAddr::new(
@@ -188,27 +236,53 @@ impl NetworkServiceInner {
         );
         debug!(target: "network", "Listening at {:?}", listen_address);
         let udp_port = config.udp_port.unwrap_or_else(|| listen_address.port());
-		let local_endpoint = NodeEndpoint { address: listen_address, udp_port };
+        let local_endpoint = NodeEndpoint {
+            address: listen_address,
+            udp_port,
+        };
+        let mut udp_addr = local_endpoint.address;
+        udp_addr.set_port(local_endpoint.udp_port);
+        let udp_socket =
+            UdpSocket::bind(&udp_addr).expect("Error binding UDP socket");
 
         let public_address = config.public_address;
         let public_endpoint = match public_address {
-			None => {
-				let public_address = select_public_address(local_endpoint.address.port());
-				let public_endpoint = NodeEndpoint { address: public_address, udp_port: local_endpoint.udp_port };
-				if config.nat_enabled {
-					match map_external_address(&local_endpoint) {
-						Some(endpoint) => {
-							info!("NAT mapped to external address {}", endpoint.address);
-							endpoint
-						},
-						None => public_endpoint
-					}
-				} else {
-					public_endpoint
-				}
-			}
-			Some(addr) => NodeEndpoint { address: addr, udp_port: local_endpoint.udp_port }
-		};
+            None => {
+                let public_address =
+                    select_public_address(local_endpoint.address.port());
+                let public_endpoint = NodeEndpoint {
+                    address: public_address,
+                    udp_port: local_endpoint.udp_port,
+                };
+                if config.nat_enabled {
+                    match map_external_address(&local_endpoint) {
+                        Some(endpoint) => {
+                            info!(
+                                "NAT mapped to external address {}",
+                                endpoint.address
+                            );
+                            endpoint
+                        }
+                        None => public_endpoint,
+                    }
+                } else {
+                    public_endpoint
+                }
+            }
+            Some(addr) => NodeEndpoint {
+                address: addr,
+                udp_port: local_endpoint.udp_port,
+            },
+        };
+
+        let allow_ips = config.ip_filter.clone();
+        let discovery = {
+            if config.discovery_enabled {
+                Some(Discovery::new(&keys, public_endpoint.clone(), allow_ips))
+            } else {
+                None
+            }
+        };
 
         let inner = NetworkServiceInner {
             metadata: RwLock::new(HostMetadata {
@@ -218,9 +292,10 @@ impl NetworkServiceInner {
                 local_address: listen_address,
                 local_endpoint,
                 public_endpoint,
-                discovery_initialized: false,
             }),
-            udp_socket: Mutex::new(None),
+            udp_channel: RwLock::new(UdpChannel::new()),
+            discovery: Mutex::new(discovery),
+            udp_socket: Mutex::new(udp_socket),
             tcp_listener: Mutex::new(tcp_listener),
             sessions: Arc::new(RwLock::new(Slab::new_starting_at(
                 FIRST_SESSION,
@@ -238,47 +313,20 @@ impl NetworkServiceInner {
         Ok(inner)
     }
 
-    fn initialize_discovery(&self, io: &IoContext<NetworkIoMessage>) -> Result<(), Error> {
-        let allow_ips: IpFilter;
-        let local_endpoint: NodeEndpoint;
-        let discovery: Option<Discovery>;
-
-        {
-            let meta = self.metadata.read();
-            if meta.discovery_initialized {
-                return Ok(());
-            }
-
-            allow_ips = meta.config.ip_filter.clone();
-            let public_endpoint = meta.public_endpoint.clone();
-            local_endpoint = meta.local_endpoint.clone();
-            discovery = {
-			    if meta.config.discovery_enabled {
-				    Some(Discovery::new(&meta.keys, public_endpoint, allow_ips))
-			    } else { None }
-            };
+    fn initialize_udp_protocols(
+        &self, io: &IoContext<NetworkIoMessage>,
+    ) -> Result<(), Error> {
+        // Initialize discovery
+        if let Some(discovery) = self.discovery.lock().as_mut() {
+            discovery.add_node_list(&UdpIOContext::new(&self.udp_channel));
+            //io.register_timer(FAST_DISCOVERY_REFRESH, FAST_DISCOVERY_REFRESH_TIMEOUT)?;
+            //io.register_timer(DISCOVERY_REFRESH, DISCOVERY_REFRESH_TIMEOUT)?;
+            //io.register_timer(DISCOVERY_ROUND, DISCOVERY_ROUND_TIMEOUT)?;
         }
+        //io.register_timer(NODE_TABLE, NODE_TABLE_TIMEOUT)?;
 
-
-		if let Some(mut discovery) = discovery {
-			let mut udp_addr = local_endpoint.address;
-			udp_addr.set_port(local_endpoint.udp_port);
-			let socket = UdpSocket::bind(&udp_addr).expect("Error binding UDP socket");
-			*self.udp_socket.lock() = Some(socket);
-
-			//discovery.add_node_list(self.nodes.read().entries());
-			//*self.discovery.lock() = Some(discovery);
-			//io.register_stream(DISCOVERY)?;
-			//io.register_timer(FAST_DISCOVERY_REFRESH, FAST_DISCOVERY_REFRESH_TIMEOUT)?;
-			//io.register_timer(DISCOVERY_REFRESH, DISCOVERY_REFRESH_TIMEOUT)?;
-			//io.register_timer(DISCOVERY_ROUND, DISCOVERY_ROUND_TIMEOUT)?;
-		}
-		//io.register_timer(NODE_TABLE, NODE_TABLE_TIMEOUT)?;
-		io.register_stream(TCP_ACCEPT)?;
-
-        self.metadata.write().discovery_initialized = true;
-		Ok(())
-	}
+        Ok(())
+    }
 
     pub fn local_addr(&self) -> SocketAddr {
         self.metadata.read().local_address
@@ -410,7 +458,10 @@ impl NetworkServiceInner {
     }
 
     fn start(&self, io: &IoContext<NetworkIoMessage>) -> Result<(), Error> {
-        self.initialize_discovery(io)
+        self.initialize_udp_protocols(io)?;
+        io.register_stream(UDP_MESSAGE)?;
+        io.register_stream(TCP_ACCEPT)?;
+        Ok(())
     }
 
     fn create_connection(
@@ -639,6 +690,55 @@ impl NetworkServiceInner {
         let context = NetworkContext::new(io, protocol, self.sessions.clone());
         action(&context);
     }
+
+    fn udp_readable(&self, io: &IoContext<NetworkIoMessage>) {
+        let udp_socket = self.udp_socket.lock();
+        let mut buf = [0u8; MAX_DATAGRAM_SIZE];
+        match udp_socket.recv_from(&mut buf) {
+			Ok(Some((len, address))) => self.on_udp_packet(&buf[0..len], address).unwrap_or_else(|e| {
+				debug!(target: "network", "Error processing UDP packet: {:?}", e);
+			}),
+			Ok(_) => {},
+			Err(e) => {
+				debug!(target: "network", "Error reading UPD socket: {:?}", e);
+			},
+		};
+        io.update_registration(UDP_MESSAGE)
+			.unwrap_or_else(|e| {
+				debug!(target: "network" ,"Error updating UDP registration: {:?}", e)
+			});
+    }
+
+    fn udp_writable(&self, io: &IoContext<NetworkIoMessage>) {
+        let udp_socket = self.udp_socket.lock();
+        let mut udp_channel = self.udp_channel.write();
+        while let Some(data) = udp_channel.dequeue_send() {
+            match udp_socket.send_to(&data.payload, &data.address) {
+                Ok(Some(size)) if size == data.payload.len() => {}
+                Ok(Some(_)) => {
+                    warn!(target: "network", "UDP sent incomplete datagram");
+                }
+                Ok(None) => {
+                    udp_channel.requeue_send(data);
+                    return;
+                }
+                Err(e) => {
+                    debug!(target: "network", "UDP send error: {:?}, address: {:?}", e, &data.address);
+                    return;
+                }
+            }
+        }
+        io.update_registration(UDP_MESSAGE)
+			.unwrap_or_else(|e| {
+				debug!(target: "network", "Error updating UDP registration: {:?}", e)
+			});
+    }
+
+    fn on_udp_packet(
+        &self, packet: &[u8], from: SocketAddr,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
@@ -667,6 +767,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
         match stream {
             FIRST_SESSION...LAST_SESSION => self.session_readable(stream, io),
             TCP_ACCEPT => self.accept(io),
+            UDP_MESSAGE => self.udp_readable(io),
             _ => panic!("Received unknown readable token"),
         }
     }
@@ -676,6 +777,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     ) {
         match stream {
             FIRST_SESSION...LAST_SESSION => self.session_writable(stream, io),
+            UDP_MESSAGE => self.udp_writable(io),
             _ => panic!("Received unknown writable token"),
         }
     }
@@ -749,8 +851,16 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                         Token(TCP_ACCEPT),
                         Ready::all(),
                         PollOpt::edge(),
-                    )
-                    .expect("Error registering stream");
+                    ).expect("Error registering stream");
+            }
+            UDP_MESSAGE => {
+                event_loop
+                    .register(
+                        &*self.udp_socket.lock(),
+                        reg,
+                        Ready::all(),
+                        PollOpt::edge(),
+                    ).expect("Error registering UDP socket");
             }
             _ => warn!("Unexpected stream registeration"),
         }
@@ -798,8 +908,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                     Token(TCP_ACCEPT),
                     Ready::all(),
                     PollOpt::edge(),
-                )
-                .expect("Error reregistering stream"),
+                ).expect("Error reregistering stream"),
             _ => warn!("Unexpected stream update"),
         }
     }
@@ -858,51 +967,51 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
 }
 
 fn save_key(path: &Path, key: &Secret) {
-	let mut path_buf = PathBuf::from(path);
-	if let Err(e) = fs::create_dir_all(path_buf.as_path()) {
-		warn!("Error creating key directory: {:?}", e);
-		return;
-	};
-	path_buf.push("key");
-	let path = path_buf.as_path();
-	let mut file = match fs::File::create(&path) {
-		Ok(file) => file,
-		Err(e) => {
-			warn!("Error creating key file: {:?}", e);
-			return;
-		}
-	};
-	if let Err(e) = restrict_permissions_owner(path, true, false) {
-		warn!(target: "network", "Failed to modify permissions of the file ({})", e);
-	}
-	if let Err(e) = file.write(&key.hex().into_bytes()[2..]) {
-		warn!("Error writing key file: {:?}", e);
-	}
+    let mut path_buf = PathBuf::from(path);
+    if let Err(e) = fs::create_dir_all(path_buf.as_path()) {
+        warn!("Error creating key directory: {:?}", e);
+        return;
+    };
+    path_buf.push("key");
+    let path = path_buf.as_path();
+    let mut file = match fs::File::create(&path) {
+        Ok(file) => file,
+        Err(e) => {
+            warn!("Error creating key file: {:?}", e);
+            return;
+        }
+    };
+    if let Err(e) = restrict_permissions_owner(path, true, false) {
+        warn!(target: "network", "Failed to modify permissions of the file ({})", e);
+    }
+    if let Err(e) = file.write(&key.hex().into_bytes()[2..]) {
+        warn!("Error writing key file: {:?}", e);
+    }
 }
 
 fn load_key(path: &Path) -> Option<Secret> {
-	let mut path_buf = PathBuf::from(path);
-	path_buf.push("key");
-	let mut file = match fs::File::open(path_buf.as_path()) {
-		Ok(file) => file,
-		Err(e) => {
-			debug!("Error opening key file: {:?}", e);
-			return None;
-		}
-	};
-	let mut buf = String::new();
-	match file.read_to_string(&mut buf) {
-		Ok(_) => {},
-		Err(e) => {
-			warn!("Error reading key file: {:?}", e);
-			return None;
-		}
-	}
-	match Secret::from_str(&buf) {
-		Ok(key) => Some(key),
-		Err(e) => {
-			warn!("Error parsing key file: {:?}", e);
-			None
-		}
-	}
+    let mut path_buf = PathBuf::from(path);
+    path_buf.push("key");
+    let mut file = match fs::File::open(path_buf.as_path()) {
+        Ok(file) => file,
+        Err(e) => {
+            debug!("Error opening key file: {:?}", e);
+            return None;
+        }
+    };
+    let mut buf = String::new();
+    match file.read_to_string(&mut buf) {
+        Ok(_) => {}
+        Err(e) => {
+            warn!("Error reading key file: {:?}", e);
+            return None;
+        }
+    }
+    match Secret::from_str(&buf) {
+        Ok(key) => Some(key),
+        Err(e) => {
+            warn!("Error parsing key file: {:?}", e);
+            None
+        }
+    }
 }

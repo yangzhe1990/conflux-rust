@@ -1,4 +1,4 @@
-use bytes::{Bytes};
+use bytes::Bytes;
 use io::{IoContext, StreamToken};
 use mio::deprecated::*;
 use mio::tcp::*;
@@ -8,7 +8,7 @@ use std::io::{self, Read, Write};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
-use {Error};
+use Error;
 
 #[derive(PartialEq, Eq)]
 pub enum WriteStatus {
