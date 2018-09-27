@@ -22,6 +22,7 @@
 use std::fmt;
 use std::cmp::min;
 use std::ops::{Deref, DerefMut};
+use std::marker;
 
 /// Slice pretty print helper
 pub struct PrettySlice<'a> (&'a [u8]);
@@ -120,6 +121,34 @@ impl <'a> DerefMut for BytesRef<'a> {
 
 /// Vector of bytes.
 pub type Bytes = Vec<u8>;
+
+/// Wrapper around `Vec<u8>` which represents associated type
+#[derive(Default, PartialEq, Clone)]
+pub struct TaggedBytes<T> {
+	bytes: Bytes,
+	phantom: marker::PhantomData<T>,
+}
+
+impl<T> TaggedBytes<T> {
+	pub fn new(bytes: Bytes) -> Self {
+		TaggedBytes {
+			bytes: bytes,
+			phantom: marker::PhantomData,
+		}
+	}
+
+	pub fn into_raw(self) -> Bytes { self.bytes }
+}
+
+impl<T> Deref for TaggedBytes<T> {
+	type Target = Bytes;
+
+	fn deref(&self) -> &Self::Target { &self.bytes }
+}
+
+impl<T> DerefMut for TaggedBytes<T> {
+	fn deref_mut(&mut self) -> &mut Self::Target { &mut self.bytes }
+}
 
 #[cfg(test)]
 mod tests {
