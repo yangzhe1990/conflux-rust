@@ -44,6 +44,8 @@ const HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub const MAX_DATAGRAM_SIZE: usize = 1280;
 
+const UDP_PROTOCOL_DISCOVERY: u8 = 1;
+
 pub struct Datagram {
     pub payload: Bytes,
     pub address: SocketAddr,
@@ -737,7 +739,21 @@ impl NetworkServiceInner {
     fn on_udp_packet(
         &self, packet: &[u8], from: SocketAddr,
     ) -> Result<(), Error> {
-        Ok(())
+        let res = match packet[0] {
+            UDP_PROTOCOL_DISCOVERY => {
+                if let Some(discovery) = self.discovery.lock().as_mut() {
+                    discovery.on_packet(&packet[1..], from)
+                } else {
+                    warn!(target: "network", "Discovery is not ready. Drop the message!");
+                    Ok(())
+                }
+            },
+            _ => {
+                warn!(target: "network", "Unknown UDP protocol. Simply drops the message!");
+                Ok(())
+            }
+        };
+        res
     }
 }
 
