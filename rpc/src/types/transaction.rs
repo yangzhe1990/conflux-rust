@@ -1,4 +1,4 @@
-use conflux_core::transaction::SignedTransaction;
+use primitives::SignedTransaction;
 
 use types::{H160, H256, U256};
 

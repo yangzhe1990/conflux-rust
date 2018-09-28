@@ -2,6 +2,7 @@ use ethereum_types::{U256, H256};
 use rlp::{Rlp, RlpStream, Encodable, Decodable, DecoderError};
 use Payload;
 
+#[derive(Debug, PartialEq)]
 pub struct Status {
     pub protocol_version: u8,
     pub network_id: u8,

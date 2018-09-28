@@ -6,7 +6,7 @@ use rand::prelude::*;
 use secret_store::SecretStoreRef;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use transaction::SignedTransaction;
+use primitives::SignedTransaction;
 
 lazy_static! {
     pub static ref TEST_ADDRESS: Address = Address::zero();

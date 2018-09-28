@@ -6,7 +6,6 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use transaction::SignedTransaction;
 pub use primitives::*;
 
 /// Contains information on a best block that is specific to the consensus engine.

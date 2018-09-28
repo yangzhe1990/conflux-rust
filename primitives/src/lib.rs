@@ -1,4 +1,7 @@
 extern crate ethereum_types;
+extern crate ethkey;
+extern crate keccak_hash as hash;
+extern crate rlp;
 
 use ethereum_types::H256;
 
@@ -17,3 +20,7 @@ pub enum BlockId {
     /// Latest mined block.
     Latest,
 }
+
+pub mod transaction;
+
+pub use transaction::{Transaction, TransactionWithSignature, SignedTransaction};

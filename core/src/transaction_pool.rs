@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::sync::Arc;
-use transaction::SignedTransaction;
+use primitives::SignedTransaction;
 
 #[derive(Debug)]
 pub struct TransactionRef {

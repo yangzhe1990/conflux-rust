@@ -5,10 +5,11 @@ extern crate network;
 extern crate parking_lot;
 extern crate rand;
 extern crate secret_store;
+extern crate primitives;
 
 pub use core::execution_engine::{ExecutionEngine, ExecutionEngineRef};
 use core::state::AccountStateRef;
-use core::transaction::Transaction;
+use primitives::Transaction;
 use core::transaction_pool::TransactionPoolRef;
 use ethereum_types::{Address, U256};
 use ethkey::{public_to_address, Generator, KeyPair, Random};

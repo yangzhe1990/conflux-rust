@@ -10,7 +10,7 @@ extern crate rlp;
 use core::block::Block;
 use core::execution_engine::ExecutionEngineRef;
 use core::block_header::BlockHeaderBuilder;
-use core::transaction::{SignedTransaction, Transaction};
+use primitives::{SignedTransaction, Transaction};
 use core::transaction_pool::TransactionPoolRef;
 use core::LedgerRef;
 use core::SyncEngineRef;

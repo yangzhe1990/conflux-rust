@@ -24,7 +24,6 @@ pub mod execution_engine;
 mod ledger;
 pub mod state;
 mod sync;
-pub mod transaction;
 pub mod transaction_pool;
 
 use network::NodeId;
