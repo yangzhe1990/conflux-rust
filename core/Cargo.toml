@@ -20,3 +20,4 @@ lazy_static = "1.1.0"
 ethkey = { path = "../ethkey" }
 secret-store = { path = "../secret_store" }
 rand = "0.5"
+message = { path = "../message" }

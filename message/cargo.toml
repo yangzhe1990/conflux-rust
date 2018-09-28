@@ -1,0 +1,9 @@
+[package]
+name = "message"
+version = "0.1.0"
+authors = ["Dong Zhou <dongz@conflux-chain.org>"]
+
+[dependencies]
+rlp = { git = "https://github.com/paritytech/parity-common" }
+ethereum-types = "0.4"
+ethcore-bytes = { path = "../util/bytes" }
