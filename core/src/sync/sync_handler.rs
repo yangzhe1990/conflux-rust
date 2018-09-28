@@ -18,7 +18,7 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::time::Instant;
 use sync_ctx::SyncContext;
-use types::*;
+use primitives::*;
 
 /// SyncHandler is a collection of functions which handles incoming requests from peers from
 /// SyncState

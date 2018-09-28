@@ -4,7 +4,7 @@ use hash::{keccak, KECCAK_NULL_RLP};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::cmp;
 
-pub use types::BlockNumber;
+pub use primitives::BlockNumber;
 
 /// A block header.
 #[derive(Debug, Clone, Eq)]

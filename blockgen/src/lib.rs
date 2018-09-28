@@ -1,4 +1,4 @@
-extern crate common_types as types;
+extern crate primitives;
 extern crate core;
 extern crate ethereum_types;
 extern crate ethkey;
@@ -23,7 +23,7 @@ use rlp::RlpStream;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::{thread, time};
-use types::*;
+use primitives::*;
 
 enum MiningState {
     Start,

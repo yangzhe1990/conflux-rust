@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use transaction::SignedTransaction;
-pub use types::*;
+pub use primitives::*;
 
 /// Contains information on a best block that is specific to the consensus engine.
 ///
@@ -38,6 +38,19 @@ pub struct Ledger {
     child_blocks: RwLock<HashMap<H256, BlockDetail>>,
     /// maintain the main chain blocks
     block_hashes: RwLock<HashMap<BlockNumber, H256>>,
+}
+
+/// Information about the ledger gathered together.
+#[derive(Clone, Debug)]
+pub struct LedgerInfo {
+    /// Blockchain difficulty.
+    pub total_difficulty: U256,
+    /// Genesis block hash.
+    pub genesis_hash: H256,
+    /// Best blockchain block hash.
+    pub best_block_hash: H256,
+    /// Best ledger block number.
+    pub best_block_number: BlockNumber,
 }
 
 pub type LedgerRef = Arc<Ledger>;

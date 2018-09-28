@@ -1,8 +1,8 @@
-extern crate common_types as types;
+extern crate primitives;
 
 use ethereum_types::H256;
 use hash::keccak;
-use types::*;
+use primitives::*;
 
 /// Owning header view.
 #[derive(Debug, Clone, PartialEq, Eq)]

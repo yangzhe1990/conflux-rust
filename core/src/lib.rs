@@ -1,4 +1,4 @@
-extern crate common_types as types;
+extern crate primitives;
 extern crate ethereum_types;
 extern crate ethkey;
 extern crate io;

@@ -1,5 +1,5 @@
 use state::AccountStateRef;
-use types::{BlockId, BlockNumber};
+use primitives::{BlockId, BlockNumber};
 use LedgerRef;
 
 use ethereum_types::H256;

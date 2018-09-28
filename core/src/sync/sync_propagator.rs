@@ -5,7 +5,7 @@ use ethereum_types::{H256, U256};
 use network::PeerId;
 use rlp::RlpStream;
 use sync_ctx::SyncContext;
-use types::*;
+use primitives::*;
 
 /// The Ledger Sync Propagator: propagates data to peers
 pub struct SyncPropagator;

@@ -1,5 +1,5 @@
 use network::ProtocolId;
-use types::BlockNumber;
+use primitives::BlockNumber;
 
 pub const CONFLUX_PROTOCOL: ProtocolId = *b"cfx";
 
