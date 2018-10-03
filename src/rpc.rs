@@ -5,7 +5,7 @@ use ethereum_types::{Address, H256, U256};
 use http::Server as HttpServer;
 use http::ServerBuilder as HttpServerBuilder;
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
-use network::NodeId;
+use network::node_table::{NodeEntry, NodeEndpoint, NodeId};
 use parity_reactor::TokioRemote;
 use parking_lot::{Condvar, Mutex};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -81,10 +81,10 @@ build_rpc_trait! {
         fn generate(&self, usize) -> RpcResult<()>;
 
         #[rpc(name = "addnode")]
-        fn add_peer(&self, SocketAddr) -> RpcResult<NodeId>;
+        fn add_peer(&self, NodeId, SocketAddr) -> RpcResult<()>;
 
         #[rpc(name = "removenode")]
-        fn drop_peer(&self, NodeId) -> RpcResult<()>;
+        fn drop_peer(&self, NodeId, SocketAddr) -> RpcResult<()>;
 
         #[rpc(name = "getpeerinfo")]
         fn get_peer_info(&self) -> RpcResult<Vec<PeerInfo>>;
@@ -175,17 +175,31 @@ impl Rpc for RpcImpl {
         Err(RpcError::invalid_params("Invalid block"))
     }
 
-    fn add_peer(&self, addr: SocketAddr) -> RpcResult<NodeId> {
-        info!("RPC Request: add_peer({:?})", addr);
-        match self.sync_engine.add_peer(addr) {
+    fn add_peer(&self, node_id: NodeId, address: SocketAddr) -> RpcResult<()> {
+        let node = NodeEntry {
+            id: node_id,
+            endpoint: NodeEndpoint {
+                address,
+                udp_port: address.port(),
+            },
+        };
+        info!("RPC Request: add_peer({:?})", node.clone());
+        match self.sync_engine.add_peer(node) {
             Ok(x) => Ok(x),
             Err(_) => Err(RpcError::internal_error()),
         }
     }
 
-    fn drop_peer(&self, id: NodeId) -> RpcResult<()> {
-        info!("RPC Request: drop_peer({:?})", id);
-        match self.sync_engine.drop_peer(id) {
+    fn drop_peer(&self, node_id: NodeId, address: SocketAddr) -> RpcResult<()> {
+        let node = NodeEntry {
+            id: node_id,
+            endpoint: NodeEndpoint {
+                address,
+                udp_port: address.port(),
+            },
+        };
+        info!("RPC Request: drop_peer({:?})", node.clone());
+        match self.sync_engine.drop_peer(node) {
             Ok(_) => Ok(()),
             Err(_) => Err(RpcError::internal_error()),
         }

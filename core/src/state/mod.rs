@@ -2,11 +2,11 @@ use ethereum_types::{Address, U256};
 use ethkey::{public_to_address, Generator, Random};
 use network::Error;
 use parking_lot::RwLock;
+use primitives::SignedTransaction;
 use rand::prelude::*;
 use secret_store::SecretStoreRef;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use primitives::SignedTransaction;
 
 lazy_static! {
     pub static ref TEST_ADDRESS: Address = Address::zero();

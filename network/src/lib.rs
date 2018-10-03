@@ -11,24 +11,26 @@ extern crate bytes;
 extern crate ipnetwork;
 extern crate rlp;
 extern crate serde;
+extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
+extern crate ethcore_bytes;
 extern crate ethereum_types;
 extern crate ethkey;
 extern crate igd;
+extern crate keccak_hash as hash;
 extern crate libc;
-extern crate ethcore_bytes;
 extern crate parity_path;
+extern crate rand;
 
 pub type ProtocolId = [u8; 3];
 pub type PeerId = usize;
-pub type NodeId = SocketAddr;
 
 mod connection;
 mod discovery;
 mod error;
 mod ip_utils;
-mod node_table;
+pub mod node_table;
 mod service;
 mod session;
 
@@ -38,11 +40,18 @@ pub use service::NetworkService;
 
 use ethkey::Secret;
 use ipnetwork::{IpNetwork, IpNetworkError};
+use node_table::NodeId;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::cmp::Ordering;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::str::{self, FromStr};
 use std::sync::Arc;
+use std::time::Duration;
+use service::{DEFAULT_HOUSEKEEPING_TIMEOUT,
+              DEFAULT_DISCOVERY_REFRESH_TIMEOUT,
+              DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT,
+              DEFAULT_DISCOVERY_ROUND_TIMEOUT,
+              DEFAULT_NODE_TABLE_TIMEOUT};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
@@ -59,8 +68,28 @@ pub struct NetworkConfiguration {
     pub boot_nodes: Vec<String>,
     /// Use provided node key instead of default
     pub use_secret: Option<Secret>,
+    /// Maximum number of outgoing peers
+    pub max_outgoing_peers: u32,
+    /// Maximum number of incoming peers
+    pub max_incoming_peers: u32,
+    /// Maximum number of ongoing handshakes
+    pub max_handshakes: u32,
+    /// List of reserved node addresses.
+    pub reserved_nodes: Vec<String>,
     /// IP filter
     pub ip_filter: IpFilter,
+    /// Timeout duration for initiating peer connection management
+    pub housekeeping_timeout: Duration,
+    /// Timeout duration for refreshing discovery protocol
+    /// when there are enough outgoing connections
+    pub discovery_refresh_timeout: Duration,
+    /// Timeout duration for refreshing discovery protocol
+    /// when there are NOT enough outgoing connections
+    pub fast_discovery_refresh_timeout: Duration,
+    /// Period between consecutive rounds of the same current discovery process
+    pub discovery_round_timeout: Duration,
+    /// Timeout duration for persisting node table
+    pub node_table_timeout: Duration,
 }
 
 impl Default for NetworkConfiguration {
@@ -78,7 +107,16 @@ impl NetworkConfiguration {
             discovery_enabled: true,
             boot_nodes: Vec::new(),
             use_secret: None,
+            max_outgoing_peers: 16,
+            max_incoming_peers: 32,
+            max_handshakes: 64,
+            reserved_nodes: Vec::new(),
             ip_filter: IpFilter::default(),
+            housekeeping_timeout: DEFAULT_HOUSEKEEPING_TIMEOUT,
+            discovery_refresh_timeout: DEFAULT_DISCOVERY_REFRESH_TIMEOUT,
+            fast_discovery_refresh_timeout: DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT,
+            discovery_round_timeout: DEFAULT_DISCOVERY_ROUND_TIMEOUT,
+            node_table_timeout: DEFAULT_NODE_TABLE_TIMEOUT,
         }
     }
 

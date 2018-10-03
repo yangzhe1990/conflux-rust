@@ -1,5 +1,5 @@
-use state::AccountStateRef;
 use primitives::{BlockId, BlockNumber};
+use state::AccountStateRef;
 use LedgerRef;
 
 use ethereum_types::H256;
@@ -58,7 +58,8 @@ impl ExecutionEngine {
                     .unwrap();
                 block_hashes.insert(block_number, block_hash);
 
-                let block = self.ledger.block_body_by_hash(&block_hash).unwrap();
+                let block =
+                    self.ledger.block_body_by_hash(&block_hash).unwrap();
                 for txn in &block.transactions {
                     self.state.execute(txn);
                 }
@@ -76,7 +77,8 @@ impl ExecutionEngine {
                     .unwrap();
                 block_hashes.insert(block_number, block_hash);
 
-                let block = self.ledger.block_body_by_hash(&block_hash).unwrap();
+                let block =
+                    self.ledger.block_body_by_hash(&block_hash).unwrap();
                 for txn in &block.transactions {
                     self.state.execute(txn);
                 }

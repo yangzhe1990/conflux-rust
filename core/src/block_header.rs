@@ -62,44 +62,28 @@ impl Default for BlockHeader {
 
 impl BlockHeader {
     /// Create a new, default-valued, header.
-    pub fn new() -> Self {
-        Self::default()
-    }
+    pub fn new() -> Self { Self::default() }
 
     /// Get the parent_hash field of the header.
-    pub fn parent_hash(&self) -> &H256 {
-        &self.parent_hash
-    }
+    pub fn parent_hash(&self) -> &H256 { &self.parent_hash }
 
     /// Get the timestamp field of the header.
-    pub fn timestamp(&self) -> u64 {
-        self.timestamp
-    }
+    pub fn timestamp(&self) -> u64 { self.timestamp }
 
     /// Get the number field of the header.
-    pub fn number(&self) -> BlockNumber {
-        self.number
-    }
+    pub fn number(&self) -> BlockNumber { self.number }
 
     /// Get the author field of the header.
-    pub fn author(&self) -> &Address {
-        &self.author
-    }
+    pub fn author(&self) -> &Address { &self.author }
 
     /// Get the state root field of the header.
-    pub fn state_root(&self) -> &H256 {
-        &self.state_root
-    }
+    pub fn state_root(&self) -> &H256 { &self.state_root }
 
     /// Get the transactions root field of the header.
-    pub fn transactions_root(&self) -> &H256 {
-        &self.transactions_root
-    }
+    pub fn transactions_root(&self) -> &H256 { &self.transactions_root }
 
     /// Get the difficulty field of the header.
-    pub fn difficulty(&self) -> &U256 {
-        &self.difficulty
-    }
+    pub fn difficulty(&self) -> &U256 { &self.difficulty }
 
     /// Get & memoize the hash of this header (keccak of the RLP with seal).
     pub fn compute_hash(&mut self) -> H256 {
@@ -114,9 +98,7 @@ impl BlockHeader {
     }
 
     /// Get the hash of the header excluding the seal
-    pub fn bare_hash(&self) -> H256 {
-        keccak(self.rlp())
-    }
+    pub fn bare_hash(&self) -> H256 { keccak(self.rlp()) }
 
     /// Get the RLP representation of this Header.
     pub fn rlp(&self) -> Bytes {
@@ -171,7 +153,9 @@ impl BlockHeaderBuilder {
         self
     }
 
-    pub fn with_transactions_root(&mut self, transactions_root: H256) -> &mut Self {
+    pub fn with_transactions_root(
+        &mut self, transactions_root: H256,
+    ) -> &mut Self {
         self.transactions_root = transactions_root;
         self
     }
@@ -227,9 +211,7 @@ impl Decodable for BlockHeader {
 }
 
 impl Encodable for BlockHeader {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        self.stream_rlp(s);
-    }
+    fn rlp_append(&self, s: &mut RlpStream) { self.stream_rlp(s); }
 }
 
 /// A mega block header
@@ -291,37 +273,21 @@ impl Default for MegaHeader {
 }
 
 impl MegaHeader {
-    pub fn new() -> Self {
-        Self::default()
-    }
+    pub fn new() -> Self { Self::default() }
 
-    pub fn parent_hash(&self) -> &H256 {
-        &self.parent_hash
-    }
+    pub fn parent_hash(&self) -> &H256 { &self.parent_hash }
 
-    pub fn timestamp(&self) -> u64 {
-        self.timestamp
-    }
+    pub fn timestamp(&self) -> u64 { self.timestamp }
 
-    pub fn number(&self) -> BlockNumber {
-        self.number
-    }
+    pub fn number(&self) -> BlockNumber { self.number }
 
-    pub fn author(&self) -> &Address {
-        &self.author
-    }
+    pub fn author(&self) -> &Address { &self.author }
 
-    pub fn state_root(&self) -> &H256 {
-        &self.state_root
-    }
+    pub fn state_root(&self) -> &H256 { &self.state_root }
 
-    pub fn transactions_root(&self) -> &H256 {
-        &self.transactions_root
-    }
+    pub fn transactions_root(&self) -> &H256 { &self.transactions_root }
 
-    pub fn difficulty(&self) -> &U256 {
-        &self.difficulty
-    }
+    pub fn difficulty(&self) -> &U256 { &self.difficulty }
 
     pub fn rlp(&self) -> Bytes {
         let mut stream = RlpStream::new();
@@ -330,7 +296,8 @@ impl MegaHeader {
     }
 
     fn stream_rlp(&self, stream: &mut RlpStream) {
-        stream.begin_list(8)
+        stream
+            .begin_list(8)
             .append(&self.parent_hash)
             .append_list(&self.reference_hashes)
             .append(&self.author)
@@ -352,16 +319,15 @@ impl Decodable for MegaHeader {
             transactions_root: r.val_at(4)?,
             difficulty: r.val_at(5)?,
             number: r.val_at(6)?,
-            timestamp: cmp::min(r.val_at::<U256>(6)?, u64::max_value().into()).as_u64(),
+            timestamp: cmp::min(r.val_at::<U256>(6)?, u64::max_value().into())
+                .as_u64(),
             hash: keccak(r.as_raw()).into(),
         })
     }
 }
 
 impl Encodable for MegaHeader {
-    fn rlp_append(&self, stream: &mut RlpStream) {
-        self.stream_rlp(stream);
-    }
+    fn rlp_append(&self, stream: &mut RlpStream) { self.stream_rlp(stream); }
 }
 
 pub struct MegaHeaderBuilder {
@@ -394,7 +360,9 @@ impl MegaHeaderBuilder {
         self
     }
 
-    pub fn with_reference_hashes(&mut self, reference_hashes: Vec<H256>) -> &mut Self {
+    pub fn with_reference_hashes(
+        &mut self, reference_hashes: Vec<H256>,
+    ) -> &mut Self {
         self.reference_hashes = reference_hashes;
         self
     }
@@ -404,7 +372,9 @@ impl MegaHeaderBuilder {
         self
     }
 
-    pub fn with_transactions_root(&mut self, transactions_root: H256) -> &mut Self {
+    pub fn with_transactions_root(
+        &mut self, transactions_root: H256,
+    ) -> &mut Self {
         self.transactions_root = transactions_root;
         self
     }

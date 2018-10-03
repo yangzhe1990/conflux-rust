@@ -1,12 +1,12 @@
 use block::Block;
+use block_header::{BlockHeader, BlockHeaderBuilder};
 use ethereum_types::{Address, H256, U256};
 use hash::KECCAK_NULL_RLP;
-use block_header::{BlockHeader, BlockHeaderBuilder};
 use parking_lot::RwLock;
+pub use primitives::*;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
-pub use primitives::*;
 
 /// Contains information on a best block that is specific to the consensus engine.
 ///
@@ -70,9 +70,7 @@ impl Ledger {
         }
     }
 
-    pub fn new_ref() -> LedgerRef {
-        Arc::new(Self::new())
-    }
+    pub fn new_ref() -> LedgerRef { Arc::new(Self::new()) }
 
     pub fn initialize_with_genesis(&self) {
         let mut genesis_header = BlockHeaderBuilder::new()
@@ -245,8 +243,7 @@ impl Ledger {
     }
 
     pub fn adjust_main_chain(
-        &self,
-        mut blocks_to_adjust: VecDeque<H256>,
+        &self, mut blocks_to_adjust: VecDeque<H256>,
     ) -> bool {
         let mut best_block = self.best_block.write();
         let headers = self.block_headers.read();
@@ -329,7 +326,5 @@ impl Ledger {
 
 impl Default for Ledger {
     // FIXME: Fix this default trait as the initial state of the ledger
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }

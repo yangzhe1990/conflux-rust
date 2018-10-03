@@ -1,13 +1,20 @@
 use ethereum_types::H512;
+use io::*;
 use ip_utils::*;
+use rand::{self, Rng};
 use rlp::{DecoderError, Rlp, RlpStream};
+use serde_json;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{self, Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::net::{
     Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs,
 };
-use std::slice;
+use std::path::PathBuf;
 use std::str::FromStr;
-use {AllowIP, IpFilter};
-use {Error, ErrorKind};
+use std::time::{self, Duration, SystemTime};
+use std::{fs, slice};
+use {AllowIP, Error, ErrorKind, IpFilter};
 
 /// Node public key
 pub type NodeId = H512;
@@ -128,6 +135,633 @@ impl FromStr for NodeEndpoint {
             }),
             Ok(None) => bail!(ErrorKind::AddressResolve(None)),
             Err(_) => Err(ErrorKind::AddressParse.into()), // always an io::Error of InvalidInput kind
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NodeEntry {
+    pub id: NodeId,
+    pub endpoint: NodeEndpoint,
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum PeerType {
+    _Required,
+    Optional,
+}
+
+/// A type for representing an interaction (contact) with a node at a given time
+/// that was either a success or a failure.
+#[derive(Clone, Copy, Debug)]
+pub enum NodeContact {
+    Success(SystemTime),
+    Failure(SystemTime),
+}
+
+impl NodeContact {
+    pub fn success() -> NodeContact { NodeContact::Success(SystemTime::now()) }
+
+    pub fn failure() -> NodeContact { NodeContact::Failure(SystemTime::now()) }
+
+    fn time(&self) -> SystemTime {
+        match *self {
+            NodeContact::Success(t) | NodeContact::Failure(t) => t,
+        }
+    }
+
+    /// Filters and old contact, returning `None` if it happened longer than a
+    /// week ago.
+    fn recent(&self) -> Option<&NodeContact> {
+        let t = self.time();
+        if let Ok(d) = t.elapsed() {
+            if d < Duration::from_secs(60 * 60 * 24 * 7) {
+                return Some(self);
+            }
+        }
+
+        None
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Node {
+    pub id: NodeId,
+    pub endpoint: NodeEndpoint,
+    pub peer_type: PeerType,
+    pub last_contact: Option<NodeContact>,
+    pub stream_token: Option<StreamToken>,
+}
+
+impl Node {
+    pub fn new(id: NodeId, endpoint: NodeEndpoint) -> Node {
+        Node {
+            id,
+            endpoint,
+            peer_type: PeerType::Optional,
+            last_contact: None,
+            stream_token: None,
+        }
+    }
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        if self.endpoint.udp_port != self.endpoint.address.port() {
+            write!(
+                f,
+                "cfxnode://{:x}@{}+{}",
+                self.id, self.endpoint.address, self.endpoint.udp_port
+            )?;
+        } else {
+            write!(f, "cfxnode://{:x}@{}", self.id, self.endpoint.address)?;
+        }
+        Ok(())
+    }
+}
+
+impl FromStr for Node {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (id, endpoint) =
+            if s.len() > 136 && &s[0..8] == "cfxnode://" && &s[136..137] == "@" {
+                (
+                    s[8..136].parse().map_err(|_| ErrorKind::InvalidNodeId)?,
+                    NodeEndpoint::from_str(&s[137..])?,
+                )
+            } else {
+                (NodeId::new(), NodeEndpoint::from_str(s)?)
+            };
+
+        Ok(Node {
+            id,
+            endpoint,
+            peer_type: PeerType::Optional,
+            last_contact: None,
+            stream_token: None,
+        })
+    }
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool { self.id == other.id }
+}
+impl Eq for Node {}
+
+impl Hash for Node {
+    fn hash<H>(&self, state: &mut H)
+    where H: Hasher {
+        self.id.hash(state)
+    }
+}
+
+const MAX_NODES: usize = 4096;
+const TRUSTED_NODES_FILE: &str = "trusted_nodes.json";
+const UNTRUSTED_NODES_FILE: &str = "untrusted_nodes.json";
+
+// TODO: make these as enum
+const NODE_TABLE_SUCCESS_VEC_ID: usize = 0;
+const NODE_TABLE_UNKNOWN_VEC_ID: usize = 1;
+const NODE_TABLE_FAILURE_VEC_ID: usize = 2;
+const NODE_TABLE_VEC_COUNT: usize = 3;
+
+/// Node table backed by disk file.
+pub struct NodeTable {
+    node_vectors: Vec<Vec<Node>>,
+    node_index: HashMap<NodeId, (usize, usize)>,
+    useless_nodes: HashSet<NodeId>,
+    path: Option<String>,
+    trusted: bool,
+}
+
+impl NodeTable {
+    pub fn new(path: Option<String>, trusted: bool) -> NodeTable {
+        let mut node_table = NodeTable {
+            node_vectors: Vec::new(),
+            node_index: HashMap::new(),
+            path: path.clone(),
+            useless_nodes: HashSet::new(),
+            trusted,
+        };
+
+        for i in 0..NODE_TABLE_VEC_COUNT {
+            node_table.node_vectors.push(Vec::new());
+        }
+
+        node_table.load_from_file();
+        node_table
+    }
+
+    fn vector_idx(contact: &Option<NodeContact>) -> usize {
+        if let Some(contact) = contact {
+            match contact {
+                NodeContact::Success(_) => NODE_TABLE_SUCCESS_VEC_ID,
+                NodeContact::Failure(_) => NODE_TABLE_FAILURE_VEC_ID,
+                _ => panic!("Unknown contact information!"),
+            }
+        } else {
+            NODE_TABLE_UNKNOWN_VEC_ID
+        }
+    }
+
+    fn load_from_file(&mut self) {
+        let path = self.path.clone();
+        let path = match path {
+            Some(path) => {
+                if self.trusted {
+                    PathBuf::from(path).join(TRUSTED_NODES_FILE)
+                } else {
+                    PathBuf::from(path).join(UNTRUSTED_NODES_FILE)
+                }
+            }
+            None => return,
+        };
+
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(e) => {
+                debug!(target: "network", "Error opening node table file: {:?}", e);
+                return;
+            }
+        };
+        let res: Result<json::NodeTable, _> = serde_json::from_reader(file);
+        match res {
+            Ok(table) => {
+                for n in table.nodes {
+                    let node = n.into_node();
+                    if let Some(mut node) = node {
+                        if !self.node_index.contains_key(&node.id) {
+                            let vec_idx = Self::vector_idx(&node.last_contact);
+                            self.add_to_vector(vec_idx, node);
+                        } else {
+                            warn!(target: "network", "There exist multiple entries for same node id: {:?}", node.id);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(target: "network", "Error reading node table file: {:?}", e);
+            }
+        }
+    }
+
+    pub fn sample_nodes(
+        &self, count: u32, filter: &IpFilter,
+    ) -> Vec<NodeEntry> {
+        let mut nodes: Vec<NodeEntry> = Vec::new();
+        for i in 0..count {
+            let mut rng = rand::thread_rng();
+            let vec_idx = rng.gen::<usize>() % NODE_TABLE_VEC_COUNT;
+            let node_vec = &self.node_vectors[vec_idx];
+            if !node_vec.is_empty() {
+                let idx = rng.gen::<usize>() % node_vec.len();
+                let n = &node_vec[idx];
+                nodes.push(NodeEntry {
+                    id: n.id,
+                    endpoint: n.endpoint.clone(),
+                });
+            }
+        }
+        let mut unique_nodes: Vec<NodeEntry> = Vec::new();
+        let mut nodes_set: HashSet<NodeId> = HashSet::new();
+        for n in nodes {
+            if !nodes_set.contains(&n.id) {
+                nodes_set.insert(n.id);
+                unique_nodes.push(n);
+            }
+        }
+        unique_nodes
+    }
+
+    pub fn sample_node_ids(
+        &self, count: u32, filter: &IpFilter,
+    ) -> Vec<NodeId> {
+        let mut node_id_set: HashSet<NodeId> = HashSet::new();
+        for i in 0..count {
+            let mut rng = rand::thread_rng();
+            let vec_idx = rng.gen::<usize>() % NODE_TABLE_VEC_COUNT;
+            let node_vec = &self.node_vectors[vec_idx];
+            if !node_vec.is_empty() {
+                let idx = rng.gen::<usize>() % node_vec.len();
+                let n = &node_vec[idx];
+                if !node_id_set.contains(&n.id) {
+                    node_id_set.insert(n.id);
+                }
+            }
+        }
+
+        let mut node_ids: Vec<NodeId> = Vec::new();
+        for n in node_id_set {
+            node_ids.push(n);
+        }
+
+        node_ids
+    }
+
+    pub fn add_node(&mut self, mut node: Node, preserve_last_contact: bool) {
+        let mut _index = (0, 0);
+        let mut exist = false;
+        if let Some(index) = self.node_index.get_mut(&node.id) {
+            _index = *index;
+            exist = true;
+        }
+
+        if !exist {
+            let target_vec_idx = Self::vector_idx(&node.last_contact);
+            self.add_to_vector(target_vec_idx, node);
+            return;
+        }
+
+        if preserve_last_contact {
+            let node_vec = &mut self.node_vectors[_index.0];
+            node.last_contact = node_vec[_index.1].last_contact;
+            node_vec[_index.1] = node;
+        } else {
+            let target_vec_idx = Self::vector_idx(&node.last_contact);
+            // check whether the node position will change
+            if target_vec_idx == _index.0 {
+                self.node_vectors[_index.0][_index.1] = node;
+            } else {
+                self.remove_from_vector(&_index);
+                self.add_to_vector(target_vec_idx, node);
+            }
+        }
+    }
+
+    fn remove_from_vector(&mut self, index: &(usize, usize)) -> Option<Node> {
+        if index.0 >= NODE_TABLE_VEC_COUNT {
+            return None;
+        }
+
+        let node_vec = &mut self.node_vectors[index.0];
+
+        if node_vec.is_empty() || index.1 >= node_vec.len() {
+            return None;
+        }
+
+        if node_vec.len() - 1 == index.1 {
+            // to remove the last item
+            let node_id = node_vec[node_vec.len() - 1].id;
+            self.node_index.remove(&node_id);
+            return node_vec.pop();
+        }
+
+        let tail_node = node_vec.pop();
+        if let Some(tail_node) = tail_node {
+            let removed_node = node_vec[index.1].clone();
+            self.node_index.remove(&removed_node.id);
+            if let Some(node_idx) = self.node_index.get_mut(&tail_node.id) {
+                node_vec[index.1] = tail_node;
+                *node_idx = *index;
+                return Some(removed_node);
+            } else {
+                panic!("Should not happen!");
+                return None;
+            }
+        } else {
+            panic!("Should not happen!");
+            return None;
+        }
+    }
+
+    fn add_to_vector(&mut self, vec_index: usize, node: Node) {
+        if vec_index >= NODE_TABLE_VEC_COUNT {
+            return;
+        }
+
+        let node_idx = self.node_vectors[vec_index].len();
+        let node_table_idx = (vec_index, node_idx);
+        self.node_index.insert(node.id, node_table_idx);
+        self.node_vectors[vec_index].push(node);
+    }
+
+    /// Returns a list of ordered nodes according to their most recent contact
+    /// and filtering useless nodes. The algorithm for creating the sorted nodes
+    /// is:
+    /// - Contacts that aren't recent (older than 1 week) are discarded
+    /// - (1) Nodes with a successful contact are ordered (most recent success first)
+    /// - (2) Nodes with unknown contact (older than 1 week or new nodes) are randomly shuffled
+    /// - (3) Nodes with a failed contact are ordered (oldest failure first)
+    /// - The final result is the concatenation of (1), (2) and (3)
+    fn ordered_entries(&self) -> Vec<&Node> {
+        let mut success = Vec::new();
+        let mut failures = Vec::new();
+        let mut unknown = Vec::new();
+
+        for n in self.node_vectors[NODE_TABLE_SUCCESS_VEC_ID].iter() {
+            if !self.useless_nodes.contains(&n.id) {
+                success.push(n);
+            }
+        }
+
+        for n in self.node_vectors[NODE_TABLE_FAILURE_VEC_ID].iter() {
+            if !self.useless_nodes.contains(&n.id) {
+                failures.push(n);
+            }
+        }
+
+        for n in self.node_vectors[NODE_TABLE_UNKNOWN_VEC_ID].iter() {
+            if !self.useless_nodes.contains(&n.id) {
+                unknown.push(n);
+            }
+        }
+
+        success.sort_by(|a, b| {
+            let a = a.last_contact.expect(
+                "vector only contains values with defined last_contact; qed",
+            );
+            let b = b.last_contact.expect(
+                "vector only contains values with defined last_contact; qed",
+            );
+            // inverse ordering, most recent successes come first
+            b.time().cmp(&a.time())
+        });
+
+        failures.sort_by(|a, b| {
+            let a = a.last_contact.expect(
+                "vector only contains values with defined last_contact; qed",
+            );
+            let b = b.last_contact.expect(
+                "vector only contains values with defined last_contact; qed",
+            );
+            // normal ordering, most distant failures come first
+            a.time().cmp(&b.time())
+        });
+
+        rand::thread_rng().shuffle(&mut unknown);
+
+        success.append(&mut unknown);
+        success.append(&mut failures);
+        success
+    }
+
+    /// Returns node ids sorted by failure percentage, for nodes with the same failure percentage the absolute number of
+    /// failures is considered.
+    pub fn nodes(&self, filter: &IpFilter) -> Vec<NodeId> {
+        self.ordered_entries()
+            .iter()
+            .filter(|n| n.endpoint.is_allowed(&filter))
+            .map(|n| n.id)
+            .collect()
+    }
+
+    pub fn entries_with_filter(&self, filter: &IpFilter) -> Vec<NodeEntry> {
+        self.ordered_entries()
+            .iter()
+            .filter(|n| n.endpoint.is_allowed(&filter))
+            .map(|n| NodeEntry {
+                endpoint: n.endpoint.clone(),
+                id: n.id,
+            }).collect()
+    }
+
+    /// Ordered list of all entries by failure percentage, for nodes with the same failure percentage the absolute
+    /// number of failures is considered.
+    pub fn entries(&self) -> Vec<NodeEntry> {
+        self.ordered_entries()
+            .iter()
+            .map(|n| NodeEntry {
+                endpoint: n.endpoint.clone(),
+                id: n.id,
+            }).collect()
+    }
+
+    /// Get particular node
+    pub fn get_mut(&mut self, id: &NodeId) -> Option<&mut Node> {
+        let index = self.node_index.get(id);
+        if let Some(index) = index {
+            Some(&mut self.node_vectors[index.0][index.1])
+        } else {
+            None
+        }
+    }
+
+    /// Check if a node exists in the table.
+    pub fn contains(&self, id: &NodeId) -> bool {
+        self.node_index.contains_key(id)
+    }
+
+    pub fn remove_with_id(&mut self, id: &NodeId) {
+        let mut _index;
+        if let Some(index) = self.node_index.get(id) {
+            _index = *index;
+        } else {
+            return;
+        }
+
+        self.remove_from_vector(&_index);
+    }
+
+    /// Set last contact as failure for a node
+    pub fn note_failure(&mut self, id: &NodeId) {
+        let mut _index;
+        if let Some(index) = self.node_index.get(id) {
+            _index = *index;
+        } else {
+            return;
+        }
+
+        let target_vec_id = NODE_TABLE_FAILURE_VEC_ID;
+        if target_vec_id == _index.0 {
+            let node = &mut self.node_vectors[_index.0][_index.1];
+            node.last_contact = Some(NodeContact::failure());
+        } else {
+            if let Some(mut node) = self.remove_from_vector(&_index) {
+                node.last_contact = Some(NodeContact::failure());
+                self.add_to_vector(target_vec_id, node);
+            } else {
+                panic!("Should not happen!");
+            }
+        }
+    }
+
+    /// Set last contact as success for a node
+    pub fn note_success(&mut self, id: &NodeId) {
+        let mut _index;
+        if let Some(index) = self.node_index.get(id) {
+            _index = *index;
+        } else {
+            return;
+        }
+
+        let target_vec_id = NODE_TABLE_SUCCESS_VEC_ID;
+        if target_vec_id == _index.0 {
+            let node = &mut self.node_vectors[_index.0][_index.1];
+            node.last_contact = Some(NodeContact::success());
+        } else {
+            if let Some(mut node) = self.remove_from_vector(&_index) {
+                node.last_contact = Some(NodeContact::success());
+                self.add_to_vector(target_vec_id, node);
+            } else {
+                panic!("Should not happen!");
+            }
+        }
+    }
+
+    /// Mark as useless, no further attempts to connect until next call to `clear_useless`.
+    pub fn mark_as_useless(&mut self, id: &NodeId) {
+        self.useless_nodes.insert(id.clone());
+    }
+
+    /// Attempt to connect to useless nodes again.
+    pub fn clear_useless(&mut self) { self.useless_nodes.clear(); }
+
+    /// Save the (un)trusted_nodes.json file.
+    pub fn save(&self) {
+        let mut path = match self.path {
+            Some(ref path) => PathBuf::from(path),
+            None => return,
+        };
+        if let Err(e) = fs::create_dir_all(&path) {
+            warn!(target: "network", "Error creating node table directory: {:?}", e);
+            return;
+        }
+        if self.trusted {
+            path.push(TRUSTED_NODES_FILE);
+        } else {
+            path.push(UNTRUSTED_NODES_FILE);
+        }
+        let node_ids = self.nodes(&IpFilter::default());
+        let nodes = node_ids
+            .into_iter()
+            .map(|id| {
+                let index = self.node_index.get(&id).unwrap();
+                &self.node_vectors[index.0][index.1]
+            }).take(MAX_NODES)
+            .map(Into::into)
+            .collect();
+        let table = json::NodeTable { nodes };
+
+        match fs::File::create(&path) {
+            Ok(file) => {
+                if let Err(e) = serde_json::to_writer_pretty(file, &table) {
+                    warn!(target: "network", "Error writing node table file: {:?}", e);
+                }
+            }
+            Err(e) => {
+                warn!(target: "network", "Error creating node table file: {:?}", e);
+            }
+        }
+    }
+}
+
+impl Drop for NodeTable {
+    fn drop(&mut self) { self.save(); }
+}
+
+/// Check if node url is valid
+pub fn validate_node_url(url: &str) -> Option<Error> {
+    match Node::from_str(url) {
+        Ok(_) => None,
+        Err(e) => Some(e),
+    }
+}
+
+mod json {
+    use super::*;
+
+    #[derive(Serialize, Deserialize)]
+    pub struct NodeTable {
+        pub nodes: Vec<Node>,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub enum NodeContact {
+        #[serde(rename = "success")]
+        Success(u64),
+        #[serde(rename = "failure")]
+        Failure(u64),
+    }
+
+    impl NodeContact {
+        pub fn into_node_contact(self) -> super::NodeContact {
+            match self {
+                NodeContact::Success(s) => super::NodeContact::Success(
+                    time::UNIX_EPOCH + Duration::from_secs(s),
+                ),
+                NodeContact::Failure(s) => super::NodeContact::Failure(
+                    time::UNIX_EPOCH + Duration::from_secs(s),
+                ),
+            }
+        }
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Node {
+        pub url: String,
+        pub last_contact: Option<NodeContact>,
+    }
+
+    impl Node {
+        pub fn into_node(self) -> Option<super::Node> {
+            match super::Node::from_str(&self.url) {
+                Ok(mut node) => {
+                    node.last_contact =
+                        self.last_contact.map(|c| c.into_node_contact());
+                    Some(node)
+                }
+                _ => None,
+            }
+        }
+    }
+
+    impl<'a> From<&'a super::Node> for Node {
+        fn from(node: &'a super::Node) -> Self {
+            let last_contact = node.last_contact.and_then(|c| match c {
+                super::NodeContact::Success(t) => t
+                    .duration_since(time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| NodeContact::Success(d.as_secs())),
+                super::NodeContact::Failure(t) => t
+                    .duration_since(time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| NodeContact::Failure(d.as_secs())),
+            });
+
+            Node {
+                url: format!("{}", node),
+                last_contact,
+            }
         }
     }
 }

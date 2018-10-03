@@ -13,12 +13,12 @@ use bytes::Bytes;
 use ethereum_types::{H256, U256};
 use network::{Error, PeerId};
 use parking_lot::RwLock;
+use primitives::*;
 use rlp::{Rlp, RlpStream};
 use std::cmp;
 use std::collections::VecDeque;
 use std::time::Instant;
 use sync_ctx::SyncContext;
-use primitives::*;
 
 /// SyncHandler is a collection of functions which handles incoming requests from peers from
 /// SyncState

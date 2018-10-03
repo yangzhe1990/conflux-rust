@@ -80,6 +80,12 @@ error_chain! {
             display("Peer disconnected: {}", reason),
         }
 
+        #[doc = "Invalid node id"]
+        InvalidNodeId {
+            description("Invalid node id"),
+            display("Invalid node id"),
+        }
+
         OversizedPacket {
             description("Packet is too large"),
             display("Packet is too large"),

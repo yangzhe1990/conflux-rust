@@ -7,13 +7,13 @@ use io::*;
 use mio::deprecated::*;
 use mio::tcp::*;
 use mio::*;
+use node_table::NodeId;
 use rlp::{Rlp, RlpStream};
 use service::HostMetadata;
 use std::net::SocketAddr;
 use std::str;
 use {
-    Capability, DisconnectReason, Error, ErrorKind, NodeId, ProtocolId,
-    SessionMetadata,
+    Capability, DisconnectReason, Error, ErrorKind, ProtocolId, SessionMetadata,
 };
 
 struct PacketSizer;
@@ -91,6 +91,9 @@ impl Session {
             .iter()
             .any(|c| c.protocol == protocol)
     }
+
+    /// Get id of the remote peer
+    pub fn id(&self) -> Option<&NodeId> { self.metadata.id.as_ref() }
 
     pub fn is_ready(&self) -> bool { self.had_hello }
 

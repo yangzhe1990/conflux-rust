@@ -3,9 +3,9 @@ use super::{SyncState, NEW_BLOCK_PACKET};
 use bytes::Bytes;
 use ethereum_types::{H256, U256};
 use network::PeerId;
+use primitives::*;
 use rlp::RlpStream;
 use sync_ctx::SyncContext;
-use primitives::*;
 
 /// The Ledger Sync Propagator: propagates data to peers
 pub struct SyncPropagator;

@@ -1,4 +1,5 @@
-use discovery::Discovery;
+use discovery::{Discovery, DISCOVER_NODES_COUNT};
+use ethcore_bytes::Bytes;
 use ethkey::{Generator, KeyPair, Random, Secret};
 use io::*;
 use ip_utils::{map_external_address, select_public_address};
@@ -7,12 +8,12 @@ use mio::tcp::*;
 use mio::udp::*;
 use mio::*;
 use node_table::*;
-use ethcore_bytes::Bytes;
 use parity_path::restrict_permissions_owner;
 use parking_lot::{Mutex, RwLock};
 use session;
 use session::Session;
 use session::SessionData;
+use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Read, Write};
@@ -24,7 +25,7 @@ use std::time::Duration;
 use {
     Capability, DisconnectReason, Error, IpFilter, NetworkConfiguration,
     NetworkContext as NetworkContextTrait, NetworkIoMessage,
-    NetworkProtocolHandler, NodeId, PeerId, PeerInfo, ProtocolId,
+    NetworkProtocolHandler, PeerId, PeerInfo, ProtocolId,
 };
 
 type Slab<T> = ::slab::Slab<T, usize>;
@@ -39,12 +40,24 @@ const SYS_TIMER: TimerToken = LAST_SESSION + 1;
 const TCP_ACCEPT: StreamToken = SYS_TIMER + 1;
 const HOUSEKEEPING: TimerToken = SYS_TIMER + 2;
 const UDP_MESSAGE: StreamToken = SYS_TIMER + 3;
+const DISCOVERY_REFRESH: TimerToken = SYS_TIMER + 4;
+const FAST_DISCOVERY_REFRESH: TimerToken = SYS_TIMER + 5;
+const DISCOVERY_ROUND: TimerToken = SYS_TIMER + 6;
+const NODE_TABLE: TimerToken = SYS_TIMER + 7;
 
-const HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(1);
+pub const DEFAULT_HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(1);
+// for DISCOVERY_REFRESH TimerToken
+pub const DEFAULT_DISCOVERY_REFRESH_TIMEOUT: Duration = Duration::from_secs(120);
+// for FAST_DISCOVERY_REFRESH TimerToken
+pub const DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT: Duration = Duration::from_secs(10);
+// for DISCOVERY_ROUND TimerToken
+pub const DEFAULT_DISCOVERY_ROUND_TIMEOUT: Duration = Duration::from_millis(500);
+// for NODE_TABLE TimerToken
+pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub const MAX_DATAGRAM_SIZE: usize = 1280;
 
-const UDP_PROTOCOL_DISCOVERY: u8 = 1;
+pub const UDP_PROTOCOL_DISCOVERY: u8 = 1;
 
 pub struct Datagram {
     pub payload: Bytes,
@@ -62,6 +75,8 @@ impl UdpChannel {
         }
     }
 
+    pub fn any_sends_queued(&self) -> bool { !self.send_queue.is_empty() }
+
     pub fn dequeue_send(&mut self) -> Option<Datagram> {
         self.send_queue.pop_front()
     }
@@ -71,13 +86,42 @@ impl UdpChannel {
     }
 }
 
-pub struct UdpIOContext<'a> {
-    channel: &'a RwLock<UdpChannel>,
+pub struct UdpIoContext<'a> {
+    pub channel: &'a RwLock<UdpChannel>,
+    pub trusted_nodes: &'a RwLock<NodeTable>,
+    pub untrusted_nodes: &'a RwLock<NodeTable>,
 }
 
-impl<'a> UdpIOContext<'a> {
-    pub fn new(channel: &'a RwLock<UdpChannel>) -> UdpIOContext<'a> {
-        UdpIOContext { channel }
+impl<'a> UdpIoContext<'a> {
+    pub fn new(
+        channel: &'a RwLock<UdpChannel>, trusted_nodes: &'a RwLock<NodeTable>,
+        untrusted_nodes: &'a RwLock<NodeTable>,
+    ) -> UdpIoContext<'a>
+    {
+        UdpIoContext {
+            channel,
+            trusted_nodes,
+            untrusted_nodes,
+        }
+    }
+
+    pub fn send(&self, payload: Bytes, address: SocketAddr) {
+        self.channel
+            .write()
+            .send_queue
+            .push_back(Datagram { payload, address });
+    }
+
+    pub fn add_untrusted_node(&self, node: Node, preserve_last_contact: bool) {
+        self.untrusted_nodes
+            .write()
+            .add_node(node, preserve_last_contact);
+    }
+
+    pub fn add_trusted_node(&self, node: Node, preserve_last_contact: bool) {
+        self.trusted_nodes
+            .write()
+            .add_node(node, preserve_last_contact);
     }
 }
 
@@ -112,17 +156,18 @@ impl NetworkService {
         Ok(())
     }
 
-    pub fn add_peer(&self, peer: SocketAddr) -> Result<NodeId, Error> {
+    pub fn add_peer(&self, node: NodeEntry) -> Result<(), Error> {
         if let Some(ref x) = self.inner {
-            x.add_node(peer)
+            x.add_trusted_node_with_entry(node, true);
+            Ok(())
         } else {
             Err("Network service not started yet!".into())
         }
     }
 
-    pub fn drop_peer(&self, peer: SocketAddr) -> Result<(), Error> {
+    pub fn drop_peer(&self, node: NodeEntry) -> Result<(), Error> {
         if let Some(ref x) = self.inner {
-            x.drop_node(peer)
+            x.drop_node(node.id)
         } else {
             Err("Network service not started yet!".into())
         }
@@ -176,11 +221,8 @@ pub struct HostMetadata {
     pub public_endpoint: NodeEndpoint,
 }
 
-#[derive(Debug)]
-struct NodeEntry {
-    id: NodeId,
-    address: SocketAddr,
-    stream_token: Option<StreamToken>,
+impl HostMetadata {
+    pub(crate) fn id(&self) -> &NodeId { self.keys.public() }
 }
 
 struct NetworkServiceInner {
@@ -191,6 +233,9 @@ struct NetworkServiceInner {
     udp_channel: RwLock<UdpChannel>,
     discovery: Mutex<Option<Discovery>>,
     handlers: RwLock<HashMap<ProtocolId, Arc<NetworkProtocolHandler + Sync>>>,
+    trusted_nodes: RwLock<NodeTable>,
+    untrusted_nodes: RwLock<NodeTable>,
+    reserved_nodes: RwLock<HashSet<NodeId>>,
     nodes: RwLock<HashMap<NodeId, NodeEntry>>,
     dropped_nodes: RwLock<HashSet<StreamToken>>,
 }
@@ -286,7 +331,9 @@ impl NetworkServiceInner {
             }
         };
 
-        let inner = NetworkServiceInner {
+        let nodes_path = config.config_path.clone();
+
+        let mut inner = NetworkServiceInner {
             metadata: RwLock::new(HostMetadata {
                 keys,
                 config: config.clone(),
@@ -304,15 +351,59 @@ impl NetworkServiceInner {
                 LAST_SESSION,
             ))),
             handlers: RwLock::new(HashMap::new()),
+            trusted_nodes: RwLock::new(NodeTable::new(
+                nodes_path.clone(),
+                true,
+            )),
+            untrusted_nodes: RwLock::new(NodeTable::new(nodes_path, false)),
+            reserved_nodes: RwLock::new(HashSet::new()),
             nodes: RwLock::new(HashMap::new()),
             dropped_nodes: RwLock::new(HashSet::new()),
         };
 
         for n in &config.boot_nodes {
-            inner.add_node(n.parse()?)?;
+            inner.add_trusted_node(n, true);
+        }
+
+        let reserved_nodes = config.reserved_nodes.clone();
+        for n in reserved_nodes {
+            if let Err(e) = inner.add_reserved_node(&n) {
+                debug!(target: "network", "Error parsing node id: {}: {:?}", n, e);
+            }
         }
 
         Ok(inner)
+    }
+
+    pub fn add_trusted_node(&mut self, id: &str, preserve_last_contact: bool) {
+        match Node::from_str(id) {
+            Err(e) => {
+                debug!(target: "network", "Could not add node {}: {:?}", id, e);
+            }
+            Ok(n) => {
+                self.trusted_nodes
+                    .write()
+                    .add_node(n, preserve_last_contact);
+            }
+        }
+    }
+
+    pub fn add_trusted_node_with_entry(
+        &self, entry: NodeEntry, preserve_last_contact: bool,
+    ) {
+        self.trusted_nodes.write().add_node(
+            Node::new(entry.id, entry.endpoint),
+            preserve_last_contact,
+        );
+    }
+
+    pub fn add_reserved_node(&self, id: &str) -> Result<(), Error> {
+        let n = Node::from_str(id)?;
+        self.reserved_nodes.write().insert(n.id);
+        self.trusted_nodes
+            .write()
+            .add_node(Node::new(n.id, n.endpoint.clone()), true);
+        Ok(())
     }
 
     fn initialize_udp_protocols(
@@ -320,43 +411,76 @@ impl NetworkServiceInner {
     ) -> Result<(), Error> {
         // Initialize discovery
         if let Some(discovery) = self.discovery.lock().as_mut() {
-            discovery.add_node_list(&UdpIOContext::new(&self.udp_channel));
-            //io.register_timer(FAST_DISCOVERY_REFRESH, FAST_DISCOVERY_REFRESH_TIMEOUT)?;
-            //io.register_timer(DISCOVERY_REFRESH, DISCOVERY_REFRESH_TIMEOUT)?;
-            //io.register_timer(DISCOVERY_ROUND, DISCOVERY_ROUND_TIMEOUT)?;
+            let allow_ips = self.metadata.read().config.ip_filter.clone();
+            let nodes = self
+                .trusted_nodes
+                .read()
+                .sample_nodes(DISCOVER_NODES_COUNT, &allow_ips);
+            discovery.try_ping_nodes(
+                &UdpIoContext::new(
+                    &self.udp_channel,
+                    &self.trusted_nodes,
+                    &self.untrusted_nodes,
+                ),
+                nodes,
+            );
+            io.register_timer(
+                FAST_DISCOVERY_REFRESH,
+                self.metadata.read().config.fast_discovery_refresh_timeout,
+            )?;
+            io.register_timer(DISCOVERY_REFRESH, self.metadata.read().config.discovery_refresh_timeout)?;
+            io.register_timer(DISCOVERY_ROUND, self.metadata.read().config.discovery_round_timeout)?;
         }
-        //io.register_timer(NODE_TABLE, NODE_TABLE_TIMEOUT)?;
+        io.register_timer(NODE_TABLE, self.metadata.read().config.node_table_timeout)?;
 
         Ok(())
+    }
+
+    fn promote_untrusted_with_node(&self, node: Node) {
+        self.untrusted_nodes.write().remove_with_id(&node.id);
+        self.trusted_nodes.write().add_node(node, false);
+    }
+
+    fn demote_trusted_with_node(&self, node: Node) {
+        self.trusted_nodes.write().remove_with_id(&node.id);
+        self.untrusted_nodes.write().add_node(node, false);
     }
 
     pub fn local_addr(&self) -> SocketAddr {
         self.metadata.read().local_address
     }
 
-    fn add_node(&self, address: SocketAddr) -> Result<NodeId, Error> {
-        // TODO: replace address with real node identifier
-        let id = address;
-        let node = NodeEntry {
-            id: id,
-            address: address,
-            stream_token: None,
+    fn drop_node(&self, local_id: NodeId) -> Result<(), Error> {
+        let mut tn = self.trusted_nodes.write();
+        let mut utn = self.untrusted_nodes.write();
+        let stream_token = {
+            if let Some(node) = tn.get_mut(&local_id) {
+                node.stream_token.clone()
+            } else if let Some(node) = utn.get_mut(&local_id) {
+                node.stream_token.clone()
+            } else {
+                None
+            }
         };
-        self.nodes.write().insert(node.id, node);
-        Ok(id)
+
+        if let Some(stream_token) = stream_token {
+            let mut wd = self.dropped_nodes.write();
+            wd.insert(stream_token);
+        }
+
+        Ok(())
     }
 
-    fn drop_node(&self, local_id: NodeId) -> Result<(), Error> {
-        let mut wn = self.nodes.write();
-        if wn.contains_key(&local_id) {
-            let entry = wn.get(&local_id).unwrap();
-            if let Some(stream_token) = entry.stream_token {
-                let mut wd = self.dropped_nodes.write();
-                wd.insert(stream_token);
-            }
-        }
-        wn.remove(&local_id);
-        Ok(())
+    fn has_enough_outgoing_peers(&self) -> bool {
+        let max_outgoing_peers = {
+            let meta = self.metadata.read();
+            let config = &meta.config;
+
+            config.max_outgoing_peers
+        };
+        let (_, egress_count, _) = self.session_count();
+
+        return egress_count >= max_outgoing_peers as usize;
     }
 
     fn on_housekeeping(&self, io: &IoContext<NetworkIoMessage>) {
@@ -365,12 +489,40 @@ impl NetworkServiceInner {
     }
 
     fn connect_peers(&self, io: &IoContext<NetworkIoMessage>) {
-        let nodes: Vec<NodeId> =
-            { self.nodes.read().keys().map(|key| key.clone()).collect() };
-
-        for id in &nodes {
-            self.connect_peer(&id, io);
+        let meta = self.metadata.read();
+        if meta.capabilities.is_empty() {
+            return;
         }
+
+        let self_id = *meta.id();
+        let max_outgoing_peers = meta.config.max_outgoing_peers;
+        let max_incoming_peers = meta.config.max_incoming_peers;
+        let max_handshakes = meta.config.max_handshakes;
+        let allow_ips = meta.config.ip_filter.clone();
+
+        let (handshake_count, egress_count, ingress_count) =
+            self.session_count();
+        let reserved_nodes = self.reserved_nodes.read();
+        let egress_attempt_count = max_outgoing_peers - egress_count as u32;
+
+        let nodes = reserved_nodes.iter().cloned().chain(
+            self.trusted_nodes
+                .read()
+                .sample_node_ids(egress_attempt_count, &allow_ips),
+        );
+
+        let max_handshakes_per_round = max_handshakes / 2;
+        let mut started: usize = 0;
+        for id in nodes
+            .filter(|id| !self.have_session(id) && *id != self_id)
+            .take(min(
+                max_handshakes_per_round as usize,
+                max_handshakes as usize - handshake_count,
+            )) {
+            self.connect_peer(&id, io);
+            started += 1;
+        }
+        debug!(target: "network", "Connecting peers: {} sessions, {} pending + {} started", egress_count + ingress_count, handshake_count, started);
     }
 
     fn drop_peers(&self, io: &IoContext<NetworkIoMessage>) {
@@ -384,6 +536,25 @@ impl NetworkServiceInner {
             self.kill_connection(*token, io);
         }
         w.clear();
+    }
+
+    // returns (handshakes, egress, ingress)
+    fn session_count(&self) -> (usize, usize, usize) {
+        let mut handshakes = 0;
+        let mut egress = 0;
+        let mut ingress = 0;
+        for s in self.sessions.read().iter() {
+            match s.try_lock() {
+                Some(ref s) if s.is_ready() && s.metadata.originated => {
+                    egress += 1
+                }
+                Some(ref s) if s.is_ready() && !s.metadata.originated => {
+                    ingress += 1
+                }
+                _ => handshakes += 1,
+            }
+        }
+        (handshakes, egress, ingress)
     }
 
     fn have_session(&self, id: &NodeId) -> bool {
@@ -401,9 +572,10 @@ impl NetworkServiceInner {
 
         let (socket, address) = {
             let address = {
-                let mut nodes = self.nodes.write();
+                // outgoing connection must pick node from trusted node table
+                let mut nodes = self.trusted_nodes.write();
                 if let Some(node) = nodes.get_mut(id) {
-                    node.address
+                    node.endpoint.address
                 } else {
                     debug!(target: "network", "Abort connect. Node expired");
                     return;
@@ -494,10 +666,11 @@ impl NetworkServiceInner {
         match token {
             Some(token) => {
                 if let Some(id) = id {
-                    let mut w = self.nodes.write();
-                    let mut entry = w.get_mut(id);
-                    if let Some(entry) = entry {
-                        entry.stream_token = Some(token);
+                    // outgoing connection must pick node from trusted node table
+                    let mut w = self.trusted_nodes.write();
+                    let mut node = w.get_mut(id);
+                    if let Some(node) = node {
+                        node.stream_token = Some(token);
                     }
                 }
                 io.register_stream(token).map(|_| ()).map_err(Into::into)
@@ -695,6 +868,12 @@ impl NetworkServiceInner {
 
     fn udp_readable(&self, io: &IoContext<NetworkIoMessage>) {
         let udp_socket = self.udp_socket.lock();
+        let writable;
+        {
+            let udp_channel = self.udp_channel.read();
+            writable = udp_channel.any_sends_queued();
+        }
+
         let mut buf = [0u8; MAX_DATAGRAM_SIZE];
         match udp_socket.recv_from(&mut buf) {
 			Ok(Some((len, address))) => self.on_udp_packet(&buf[0..len], address).unwrap_or_else(|e| {
@@ -705,10 +884,22 @@ impl NetworkServiceInner {
 				debug!(target: "network", "Error reading UPD socket: {:?}", e);
 			},
 		};
-        io.update_registration(UDP_MESSAGE)
-			.unwrap_or_else(|e| {
-				debug!(target: "network" ,"Error updating UDP registration: {:?}", e)
-			});
+
+        let new_writable;
+        {
+            let udp_channel = self.udp_channel.read();
+            new_writable = udp_channel.any_sends_queued();
+        }
+
+        // Check whether on_udp_packet produces new to-be-sent messages.
+        // If it does, we might need to change monitor interest to All if
+        // it is only Readable.
+        if writable != new_writable {
+            io.update_registration(UDP_MESSAGE)
+                .unwrap_or_else(|e| {
+                    debug!(target: "network", "Error updating UDP registration: {:?}", e)
+                });
+        }
     }
 
     fn udp_writable(&self, io: &IoContext<NetworkIoMessage>) {
@@ -730,6 +921,7 @@ impl NetworkServiceInner {
                 }
             }
         }
+        // look at whether the monitor interest can be set as Readable.
         io.update_registration(UDP_MESSAGE)
 			.unwrap_or_else(|e| {
 				debug!(target: "network", "Error updating UDP registration: {:?}", e)
@@ -742,12 +934,21 @@ impl NetworkServiceInner {
         let res = match packet[0] {
             UDP_PROTOCOL_DISCOVERY => {
                 if let Some(discovery) = self.discovery.lock().as_mut() {
-                    discovery.on_packet(&packet[1..], from)
+                    discovery.on_packet(
+                        &UdpIoContext::new(
+                            &self.udp_channel,
+                            &self.trusted_nodes,
+                            &self.untrusted_nodes,
+                        ),
+                        &packet[1..],
+                        from,
+                    );
+                    Ok(())
                 } else {
                     warn!(target: "network", "Discovery is not ready. Drop the message!");
                     Ok(())
                 }
-            },
+            }
             _ => {
                 warn!(target: "network", "Unknown UDP protocol. Simply drops the message!");
                 Ok(())
@@ -759,7 +960,7 @@ impl NetworkServiceInner {
 
 impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     fn initialize(&self, io: &IoContext<NetworkIoMessage>) {
-        io.register_timer(HOUSEKEEPING, HOUSEKEEPING_TIMEOUT)
+        io.register_timer(HOUSEKEEPING, self.metadata.read().config.housekeeping_timeout)
             .expect("Error registering housekeeping timer");
         io.message(NetworkIoMessage::Start).unwrap_or_else(|e| {
             warn!("Error sending IO notification: {:?}", e)
@@ -801,6 +1002,43 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     fn timeout(&self, io: &IoContext<NetworkIoMessage>, token: TimerToken) {
         match token {
             HOUSEKEEPING => self.on_housekeeping(io),
+            DISCOVERY_REFRESH => {
+                // Run the _slow_ discovery if enough peers are connected
+                if self.has_enough_outgoing_peers() {
+                    self.discovery.lock().as_mut().map(|d| d.refresh());
+                    io.update_registration(UDP_MESSAGE).unwrap_or_else(|e| {
+                        debug!("Error updating discovery registration: {:?}", e)
+                    });
+                }
+            }
+            FAST_DISCOVERY_REFRESH => {
+                // Run the fast discovery if not enough peers are connected
+                if !self.has_enough_outgoing_peers() {
+                    self.discovery.lock().as_mut().map(|d| d.refresh());
+                    io.update_registration(UDP_MESSAGE).unwrap_or_else(|e| {
+                        debug!("Error updating discovery registration: {:?}", e)
+                    });
+                }
+            }
+            DISCOVERY_ROUND => {
+                self.discovery.lock().as_mut().map(|d| {
+                    d.round(&UdpIoContext::new(
+                        &self.udp_channel,
+                        &self.trusted_nodes,
+                        &self.untrusted_nodes,
+                    ))
+                });
+                io.update_registration(UDP_MESSAGE).unwrap_or_else(|e| {
+                    debug!("Error updating discovery registration: {:?}", e)
+                });
+            }
+            NODE_TABLE => {
+                trace!(target: "network", "Refreshing node table");
+                self.trusted_nodes.write().save();
+                self.trusted_nodes.write().clear_useless();
+                self.untrusted_nodes.write().save();
+                self.untrusted_nodes.write().clear_useless();
+            }
             _ => {}
         }
     }
@@ -925,6 +1163,23 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                     Ready::all(),
                     PollOpt::edge(),
                 ).expect("Error reregistering stream"),
+            UDP_MESSAGE => {
+                let udp_socket = self.udp_socket.lock();
+                let udp_channel = self.udp_channel.read();
+
+                let registration = if udp_channel.any_sends_queued() {
+                    Ready::readable() | Ready::writable()
+                } else {
+                    Ready::readable()
+                };
+                event_loop
+                    .reregister(
+                        &*udp_socket,
+                        reg,
+                        registration,
+                        PollOpt::edge(),
+                    ).expect("Error reregistering UDP socket");
+            }
             _ => warn!("Unexpected stream update"),
         }
     }

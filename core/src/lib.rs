@@ -1,11 +1,11 @@
-extern crate primitives;
+extern crate ethcore_bytes as bytes;
 extern crate ethereum_types;
 extern crate ethkey;
 extern crate io;
 extern crate keccak_hash as hash;
 extern crate network;
-extern crate ethcore_bytes as bytes;
 extern crate parking_lot;
+extern crate primitives;
 extern crate rlp;
 extern crate secret_store;
 #[macro_use]
@@ -26,7 +26,7 @@ pub mod state;
 mod sync;
 pub mod transaction_pool;
 
-use network::NodeId;
+use network::node_table::NodeEntry;
 use parking_lot::RwLock;
 use rlp::Rlp;
 use std::net::SocketAddr;
@@ -139,12 +139,12 @@ impl SyncEngine {
         });
     }
 
-    pub fn add_peer(&self, addr: SocketAddr) -> Result<NodeId, Error> {
-        self.network.add_peer(addr)
+    pub fn add_peer(&self, node: NodeEntry) -> Result<(), Error> {
+        self.network.add_peer(node)
     }
 
-    pub fn drop_peer(&self, id: NodeId) -> Result<(), Error> {
-        self.network.drop_peer(id)
+    pub fn drop_peer(&self, node: NodeEntry) -> Result<(), Error> {
+        self.network.drop_peer(node)
     }
 
     pub fn get_peer_info(&self) -> Vec<PeerInfo> {
