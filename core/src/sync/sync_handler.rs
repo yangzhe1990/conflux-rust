@@ -14,7 +14,6 @@ use super::{
     PacketId, PeerAsking, PeerInfo,
     RlpResponseResult, STATUS_PACKET, SyncState,
 };
-use super::super::block::Block;
 use super::sync_requester::SyncRequester;
 use sync_ctx::SyncContext;
 

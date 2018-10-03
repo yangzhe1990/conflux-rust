@@ -4,9 +4,7 @@ extern crate ethkey;
 extern crate keccak_hash as hash;
 extern crate rlp;
 
-pub use block_header::{BlockHeader, BlockHeaderBuilder};
 use ethereum_types::H256;
-pub use transaction::{SignedTransaction, Transaction, TransactionWithSignature};
 
 /// Type for block number.
 pub type BlockNumber = u64;
@@ -24,5 +22,12 @@ pub enum BlockId {
     Latest,
 }
 
-pub mod transaction;
+pub mod block;
 pub mod block_header;
+pub mod transaction;
+
+pub use block::Block;
+pub use block_header::{BlockHeader, BlockHeaderBuilder};
+pub use transaction::{
+    SignedTransaction, Transaction, TransactionWithSignature,
+};

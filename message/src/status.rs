@@ -1,5 +1,5 @@
-use ethereum_types::{U256, H256};
-use rlp::{Rlp, RlpStream, Encodable, Decodable, DecoderError};
+use ethereum_types::{H256, U256};
+use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use Payload;
 
 #[derive(Debug, PartialEq)]
@@ -17,7 +17,8 @@ impl Payload for Status {
 
 impl Encodable for Status {
     fn rlp_append(&self, stream: &mut RlpStream) {
-        stream.begin_list(5)
+        stream
+            .begin_list(5)
             .append(&self.protocol_version)
             .append(&self.network_id)
             .append(&self.total_difficulty)

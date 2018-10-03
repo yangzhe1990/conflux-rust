@@ -1,6 +1,6 @@
 use ethereum_types::H256;
 use primitives::BlockNumber;
-use rlp::{Rlp, RlpStream, Encodable, Decodable, DecoderError};
+use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use Payload;
 
 #[derive(Debug, PartialEq)]
@@ -14,7 +14,7 @@ impl Encodable for BlockHash {
 
 impl Decodable for BlockHash {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        Ok(BlockHash(rlp.val_at::<BlockNumber>(0)?, rlp.val_at::<H256>(1)?))
+        Ok(BlockHash(rlp.val_at(0)?, rlp.val_at(1)?))
     }
 }
 
@@ -36,7 +36,7 @@ impl Encodable for NewBlockHashes {
 impl Decodable for NewBlockHashes {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         Ok(NewBlockHashes {
-            block_hashes: rlp.as_list::<BlockHash>()?
+            block_hashes: rlp.as_list()?,
         })
     }
 }

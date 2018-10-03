@@ -7,7 +7,6 @@ extern crate primitives;
 extern crate rand;
 extern crate rlp;
 
-use core::block::Block;
 use core::execution_engine::ExecutionEngineRef;
 use core::LedgerRef;
 use core::SyncEngineRef;

@@ -1,10 +1,10 @@
-use rlp::{Rlp, RlpStream, Encodable, Decodable, DecoderError};
-use primitives::Transaction;
+use primitives::TransactionWithSignature;
+use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use Payload;
 
 #[derive(Debug, PartialEq)]
 pub struct Transactions {
-    transactions: Vec<Transaction>,
+    transactions: Vec<TransactionWithSignature>,
 }
 
 impl Payload for Transactions {
@@ -20,7 +20,7 @@ impl Encodable for Transactions {
 impl Decodable for Transactions {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         Ok(Transactions {
-            transactions: rlp.as_list::<Transaction>()?
+            transactions: rlp.as_list()?,
         })
     }
 }

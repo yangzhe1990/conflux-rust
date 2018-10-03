@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use ethereum_types::H256;
-use primitives::transaction::{SignedTransaction, TransactionWithSignature};
 use rlp::{Decodable, DecoderError, Rlp, RlpStream};
+use {SignedTransaction, TransactionWithSignature};
 
 /// A block, encoded as it is on the block chain.
 #[derive(Default, Debug, Clone)]

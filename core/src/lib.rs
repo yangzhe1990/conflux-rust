@@ -34,7 +34,6 @@ pub use sync::*;
 use sync_ctx::SyncContext;
 
 mod api;
-pub mod block;
 mod block_sync;
 pub mod encoded;
 pub mod error;

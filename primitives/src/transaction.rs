@@ -46,7 +46,8 @@ impl Transaction {
             s: sig.s().into(),
             v: sig.v(),
             hash: 0.into(),
-        }.compute_hash()
+        }
+        .compute_hash()
     }
 }
 

@@ -1,4 +1,3 @@
-use block::Block;
 use ethereum_types::{Address, H256, U256};
 use hash::KECCAK_NULL_RLP;
 use parking_lot::RwLock;
