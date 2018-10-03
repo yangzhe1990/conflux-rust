@@ -1,29 +1,28 @@
-extern crate primitives;
 extern crate core;
 extern crate ethereum_types;
 extern crate ethkey;
 extern crate keccak_hash as hash;
 extern crate parking_lot;
+extern crate primitives;
 extern crate rand;
 extern crate rlp;
 
 use core::block::Block;
 use core::execution_engine::ExecutionEngineRef;
-use core::block_header::BlockHeaderBuilder;
-use primitives::{SignedTransaction, Transaction};
-use core::transaction_pool::TransactionPoolRef;
 use core::LedgerRef;
 use core::SyncEngineRef;
+use core::transaction_pool::TransactionPoolRef;
 use ethereum_types::{Address, H256, U256};
 use ethkey::Secret;
 use hash::{keccak, KECCAK_NULL_RLP};
 use parking_lot::RwLock;
+use primitives::{SignedTransaction, Transaction};
+use primitives::*;
 use rand::prelude::*;
 use rlp::RlpStream;
+use std::{thread, time};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::{thread, time};
-use primitives::*;
 
 enum MiningState {
     Start,

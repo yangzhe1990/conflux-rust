@@ -1,5 +1,4 @@
 use block::Block;
-use block_header::{BlockHeader, BlockHeaderBuilder};
 use ethereum_types::{Address, H256, U256};
 use hash::KECCAK_NULL_RLP;
 use parking_lot::RwLock;
@@ -310,11 +309,11 @@ impl Ledger {
                 let parent_hash = header.parent_hash();
                 if !main_chain.contains_key(&number)
                     || *(main_chain.get(&number).unwrap()) != cur_hash
-                {
-                    main_chain.insert(number, cur_hash);
-                    cur_hash = *parent_hash;
-                    adjusted = true;
-                } else {
+                    {
+                        main_chain.insert(number, cur_hash);
+                        cur_hash = *parent_hash;
+                        adjusted = true;
+                    } else {
                     break;
                 }
             }

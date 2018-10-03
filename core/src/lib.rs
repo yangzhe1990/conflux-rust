@@ -3,20 +3,38 @@ extern crate ethereum_types;
 extern crate ethkey;
 extern crate io;
 extern crate keccak_hash as hash;
-extern crate network;
-extern crate parking_lot;
-extern crate primitives;
-extern crate rlp;
-extern crate secret_store;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate network;
+extern crate parking_lot;
+extern crate primitives;
 extern crate rand;
+extern crate rlp;
+extern crate secret_store;
+
+pub use api::*;
+use ethereum_types::{H256, U256};
+pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
+use io::TimerToken;
+pub use ledger::{Ledger, LedgerRef};
+use network::{
+    Error, NetworkConfiguration, NetworkContext, NetworkProtocolHandler,
+    NetworkService, PeerId,
+};
+use network::node_table::NodeEntry;
+pub use network::PeerInfo;
+use parking_lot::RwLock;
+use rlp::Rlp;
+pub use state::TEST_ADDRESS;
+use std::net::SocketAddr;
+use std::sync::Arc;
+pub use sync::*;
+use sync_ctx::SyncContext;
 
 mod api;
 pub mod block;
-pub mod block_header;
 mod block_sync;
 pub mod encoded;
 pub mod error;
@@ -25,27 +43,6 @@ mod ledger;
 pub mod state;
 mod sync;
 pub mod transaction_pool;
-
-use network::node_table::NodeEntry;
-use parking_lot::RwLock;
-use rlp::Rlp;
-use std::net::SocketAddr;
-use std::sync::Arc;
-
-pub use api::*;
-pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
-pub use ledger::{Ledger, LedgerRef};
-pub use network::PeerInfo;
-pub use state::TEST_ADDRESS;
-pub use sync::*;
-
-use ethereum_types::{H256, U256};
-use io::TimerToken;
-use network::{
-    Error, NetworkConfiguration, NetworkContext, NetworkProtocolHandler,
-    NetworkService, PeerId,
-};
-use sync_ctx::SyncContext;
 
 /// Protocol handler level packet id
 pub type PacketId = u8;
@@ -119,7 +116,8 @@ impl SyncEngine {
                 self.sync_handler.clone(),
                 self.subprotocol_name,
                 &[CONFLUX_PROTOCOL_VERSION_1],
-            ).unwrap_or_else(|e| {
+            )
+            .unwrap_or_else(|e| {
                 warn!("Error registering conflux protocol: {:?}", e)
             });
     }
