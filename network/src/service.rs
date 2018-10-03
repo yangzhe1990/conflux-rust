@@ -212,7 +212,6 @@ pub struct HostMetadata {
     #[allow(unused)]
     /// Our private and public keys.
     keys: KeyPair,
-    config: NetworkConfiguration,
     pub capabilities: Vec<Capability>,
     pub local_address: SocketAddr,
     /// Local address + discovery port
@@ -227,6 +226,7 @@ impl HostMetadata {
 
 struct NetworkServiceInner {
     metadata: RwLock<HostMetadata>,
+    config: NetworkConfiguration,
     udp_socket: Mutex<UdpSocket>,
     tcp_listener: Mutex<TcpListener>,
     sessions: Arc<RwLock<Slab<SharedSession>>>,
@@ -336,12 +336,12 @@ impl NetworkServiceInner {
         let mut inner = NetworkServiceInner {
             metadata: RwLock::new(HostMetadata {
                 keys,
-                config: config.clone(),
                 capabilities: Vec::new(),
                 local_address: listen_address,
                 local_endpoint,
                 public_endpoint,
             }),
+            config: config.clone(),
             udp_channel: RwLock::new(UdpChannel::new()),
             discovery: Mutex::new(discovery),
             udp_socket: Mutex::new(udp_socket),
@@ -411,7 +411,7 @@ impl NetworkServiceInner {
     ) -> Result<(), Error> {
         // Initialize discovery
         if let Some(discovery) = self.discovery.lock().as_mut() {
-            let allow_ips = self.metadata.read().config.ip_filter.clone();
+            let allow_ips = self.config.ip_filter.clone();
             let nodes = self
                 .trusted_nodes
                 .read()
@@ -426,14 +426,36 @@ impl NetworkServiceInner {
             );
             io.register_timer(
                 FAST_DISCOVERY_REFRESH,
-                self.metadata.read().config.fast_discovery_refresh_timeout,
+                self.config.fast_discovery_refresh_timeout,
             )?;
-            io.register_timer(DISCOVERY_REFRESH, self.metadata.read().config.discovery_refresh_timeout)?;
-            io.register_timer(DISCOVERY_ROUND, self.metadata.read().config.discovery_round_timeout)?;
+            io.register_timer(DISCOVERY_REFRESH, self.config.discovery_refresh_timeout)?;
+            io.register_timer(DISCOVERY_ROUND, self.config.discovery_round_timeout)?;
         }
-        io.register_timer(NODE_TABLE, self.metadata.read().config.node_table_timeout)?;
+        io.register_timer(NODE_TABLE, self.config.node_table_timeout)?;
 
         Ok(())
+    }
+
+    fn note_failure(&self, id: &NodeId) {
+        {
+            let mut trusted_nodes = self.trusted_nodes.write();
+            if trusted_nodes.contains(id) {
+                trusted_nodes.note_failure(id);
+            }
+        }
+        {
+            let mut untrusted_nodes = self.untrusted_nodes.write();
+            if untrusted_nodes.contains(id) {
+                untrusted_nodes.note_failure(id);
+            }
+        }
+    }
+
+    fn note_trusted_failure(&self, id: &NodeId) {
+        let mut trusted_nodes = self.trusted_nodes.write();
+        if trusted_nodes.contains(id) {
+            trusted_nodes.note_failure(id);
+        }
     }
 
     fn promote_untrusted_with_node(&self, node: Node) {
@@ -472,15 +494,8 @@ impl NetworkServiceInner {
     }
 
     fn has_enough_outgoing_peers(&self) -> bool {
-        let max_outgoing_peers = {
-            let meta = self.metadata.read();
-            let config = &meta.config;
-
-            config.max_outgoing_peers
-        };
         let (_, egress_count, _) = self.session_count();
-
-        return egress_count >= max_outgoing_peers as usize;
+        return egress_count >= self.config.max_outgoing_peers as usize;
     }
 
     fn on_housekeeping(&self, io: &IoContext<NetworkIoMessage>) {
@@ -495,10 +510,10 @@ impl NetworkServiceInner {
         }
 
         let self_id = *meta.id();
-        let max_outgoing_peers = meta.config.max_outgoing_peers;
-        let max_incoming_peers = meta.config.max_incoming_peers;
-        let max_handshakes = meta.config.max_handshakes;
-        let allow_ips = meta.config.ip_filter.clone();
+        let max_outgoing_peers = self.config.max_outgoing_peers;
+        let max_incoming_peers = self.config.max_incoming_peers;
+        let max_handshakes = self.config.max_handshakes;
+        let allow_ips = self.config.ip_filter.clone();
 
         let (handshake_count, egress_count, ingress_count) =
             self.session_count();
@@ -587,6 +602,7 @@ impl NetworkServiceInner {
                     (socket, address)
                 }
                 Err(e) => {
+                    self.note_trusted_failure(id);
                     debug!(target: "network", "{}: can't connect o address {:?} {:?}", id, address, e);
                     return;
                 }
@@ -594,6 +610,7 @@ impl NetworkServiceInner {
         };
 
         if let Err(e) = self.create_connection(socket, address, Some(id), io) {
+            self.note_trusted_failure(id);
             debug!(target: "network", "Can't create connection: {:?}", e);
         }
     }
@@ -960,7 +977,7 @@ impl NetworkServiceInner {
 
 impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     fn initialize(&self, io: &IoContext<NetworkIoMessage>) {
-        io.register_timer(HOUSEKEEPING, self.metadata.read().config.housekeeping_timeout)
+        io.register_timer(HOUSEKEEPING, self.config.housekeeping_timeout)
             .expect("Error registering housekeeping timer");
         io.message(NetworkIoMessage::Start).unwrap_or_else(|e| {
             warn!("Error sending IO notification: {:?}", e)
@@ -1133,6 +1150,9 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                     if sess.expired() {
                         sess.deregister_socket(event_loop)
                             .expect("Error deregistering socket");
+                        if let Some(node_id) = sess.id() {
+                            self.note_failure(node_id);
+                        }
                         sessions.remove(stream);
                     }
                 }
