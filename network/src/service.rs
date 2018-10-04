@@ -1095,7 +1095,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                         .disconnect(io, DisconnectReason::DisconnectRequested);
                 }
                 trace!(target: "network", "Disconnect requested {}", peer);
-                //self.kill_connection(*peer, io, false);
+                self.kill_connection(*peer, io);
             } //_ => {}
         }
     }
