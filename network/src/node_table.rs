@@ -15,6 +15,8 @@ use std::str::FromStr;
 use std::time::{self, Duration, SystemTime};
 use std::{fs, slice};
 use {AllowIP, Error, ErrorKind, IpFilter};
+use enum_map::EnumMap;
+use strum::IntoEnumIterator;
 
 /// Node public key
 pub type NodeId = H512;
@@ -259,16 +261,28 @@ const MAX_NODES: usize = 4096;
 const TRUSTED_NODES_FILE: &str = "trusted_nodes.json";
 const UNTRUSTED_NODES_FILE: &str = "untrusted_nodes.json";
 
-// TODO: make these as enum
-const NODE_TABLE_SUCCESS_VEC_ID: usize = 0;
-const NODE_TABLE_UNKNOWN_VEC_ID: usize = 1;
-const NODE_TABLE_FAILURE_VEC_ID: usize = 2;
-const NODE_TABLE_VEC_COUNT: usize = 3;
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Enum, EnumIter)]
+enum NodeReputation {
+    Success = 0,
+    Unknown = 1,
+    Failure = 2,
+}
+
+const NODE_REPUTATION_LEVEL_COUNT: usize = 3;
+
+impl Default for NodeReputation {
+    fn default() -> Self {
+        NodeReputation::Unknown
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+struct NodeReputationIndex(NodeReputation, usize);
 
 /// Node table backed by disk file.
 pub struct NodeTable {
-    node_vectors: Vec<Vec<Node>>,
-    node_index: HashMap<NodeId, (usize, usize)>,
+    node_reputation_table: EnumMap<NodeReputation, Vec<Node>>,
+    node_index: HashMap<NodeId, NodeReputationIndex>,
     useless_nodes: HashSet<NodeId>,
     path: Option<String>,
     trusted: bool,
@@ -277,30 +291,26 @@ pub struct NodeTable {
 impl NodeTable {
     pub fn new(path: Option<String>, trusted: bool) -> NodeTable {
         let mut node_table = NodeTable {
-            node_vectors: Vec::new(),
+            node_reputation_table: EnumMap::default(),
             node_index: HashMap::new(),
             path: path.clone(),
             useless_nodes: HashSet::new(),
             trusted,
         };
 
-        for i in 0..NODE_TABLE_VEC_COUNT {
-            node_table.node_vectors.push(Vec::new());
-        }
-
         node_table.load_from_file();
         node_table
     }
 
-    fn vector_idx(contact: &Option<NodeContact>) -> usize {
+    fn node_reputation(contact: &Option<NodeContact>) -> NodeReputation {
         if let Some(contact) = contact {
             match contact {
-                NodeContact::Success(_) => NODE_TABLE_SUCCESS_VEC_ID,
-                NodeContact::Failure(_) => NODE_TABLE_FAILURE_VEC_ID,
+                NodeContact::Success(_) => NodeReputation::Success,
+                NodeContact::Failure(_) => NodeReputation::Failure,
                 _ => panic!("Unknown contact information!"),
             }
         } else {
-            NODE_TABLE_UNKNOWN_VEC_ID
+            NodeReputation::Unknown
         }
     }
 
@@ -331,8 +341,8 @@ impl NodeTable {
                     let node = n.into_node();
                     if let Some(mut node) = node {
                         if !self.node_index.contains_key(&node.id) {
-                            let vec_idx = Self::vector_idx(&node.last_contact);
-                            self.add_to_vector(vec_idx, node);
+                            let node_rep = Self::node_reputation(&node.last_contact);
+                            self.add_to_reputation_level(node_rep, node);
                         } else {
                             warn!(target: "network", "There exist multiple entries for same node id: {:?}", node.id);
                         }
@@ -351,11 +361,12 @@ impl NodeTable {
         let mut nodes: Vec<NodeEntry> = Vec::new();
         for i in 0..count {
             let mut rng = rand::thread_rng();
-            let vec_idx = rng.gen::<usize>() % NODE_TABLE_VEC_COUNT;
-            let node_vec = &self.node_vectors[vec_idx];
-            if !node_vec.is_empty() {
-                let idx = rng.gen::<usize>() % node_vec.len();
-                let n = &node_vec[idx];
+            let node_rep_idx = rng.gen::<usize>() % NODE_REPUTATION_LEVEL_COUNT;
+            let node_rep = NodeReputation::iter().nth(node_rep_idx).unwrap();
+            let node_rep_vec = &self.node_reputation_table[node_rep];
+            if !node_rep_vec.is_empty() {
+                let idx = rng.gen::<usize>() % node_rep_vec.len();
+                let n = &node_rep_vec[idx];
                 nodes.push(NodeEntry {
                     id: n.id,
                     endpoint: n.endpoint.clone(),
@@ -379,11 +390,12 @@ impl NodeTable {
         let mut node_id_set: HashSet<NodeId> = HashSet::new();
         for i in 0..count {
             let mut rng = rand::thread_rng();
-            let vec_idx = rng.gen::<usize>() % NODE_TABLE_VEC_COUNT;
-            let node_vec = &self.node_vectors[vec_idx];
-            if !node_vec.is_empty() {
-                let idx = rng.gen::<usize>() % node_vec.len();
-                let n = &node_vec[idx];
+            let node_rep_idx = rng.gen::<usize>() % NODE_REPUTATION_LEVEL_COUNT;
+            let node_rep = NodeReputation::iter().nth(node_rep_idx).unwrap();
+            let node_rep_vec = &self.node_reputation_table[node_rep];
+            if !node_rep_vec.is_empty() {
+                let idx = rng.gen::<usize>() % node_rep_vec.len();
+                let n = &node_rep_vec[idx];
                 if !node_id_set.contains(&n.id) {
                     node_id_set.insert(n.id);
                 }
@@ -399,7 +411,7 @@ impl NodeTable {
     }
 
     pub fn add_node(&mut self, mut node: Node, preserve_last_contact: bool) {
-        let mut _index = (0, 0);
+        let mut _index = NodeReputationIndex::default();
         let mut exist = false;
         if let Some(index) = self.node_index.get_mut(&node.id) {
             _index = *index;
@@ -407,51 +419,47 @@ impl NodeTable {
         }
 
         if !exist {
-            let target_vec_idx = Self::vector_idx(&node.last_contact);
-            self.add_to_vector(target_vec_idx, node);
+            let target_node_rep = Self::node_reputation(&node.last_contact);
+            self.add_to_reputation_level(target_node_rep, node);
             return;
         }
 
         if preserve_last_contact {
-            let node_vec = &mut self.node_vectors[_index.0];
+            let node_vec = &mut self.node_reputation_table[_index.0];
             node.last_contact = node_vec[_index.1].last_contact;
             node_vec[_index.1] = node;
         } else {
-            let target_vec_idx = Self::vector_idx(&node.last_contact);
+            let target_node_rep = Self::node_reputation(&node.last_contact);
             // check whether the node position will change
-            if target_vec_idx == _index.0 {
-                self.node_vectors[_index.0][_index.1] = node;
+            if target_node_rep == _index.0 {
+                self.node_reputation_table[_index.0][_index.1] = node;
             } else {
-                self.remove_from_vector(&_index);
-                self.add_to_vector(target_vec_idx, node);
+                self.remove_from_reputation_level(&_index);
+                self.add_to_reputation_level(target_node_rep, node);
             }
         }
     }
 
-    fn remove_from_vector(&mut self, index: &(usize, usize)) -> Option<Node> {
-        if index.0 >= NODE_TABLE_VEC_COUNT {
+    fn remove_from_reputation_level(&mut self, index: &NodeReputationIndex) -> Option<Node> {
+        let node_rep_vec = &mut self.node_reputation_table[index.0];
+
+        if node_rep_vec.is_empty() || index.1 >= node_rep_vec.len() {
             return None;
         }
 
-        let node_vec = &mut self.node_vectors[index.0];
-
-        if node_vec.is_empty() || index.1 >= node_vec.len() {
-            return None;
-        }
-
-        if node_vec.len() - 1 == index.1 {
+        if node_rep_vec.len() - 1 == index.1 {
             // to remove the last item
-            let node_id = node_vec[node_vec.len() - 1].id;
+            let node_id = node_rep_vec[node_rep_vec.len() - 1].id;
             self.node_index.remove(&node_id);
-            return node_vec.pop();
+            return node_rep_vec.pop();
         }
 
-        let tail_node = node_vec.pop();
+        let tail_node = node_rep_vec.pop();
         if let Some(tail_node) = tail_node {
-            let removed_node = node_vec[index.1].clone();
+            let removed_node = node_rep_vec[index.1].clone();
             self.node_index.remove(&removed_node.id);
             if let Some(node_idx) = self.node_index.get_mut(&tail_node.id) {
-                node_vec[index.1] = tail_node;
+                node_rep_vec[index.1] = tail_node;
                 *node_idx = *index;
                 return Some(removed_node);
             } else {
@@ -464,15 +472,11 @@ impl NodeTable {
         }
     }
 
-    fn add_to_vector(&mut self, vec_index: usize, node: Node) {
-        if vec_index >= NODE_TABLE_VEC_COUNT {
-            return;
-        }
-
-        let node_idx = self.node_vectors[vec_index].len();
-        let node_table_idx = (vec_index, node_idx);
+    fn add_to_reputation_level(&mut self, node_rep: NodeReputation, node: Node) {
+        let node_idx = self.node_reputation_table[node_rep].len();
+        let node_table_idx = NodeReputationIndex(node_rep, node_idx);
         self.node_index.insert(node.id, node_table_idx);
-        self.node_vectors[vec_index].push(node);
+        self.node_reputation_table[node_rep].push(node);
     }
 
     /// Returns a list of ordered nodes according to their most recent contact
@@ -488,19 +492,19 @@ impl NodeTable {
         let mut failures = Vec::new();
         let mut unknown = Vec::new();
 
-        for n in self.node_vectors[NODE_TABLE_SUCCESS_VEC_ID].iter() {
+        for n in self.node_reputation_table[NodeReputation::Success].iter() {
             if !self.useless_nodes.contains(&n.id) {
                 success.push(n);
             }
         }
 
-        for n in self.node_vectors[NODE_TABLE_FAILURE_VEC_ID].iter() {
+        for n in self.node_reputation_table[NodeReputation::Failure].iter() {
             if !self.useless_nodes.contains(&n.id) {
                 failures.push(n);
             }
         }
 
-        for n in self.node_vectors[NODE_TABLE_UNKNOWN_VEC_ID].iter() {
+        for n in self.node_reputation_table[NodeReputation::Unknown].iter() {
             if !self.useless_nodes.contains(&n.id) {
                 unknown.push(n);
             }
@@ -570,7 +574,7 @@ impl NodeTable {
     pub fn get_mut(&mut self, id: &NodeId) -> Option<&mut Node> {
         let index = self.node_index.get(id);
         if let Some(index) = index {
-            Some(&mut self.node_vectors[index.0][index.1])
+            Some(&mut self.node_reputation_table[index.0][index.1])
         } else {
             None
         }
@@ -589,7 +593,7 @@ impl NodeTable {
             return;
         }
 
-        self.remove_from_vector(&_index);
+        self.remove_from_reputation_level(&_index);
     }
 
     /// Set last contact as failure for a node
@@ -601,14 +605,14 @@ impl NodeTable {
             return;
         }
 
-        let target_vec_id = NODE_TABLE_FAILURE_VEC_ID;
-        if target_vec_id == _index.0 {
-            let node = &mut self.node_vectors[_index.0][_index.1];
+        let target_node_rep = NodeReputation::Failure;
+        if target_node_rep == _index.0 {
+            let node = &mut self.node_reputation_table[_index.0][_index.1];
             node.last_contact = Some(NodeContact::failure());
         } else {
-            if let Some(mut node) = self.remove_from_vector(&_index) {
+            if let Some(mut node) = self.remove_from_reputation_level(&_index) {
                 node.last_contact = Some(NodeContact::failure());
-                self.add_to_vector(target_vec_id, node);
+                self.add_to_reputation_level(target_node_rep, node);
             } else {
                 panic!("Should not happen!");
             }
@@ -624,14 +628,14 @@ impl NodeTable {
             return;
         }
 
-        let target_vec_id = NODE_TABLE_SUCCESS_VEC_ID;
-        if target_vec_id == _index.0 {
-            let node = &mut self.node_vectors[_index.0][_index.1];
+        let target_node_rep = NodeReputation::Success;
+        if target_node_rep == _index.0 {
+            let node = &mut self.node_reputation_table[_index.0][_index.1];
             node.last_contact = Some(NodeContact::success());
         } else {
-            if let Some(mut node) = self.remove_from_vector(&_index) {
+            if let Some(mut node) = self.remove_from_reputation_level(&_index) {
                 node.last_contact = Some(NodeContact::success());
-                self.add_to_vector(target_vec_id, node);
+                self.add_to_reputation_level(target_node_rep, node);
             } else {
                 panic!("Should not happen!");
             }
@@ -666,7 +670,7 @@ impl NodeTable {
             .into_iter()
             .map(|id| {
                 let index = self.node_index.get(&id).unwrap();
-                &self.node_vectors[index.0][index.1]
+                &self.node_reputation_table[index.0][index.1]
             }).take(MAX_NODES)
             .map(Into::into)
             .collect();

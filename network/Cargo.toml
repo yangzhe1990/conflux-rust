@@ -19,8 +19,12 @@ serde_derive = "1.0"
 ethereum-types = "0.4"
 igd = "0.7"
 libc = "0.2.7"
-rand = "0.4"
+rand = "0.5"
 parity-path = "0.1"
 keccak-hash = "0.1"
+enum-map = "0.4.0"
+enum-map-derive = "0.4.0"
+strum = "0.11.0"
+strum_macros = "0.11.0"
 ethkey = { path = "../ethkey" }
 ethcore-bytes = { path = "../util/bytes" }

@@ -22,6 +22,12 @@ extern crate keccak_hash as hash;
 extern crate libc;
 extern crate parity_path;
 extern crate rand;
+extern crate enum_map;
+#[macro_use]
+extern crate enum_map_derive;
+extern crate strum;
+#[macro_use]
+extern crate strum_macros;
 
 pub type ProtocolId = [u8; 3];
 pub type PeerId = usize;
