@@ -1,14 +1,14 @@
 use ethereum_types::{H256, U256};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Payload;
+use {Message, MsgId};
 
 #[derive(Debug, PartialEq)]
 pub struct BlockHashes {
     hashes: Vec<H256>,
 }
 
-impl Payload for BlockHashes {
-    fn command() -> u8 { 0x04 }
+impl Message for BlockHashes {
+    fn msg_id(&self) -> MsgId { MsgId::BLOCK_HASHES }
 }
 
 impl Encodable for BlockHashes {

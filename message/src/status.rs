@@ -1,6 +1,6 @@
 use ethereum_types::{H256, U256};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Payload;
+use {Message, MsgId};
 
 #[derive(Debug, PartialEq)]
 pub struct Status {
@@ -11,8 +11,8 @@ pub struct Status {
     pub genesis_hash: H256,
 }
 
-impl Payload for Status {
-    fn command() -> u8 { 0x00 }
+impl Message for Status {
+    fn msg_id(&self) -> MsgId { MsgId::STATUS }
 }
 
 impl Encodable for Status {

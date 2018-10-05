@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use ethereum_types::H256;
+use message::*;
 use network::PeerId;
 use rlp::RlpStream;
 use std::time::Instant;
@@ -20,18 +21,19 @@ impl SyncRequester {
     )
     {
         trace!(target: "sync", "{} <- GetBlockHeaders: {} entries starting from {}", peer_id, count, h);
-        let mut rlp = RlpStream::new_list(5);
-        rlp.append(&(GET_BLOCK_HEADERS_PACKET as u32));
-        rlp.append(h);
-        rlp.append(&count);
-        rlp.append(&skip);
-        rlp.append(&if reverse { 1u32 } else { 0u32 });
         SyncRequester::send_request(
             sync,
             io,
             peer_id,
             PeerAsking::BlockHeaders,
-            rlp.out(),
+            Box::new(
+                GetBlockHeaders {
+                    block_id: BlockId::Hash(h.clone()),
+                    max_headers: count as usize,
+                    skip: skip as usize,
+                    reverse: reverse
+                }
+            ),
         );
         let peer = sync.peers.get_mut(&peer_id).expect("peer_id may originate either from on_packet, where it is already validated or from enumerating self.peers. qed");
         peer.asking_hash = Some(h.clone());
@@ -40,7 +42,7 @@ impl SyncRequester {
     /// Generic request sender
     fn send_request(
         sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId,
-        asking: PeerAsking, packet: Bytes,
+        asking: PeerAsking, msg: Box<Message>,
     )
     {
         if let Some(ref mut peer) = sync.peers.get_mut(&peer_id) {
@@ -49,7 +51,10 @@ impl SyncRequester {
             }
             peer.asking = asking;
             peer.ask_time = Instant::now();
-            let result = io.send(peer_id, packet);
+            let mut data = Bytes::new();
+            data.push(msg.msg_id().into());
+            data.extend_from_slice(&msg.rlp_bytes());
+            let result = io.send(peer_id, data);
             if let Err(e) = result {
                 debug!(target:"sync", "Error sending request: {:?}", e);
                 io.disconnect_peer(peer_id);
@@ -62,18 +67,16 @@ impl SyncRequester {
         hashes: Vec<H256>,
     )
     {
-        let mut rlp = RlpStream::new_list(hashes.len() + 1);
-        trace!(target: "sync", "{} <- GetBlockBodies: {} entries starting from {:?}", peer_id, hashes.len(), hashes.first());
-        rlp.append(&(GET_BLOCK_BODIES_PACKET as u32));
-        for h in &hashes {
-            rlp.append(&h.clone());
-        }
+        trace!(target: "sync", "{} <- GetBlockBodies: {} entries starting from {:?}", peer_id,
+               hashes.len(), hashes.first());
         SyncRequester::send_request(
             sync,
             io,
             peer_id,
             PeerAsking::BlockBodies,
-            rlp.out(),
+            Box::new(GetBlockBodies {
+                hashes: hashes.clone(),
+            }),
         );
         let peer = sync.peers.get_mut(&peer_id).expect("peer_id may originate either from on_packet, where it is already validated or from enumerating self.peers. qed");
         peer.asking_blocks = hashes;

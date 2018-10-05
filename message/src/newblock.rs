@@ -1,17 +1,17 @@
 use ethereum_types::{H256, U256};
 use primitives::{BlockHeader, SignedTransaction, TransactionWithSignature};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Payload;
+use {Message, MsgId, BlockBody};
 
 #[derive(Debug, PartialEq)]
 pub struct NewBlock {
     pub total_difficulty: U256,
     pub header: BlockHeader,
-    pub transactions: Vec<TransactionWithSignature>,
+    pub body: BlockBody,
 }
 
-impl Payload for NewBlock {
-    fn command() -> u8 { 0x08 }
+impl Message for NewBlock {
+    fn msg_id(&self) -> MsgId { MsgId::NEW_BLOCK }
 }
 
 impl Encodable for NewBlock {
@@ -20,7 +20,7 @@ impl Encodable for NewBlock {
             .begin_list(3)
             .append(&self.total_difficulty)
             .append(&self.header)
-            .append_list(&self.transactions);
+            .append(&self.body);
     }
 }
 
@@ -29,7 +29,7 @@ impl Decodable for NewBlock {
         Ok(NewBlock {
             total_difficulty: rlp.val_at(0)?,
             header: rlp.val_at(1)?,
-            transactions: rlp.list_at(2)?,
+            body: rlp.val_at(2)?,
         })
     }
 }

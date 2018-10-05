@@ -1,34 +1,19 @@
 use ethereum_types::{H256, U256};
-use primitives::TransactionWithSignature;
+use primitives::{
+    Block as InternalBlockBody, SignedTransaction, TransactionWithSignature,
+};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Payload;
+use {Message, MsgId};
 
-#[derive(Debug, PartialEq)]
-pub struct BlockBody {
-    pub transactions: Vec<TransactionWithSignature>,
-}
+pub type BlockBody = InternalBlockBody;
 
-impl Encodable for BlockBody {
-    fn rlp_append(&self, stream: &mut RlpStream) {
-        stream.append_list(&self.transactions);
-    }
-}
-
-impl Decodable for BlockBody {
-    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        Ok(BlockBody {
-            transactions: rlp.as_list()?,
-        })
-    }
-}
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct BlockBodies {
-    bodies: Vec<BlockBody>,
+    pub bodies: Vec<Option<BlockBody>>,
 }
 
-impl Payload for BlockBodies {
-    fn command() -> u8 { 0x07 }
+impl Message for BlockBodies {
+    fn msg_id(&self) -> MsgId { MsgId::BLOCK_BODIES }
 }
 
 impl Encodable for BlockBodies {

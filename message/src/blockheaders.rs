@@ -1,11 +1,15 @@
 use ethereum_types::{H256, U256};
 use primitives::BlockHeader;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Payload;
+use {Message, MsgId};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct BlockHeaders {
-    headers: Vec<BlockHeader>,
+    pub headers: Vec<BlockHeader>,
+}
+
+impl Message for BlockHeaders {
+    fn msg_id(&self) -> MsgId { MsgId::BLOCK_HEADERS }
 }
 
 impl Encodable for BlockHeaders {
@@ -15,7 +19,7 @@ impl Encodable for BlockHeaders {
 }
 
 impl Decodable for BlockHeaders {
-    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+    fn decode(rlp: &Rlp) -> Result<BlockHeaders, DecoderError> {
         Ok(BlockHeaders {
             headers: rlp.as_list()?,
         })

@@ -1,20 +1,24 @@
+use super::sync_requester::SyncRequester;
+use super::{
+    PeerAsking, PeerInfo, RlpResponse, SyncState, BLOCK_BODIES_PACKET,
+    BLOCK_HEADERS_PACKET, GET_BLOCK_BODIES_PACKET, GET_BLOCK_HEADERS_PACKET,
+    MAX_BODIES_TO_SEND, MAX_HEADERS_TO_SEND, NEW_BLOCK_PACKET, STATUS_PACKET,
+};
 use block_sync::BlockSyncError;
 use bytes::Bytes;
 use ethereum_types::{H256, U256};
+use message::{
+    BlockBodies, BlockBody as WireBlockBody, BlockHeaders,
+    BlockId as WireBlockId, GetBlockBodies, GetBlockHeaders, Message, MsgId,
+    NewBlock, Status,
+};
 use network::{Error, PeerId};
 use parking_lot::RwLock;
 use primitives::*;
-use rlp::{Rlp, RlpStream};
+use rlp::{DecoderError, Rlp, RlpStream};
 use std::cmp;
 use std::collections::VecDeque;
 use std::time::Instant;
-use super::{
-    BLOCK_BODIES_PACKET, BLOCK_HEADERS_PACKET, GET_BLOCK_BODIES_PACKET, GET_BLOCK_HEADERS_PACKET, MAX_BODIES_TO_SEND,
-    MAX_HEADERS_TO_SEND, NEW_BLOCK_PACKET, PacketDecodeError,
-    PacketId, PeerAsking, PeerInfo,
-    RlpResponseResult, STATUS_PACKET, SyncState,
-};
-use super::sync_requester::SyncRequester;
 use sync_ctx::SyncContext;
 
 /// SyncHandler is a collection of functions which handles incoming requests from peers from
@@ -23,29 +27,29 @@ pub struct SyncHandler;
 
 impl SyncHandler {
     /// Dispatch incoming requests and responses
-    pub fn dispatch_packet(
+    pub fn dispatch_message(
         sync: &RwLock<SyncState>, io: &mut SyncContext, peer: PeerId,
-        packet_id: PacketId, rlp: Rlp,
+        msg_id: MsgId, rlp: Rlp,
     )
     {
-        trace!(target: "sync", "dispatch packet, packet_id {:}", packet_id);
-        let result = match packet_id {
-            GET_BLOCK_BODIES_PACKET => SyncHandler::return_rlp(
+        trace!(target: "sync", "dispatch message, msgId {:}", msg_id);
+        let result = match msg_id {
+            MsgId::GET_BLOCK_BODIES => SyncHandler::return_rlp(
                 io,
                 &rlp,
                 peer,
-                SyncHandler::return_block_bodies,
+                SyncHandler::get_block_bodies,
                 |e| format!("Error sending block bodies: {:?}", e),
             ),
-            GET_BLOCK_HEADERS_PACKET => SyncHandler::return_rlp(
+            MsgId::GET_BLOCK_HEADERS => SyncHandler::return_rlp(
                 io,
                 &rlp,
                 peer,
-                SyncHandler::return_block_headers,
+                SyncHandler::get_block_headers,
                 |e| format!("Error sending block headers: {:?}", e),
             ),
             _ => {
-                sync.write().on_packet(io, peer, packet_id, &rlp);
+                sync.write().on_message(io, peer, msg_id, &rlp);
                 Ok(())
             }
         };
@@ -55,19 +59,22 @@ impl SyncHandler {
     }
 
     fn return_rlp<FRlp, FError>(
-        io: &mut SyncContext, rlp: &Rlp, peer: PeerId, rlp_func: FRlp,
-        error_func: FError,
-    ) -> Result<(), PacketDecodeError>
-        where
-            FRlp: Fn(&SyncContext, &Rlp, PeerId) -> RlpResponseResult,
-            FError: FnOnce(Error) -> String,
+        io: &mut SyncContext, rlp: &Rlp, peer: PeerId, rlp_fn: FRlp,
+        error_fn: FError,
+    ) -> Result<(), DecoderError>
+    where
+        FRlp: Fn(&SyncContext, &Rlp, PeerId) -> RlpResponse,
+        FError: FnOnce(Error) -> String,
     {
-        let response = rlp_func(io, rlp, peer);
+        let response = rlp_fn(io, rlp, peer);
         match response {
             Err(e) => Err(e),
-            Ok(Some(rlp_stream)) => {
-                io.send(peer, rlp_stream.out()).unwrap_or_else(
-                    |e| debug!(target: "sync", "{:?}", error_func(e)),
+            Ok(Some(msg)) => {
+                let mut data = Bytes::new();
+                data.push(msg.msg_id().into());
+                data.extend_from_slice(&msg.rlp_bytes());
+                io.send(peer, data).unwrap_or_else(
+                    |e| debug!(target: "sync", "{:?}", error_fn(e)),
                 );
                 Ok(())
             }
@@ -76,101 +83,89 @@ impl SyncHandler {
     }
 
     /// Respond to GetBlockBodies request
-    fn return_block_bodies(
-        io: &SyncContext, r: &Rlp, peer_id: PeerId,
-    ) -> RlpResponseResult {
-        let mut count = r.item_count().unwrap_or(0);
+    fn get_block_bodies(
+        io: &SyncContext, rlp: &Rlp, peer_id: PeerId,
+    ) -> RlpResponse {
+        let req = rlp.as_val::<GetBlockBodies>()?;
 
-        if count == 1 {
+        if req.hashes.is_empty() {
             debug!(target: "sync", "Empty GetBlockBodies request, ignoring.");
-            let mut rlp = RlpStream::new_list(1);
-            rlp.append(&(BLOCK_BODIES_PACKET as u32));
-            return Ok(Some(rlp)); //no such header, return nothing
+            return Ok(Some(Box::new(BlockBodies::default()))); //no such header, return nothing
         }
 
-        count = cmp::min(count, MAX_BODIES_TO_SEND + 1);
-        let mut added = 0usize;
-        let mut data = Bytes::new();
-        for i in 1..count {
-            if let Some(body) =
-            io.ledger().block_body(BlockId::Hash(r.val_at::<H256>(i)?))
-                {
-                    data.append(&mut body.rlp());
-                    added += 1;
-                }
-        }
-        let mut rlp = RlpStream::new_list(added + 1);
-        rlp.append(&(BLOCK_BODIES_PACKET as u32));
-        rlp.append_raw(&data, added);
-        trace!(target: "sync", "{} -> GetBlockBodies: returned {} entries", peer_id, added);
-        Ok(Some(rlp))
+        let block_bodies = BlockBodies {
+            bodies: req
+                .hashes
+                .iter()
+                .take(MAX_BODIES_TO_SEND)
+                .map(|hash| io.ledger().block_body(BlockId::Hash(*hash)))
+                .collect(),
+        };
+        Ok(Some(Box::new(block_bodies)))
     }
 
     /// Respond to GetBlockHeaders request
-    fn return_block_headers(
-        io: &SyncContext, r: &Rlp, peer_id: PeerId,
-    ) -> RlpResponseResult {
-        // Packet layout:
-        // [ block: { P , B_32 }, maxHeaders: P, skip: P, reverse: P in { 0 , 1 } ]
-        let max_headers: usize = r.val_at(2)?;
-        let skip: usize = r.val_at(3)?;
-        let reverse: bool = r.val_at(4)?;
-        let last = io.ledger().ledger_info().best_block_number;
-        let number = if r.at(1)?.size() == 32 {
-            // id is a hash
-            let hash: H256 = r.val_at(1)?;
-            trace!(target: "sync", "{} -> GetBlockHeaders (hash: {}, max: {}, skip: {}, reverse:{})", peer_id, hash, max_headers, skip, reverse);
-            match io.ledger().block_header(BlockId::Hash(hash)) {
-                Some(hdr) => {
-                    let number = hdr.number().into();
-                    debug_assert_eq!(hdr.hash(), hash);
+    fn get_block_headers(
+        io: &SyncContext, rlp: &Rlp, peer_id: PeerId,
+    ) -> RlpResponse {
+        let req = rlp.as_val::<GetBlockHeaders>()?;
 
-                    if max_headers == 1
-                        || io.ledger().block_hash(BlockId::Number(number))
-                        != Some(hash)
+        let number = match req.block_id {
+            WireBlockId::Hash(hash) => {
+                trace!(target: "sync",
+                       "{} -> GetBlockHeaders (hash: {}, max: {}, skip: {}, reverse:{})",
+                       peer_id, hash, req.max_headers, req.skip, req.reverse);
+                match io.ledger().block_header(BlockId::Hash(hash)) {
+                    Some(header) => {
+                        let number = header.number().into();
+                        debug_assert_eq!(header.hash(), hash);
+
+                        if req.max_headers == 1
+                            || io.ledger().block_hash(BlockId::Number(number))
+                                != Some(hash)
                         {
                             // Non canonical header or single header requested
                             // TODO: handle single-step reverse hashchains of non-canon hashes
                             trace!(target: "sync", "Returning single header: {:?}", hash);
-                            let mut rlp = RlpStream::new_list(2);
-                            rlp.append(&(BLOCK_HEADERS_PACKET as u32));
-                            rlp.append_raw(&hdr.rlp(), 1);
-                            return Ok(Some(rlp));
+                            return Ok(Some(Box::new(BlockHeaders {
+                                headers: vec![header.clone()],
+                            })));
                         }
-                    number
-                }
-                None => {
-                    let mut rlp = RlpStream::new_list(1);
-                    rlp.append(&(BLOCK_HEADERS_PACKET as u32));
-                    return Ok(Some(rlp)); //no such header, return nothing
+                        number
+                    }
+                    None => {
+                        return Ok(Some(Box::new(BlockHeaders::default())));
+                    }
                 }
             }
-        } else {
-            let number = r.val_at::<BlockNumber>(1)?;
-            trace!(target: "sync", "{} -> GetBlockHeaders (number: {}, max: {}, skip: {}, reverse:{})", peer_id, number, max_headers, skip, reverse);
-            number
+            WireBlockId::Number(number) => {
+                trace!(target: "sync", "{} -> GetBlockHeaders (number: {}, max: {}, skip: {}, reverse:{})", peer_id, number, req.max_headers, req.skip, req.reverse);
+                number
+            }
         };
 
-        let mut number = if reverse {
+        let last = io.ledger().ledger_info().best_block_number;
+        let mut number = if req.reverse {
             cmp::min(last, number)
         } else {
             cmp::max(0, number)
         };
-        let max_count = cmp::min(MAX_HEADERS_TO_SEND, max_headers);
+        let max_count = cmp::min(MAX_HEADERS_TO_SEND, req.max_headers);
         let mut count = 0;
-        let mut data = Bytes::new();
-        let inc = skip.saturating_add(1) as BlockNumber;
+        let inc = req.skip.saturating_add(1) as BlockNumber;
+        let mut block_headers = BlockHeaders::default();
 
         while number <= last && count < max_count {
-            if let Some(hdr) = io.ledger().block_header(BlockId::Number(number))
-                {
-                    data.append(&mut hdr.rlp());
-                    count += 1;
-                } else {
+            if let Some(header) =
+                io.ledger().block_header(BlockId::Number(number))
+            {
+                block_headers.headers.push(header.clone());
+                count += 1;
+            } else {
                 // No required block.
                 break;
             }
-            if reverse {
+            if req.reverse {
                 if number <= inc || number == 0 {
                     break;
                 }
@@ -179,44 +174,41 @@ impl SyncHandler {
                 number = number.saturating_add(inc);
             }
         }
-        let mut rlp = RlpStream::new_list((count + 1) as usize);
-        rlp.append(&(BLOCK_HEADERS_PACKET as u32));
-        rlp.append_raw(&data, count as usize);
         trace!(target: "sync", "{} -> GetBlockHeaders: returned {} entries", peer_id, count);
-        Ok(Some(rlp))
+        Ok(Some(Box::new(block_headers)))
     }
 
     /// Handle incoming packet from peer which does not require response
-    pub fn on_packet(
+    pub fn on_message(
         sync: &mut SyncState, io: &mut SyncContext, peer: PeerId,
-        packet_id: PacketId, rlp: &Rlp,
+        msg_id: MsgId, rlp: &Rlp,
     )
     {
-        if packet_id != STATUS_PACKET && !sync.peers.contains_key(&peer) {
-            debug!(target: "sync", "Unexpected packet {} from unregistered peer: {}", packet_id, peer);
+        if msg_id != MsgId::STATUS && !sync.peers.contains_key(&peer) {
+            debug!(target: "sync", "Unexpected message {} from unregistered peer: {}", msg_id, peer);
             return;
         }
 
-        let result = match packet_id {
-            STATUS_PACKET => SyncHandler::on_peer_status(sync, io, peer, rlp),
-            BLOCK_HEADERS_PACKET => {
+        let result = match msg_id {
+            MsgId::STATUS => SyncHandler::on_peer_status(sync, io, peer, rlp),
+            MsgId::BLOCK_HEADERS => {
                 SyncHandler::on_peer_block_headers(sync, io, peer, rlp)
             }
-            BLOCK_BODIES_PACKET => {
+            MsgId::BLOCK_BODIES => {
                 SyncHandler::on_peer_block_bodies(sync, io, peer, rlp)
             }
-            NEW_BLOCK_PACKET => {
+            MsgId::NEW_BLOCK => {
                 SyncHandler::on_peer_new_block(sync, io, peer, rlp)
             }
             _ => {
-                debug!(target: "sync", "{}: Unknown packet {}", peer, packet_id);
+                debug!(target: "sync", "{}: Unknown message {}", peer, msg_id);
                 Ok(())
             }
         };
 
         match result {
             Err(BlockSyncError::Invalid) => {
-                debug!(target: "sync", "{} -> Invalid packet {}", peer, packet_id);
+                debug!(target: "sync", "{} -> Invalid message {}", peer, msg_id);
                 io.disable_peer(peer);
                 sync.deactivate_peer(io, peer);
             }
@@ -245,12 +237,15 @@ impl SyncHandler {
         sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, r: &Rlp,
     ) -> Result<(), BlockSyncError> {
         sync.handshaking_peers.remove(&peer_id);
-        let protocol_version: u8 = r.val_at(1)?;
+
+        let status = r.as_val::<Status>()?;
+
+        let protocol_version = status.protocol_version;
         let peer = PeerInfo {
             protocol_version: protocol_version,
-            difficulty: Some(r.val_at(2)?),
-            latest_hash: r.val_at(3)?,
-            genesis: r.val_at(4)?,
+            difficulty: Some(status.total_difficulty),
+            latest_hash: status.best_hash,
+            genesis: status.genesis_hash,
             asking: PeerAsking::Nothing,
             asking_blocks: Vec::new(),
             asking_hash: None,
@@ -292,33 +287,25 @@ impl SyncHandler {
     fn on_peer_block_headers(
         sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, r: &Rlp,
     ) -> Result<(), BlockSyncError> {
-        let item_count = r.item_count()?;
-        if item_count < 1 {
-            return Err(BlockSyncError::Invalid);
-        } else if item_count == 1 {
+        let block_headers = r.as_val::<BlockHeaders>()?;
+        if block_headers.headers.is_empty() {
             return Ok(());
         }
 
         // verify the headers are organized in chain
         let mut parent_hash: H256 = H256::new();
-        let mut headers: Vec<BlockHeader> = Vec::new();
-        for i in 1..item_count {
-            let header: BlockHeader = r.val_at(i).map_err(|e| {
-                trace!(target: "sync", "Error decoding block header RLP: {:?}", e);
-                BlockSyncError::Invalid
-            })?;
-
-            if !(i == 1) {
-                if !(parent_hash == header.hash()) {
+        for i in 0..block_headers.headers.len() {
+            let header = &(block_headers.headers[i]);
+            if i > 0 {
+                if parent_hash != header.hash() {
                     return Err(BlockSyncError::Invalid);
                 }
             }
             parent_hash = *header.parent_hash();
-            headers.push(header);
         }
 
         let mut body_hashes: Vec<H256> = Vec::new();
-        for header in headers {
+        for header in block_headers.headers {
             let header_hash = header.hash();
             if io.ledger().block_header_exists(&header_hash) {
                 break;
@@ -350,31 +337,29 @@ impl SyncHandler {
     fn on_peer_block_bodies(
         _sync: &mut SyncState, io: &mut SyncContext, _peer_id: PeerId, r: &Rlp,
     ) -> Result<(), BlockSyncError> {
-        let item_count = r.item_count()?;
-        if item_count <= 1 {
+        let block_bodies = r.as_val::<BlockBodies>()?;
+        if block_bodies.bodies.is_empty() {
             return Err(BlockSyncError::Useless);
         }
 
-        let mut blocks: Vec<Block> = Vec::new();
-        for i in 1..item_count {
-            let body = r.val_at(i).map_err(|e| {
-                trace!(target: "sync", "Error decoding block boides RLP: {:?}", e);
-                BlockSyncError::Invalid
-            })?;
-            blocks.push(body);
-        }
+        let blocks: Vec<Block> = block_bodies
+            .bodies
+            .iter()
+            .filter(|block| block.is_some())
+            .map(|block| block.clone().unwrap())
+            .collect();
 
         let mut blocks_to_adjust: VecDeque<H256> = VecDeque::new();
         let mut new_body_arrived = false;
         for body in blocks {
             let block_hash = body.hash();
             if let Some(_header) =
-            io.ledger().block_header(BlockId::Hash(block_hash))
-                {
-                    io.ledger().add_block_body_by_hash(&block_hash, body);
-                    blocks_to_adjust.push_back(block_hash);
-                    new_body_arrived = true;
-                } else {
+                io.ledger().block_header(BlockId::Hash(block_hash))
+            {
+                io.ledger().add_block_body_by_hash(&block_hash, body);
+                blocks_to_adjust.push_back(block_hash);
+                new_body_arrived = true;
+            } else {
                 debug!(target: "sync", "Skip the body without header: {:?}", block_hash);
             }
         }
@@ -393,10 +378,11 @@ impl SyncHandler {
     fn on_peer_new_block(
         sync: &mut SyncState, io: &mut SyncContext, peer_id: PeerId, r: &Rlp,
     ) -> Result<(), BlockSyncError> {
-        let new_block_total_difficulty: U256 = r.val_at(1)?;
-        let new_header: BlockHeader = r.val_at(2)?;
-        let new_body: Block = r.val_at(3)?;
+        let new_block = r.as_val::<NewBlock>()?;
 
+        let new_block_total_difficulty = new_block.total_difficulty;
+        let new_header = new_block.header;
+        let new_body = new_block.body;
         if new_header.hash() != new_body.hash() {
             debug!(target: "sync", "hashes in header and body do not match!");
             return Err(BlockSyncError::Invalid);

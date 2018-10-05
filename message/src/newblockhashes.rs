@@ -1,7 +1,7 @@
 use ethereum_types::H256;
 use primitives::BlockNumber;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Payload;
+use {Message, MsgId};
 
 #[derive(Debug, PartialEq)]
 pub struct BlockHash(BlockNumber, H256);
@@ -23,8 +23,8 @@ pub struct NewBlockHashes {
     pub block_hashes: Vec<BlockHash>,
 }
 
-impl Payload for NewBlockHashes {
-    fn command() -> u8 { 0x01 }
+impl Message for NewBlockHashes {
+    fn msg_id(&self) -> MsgId { MsgId::NEW_BLOCK_HASHES }
 }
 
 impl Encodable for NewBlockHashes {

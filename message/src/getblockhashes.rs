@@ -1,6 +1,6 @@
 use ethereum_types::{H256, U256};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Payload;
+use {Message, MsgId};
 
 #[derive(Debug, PartialEq)]
 pub struct GetBlockHashes {
@@ -8,8 +8,8 @@ pub struct GetBlockHashes {
     max_blocks: usize,
 }
 
-impl Payload for GetBlockHashes {
-    fn command() -> u8 { 0x03 }
+impl Message for GetBlockHashes {
+    fn msg_id(&self) -> MsgId { MsgId::GET_BLOCK_HASHES }
 }
 
 impl Encodable for GetBlockHashes {
@@ -24,8 +24,8 @@ impl Encodable for GetBlockHashes {
 impl Decodable for GetBlockHashes {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         Ok(GetBlockHashes {
-            hash: rlp.val_at(0)?,
-            max_blocks: rlp.val_at(1)?,
+            hash: rlp.val_at(1)?,
+            max_blocks: rlp.val_at(2)?,
         })
     }
 }

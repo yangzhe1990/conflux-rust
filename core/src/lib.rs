@@ -7,6 +7,7 @@ extern crate keccak_hash as hash;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate message;
 extern crate network;
 extern crate parking_lot;
 extern crate primitives;
@@ -19,12 +20,12 @@ use ethereum_types::{H256, U256};
 pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
 use io::TimerToken;
 pub use ledger::{Ledger, LedgerRef};
+use network::node_table::NodeEntry;
+pub use network::PeerInfo;
 use network::{
     Error, NetworkConfiguration, NetworkContext, NetworkProtocolHandler,
     NetworkService, PeerId,
 };
-use network::node_table::NodeEntry;
-pub use network::PeerInfo;
 use parking_lot::RwLock;
 use rlp::Rlp;
 pub use state::TEST_ADDRESS;
@@ -32,6 +33,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 pub use sync::*;
 use sync_ctx::SyncContext;
+use message::MsgId;
 
 mod api;
 mod block_sync;
@@ -42,9 +44,6 @@ mod ledger;
 pub mod state;
 mod sync;
 pub mod transaction_pool;
-
-/// Protocol handler level packet id
-pub type PacketId = u8;
 
 /// Sync configuration
 #[derive(Debug, Clone, Copy)]
@@ -162,24 +161,14 @@ impl NetworkProtocolHandler for SyncProtocolHandler {
     fn initialize(&self, _io: &NetworkContext) {}
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, data: &[u8]) {
-        let packet_id: u8;
-        let rlp = Rlp::new(data);
-        let result = rlp.val_at(0);
-        match result {
-            Err(e) => {
-                debug!(target: "PacketId decode error", "{:?}", e);
-                return;
-            }
-            Ok(res) => {
-                packet_id = res;
-            }
-        }
-        debug!(target: "sync", "on_message(), peer {:}, packet_id {:}", peer, packet_id);
-        SyncState::dispatch_packet(
+        let msg_id = data[0];
+        let rlp = Rlp::new(&data[1..]);
+        debug!(target: "sync", "on_message(), peer {:}, msg_id {:}", peer, msg_id);
+        SyncState::dispatch_message(
             &self.sync,
             &mut SyncContext::new(io, &*self.ledger, &*self.execution_engine),
             peer,
-            packet_id,
+            msg_id.into(),
             rlp,
         );
     }

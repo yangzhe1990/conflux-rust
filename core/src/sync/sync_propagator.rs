@@ -4,7 +4,7 @@ use bytes::Bytes;
 use ethereum_types::{H256, U256};
 use network::PeerId;
 use primitives::*;
-use rlp::RlpStream;
+use rlp::{Encodable, RlpStream};
 use sync_ctx::SyncContext;
 
 /// The Ledger Sync Propagator: propagates data to peers
@@ -40,7 +40,7 @@ impl SyncPropagator {
                         rlp_stream.append(&total_diff);
                         let mut data = Bytes::new();
                         data.append(&mut header.rlp());
-                        data.append(&mut body.rlp());
+                        data.append(&mut body.rlp_bytes());
                         rlp_stream.append_raw(&data, 2);
                         SyncPropagator::send_packet(
                             io,

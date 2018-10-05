@@ -1,10 +1,14 @@
 use ethereum_types::H256;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Payload;
+use {Message, MsgId};
 
 #[derive(Debug, PartialEq)]
 pub struct GetBlockBodies {
-    hashes: Vec<H256>,
+    pub hashes: Vec<H256>,
+}
+
+impl Message for GetBlockBodies {
+    fn msg_id(&self) -> MsgId { MsgId::GET_BLOCK_BODIES }
 }
 
 impl Encodable for GetBlockBodies {

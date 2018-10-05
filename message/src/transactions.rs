@@ -1,14 +1,14 @@
 use primitives::TransactionWithSignature;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Payload;
+use {Message, MsgId};
 
 #[derive(Debug, PartialEq)]
 pub struct Transactions {
     transactions: Vec<TransactionWithSignature>,
 }
 
-impl Payload for Transactions {
-    fn command() -> u8 { 0x02 }
+impl Message for Transactions {
+    fn msg_id(&self) -> MsgId { MsgId::TRANSACTIONS }
 }
 
 impl Encodable for Transactions {

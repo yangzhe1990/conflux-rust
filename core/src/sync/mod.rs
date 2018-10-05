@@ -7,11 +7,12 @@ use self::sync_ctx::SyncContext;
 use self::sync_handler::SyncHandler;
 use self::sync_propagator::SyncPropagator;
 use self::sync_requester::SyncRequester;
-use super::PacketId;
+use bytes::Bytes;
 use ethereum_types::{H256, U256};
+use message::*;
 use network::{Error, PeerId};
 use parking_lot::RwLock;
-use rlp::{DecoderError, Rlp, RlpStream};
+use rlp::{DecoderError, Encodable, Rlp, RlpStream};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -27,8 +28,7 @@ pub const BLOCK_HEADERS_PACKET: u8 = 0x03;
 pub const BLOCK_BODIES_PACKET: u8 = 0x4;
 pub const NEW_BLOCK_PACKET: u8 = 0x5;
 
-pub type PacketDecodeError = DecoderError;
-pub type RlpResponseResult = Result<Option<RlpStream>, PacketDecodeError>;
+pub type RlpResponse = Result<Option<Box<Message>>, DecoderError>;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 /// Peer data type requested
@@ -101,23 +101,21 @@ impl SyncState {
     }
 
     /// Dispatch incoming requests and responses
-    pub fn dispatch_packet(
+    pub fn dispatch_message(
         sync: &RwLock<SyncState>, io: &mut SyncContext, peer: PeerId,
-        packet_id: PacketId, rlp: Rlp,
+        msg_id: MsgId, rlp: Rlp,
     )
     {
-        SyncHandler::dispatch_packet(sync, io, peer, packet_id, rlp)
+        SyncHandler::dispatch_message(sync, io, peer, msg_id, rlp)
     }
 
     /// Handle incoming packet from peer which does not require response
     /// Require write lock on SyncState
-    pub fn on_packet(
-        &mut self, io: &mut SyncContext, peer: PeerId, packet_id: PacketId,
-        rlp: &Rlp,
-    )
-    {
-        debug!(target: "sync", "{} -> Dispatching packet: {}", peer, packet_id);
-        SyncHandler::on_packet(self, io, peer, packet_id, rlp);
+    pub fn on_message(
+        &mut self, io: &mut SyncContext, peer: PeerId, msg_id: MsgId, rlp: &Rlp,
+    ) {
+        debug!(target: "sync", "{} -> Dispatching message: {:?}", peer, msg_id);
+        SyncHandler::on_message(self, io, peer, msg_id, rlp);
     }
 
     /// Called when a new peer is connected
