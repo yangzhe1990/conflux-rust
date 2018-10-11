@@ -281,7 +281,9 @@ struct NodeReputationIndex(NodeReputation, usize);
 
 /// Node table backed by disk file.
 pub struct NodeTable {
+    /// A vector list of nodes for each reputation level
     node_reputation_table: EnumMap<NodeReputation, Vec<Node>>,
+    /// Map node id to the reputation level and the index in the above table
     node_index: HashMap<NodeId, NodeReputationIndex>,
     useless_nodes: HashSet<NodeId>,
     path: Option<String>,
@@ -384,6 +386,7 @@ impl NodeTable {
         unique_nodes
     }
 
+    /// Return a random sample set of nodes inside the table
     pub fn sample_node_ids(
         &self, count: u32, filter: &IpFilter,
     ) -> Vec<NodeId> {
@@ -575,6 +578,16 @@ impl NodeTable {
         let index = self.node_index.get(id);
         if let Some(index) = index {
             Some(&mut self.node_reputation_table[index.0][index.1])
+        } else {
+            None
+        }
+    }
+
+    /// Get particular node
+    pub fn get(&self, id: &NodeId) -> Option<&Node> {
+        let index = self.node_index.get(id);
+        if let Some(index) = index {
+            Some(&self.node_reputation_table[index.0][index.1])
         } else {
             None
         }

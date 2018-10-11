@@ -125,6 +125,9 @@ impl<'a> UdpIoContext<'a> {
     }
 }
 
+/// NetworkService implements the P2P communication between different nodes. It manages
+/// connections between peers, including accepting new peers or dropping existing peers.
+/// Inside NetworkService, it has an IoService event loop with a thread pool.
 pub struct NetworkService {
     io_service: Option<IoService<NetworkIoMessage>>,
     inner: Option<Arc<NetworkServiceInner>>,
@@ -139,7 +142,7 @@ impl NetworkService {
             config: config,
         }
     }
-
+    /// Create and start the event loop inside the NetworkService
     pub fn start(&mut self) -> Result<(), Error> {
         let raw_io_service = IoService::<NetworkIoMessage>::start()?;
         self.io_service = Some(raw_io_service);
@@ -156,6 +159,7 @@ impl NetworkService {
         Ok(())
     }
 
+    /// Add a P2P peer to the client as a trusted node
     pub fn add_peer(&self, node: NodeEntry) -> Result<(), Error> {
         if let Some(ref x) = self.inner {
             x.add_trusted_node_with_entry(node, true);
@@ -164,7 +168,7 @@ impl NetworkService {
             Err("Network service not started yet!".into())
         }
     }
-
+    /// Drop a P2P peer from the client
     pub fn drop_peer(&self, node: NodeEntry) -> Result<(), Error> {
         if let Some(ref x) = self.inner {
             x.drop_node(node.id)
@@ -172,11 +176,11 @@ impl NetworkService {
             Err("Network service not started yet!".into())
         }
     }
-
+    /// Get the local address of the client
     pub fn local_addr(&self) -> Option<SocketAddr> {
         self.inner.as_ref().map(|inner_ref| inner_ref.local_addr())
     }
-
+    /// Register a new protocol handler
     pub fn register_protocol(
         &self, handler: Arc<NetworkProtocolHandler + Sync>,
         protocol: ProtocolId, versions: &[u8],
@@ -191,7 +195,6 @@ impl NetworkService {
         )?;
         Ok(())
     }
-
     /// Executes action in the network context
     pub fn with_context<F>(&self, protocol: ProtocolId, action: F)
     where F: FnOnce(&NetworkContext) {
@@ -200,7 +203,7 @@ impl NetworkService {
             inner.with_context(protocol, &io, action);
         };
     }
-
+    /// Return the current connected peers
     pub fn get_peer_info(&self) -> Option<Vec<PeerInfo>> {
         self.inner.as_ref().map(|inner| inner.get_peer_info())
     }
@@ -224,15 +227,18 @@ impl HostMetadata {
     pub(crate) fn id(&self) -> &NodeId { self.keys.public() }
 }
 
+/// The inner implementation of NetworkService. Note that all accesses to the RWLocks of the fields
+/// have to follow the defined order to avoid race
 struct NetworkServiceInner {
+    sessions: Arc<RwLock<Slab<SharedSession>>>,
     metadata: RwLock<HostMetadata>,
     config: NetworkConfiguration,
     udp_socket: Mutex<UdpSocket>,
     tcp_listener: Mutex<TcpListener>,
-    sessions: Arc<RwLock<Slab<SharedSession>>>,
     udp_channel: RwLock<UdpChannel>,
     discovery: Mutex<Option<Discovery>>,
     handlers: RwLock<HashMap<ProtocolId, Arc<NetworkProtocolHandler + Sync>>>,
+    /// Two disk backed table storing the trusted and untrusted nodes
     trusted_nodes: RwLock<NodeTable>,
     untrusted_nodes: RwLock<NodeTable>,
     reserved_nodes: RwLock<HashSet<NodeId>>,
@@ -399,10 +405,10 @@ impl NetworkServiceInner {
 
     pub fn add_reserved_node(&self, id: &str) -> Result<(), Error> {
         let n = Node::from_str(id)?;
-        self.reserved_nodes.write().insert(n.id);
         self.trusted_nodes
             .write()
             .add_node(Node::new(n.id, n.endpoint.clone()), true);
+        self.reserved_nodes.write().insert(n.id);
         Ok(())
     }
 
@@ -459,7 +465,7 @@ impl NetworkServiceInner {
     }
 
     fn promote_untrusted_with_node(&self, node: Node) {
-        self.untrusted_nodes.write().remove_with_id(&node.id);
+        { self.untrusted_nodes.write().remove_with_id(&node.id); }
         self.trusted_nodes.write().add_node(node, false);
     }
 
@@ -503,6 +509,7 @@ impl NetworkServiceInner {
         self.drop_peers(io);
     }
 
+    // Connect to all reserved and trusted peers if not yet
     fn connect_peers(&self, io: &IoContext<NetworkIoMessage>) {
         let meta = self.metadata.read();
         if meta.capabilities.is_empty() {
@@ -517,12 +524,12 @@ impl NetworkServiceInner {
 
         let (handshake_count, egress_count, ingress_count) =
             self.session_count();
+        let trusted_nodes = self.trusted_nodes.read();
         let reserved_nodes = self.reserved_nodes.read();
         let egress_attempt_count = max_outgoing_peers - egress_count as u32;
-
+        // Try to connect all reserved peers and trusted peers
         let nodes = reserved_nodes.iter().cloned().chain(
-            self.trusted_nodes
-                .read()
+            trusted_nodes
                 .sample_node_ids(egress_attempt_count, &allow_ips),
         );
 
@@ -540,6 +547,7 @@ impl NetworkServiceInner {
         debug!(target: "network", "Connecting peers: {} sessions, {} pending + {} started", egress_count + ingress_count, handshake_count, started);
     }
 
+    // Kill connections of all dropped peers
     fn drop_peers(&self, io: &IoContext<NetworkIoMessage>) {
         {
             if self.dropped_nodes.read().len() == 0 {
@@ -588,8 +596,8 @@ impl NetworkServiceInner {
         let (socket, address) = {
             let address = {
                 // outgoing connection must pick node from trusted node table
-                let mut nodes = self.trusted_nodes.write();
-                if let Some(node) = nodes.get_mut(id) {
+                let mut nodes = self.trusted_nodes.read();
+                if let Some(node) = nodes.get(id) {
                     node.endpoint.address
                 } else {
                     debug!(target: "network", "Abort connect. Node expired");
@@ -679,7 +687,6 @@ impl NetworkServiceInner {
                 }
             }
         });
-
         match token {
             Some(token) => {
                 if let Some(id) = id {
