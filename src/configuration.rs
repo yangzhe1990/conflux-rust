@@ -1,7 +1,6 @@
 use clap;
 use log::LevelFilter;
-use std::fs::File;
-use std::io::prelude::*;
+use std::{fs::File, io::prelude::*};
 use toml;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -75,7 +74,7 @@ impl Configuration {
                 Some(port.parse().map_err(|_| "Invalid port".to_owned())?);
         }
         if let Some(port) = matches.value_of("udp-port") {
-            config.udp_port = 
+            config.udp_port =
                 Some(port.parse().map_err(|_| "Invalid udp-port".to_owned())?);
         }
         if let Some(port) = matches.value_of("jsonrpc-tcp-port") {

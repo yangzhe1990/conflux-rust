@@ -1,10 +1,11 @@
 use ethereum_types::H256;
 use parking_lot::RwLock;
 use primitives::SignedTransaction;
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{
+    cmp::Ordering,
+    collections::{BinaryHeap, HashMap},
+    sync::Arc,
+};
 
 #[derive(Debug)]
 pub struct TransactionRef {

@@ -1,7 +1,8 @@
 use ethereum_types::H256;
 use primitives::BlockNumber;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use {Message, MsgId};
+use Message;
+use MsgId;
 
 #[derive(Debug, PartialEq)]
 pub struct BlockHash(BlockNumber, H256);

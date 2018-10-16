@@ -1,15 +1,11 @@
-use ethereum_types::{H256, U256};
-use primitives::{
-    Block as InternalBlockBody, SignedTransaction, TransactionWithSignature,
-};
+use primitives::Block;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use {Message, MsgId};
-
-pub type BlockBody = InternalBlockBody;
+use Message;
+use MsgId;
 
 #[derive(Debug, PartialEq, Default)]
 pub struct BlockBodies {
-    pub bodies: Vec<Option<BlockBody>>,
+    pub bodies: Vec<Block>,
 }
 
 impl Message for BlockBodies {

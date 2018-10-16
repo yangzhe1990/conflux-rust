@@ -1,7 +1,7 @@
-use ethereum_types::{H256, U256};
 use primitives::BlockHeader;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use {Message, MsgId};
+use Message;
+use MsgId;
 
 #[derive(Debug, PartialEq, Default)]
 pub struct BlockHeaders {

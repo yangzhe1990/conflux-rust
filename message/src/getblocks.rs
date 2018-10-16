@@ -3,24 +3,24 @@ use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use Message;
 use MsgId;
 
-#[derive(Debug, PartialEq)]
-pub struct GetBlockBodies {
+#[derive(Debug, PartialEq, Default)]
+pub struct GetBlocks {
     pub hashes: Vec<H256>,
 }
 
-impl Message for GetBlockBodies {
-    fn msg_id(&self) -> MsgId { MsgId::GET_BLOCK_BODIES }
+impl Message for GetBlocks {
+    fn msg_id(&self) -> MsgId { MsgId::GET_BLOCKS }
 }
 
-impl Encodable for GetBlockBodies {
+impl Encodable for GetBlocks {
     fn rlp_append(&self, stream: &mut RlpStream) {
         stream.append_list(&self.hashes);
     }
 }
 
-impl Decodable for GetBlockBodies {
+impl Decodable for GetBlocks {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        Ok(GetBlockBodies {
+        Ok(GetBlocks {
             hashes: rlp.as_list()?,
         })
     }

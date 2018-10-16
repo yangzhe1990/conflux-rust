@@ -79,7 +79,8 @@ impl Encodable for Transaction {
 pub struct TransactionWithSignature {
     /// Plain Transaction.
     unsigned: Transaction,
-    /// The V field of the signature; helps describe which half of the curve our point falls in.
+    /// The V field of the signature; helps describe which half of the curve
+    /// our point falls in.
     v: u8,
     /// The R field of the signature; helps describe the point on the curve.
     r: U256,
@@ -113,7 +114,7 @@ impl Decodable for TransactionWithSignature {
             v: d.val_at(5)?,
             r: d.val_at(6)?,
             s: d.val_at(7)?,
-            hash: hash,
+            hash,
         })
     }
 }
@@ -177,6 +178,7 @@ impl Encodable for SignedTransaction {
 
 impl Deref for SignedTransaction {
     type Target = TransactionWithSignature;
+
     fn deref(&self) -> &Self::Target { &self.transaction }
 }
 
@@ -189,15 +191,15 @@ impl SignedTransaction {
     pub fn new(public: Public, transaction: TransactionWithSignature) -> Self {
         if transaction.is_unsigned() {
             SignedTransaction {
-                transaction: transaction,
+                transaction,
                 sender: UNSIGNED_SENDER,
                 public: None,
             }
         } else {
             let sender = public_to_address(&public);
             SignedTransaction {
-                transaction: transaction,
-                sender: sender,
+                transaction,
+                sender,
                 public: Some(public),
             }
         }

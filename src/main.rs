@@ -24,9 +24,10 @@ extern crate toml;
 
 extern crate blockgen;
 extern crate core;
+extern crate primitives;
+extern crate rpc as conflux_rpc;
 extern crate secret_store;
 extern crate txgen;
-extern crate rpc as conflux_rpc;
 // extern crate vm;
 
 mod configuration;
@@ -35,21 +36,26 @@ mod rpc;
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
-use core::state::AccountState;
-use core::transaction_pool::TransactionPool;
+use core::{
+    state::AccountState, transaction_pool::TransactionPool, ConsensusGraph,
+};
 use ctrlc::CtrlC;
 use log::LevelFilter;
-use log4rs::append::console::ConsoleAppender;
-use log4rs::append::file::FileAppender;
-use log4rs::config::{Appender, Config as LogConfig, Logger, Root};
+use log4rs::{
+    append::{console::ConsoleAppender, file::FileAppender},
+    config::{Appender, Config as LogConfig, Logger, Root},
+};
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
+use primitives::Block;
 use secret_store::SecretStore;
-use std::any::Any;
-use std::io::{self as stdio, Write};
-use std::process;
-use std::sync::Arc;
-use std::thread;
+use std::{
+    any::Any,
+    io::{self as stdio, Write},
+    process,
+    sync::Arc,
+    thread,
+};
 use txgen::TransactionGenerator;
 
 // Start all key components of Conflux and pass out their handles
@@ -61,28 +67,31 @@ fn start(
         None => network::NetworkConfiguration::default(),
     };
 
-    let ledger = core::Ledger::new_ref();
+    let ledger = Arc::new(core::Ledger::new());
     ledger.initialize_with_genesis();
 
     let txpool = TransactionPool::new_ref(10000);
     let secret_store = SecretStore::new_ref();
 
     let account_state = AccountState::new_ref();
-    account_state.import_random_accounts(secret_store.clone()).unwrap();
+    account_state
+        .import_random_accounts(secret_store.clone())
+        .unwrap();
 
     let execution_engine =
         core::ExecutionEngine::new_ref(ledger.clone(), account_state.clone());
 
-    let sync_params = core::SyncParams {
-        config: Default::default(),
-        network_config,
-        ledger: ledger.clone(),
-        execution_engine: execution_engine.clone(),
+    let genesis_block = Block::default();
+    let consensus = Arc::new(ConsensusGraph::with_genesis_block(genesis_block));
+
+    let sync_config = core::SynchronizationConfiguration {
+        network: network_config,
+        consensus,
     };
 
-    let mut sync_engine = core::SyncEngine::new(sync_params);
-    sync_engine.start();
-    let sync_engine_ref = Arc::new(sync_engine);
+    let mut sync = core::SynchronizationService::new(sync_config);
+    sync.start();
+    let sync = Arc::new(sync);
 
     let event_loop = EventLoop::spawn();
 
@@ -90,7 +99,7 @@ fn start(
         ledger.clone(),
         txpool.clone(),
         execution_engine.clone(),
-        sync_engine_ref.clone(),
+        sync.clone(),
     ));
     /*let bgen = blockgen.clone();
     let block_gen_handle = thread::spawn(move || {
@@ -101,7 +110,7 @@ fn start(
         remote: event_loop.raw_remote(),
         ledger: ledger.clone(),
         execution_engine: execution_engine.clone(),
-        sync_engine: sync_engine_ref.clone(),
+        sync: sync.clone(),
         block_gen: blockgen.clone(),
         exit: exit,
     };
@@ -128,7 +137,7 @@ fn start(
         event_loop,
         rpc_tcp_server,
         rpc_http_server,
-        sync_engine_ref,
+        sync,
         blockgen,
         secret_store.clone(),
         //block_gen_handle,
@@ -199,12 +208,14 @@ fn main() {
                     .appender("stdout")
                     .additive(false)
                     .build("network", conf.log_level),
-            ).logger(
+            )
+            .logger(
                 Logger::builder()
                     .appender("stdout")
                     .additive(false)
                     .build("rpc", conf.log_level),
-            ).build(Root::builder().appender("stdout").build(LevelFilter::Info))
+            )
+            .build(Root::builder().appender("stdout").build(LevelFilter::Info))
             .unwrap()
     } else {
         let log_file = FileAppender::builder()
@@ -219,12 +230,14 @@ fn main() {
                     .appender("logfile")
                     .additive(false)
                     .build("network", conf.log_level),
-            ).logger(
+            )
+            .logger(
                 Logger::builder()
                     .appender("logfile")
                     .additive(false)
                     .build("rpc", conf.log_level),
-            ).build(Root::builder().appender("stdout").build(LevelFilter::Info))
+            )
+            .build(Root::builder().appender("stdout").build(LevelFilter::Info))
             .unwrap()
     };
     log4rs::init_config(log_config).unwrap();

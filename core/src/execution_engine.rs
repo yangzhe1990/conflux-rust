@@ -1,18 +1,17 @@
-use primitives::{BlockId, BlockNumber};
+use primitives::EpochNumber;
 use state::AccountStateRef;
 use LedgerRef;
 
 use ethereum_types::H256;
 use parking_lot::RwLock;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 pub struct ExecutionEngine {
     ledger: LedgerRef,
     pub state: AccountStateRef,
 
-    last_block_number: BlockNumber,
-    block_hashes: Arc<RwLock<HashMap<BlockNumber, H256>>>,
+    epoch_number: EpochNumber,
+    epoch_hashes: Arc<RwLock<HashMap<EpochNumber, H256>>>,
 }
 
 pub type ExecutionEngineRef = Arc<ExecutionEngine>;
@@ -22,8 +21,8 @@ impl ExecutionEngine {
         ExecutionEngine {
             ledger: ledger,
             state: state,
-            last_block_number: 0,
-            block_hashes: Arc::new(RwLock::new(HashMap::new())),
+            epoch_number: 0,
+            epoch_hashes: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -33,54 +32,48 @@ impl ExecutionEngine {
         Arc::new(Self::new(ledger, state))
     }
 
-    pub fn execute_up_to(&self, index: BlockNumber) {
-        let mut block_hashes = self.block_hashes.write();
+    pub fn execute_up_to(&self, number: EpochNumber) {
+        let mut epoch_hashes = self.epoch_hashes.write();
 
-        let mut block_number = 0;
-        while block_number <= index {
-            let block_hash = self
-                .ledger
-                .block_hash(BlockId::Number(block_number))
-                .unwrap();
-            if block_hashes.get(&block_number) == Some(&block_hash) {
-                block_number += 1;
+        let mut epoch_number = 0;
+        while epoch_number <= number {
+            let epoch_hash = self.ledger.epoch_hash(epoch_number).unwrap();
+            if epoch_hashes.get(&epoch_number) == Some(&epoch_hash) {
+                epoch_number += 1;
             } else {
                 break;
             }
         }
 
-        if block_number == self.last_block_number {
-            block_number += 1;
-            while block_number <= index {
-                let block_hash = self
+        if epoch_number == self.epoch_number {
+            epoch_number += 1;
+            while epoch_number <= number {
+                let epoch_hash = self.ledger.epoch_hash(epoch_number).unwrap();
+                epoch_hashes.insert(epoch_number, epoch_hash);
+
+                let transactions = self
                     .ledger
-                    .block_hash(BlockId::Number(block_number))
+                    .epoch_transactions_by_hash(&epoch_hash)
                     .unwrap();
-                block_hashes.insert(block_number, block_hash);
-
-                let block =
-                    self.ledger.block_body_by_hash(&block_hash).unwrap();
-                for txn in &block.transactions {
-                    self.state.execute(txn);
+                for transaction in &transactions {
+                    self.state.execute(transaction);
                 }
-
-                block_number += 1;
+                epoch_number += 1;
             }
         } else {
             self.state.clear();
-            block_hashes.clear();
+            epoch_hashes.clear();
 
-            for block_number in 0..(index + 1) {
-                let block_hash = self
+            for epoch_number in 0..(number + 1) {
+                let epoch_hash = self.ledger.epoch_hash(epoch_number).unwrap();
+                epoch_hashes.insert(epoch_number, epoch_hash);
+
+                let transactions = self
                     .ledger
-                    .block_hash(BlockId::Number(block_number))
+                    .epoch_transactions_by_hash(&epoch_hash)
                     .unwrap();
-                block_hashes.insert(block_number, block_hash);
-
-                let block =
-                    self.ledger.block_body_by_hash(&block_hash).unwrap();
-                for txn in &block.transactions {
-                    self.state.execute(txn);
+                for transaction in &transactions {
+                    self.state.execute(transaction);
                 }
             }
         }

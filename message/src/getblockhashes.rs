@@ -1,6 +1,7 @@
-use ethereum_types::{H256, U256};
+use ethereum_types::H256;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use {Message, MsgId};
+use Message;
+use MsgId;
 
 #[derive(Debug, PartialEq)]
 pub struct GetBlockHashes {

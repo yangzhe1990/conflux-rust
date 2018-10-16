@@ -1,24 +1,27 @@
 use blockgen::BlockGeneratorRef;
-use core::PeerInfo;
-use core::{ExecutionEngineRef, LedgerRef, SyncEngineRef};
+use conflux_rpc::types::{
+    Block as RpcBlock, BlockTransactions, Transaction as RpcTransaction,
+};
+use core::{
+    ExecutionEngineRef, LedgerRef, PeerInfo, SharedSynchronizationService,
+};
 use ethereum_types::{Address, H256, U256};
-use http::Server as HttpServer;
-use http::ServerBuilder as HttpServerBuilder;
+use http::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
-use network::node_table::{NodeEntry, NodeEndpoint, NodeId};
+use network::node_table::{NodeEndpoint, NodeEntry, NodeId};
 use parity_reactor::TokioRemote;
 use parking_lot::{Condvar, Mutex};
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::sync::Arc;
-use tcp::Server as TcpServer;
-use tcp::ServerBuilder as TcpServerBuilder;
-use conflux_rpc::types::{Block as RpcBlock, BlockTransactions, Transaction as RpcTransaction};
+use std::{
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    sync::Arc,
+};
+use tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder};
 
 pub struct Dependencies {
     pub remote: TokioRemote,
     pub ledger: LedgerRef,
     pub execution_engine: ExecutionEngineRef,
-    pub sync_engine: SyncEngineRef,
+    pub sync: SharedSynchronizationService,
     pub block_gen: BlockGeneratorRef,
     pub exit: Arc<(Mutex<bool>, Condvar)>,
 }
@@ -97,33 +100,30 @@ build_rpc_trait! {
 struct RpcImpl {
     ledger: LedgerRef,
     execution_engine: ExecutionEngineRef,
-    sync_engine: SyncEngineRef,
+    sync: SharedSynchronizationService,
     block_gen: BlockGeneratorRef,
     exit: Arc<(Mutex<bool>, Condvar)>,
 }
 
 impl RpcImpl {
     fn new(
-        ledger: LedgerRef,
-        execution_engine: ExecutionEngineRef,
-        sync_engine: SyncEngineRef,
-        block_gen: BlockGeneratorRef,
+        ledger: LedgerRef, execution_engine: ExecutionEngineRef,
+        sync: SharedSynchronizationService, block_gen: BlockGeneratorRef,
         exit: Arc<(Mutex<bool>, Condvar)>,
-    ) -> Self {
+    ) -> Self
+    {
         RpcImpl {
-            ledger: ledger,
-            execution_engine: execution_engine,
-            sync_engine: sync_engine,
-            block_gen: block_gen,
-            exit: exit,
+            ledger,
+            execution_engine,
+            sync,
+            block_gen,
+            exit,
         }
     }
 }
 
 impl Rpc for RpcImpl {
-    fn say_hello(&self) -> RpcResult<String> {
-        Ok("Hello, world".into())
-    }
+    fn say_hello(&self) -> RpcResult<String> { Ok("Hello, world".into()) }
 
     fn get_balance(&self, addr: Address) -> RpcResult<U256> {
         info!("RPC Request: get_balance({:?})", addr);
@@ -139,37 +139,50 @@ impl Rpc for RpcImpl {
 
     fn get_best_block_hash(&self) -> RpcResult<H256> {
         info!("RPC Request: get_best_block_hash()");
-        Ok(self.ledger.best_block_hash())
+        Ok(self.ledger.best_epoch_hash())
     }
 
     fn get_block_count(&self) -> RpcResult<usize> {
         info!("RPC Request: get_block_count()");
-        Ok(self.ledger.best_block_number() as usize)
+        Ok(self.ledger.best_epoch_number() as usize)
     }
 
     fn get_block(&self, block_hash: H256) -> RpcResult<RpcBlock> {
         info!("RPC Request: get_block({:?})", block_hash);
 
-        if let Some(block_header) = self.ledger.block_header_by_hash(&block_hash) {
-            if let Some(block_body) = self.ledger.block_body_by_hash(&block_hash) {
-                return Ok(RpcBlock {
-                    hash: block_header.hash().into(),
-                    parent_hash: block_header.parent_hash().clone().into(),
-                    author: block_header.author().clone().into(),
-                    state_root: block_header.state_root().clone().into(),
-                    transactions_root: block_header.transactions_root().clone().into(),
-                    number: Some(block_header.number().into()),
-                    gas_used: U256::zero().into(),
-                    gas_limit: U256::zero().into(),
-                    timestamp: block_header.timestamp().into(),
-                    difficulty: block_header.difficulty().into(),
-                    total_difficulty: None,
-                    transactions: BlockTransactions::Full(
-                        block_body.transactions.iter().map(|signed_tx|
-                            RpcTransaction::from_signed(signed_tx)).collect()
-                    ),
-                    size: None,
-                });
+        if let Some(block_header) =
+            self.ledger.block_header_by_hash(&block_hash)
+        {
+            if let Some(block_body) = self.ledger.block_by_hash(&block_hash) {
+                //                return Ok(RpcBlock {
+                //                    hash: block_header.hash().into(),
+                //                    parent_hash:
+                // block_header.parent_hash().clone().into(),
+                //                    author:
+                // block_header.author().clone().into(),
+                //                    state_root: Default::default(),
+                //                    transactions_root:
+                // block_header.transactions_root().clone().into(),
+                //                    number: Some(Default::defualt()),
+                //                    gas_used: U256::zero().into(),
+                //                    gas_limit: U256::zero().into(),
+                //                    timestamp:
+                // block_header.timestamp().into(),
+                // difficulty:
+                // block_header.
+                // difficulty().
+                // into(),                    total_difficulty:
+                // None,                    transactions:
+                // BlockTransactions::Full(
+                // block_body.
+                // transactions.iter().
+                // map(|signed_tx|
+                // RpcTransaction::
+                // from_signed(signed_tx)).
+                // collect()                    ),
+                //                    size: None,
+                //                });
+                return Err(RpcError::internal_error());
             }
         }
         Err(RpcError::invalid_params("Invalid block"))
@@ -184,7 +197,7 @@ impl Rpc for RpcImpl {
             },
         };
         info!("RPC Request: add_peer({:?})", node.clone());
-        match self.sync_engine.add_peer(node) {
+        match self.sync.add_peer(node) {
             Ok(x) => Ok(x),
             Err(_) => Err(RpcError::internal_error()),
         }
@@ -199,7 +212,7 @@ impl Rpc for RpcImpl {
             },
         };
         info!("RPC Request: drop_peer({:?})", node.clone());
-        match self.sync_engine.drop_peer(node) {
+        match self.sync.drop_peer(node) {
             Ok(_) => Ok(()),
             Err(_) => Err(RpcError::internal_error()),
         }
@@ -215,7 +228,7 @@ impl Rpc for RpcImpl {
 
     fn get_peer_info(&self) -> RpcResult<Vec<PeerInfo>> {
         info!("RPC Request: get_peer_info");
-        Ok(self.sync_engine.get_peer_info())
+        Ok(self.sync.get_peer_info())
     }
 
     fn stop(&self) -> RpcResult<()> {
@@ -234,18 +247,18 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
         RpcImpl::new(
             dependencies.ledger.clone(),
             dependencies.execution_engine.clone(),
-            dependencies.sync_engine.clone(),
+            dependencies.sync.clone(),
             dependencies.block_gen.clone(),
             dependencies.exit.clone(),
-        ).to_delegate(),
+        )
+        .to_delegate(),
     );
 
     handler
 }
 
 pub fn new_tcp(
-    conf: TcpConfiguration,
-    dependencies: &Dependencies,
+    conf: TcpConfiguration, dependencies: &Dependencies,
 ) -> Result<Option<TcpServer>, String> {
     if !conf.enabled {
         return Ok(None);
@@ -266,8 +279,7 @@ pub fn new_tcp(
 }
 
 pub fn new_http(
-    conf: HttpConfiguration,
-    dependencies: &Dependencies,
+    conf: HttpConfiguration, dependencies: &Dependencies,
 ) -> Result<Option<HttpServer>, String> {
     if !conf.enabled {
         return Ok(None);

@@ -5,8 +5,10 @@ use parking_lot::RwLock;
 use primitives::SignedTransaction;
 use rand::prelude::*;
 use secret_store::SecretStoreRef;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 lazy_static! {
     pub static ref TEST_ADDRESS: Address = Address::zero();
