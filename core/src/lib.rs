@@ -21,9 +21,12 @@ extern crate slab;
 mod consensus;
 pub mod execution_engine;
 mod ledger;
-pub mod state;
 mod sync;
 pub mod transaction_pool;
+
+pub(crate) mod execution;
+pub(crate) mod snapshot;
+pub(crate) mod storage;
 
 pub use self::{
     consensus::{ConsensusGraph, SharedConsensusGraph},

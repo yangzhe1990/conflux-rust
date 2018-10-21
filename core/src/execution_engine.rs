@@ -1,5 +1,5 @@
+use execution::AccountStateRef;
 use primitives::EpochNumber;
-use state::AccountStateRef;
 use LedgerRef;
 
 use ethereum_types::H256;

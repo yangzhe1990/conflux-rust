@@ -1,4 +1,4 @@
-use ethereum_types::{Address, U256};
+use ethereum_types::{Address, H256, U256};
 use ethkey::{public_to_address, Generator, Random};
 use network::Error;
 use parking_lot::RwLock;
@@ -14,6 +14,13 @@ lazy_static! {
     pub static ref TEST_ADDRESS: Address = Address::zero();
 }
 
+pub mod storage_key;
+
+pub type EpochId = ethereum_types::H256;
+
+/// TODO: wrap primitives::Account for data, hold reference to the state
+/// where transaction executes upon, and add methods to interact with accounts.
+///
 /// Single account in the system
 pub struct Account {
     balance: U256,
@@ -31,6 +38,10 @@ impl Account {
     pub fn balance(&self) -> U256 { self.balance }
 }
 
+/// TODO: There is no reason to keep a collection of Accounts in memory because
+/// Account isn't cacheable across epochs due to unpredicable block execution
+/// order. Therefore caching at state level is the right place.
+///
 /// Representation of the entire state of all accounts in the system.
 pub struct AccountState {
     pub accounts: RwLock<HashMap<Address, Account>>,
