@@ -10,13 +10,13 @@ pub use super::impls::state_union::StateUnion;
 // concrete struct is put into inner mod, because the implementation is
 // anticipated to be too complex to present in the same file of the API.
 // TODO(yz): check if this is the best way to organize code for this library.
-pub trait StateUnionTrait<'a> {
+pub trait StateUnionTrait {
     fn load_from_snapshot(snapshot: &Snapshot) -> Self;
     fn make_snapshot(&self, end_block_id: EpochId) -> Snapshot;
     // Readonly state.
-    fn get_state_at(&'a self, epoch_id: EpochId) -> State<'a>;
+    fn get_state_at<'a>(&'a self, epoch_id: EpochId) -> State<'a>;
     // Writable state.
-    fn get_state_for_transaction_execution(
+    fn get_state_for_transaction_execution<'a>(
         &'a self, epoch_id: EpochId, parent_epoch_id: EpochId,
     ) -> State<'a>;
     fn drop_state_outside(&self, end_block_id: EpochId);
