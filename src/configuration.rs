@@ -2,6 +2,8 @@ use clap;
 use log::LevelFilter;
 use std::{fs::File, io::prelude::*};
 use toml;
+use network::{NetworkConfiguration, ErrorKind};
+use network::node_table::validate_node_url;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Configuration {
@@ -11,6 +13,7 @@ pub struct Configuration {
     pub jsonrpc_http_port: Option<u16>,
     pub log_file: Option<String>,
     pub log_level: LevelFilter,
+    pub bootnodes: Option<String>,
 }
 
 impl Default for Configuration {
@@ -22,6 +25,7 @@ impl Default for Configuration {
             jsonrpc_http_port: None,
             log_file: None,
             log_level: LevelFilter::Info,
+            bootnodes: None,
         }
     }
 }
@@ -67,6 +71,9 @@ impl Configuration {
                     None => LevelFilter::Info,
                 };
             }
+            if let Some(bootnodes) = config_value.get("bootnodes") {
+                config.bootnodes = bootnodes.as_str().map(|x| x.to_owned());
+            }
         }
 
         if let Some(port) = matches.value_of("port") {
@@ -103,5 +110,31 @@ impl Configuration {
         };
 
         Ok(config)
+    }
+
+    pub fn net_config(&self) -> NetworkConfiguration {
+        let mut network_config = match self.port {
+            Some(port) => NetworkConfiguration::new_with_port(port),
+            None => NetworkConfiguration::default(),
+        };
+
+        network_config.boot_nodes = to_bootnodes(&self.bootnodes).expect("Error parsing bootnodes!");
+
+        network_config
+    }
+}
+
+/// Validates and formats bootnodes option.
+pub fn to_bootnodes(bootnodes: &Option<String>) -> Result<Vec<String>, String> {
+    match *bootnodes {
+        Some(ref x) if !x.is_empty() => x.split(',').map(|s| {
+            match validate_node_url(s).map(Into::into) {
+                None => Ok(s.to_owned()),
+                Some(ErrorKind::AddressResolve(_)) => Err(format!("Failed to resolve hostname of a boot node: {}", s)),
+                Some(_) => Err(format!("Invalid node address format given for a boot node: {}", s)),
+            }
+        }).collect(),
+        Some(_) => Ok(vec![]),
+        None => Ok(vec![])
     }
 }

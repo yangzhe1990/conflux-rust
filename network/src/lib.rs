@@ -57,7 +57,8 @@ use service::{DEFAULT_HOUSEKEEPING_TIMEOUT,
               DEFAULT_DISCOVERY_REFRESH_TIMEOUT,
               DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT,
               DEFAULT_DISCOVERY_ROUND_TIMEOUT,
-              DEFAULT_NODE_TABLE_TIMEOUT};
+              DEFAULT_NODE_TABLE_TIMEOUT,
+              DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
@@ -96,6 +97,8 @@ pub struct NetworkConfiguration {
     pub discovery_round_timeout: Duration,
     /// Timeout duration for persisting node table
     pub node_table_timeout: Duration,
+    /// Connection lifetime threshold for promotion
+    pub connection_lifetime_for_promotion: Duration,
 }
 
 impl Default for NetworkConfiguration {
@@ -123,6 +126,7 @@ impl NetworkConfiguration {
             fast_discovery_refresh_timeout: DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT,
             discovery_round_timeout: DEFAULT_DISCOVERY_ROUND_TIMEOUT,
             node_table_timeout: DEFAULT_NODE_TABLE_TIMEOUT,
+            connection_lifetime_for_promotion: DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION,
         }
     }
 

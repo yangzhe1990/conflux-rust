@@ -16,7 +16,7 @@ lazy_static! {
 
 pub mod storage_key;
 
-pub type EpochId = ethereum_types::H256;
+pub type EpochId = H256;
 
 /// TODO: wrap primitives::Account for data, hold reference to the state
 /// where transaction executes upon, and add methods to interact with accounts.

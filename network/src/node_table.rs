@@ -172,6 +172,22 @@ impl NodeContact {
         }
     }
 
+    pub fn success_for_duration(&self, due: Duration) -> bool {
+        let mut res = false;
+        match *self {
+            NodeContact::Success(t) => {
+                if let Ok(d) = t.elapsed() {
+                    if d > due {
+                        res = true;
+                    }
+                }
+            },
+            _ => {}
+        };
+
+        res
+    }
+
     /// Filters and old contact, returning `None` if it happened longer than a
     /// week ago.
     fn recent(&self) -> Option<&NodeContact> {
@@ -190,8 +206,19 @@ impl NodeContact {
 pub struct Node {
     pub id: NodeId,
     pub endpoint: NodeEndpoint,
-    pub peer_type: PeerType,
+
+    // Updated by both udp ping/pong message in discovery protocol
+    // and tcp connection event.
+    // This metric can be used in prioritizing selection of peers
+    // to establish outgoing connections.
+    // It can also be used in considering demoting a
+    // trusted peer to untrusted.
     pub last_contact: Option<NodeContact>,
+    // Updated by tcp connection event.
+    // This metric is used to consider when to promote untrusted
+    // peers to trusted. This is a runtime information which
+    // does not need to be made persistent.
+    pub last_connected: Option<NodeContact>,
     pub stream_token: Option<StreamToken>,
 }
 
@@ -200,8 +227,8 @@ impl Node {
         Node {
             id,
             endpoint,
-            peer_type: PeerType::Optional,
             last_contact: None,
+            last_connected: None,
             stream_token: None,
         }
     }
@@ -226,10 +253,10 @@ impl FromStr for Node {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (id, endpoint) =
-            if s.len() > 136 && &s[0..8] == "cfxnode://" && &s[136..137] == "@" {
+            if s.len() > 138 && &s[0..10] == "cfxnode://" && &s[138..139] == "@" {
                 (
-                    s[8..136].parse().map_err(|_| ErrorKind::InvalidNodeId)?,
-                    NodeEndpoint::from_str(&s[137..])?,
+                    s[10..138].parse().map_err(|_| ErrorKind::InvalidNodeId)?,
+                    NodeEndpoint::from_str(&s[139..])?,
                 )
             } else {
                 (NodeId::new(), NodeEndpoint::from_str(s)?)
@@ -238,8 +265,8 @@ impl FromStr for Node {
         Ok(Node {
             id,
             endpoint,
-            peer_type: PeerType::Optional,
             last_contact: None,
+            last_connected: None,
             stream_token: None,
         })
     }
@@ -413,6 +440,33 @@ impl NodeTable {
         node_ids
     }
 
+    // If node exists, update last contact, insert otherwise
+    pub fn update_last_contact(&mut self, mut node: Node) {
+        let mut _index = NodeReputationIndex::default();
+        let mut exist = false;
+        if let Some(index) = self.node_index.get_mut(&node.id) {
+            _index = *index;
+            exist = true;
+        }
+
+        let target_node_rep = Self::node_reputation(&node.last_contact);
+
+        if !exist {
+            self.add_to_reputation_level(target_node_rep, node);
+            return;
+        }
+
+        // check whether the node position will change
+        if target_node_rep == _index.0 {
+            self.node_reputation_table[_index.0][_index.1].last_contact = node.last_contact;
+        } else {
+            let mut removed_node = self.remove_from_reputation_level(&_index).unwrap();
+            removed_node.last_contact = node.last_contact;
+            self.add_to_reputation_level(target_node_rep, removed_node);
+        }
+    }
+
+    // This function does not preserve runtime connection information
     pub fn add_node(&mut self, mut node: Node, preserve_last_contact: bool) {
         let mut _index = NodeReputationIndex::default();
         let mut exist = false;
@@ -598,19 +652,19 @@ impl NodeTable {
         self.node_index.contains_key(id)
     }
 
-    pub fn remove_with_id(&mut self, id: &NodeId) {
+    pub fn remove_with_id(&mut self, id: &NodeId) -> Option<Node> {
         let mut _index;
         if let Some(index) = self.node_index.get(id) {
             _index = *index;
         } else {
-            return;
+            return None;
         }
 
-        self.remove_from_reputation_level(&_index);
+        self.remove_from_reputation_level(&_index)
     }
 
     /// Set last contact as failure for a node
-    pub fn note_failure(&mut self, id: &NodeId) {
+    pub fn note_failure(&mut self, id: &NodeId, by_connection: bool) {
         let mut _index;
         if let Some(index) = self.node_index.get(id) {
             _index = *index;
@@ -622,9 +676,15 @@ impl NodeTable {
         if target_node_rep == _index.0 {
             let node = &mut self.node_reputation_table[_index.0][_index.1];
             node.last_contact = Some(NodeContact::failure());
+            if by_connection {
+                node.last_connected = Some(NodeContact::failure());
+            }
         } else {
             if let Some(mut node) = self.remove_from_reputation_level(&_index) {
                 node.last_contact = Some(NodeContact::failure());
+                if by_connection {
+                    node.last_connected = Some(NodeContact::failure());
+                }
                 self.add_to_reputation_level(target_node_rep, node);
             } else {
                 panic!("Should not happen!");
@@ -633,7 +693,7 @@ impl NodeTable {
     }
 
     /// Set last contact as success for a node
-    pub fn note_success(&mut self, id: &NodeId) {
+    pub fn note_success(&mut self, id: &NodeId, by_connection: bool, token: Option<StreamToken>) {
         let mut _index;
         if let Some(index) = self.node_index.get(id) {
             _index = *index;
@@ -645,9 +705,21 @@ impl NodeTable {
         if target_node_rep == _index.0 {
             let node = &mut self.node_reputation_table[_index.0][_index.1];
             node.last_contact = Some(NodeContact::success());
+            if by_connection {
+                node.last_connected = Some(NodeContact::success());
+                if token != None {
+                    node.stream_token = token;
+                }
+            }
         } else {
             if let Some(mut node) = self.remove_from_reputation_level(&_index) {
                 node.last_contact = Some(NodeContact::success());
+                if by_connection {
+                    node.last_connected = Some(NodeContact::success());
+                    if token != None {
+                        node.stream_token = token;
+                    }
+                }
                 self.add_to_reputation_level(target_node_rep, node);
             } else {
                 panic!("Should not happen!");

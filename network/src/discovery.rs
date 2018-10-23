@@ -249,19 +249,16 @@ impl Discovery {
         } else if !self.is_allowed(&entry) {
             debug!(target: "discovery", "Address not allowed: {:?}", entry);
         } else {
-            let mut node = Node::new(entry.id, entry.endpoint);
-            node.last_contact = Some(NodeContact::success());
-            let mut is_trusted = false;
-            {
-                let mut trusted_nodes = uio.trusted_nodes.write();
-                if trusted_nodes.contains(&node.id) {
-                    is_trusted = true;
-                    trusted_nodes.add_node(node.clone(), false);
-                }
-            }
+            let mut trusted = uio.trusted_nodes.write();
+            let mut untrusted = uio.untrusted_nodes.write();
 
-            if !is_trusted {
-                uio.add_untrusted_node(node, false);
+            if trusted.contains(&entry.id) {
+                debug_assert!(!untrusted.contains(&entry.id));
+                trusted.note_success(&entry.id, false, None);
+            } else {
+                let mut node = Node::new(entry.id, entry.endpoint);
+                node.last_contact = Some(NodeContact::success());
+                untrusted.update_last_contact(node);
             }
         }
         Ok(())
@@ -299,9 +296,7 @@ impl Discovery {
         };
 
         if let Some(node) = expected_node {
-            let mut node = Node::new(node.id, node.endpoint.clone());
-            node.last_contact = Some(NodeContact::success());
-            uio.add_trusted_node(node, false);
+            uio.discover_trusted_node(&node);
             Ok(())
         } else {
             debug!(target: "discovery", "Got unexpected Pong from {:?} ; request not found", &from);
@@ -450,7 +445,7 @@ impl Discovery {
     }
 
     fn expire_node_request(&mut self, uio: &UdpIoContext, node_id: NodeId) {
-        uio.trusted_nodes.write().note_failure(&node_id);
+        uio.trusted_nodes.write().note_failure(&node_id, false);
     }
 
     fn update_new_nodes(&mut self, uio: &UdpIoContext) {
@@ -562,7 +557,7 @@ fn assemble_packet(
 ) -> Result<Bytes, Error> {
     let mut packet = Bytes::with_capacity(bytes.len() + 32 + 65 + 1 + 1);
     packet.push(UDP_PROTOCOL_DISCOVERY);
-    packet.resize(32 + 65, 0); // Filled in below
+    packet.resize(1 + 32 + 65, 0); // Filled in below
     packet.push(packet_id);
     packet.extend_from_slice(bytes);
 

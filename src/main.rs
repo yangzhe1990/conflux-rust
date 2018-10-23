@@ -62,10 +62,7 @@ use txgen::TransactionGenerator;
 fn start(
     conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<Box<Any>, String> {
-    let network_config = match conf.port {
-        Some(port) => network::NetworkConfiguration::new_with_port(port),
-        None => network::NetworkConfiguration::default(),
-    };
+    let network_config = conf.net_config();
 
     let ledger = Arc::new(core::Ledger::new());
     ledger.initialize_with_genesis();
@@ -193,6 +190,13 @@ fn main() {
                 .long("config")
                 .value_name("FILE")
                 .help("Sets a custom config file")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("bootnodes")
+                .long("bootnodes")
+                .value_name("NODES")
+                .help("Sets a custom list of bootnodes")
                 .takes_value(true),
         )
         .get_matches_from(std::env::args().collect::<Vec<_>>());
