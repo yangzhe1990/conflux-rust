@@ -24,7 +24,8 @@ mod ledger;
 mod sync;
 pub mod transaction_pool;
 
-pub(crate) mod execution;
+// TODO: why is execution used by transactiongen?
+pub mod execution;
 pub(crate) mod snapshot;
 pub(crate) mod storage;
 

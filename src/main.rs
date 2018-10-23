@@ -37,7 +37,7 @@ use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
 use core::{
-    state::AccountState, transaction_pool::TransactionPool, ConsensusGraph,
+    execution::AccountState, transaction_pool::TransactionPool, ConsensusGraph,
 };
 use ctrlc::CtrlC;
 use log::LevelFilter;
