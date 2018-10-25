@@ -212,9 +212,7 @@ impl Ledger {
         //        }
     }
 
-    pub fn adjust_main_chain(
-        &self, mut blocks_to_adjust: VecDeque<H256>,
-    ) -> bool {
+    pub fn adjust_main_chain(&self, blocks_to_adjust: VecDeque<H256>) -> bool {
         false
         //
         //        let mut best_block = self.best_block.write();

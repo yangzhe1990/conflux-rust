@@ -1,5 +1,3 @@
-use primitives::{Block, BlockHeader};
-
 mod error;
 mod synchronization_graph;
 mod synchronization_protocol_handler;

@@ -7,7 +7,6 @@ use network::{
     node_table::NodeEntry, Error as NetworkError, NetworkConfiguration,
     NetworkService, PeerInfo,
 };
-use primitives::Block;
 use std::sync::Arc;
 
 pub struct SynchronizationConfiguration {

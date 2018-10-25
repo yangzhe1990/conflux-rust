@@ -2,17 +2,11 @@ use super::merkle::MerkleHash;
 use alloc::alloc::dealloc;
 use core::{alloc::Layout, slice};
 use std::{
-    assert_eq,
-    cell::Cell,
     cmp::min,
-    io::{
-        Error,
-        ErrorKind::{self, NotFound},
-    },
-    marker::PhantomData,
+    io::{Error, ErrorKind::NotFound},
     mem::{self, replace},
     ops::{Deref, DerefMut},
-    ptr::{null_mut, NonNull},
+    ptr::null_mut,
     result::Result,
     vec::Vec,
 };
@@ -114,7 +108,7 @@ impl MaybeInPlaceByteArray {
         let is_ptr = size > Self::MAX_INPLACE_SIZE;
         let size = size as usize;
         unsafe {
-            if (is_ptr) {
+            if is_ptr {
                 self.ptr_slice(size)
             } else {
                 &self.in_place[0..size]
@@ -126,7 +120,7 @@ impl MaybeInPlaceByteArray {
         let is_ptr = size > Self::MAX_INPLACE_SIZE;
         let size = size as usize;
         unsafe {
-            if (is_ptr) {
+            if is_ptr {
                 self.ptr_into_vec(size)
             } else {
                 Vec::from(&self.in_place[0..size])
@@ -136,8 +130,8 @@ impl MaybeInPlaceByteArray {
 
     /// The @size: u16 parameter reminds the caller to check if the vector is
     /// over sized.
-    fn new(value: Vec<u8>, size /* < 65536 */: u16) -> Self {
-        if (size > Self::MAX_INPLACE_SIZE) {
+    fn new(value: Vec<u8>, size: u16) -> Self {
+        if size > Self::MAX_INPLACE_SIZE {
             Self {
                 ptr: Box::into_raw(value.into_boxed_slice()) as *mut u8,
             }
@@ -191,14 +185,14 @@ impl MaybeNodeRef {
 
 impl From<MaybeNodeRef> for Option<NodeRef> {
     fn from(x: MaybeNodeRef) -> Self {
-        if (x.index == MaybeNodeRef::NULL) {
+        if x.index == MaybeNodeRef::NULL {
             Option::None
-        } else if (MaybeNodeRef::ON_DISK_BIT & x.index != 0) {
-            Option::Some(NodeRef::ON_DISK {
+        } else if MaybeNodeRef::ON_DISK_BIT & x.index != 0 {
+            Option::Some(NodeRef::OnDisk {
                 index: (MaybeNodeRef::ON_DISK_BIT ^ x.index) as usize,
             })
         } else {
-            Option::Some(NodeRef::IN_MEMORY {
+            Option::Some(NodeRef::InMemory {
                 index: (MaybeNodeRef::MAX_INDEX ^ x.index) as usize,
             })
         }
@@ -210,8 +204,8 @@ impl From<MaybeNodeRef> for Option<NodeRef> {
 // current commit.
 #[derive(Copy, Clone)]
 enum NodeRef {
-    IN_MEMORY { index: usize },
-    ON_DISK { index: usize },
+    InMemory { index: usize },
+    OnDisk { index: usize },
 }
 
 // What if memory alloc table happens and changes?
@@ -230,7 +224,7 @@ impl Drop for TrieNode {
     fn drop(&mut self) {
         unsafe {
             let size = self.value_size;
-            if (size > MaybeInPlaceByteArray::MAX_INPLACE_SIZE) {
+            if size > MaybeInPlaceByteArray::MAX_INPLACE_SIZE {
                 dealloc(
                     self.value.ptr,
                     Layout::from_size_align_unchecked(
@@ -243,7 +237,7 @@ impl Drop for TrieNode {
 
         unsafe {
             let size = self.get_compressed_path_size();
-            if (size > MaybeInPlaceByteArray::MAX_INPLACE_SIZE) {
+            if size > MaybeInPlaceByteArray::MAX_INPLACE_SIZE {
                 dealloc(
                     self.path.ptr,
                     Layout::from_size_align_unchecked(
@@ -272,7 +266,7 @@ impl TrieNode {
 
     fn value(&self) -> Option<&[u8]> {
         let size = self.value_size;
-        if (size > 0) {
+        if size > 0 {
             Option::Some(&self.value.get_slice(size))
         } else {
             Option::None
@@ -286,7 +280,7 @@ impl TrieNode {
     fn value_into_vec(&mut self) -> Option<Vec<u8>> {
         let size = self.value_size;
         let maybe_value: Option<Vec<u8>>;
-        if (size > 0) {
+        if size > 0 {
             maybe_value = Some(self.value.into_vec(size));
             self.value_size = 0;
         } else {
@@ -374,17 +368,15 @@ enum WalkStop<'key, 'trie> {
 }
 
 impl<'key, 'trie> WalkStop<'key, 'trie> {
-    const ChildNotFoundReadOnly: WalkStop<'key, 'trie> =
-        WalkStop::ChildNotFound {
-            key_remaining: &[],
-            child_index: 0,
-        };
-    const PathDivertedReadOnly: WalkStop<'key, 'trie> =
-        WalkStop::PathDiverted {
-            // I wish I could use Default::default() here.
-            key_remaining: &[],
-            maybe_matched_path: Option::None,
-        };
+    const CHILD_NOT_FOUND: WalkStop<'key, 'trie> = WalkStop::ChildNotFound {
+        key_remaining: &[],
+        child_index: 0,
+    };
+    const PATH_DIVERTED: WalkStop<'key, 'trie> = WalkStop::PathDiverted {
+        // I wish I could use Default::default() here.
+        key_remaining: &[],
+        maybe_matched_path: Option::None,
+    };
 }
 
 trait AccessMode {
@@ -425,13 +417,13 @@ impl TrieNode {
         for i in 0..memcmp_len {
             // TODO(yz): check if compiler skips range check. Probably not
             // because "-" in memcmp_len calculation may underflow.
-            if (path_slice[i] != key[i]) {
+            if path_slice[i] != key[i] {
                 if AM::is_read_only() {
-                    return WalkStop::PathDivertedReadOnly;
+                    return WalkStop::PATH_DIVERTED;
                 } else {
-                    let matched_path = if ((path_slice[i] ^ key[i])
+                    let matched_path = if (path_slice[i] ^ key[i])
                         & Self::BITS_0_3_MASK
-                        == 0)
+                        == 0
                     {
                         // "First half" matched
                         CompressedPath {
@@ -452,11 +444,11 @@ impl TrieNode {
             }
         }
         // Key is fully consumed, get value attached.
-        if (key.len() == memcmp_len) {
+        if key.len() == memcmp_len {
             // Compressed path isn't fully consumed.
-            if (path_slice.len() > memcmp_len) {
+            if path_slice.len() > memcmp_len {
                 if AM::is_read_only() {
-                    return WalkStop::PathDivertedReadOnly;
+                    return WalkStop::PATH_DIVERTED;
                 } else {
                     return WalkStop::PathDiverted {
                         key_remaining: &key[memcmp_len..],
@@ -476,20 +468,20 @@ impl TrieNode {
             let child_index;
             let key_remaining;
 
-            if (path_slice.len() == memcmp_len) {
+            if path_slice.len() == memcmp_len {
                 // Compressed path is fully consumed. Descend into one child.
                 child_index = key[memcmp_len] >> 4;
                 key_remaining = &key[memcmp_len..];
             } else {
                 // One half byte remaining to match with path. Consume it in the
                 // key.
-                if ((path_slice[memcmp_len] ^ key[memcmp_len])
+                if (path_slice[memcmp_len] ^ key[memcmp_len])
                     & Self::BITS_0_3_MASK
-                    != 0)
+                    != 0
                 {
                     // Mismatch.
                     if AM::is_read_only() {
-                        return WalkStop::PathDivertedReadOnly;
+                        return WalkStop::PATH_DIVERTED;
                     } else {
                         return WalkStop::PathDiverted {
                             key_remaining: &key[memcmp_len..],
@@ -509,7 +501,7 @@ impl TrieNode {
             match self.get_child(child_index).into() {
                 Option::None => {
                     if AM::is_read_only() {
-                        return WalkStop::ChildNotFoundReadOnly;
+                        return WalkStop::CHILD_NOT_FOUND;
                     }
                     return WalkStop::ChildNotFound {
                         key_remaining: key_remaining,
@@ -578,7 +570,7 @@ impl TrieNode {
         }
         self.number_of_children_plus_value =
             (self.number_of_children_plus_value as i16 + delta) as u8;
-        if (delta == -1) {
+        if delta == -1 {
             match self.number_of_children_plus_value {
                 0 => {
                     // It's not possible to have 0 child 0 value after delete a
@@ -605,6 +597,7 @@ use super::MultiVersionMerklePatriciaTrie;
 /// TO convert a MaybeOwnedNode into a TrieNode, external information
 /// is needed: disk db object and memory region object. A cache policy object is
 /// also required. TODO(yz): update doc.
+
 struct SubTrieVisitor<TrieRef> {
     trie: TrieRef,
     root: NodeRef,
@@ -630,9 +623,7 @@ impl<TrieRef: Deref<Target = MultiVersionMerklePatriciaTrie>>
 
     fn node_as_ref(&self, node: NodeRef) -> &TrieNode {
         match node {
-            NodeRef::IN_MEMORY { index: index } => {
-                &self.memory_region_as_ref()[index]
-            }
+            NodeRef::InMemory { index } => &self.memory_region_as_ref()[index],
             _ => unimplemented!(),
         }
     }
@@ -650,9 +641,9 @@ impl<TrieRef: Deref<Target = MultiVersionMerklePatriciaTrie>>
                     );
                 }
                 WalkStop::Descent {
-                    key_remaining: key_remaining,
+                    key_remaining,
                     child_index: _,
-                    child_node: child_node,
+                    child_node,
                 } => {
                     node = self.node_as_ref(child_node);
                     key = key_remaining;
@@ -679,7 +670,7 @@ impl<TrieRef: DerefMut<Target = MultiVersionMerklePatriciaTrie>>
 
     fn node_as_mut(&mut self, node: NodeRef) -> &mut TrieNode {
         match node {
-            NodeRef::IN_MEMORY { index: index } => {
+            NodeRef::InMemory { index } => {
                 &mut self.memory_region_as_mut()[index]
             }
             _ => unimplemented!(),
@@ -701,7 +692,7 @@ impl<TrieRef: DerefMut<Target = MultiVersionMerklePatriciaTrie>>
                 let (maybe_value, self_to_delete, replacement) =
                 // FIXME: be compliant to borrow rule and avoid duplicated computation
                     self.node_as_mut(node_ref).delete_value();
-                if (self_to_delete) {
+                if self_to_delete {
                     self.free_node();
                 }
                 maybe_value.map_or_else(
@@ -711,9 +702,9 @@ impl<TrieRef: DerefMut<Target = MultiVersionMerklePatriciaTrie>>
                 )
             }
             WalkStop::Descent {
-                key_remaining: key_remaining,
-                child_node: child_node,
-                child_index: child_index,
+                key_remaining,
+                child_node,
+                child_index,
             } => {
                 let (value, mut child_changed, mut new_child_node) =
                     SubTrieVisitor::<&mut MultiVersionMerklePatriciaTrie>::new(
@@ -721,12 +712,12 @@ impl<TrieRef: DerefMut<Target = MultiVersionMerklePatriciaTrie>>
                         child_node,
                     )
                     .delete(key_remaining)?;
-                if (child_changed) {
+                if child_changed {
                     let (old_child, self_to_delete, replacement) = self
                         .node_as_mut(node_ref)
                         .replace_child(child_index, new_child_node);
-                    if (self_to_delete) {
-                        if (self_to_delete) {
+                    if self_to_delete {
+                        if self_to_delete {
                             self.free_node();
                         }
                         Ok((value, self_to_delete, replacement))

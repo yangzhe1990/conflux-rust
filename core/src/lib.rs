@@ -39,7 +39,10 @@ pub(crate) mod storage;
 
 pub use self::{
     consensus::{ConsensusGraph, SharedConsensusGraph},
-    sync::{SynchronizationService, SharedSynchronizationService, SynchronizationConfiguration},
+    sync::{
+        SharedSynchronizationService, SynchronizationConfiguration,
+        SynchronizationService,
+    },
 };
 pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
 pub use ledger::{Ledger, LedgerRef};

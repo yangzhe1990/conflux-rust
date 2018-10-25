@@ -1,6 +1,6 @@
 use ethereum_types::{H256, U256};
 use parking_lot::RwLock;
-use primitives::{Block, BlockHeader};
+use primitives::Block;
 use slab::Slab;
 use std::{
     collections::{HashMap, HashSet},

@@ -7,15 +7,14 @@ use consensus::SharedConsensusGraph;
 use ethereum_types::H256;
 use io::TimerToken;
 use message::{
-    BlockHeaders, Blocks, GetBlockHeaders, GetBlocks, GetTerminalBlockHashes,
-    Message, MsgId, NewBlock, Status, TerminalBlockHashes,
+    BlockHeaders, Blocks, GetBlockHeaders, GetBlocks, Message, MsgId, NewBlock,
+    Status, TerminalBlockHashes,
 };
 use network::{
     Error as NetworkError, NetworkContext, NetworkProtocolHandler, PeerId,
 };
 use parking_lot::RwLock;
-use primitives::Block;
-use rlp::{DecoderError, Rlp};
+use rlp::Rlp;
 use std::{cmp, time::Instant};
 
 pub const SYNCHRONIZATION_PROTOCOL_VERSION: u8 = 0x01;
@@ -32,9 +31,7 @@ pub struct SynchronizationProtocolHandler {
 impl SynchronizationProtocolHandler {
     pub fn new(consensus_graph: SharedConsensusGraph) -> Self {
         SynchronizationProtocolHandler {
-            graph: SynchronizationGraph::new(
-                consensus_graph.clone(),
-            ),
+            graph: SynchronizationGraph::new(consensus_graph.clone()),
             consensus_graph,
             syn: RwLock::new(SynchronizationState::new()),
         }
@@ -84,7 +81,7 @@ impl SynchronizationProtocolHandler {
                 debug!(target: "sync", "Unknown message: peer={:?} msgid={:?}", peer, msg_id);
                 Ok(())
             }
-        };
+        }.unwrap();
     }
 
     fn get_block_headers(
@@ -356,7 +353,7 @@ impl SynchronizationProtocolHandler {
                 warn!(target: "sync", "Requesting {:?} from peer {:?} while asking {:?}", asking, peer_id, peer.asking);
             }
             peer.asking = asking;
-            self.send_message(io, peer_id, msg);
+            self.send_message(io, peer_id, msg).unwrap();
         }
     }
 }
