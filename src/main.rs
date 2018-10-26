@@ -32,6 +32,7 @@ extern crate txgen;
 
 mod configuration;
 mod rpc;
+mod cache_config;
 
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
@@ -63,8 +64,9 @@ fn start(
     conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<Box<Any>, String> {
     let network_config = conf.net_config();
-
-    let ledger = Arc::new(core::Ledger::new());
+    let cache_config = conf.cache_config();
+    let ledger_cache_config = core::ledger::to_ledger_cache_config(cache_config.blockchain());
+    let ledger = Arc::new(core::Ledger::new(ledger_cache_config));
     ledger.initialize_with_genesis();
 
     let txpool = TransactionPool::new_ref(10000);
@@ -197,6 +199,14 @@ fn main() {
                 .long("bootnodes")
                 .value_name("NODES")
                 .help("Sets a custom list of bootnodes")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("ledger-cache-size")
+                .short("lcs")
+                .long("ledger-cache-size")
+                .value_name("SIZE")
+                .help("Sets the ledger cache size")
                 .takes_value(true),
         )
         .get_matches_from(std::env::args().collect::<Vec<_>>());

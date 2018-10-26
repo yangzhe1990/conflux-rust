@@ -1,10 +1,11 @@
 use ethereum_types::{H256, U256};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 pub use primitives::*;
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
 };
+use cache_manager::WriteBackCacheManager;
 
 pub struct BestEpoch {
     pub best_epoch_hash: H256,
@@ -24,6 +25,31 @@ pub struct BlockIndex {
     total_difficulty: U256,
 }
 
+pub const MIN_LEDGER_CACHE_MB: usize = 4;
+pub const DEFAULT_LEDGER_CACHE_SIZE: usize = 8;
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+enum CacheId {
+    Block(H256),
+    BlockHeader(H256),
+    BlockIndex(H256),
+    EpochIndex0(EpochNumber),
+    EpochIndex1(H256),
+}
+
+pub struct LedgerCacheConfig {
+    pref_cache_size: usize,
+    max_cache_size: usize,
+}
+
+pub fn to_ledger_cache_config(cache_size: usize) -> LedgerCacheConfig {
+    let mb = 1024 * 1024;
+    LedgerCacheConfig {
+        pref_cache_size: cache_size * 3 / 4 * mb,
+        max_cache_size: cache_size * mb,
+    }
+}
+
 pub struct Ledger {
     best_epoch: RwLock<BestEpoch>,
     epoch_indices:
@@ -31,6 +57,8 @@ pub struct Ledger {
     block_indices: RwLock<HashMap<H256, BlockIndex>>,
     block_headers: RwLock<HashMap<H256, BlockHeader>>,
     blocks: RwLock<HashMap<H256, Block>>,
+
+    cache_man: Mutex<WriteBackCacheManager<CacheId>>,
 }
 
 /// Information about the ledger gathered together.
@@ -47,7 +75,9 @@ pub struct LedgerInfo {
 pub type LedgerRef = Arc<Ledger>;
 
 impl Ledger {
-    pub fn new() -> Self {
+    pub fn new(config: LedgerCacheConfig) -> Self {
+        // FIXME: set bytes_per_cache_entry correctly
+        let cache_man = WriteBackCacheManager::new(config.pref_cache_size, config.max_cache_size, 400);
         Ledger {
             best_epoch: RwLock::new(BestEpoch {
                 best_epoch_hash: H256::default(),
@@ -57,6 +87,7 @@ impl Ledger {
             block_indices: RwLock::new(HashMap::new()),
             block_headers: RwLock::new(HashMap::new()),
             blocks: RwLock::new(HashMap::new()),
+            cache_man: Mutex::new(cache_man),
         }
     }
 
@@ -300,5 +331,8 @@ impl Ledger {
 
 impl Default for Ledger {
     // FIXME: Fix this default trait as the initial state of the ledger
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        let ledger_cache_config = to_ledger_cache_config(DEFAULT_LEDGER_CACHE_SIZE);
+        Self::new(ledger_cache_config)
+    }
 }

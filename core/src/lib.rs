@@ -29,7 +29,8 @@ extern crate slab;
 
 mod consensus;
 pub mod execution_engine;
-mod ledger;
+pub mod ledger;
+mod cache_manager;
 mod sync;
 pub mod transaction_pool;
 

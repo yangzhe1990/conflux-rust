@@ -4,6 +4,7 @@ use std::{fs::File, io::prelude::*};
 use toml;
 use network::{NetworkConfiguration, ErrorKind};
 use network::node_table::validate_node_url;
+use cache_config::CacheConfig;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Configuration {
@@ -14,6 +15,7 @@ pub struct Configuration {
     pub log_file: Option<String>,
     pub log_level: LevelFilter,
     pub bootnodes: Option<String>,
+    pub ledger_cache_size: Option<usize>,
 }
 
 impl Default for Configuration {
@@ -26,6 +28,7 @@ impl Default for Configuration {
             log_file: None,
             log_level: LevelFilter::Info,
             bootnodes: None,
+            ledger_cache_size: None,
         }
     }
 }
@@ -78,6 +81,9 @@ impl Configuration {
             if let Some(bootnodes) = config_value.get("bootnodes") {
                 config.bootnodes = bootnodes.as_str().map(|x| x.to_owned());
             }
+            if let Some(cache_size) = config_value.get("ledger-cache-size") {
+                config.ledger_cache_size = cache_size.as_integer().map(|x| x as usize);
+            }
         }
 
         if let Some(port) = matches.value_of("port") {
@@ -106,6 +112,10 @@ impl Configuration {
         if let Some(bootnodes) = matches.value_of("bootnodes") {
             config.bootnodes = Some(bootnodes.to_owned());
         }
+        if let Some(cache_size) = matches.value_of("ledger-cache-size") {
+            config.ledger_cache_size =
+                Some(cache_size.parse().map_err(|_| "Invalid port".to_owned())?);
+        }
         config.log_level = match matches.value_of("log-level") {
             Some("error") => LevelFilter::Error,
             Some("warn") => LevelFilter::Warn,
@@ -128,6 +138,15 @@ impl Configuration {
         network_config.boot_nodes = to_bootnodes(&self.bootnodes).expect("Error parsing bootnodes!");
 
         network_config
+    }
+
+    pub fn cache_config(&self) -> CacheConfig {
+        let cache_config = match self.ledger_cache_size {
+            Some(cache_size) => CacheConfig::new(cache_size),
+            None => CacheConfig::default(),
+        };
+
+        cache_config
     }
 }
 
