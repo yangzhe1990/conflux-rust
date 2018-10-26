@@ -31,6 +31,10 @@ impl Default for Configuration {
 }
 
 impl Configuration {
+    // First parse arguments from config file,
+    // and then parse them from commandline.
+    // Replace the ones from config file with the ones
+    // from commandline if duplicates.
     pub fn parse(matches: &clap::ArgMatches) -> Result<Configuration, String> {
         let mut config = Configuration::default();
 
@@ -98,6 +102,9 @@ impl Configuration {
         }
         if let Some(log_file) = matches.value_of("log-file") {
             config.log_file = Some(log_file.to_owned());
+        }
+        if let Some(bootnodes) = matches.value_of("bootnodes") {
+            config.bootnodes = Some(bootnodes.to_owned());
         }
         config.log_level = match matches.value_of("log-level") {
             Some("error") => LevelFilter::Error,

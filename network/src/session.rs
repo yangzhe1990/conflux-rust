@@ -175,6 +175,13 @@ impl Session {
                 let signed = &data[(32 + 65)..];
                 let signature = H520::from_slice(&data[32..(32 + 65)]);
                 let node_id = recover(&signature.into(), &keccak(signed))?;
+                if self.metadata.id.is_none() {
+                    self.metadata.id = Some(node_id);
+                } else {
+                    if Some(node_id) != self.metadata.id {
+                        return Err(self.disconnect(io, DisconnectReason::WrongEndpointInfo));
+                    }
+                }
                 let rlp = Rlp::new(signed);
                 self.read_hello(io, &node_id, &rlp, host)?;
                 Ok(SessionData::Ready)
@@ -253,8 +260,13 @@ impl Session {
         }
 
         let hello_from = NodeEndpoint::from_rlp(&rlp.at(1)?)?;
+
+        if self.address.ip() != hello_from.address.ip() {
+            return Err(self.disconnect(io, DisconnectReason::WrongEndpointInfo));
+        }
+
         let ping_to = NodeEndpoint {
-            address: self.address.clone(),
+            address: hello_from.address,
             udp_port: hello_from.udp_port,
         };
 

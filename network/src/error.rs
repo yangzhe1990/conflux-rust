@@ -6,6 +6,7 @@ use {ethkey, rlp};
 pub enum DisconnectReason {
     DisconnectRequested,
     UselessPeer,
+    WrongEndpointInfo,
     Unknown,
 }
 
@@ -14,6 +15,7 @@ impl DisconnectReason {
         match n {
             0 => DisconnectReason::DisconnectRequested,
             1 => DisconnectReason::UselessPeer,
+            2 => DisconnectReason::WrongEndpointInfo,
             _ => DisconnectReason::Unknown,
         }
     }
@@ -24,6 +26,7 @@ impl fmt::Display for DisconnectReason {
         let msg = match *self {
             DisconnectReason::DisconnectRequested => "disconnect requested",
             DisconnectReason::UselessPeer => "useless peer",
+            DisconnectReason::WrongEndpointInfo => "wrong node id",
             DisconnectReason::Unknown => "unknown",
         };
 
