@@ -1,3 +1,4 @@
+extern crate core;
 extern crate ethcore_bytes as bytes;
 extern crate ethereum_types;
 extern crate ethkey;

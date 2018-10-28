@@ -1,6 +1,5 @@
 use super::merkle::MerkleHash;
-use alloc::alloc::dealloc;
-use core::{alloc::Layout, slice};
+use core::slice;
 use std::{
     cmp::min,
     io::{Error, ErrorKind::NotFound},
@@ -77,7 +76,6 @@ pub struct TrieNode {
     merkle_hash: MerkleHash,
 }
 
-#[allow(unions_with_drop_fields)]
 union MaybeInPlaceByteArray {
     in_place: [u8; 8],
     // TODO(yz): statically assert that the ptr has size of at most 8.
@@ -140,7 +138,7 @@ impl MaybeInPlaceByteArray {
                 in_place: Default::default(),
             };
             unsafe {
-                x.in_place.copy_from_slice(value.as_slice());
+                x.in_place[0..size.into()].copy_from_slice(value.as_slice());
             }
             x
         }
@@ -225,26 +223,14 @@ impl Drop for TrieNode {
         unsafe {
             let size = self.value_size;
             if size > MaybeInPlaceByteArray::MAX_INPLACE_SIZE {
-                dealloc(
-                    self.value.ptr,
-                    Layout::from_size_align_unchecked(
-                        size.into(),
-                        mem::align_of::<u8>(),
-                    ),
-                );
+                self.value.ptr_into_vec(size.into());
             }
         }
 
         unsafe {
             let size = self.get_compressed_path_size();
             if size > MaybeInPlaceByteArray::MAX_INPLACE_SIZE {
-                dealloc(
-                    self.path.ptr,
-                    Layout::from_size_align_unchecked(
-                        size.into(),
-                        mem::align_of::<u8>(),
-                    ),
-                );
+                self.path.ptr_into_vec(size.into());
             }
         }
     }
