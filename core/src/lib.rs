@@ -1,12 +1,3 @@
-// For merkle_patricia_trie.
-#![feature(untagged_unions)]
-#![feature(allocator_api)]
-#![feature(alloc)]
-
-// For merkle_patricia_trie.
-extern crate alloc;
-extern crate core;
-
 extern crate ethcore_bytes as bytes;
 extern crate ethereum_types;
 extern crate ethkey;
