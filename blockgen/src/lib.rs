@@ -10,7 +10,7 @@ extern crate rlp;
 use core::execution_engine::ExecutionEngineRef;
 use core::LedgerRef;
 use core::SharedSynchronizationService;
-use core::transaction_pool::TransactionPoolRef;
+use core::transaction_pool::SharedTransactionPool;
 use ethereum_types::{Address, H256, U256};
 use ethkey::Secret;
 use hash::{keccak, KECCAK_NULL_RLP};
@@ -31,7 +31,7 @@ enum MiningState {
 /// The interface for a conflux block generator
 pub struct BlockGenerator {
     ledger: LedgerRef,
-    txpool: TransactionPoolRef,
+    txpool: SharedTransactionPool,
     engine: ExecutionEngineRef,
     sync: SharedSynchronizationService,
     state: RwLock<MiningState>,
@@ -41,7 +41,7 @@ pub type BlockGeneratorRef = Arc<BlockGenerator>;
 
 impl BlockGenerator {
     pub fn new(
-        ledger: LedgerRef, txpool: TransactionPoolRef,
+        ledger: LedgerRef, txpool: SharedTransactionPool,
         engine: ExecutionEngineRef, sync: SharedSynchronizationService,
     ) -> Self
     {

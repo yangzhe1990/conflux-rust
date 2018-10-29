@@ -4,7 +4,7 @@ use network::Error;
 use parking_lot::RwLock;
 use primitives::SignedTransaction;
 use rand::prelude::*;
-use secret_store::SecretStoreRef;
+use secret_store::SharedSecretStore;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -127,7 +127,7 @@ impl AccountState {
 
     // This is for purpose of test
     pub fn import_random_accounts(
-        &self, secret_store: SecretStoreRef,
+        &self, secret_store: SharedSecretStore,
     ) -> Result<(), Error> {
         let mut account_count: u32 = 0;
         let mut account_set: HashSet<Address> = HashSet::new();

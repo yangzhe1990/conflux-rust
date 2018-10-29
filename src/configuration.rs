@@ -1,10 +1,9 @@
+use cache_config::CacheConfig;
 use clap;
 use log::LevelFilter;
+use network::{node_table::validate_node_url, ErrorKind, NetworkConfiguration};
 use std::{fs::File, io::prelude::*};
 use toml;
-use network::{NetworkConfiguration, ErrorKind};
-use network::node_table::validate_node_url;
-use cache_config::CacheConfig;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Configuration {
@@ -82,7 +81,8 @@ impl Configuration {
                 config.bootnodes = bootnodes.as_str().map(|x| x.to_owned());
             }
             if let Some(cache_size) = config_value.get("ledger-cache-size") {
-                config.ledger_cache_size = cache_size.as_integer().map(|x| x as usize);
+                config.ledger_cache_size =
+                    cache_size.as_integer().map(|x| x as usize);
             }
         }
 
@@ -113,8 +113,9 @@ impl Configuration {
             config.bootnodes = Some(bootnodes.to_owned());
         }
         if let Some(cache_size) = matches.value_of("ledger-cache-size") {
-            config.ledger_cache_size =
-                Some(cache_size.parse().map_err(|_| "Invalid port".to_owned())?);
+            config.ledger_cache_size = Some(
+                cache_size.parse().map_err(|_| "Invalid port".to_owned())?,
+            );
         }
         config.log_level = match matches.value_of("log-level") {
             Some("error") => LevelFilter::Error,
@@ -135,7 +136,8 @@ impl Configuration {
             None => NetworkConfiguration::default(),
         };
 
-        network_config.boot_nodes = to_bootnodes(&self.bootnodes).expect("Error parsing bootnodes!");
+        network_config.boot_nodes =
+            to_bootnodes(&self.bootnodes).expect("Error parsing bootnodes!");
 
         network_config
     }
@@ -153,14 +155,21 @@ impl Configuration {
 /// Validates and formats bootnodes option.
 pub fn to_bootnodes(bootnodes: &Option<String>) -> Result<Vec<String>, String> {
     match *bootnodes {
-        Some(ref x) if !x.is_empty() => x.split(',').map(|s| {
-            match validate_node_url(s).map(Into::into) {
+        Some(ref x) if !x.is_empty() => x
+            .split(',')
+            .map(|s| match validate_node_url(s).map(Into::into) {
                 None => Ok(s.to_owned()),
-                Some(ErrorKind::AddressResolve(_)) => Err(format!("Failed to resolve hostname of a boot node: {}", s)),
-                Some(_) => Err(format!("Invalid node address format given for a boot node: {}", s)),
-            }
-        }).collect(),
+                Some(ErrorKind::AddressResolve(_)) => Err(format!(
+                    "Failed to resolve hostname of a boot node: {}",
+                    s
+                )),
+                Some(_) => Err(format!(
+                    "Invalid node address format given for a boot node: {}",
+                    s
+                )),
+            })
+            .collect(),
         Some(_) => Ok(vec![]),
-        None => Ok(vec![])
+        None => Ok(vec![]),
     }
 }

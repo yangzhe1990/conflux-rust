@@ -3,32 +3,21 @@ use parking_lot::RwLock;
 use primitives::SignedTransaction;
 use std::{
     cmp::Ordering,
-    collections::{BinaryHeap, HashMap},
+    collections::{BinaryHeap, HashSet},
     sync::Arc,
 };
 
-#[derive(Debug)]
-pub struct TransactionRef {
-    transaction: Arc<SignedTransaction>,
+pub struct OrderedTransaction {
+    transaction: SignedTransaction,
 }
 
-impl TransactionRef {
-    pub fn new(tx: SignedTransaction) -> Self {
-        TransactionRef {
-            transaction: Arc::new(tx),
-        }
+impl OrderedTransaction {
+    pub fn new(transaction: SignedTransaction) -> Self {
+        OrderedTransaction { transaction }
     }
 }
 
-impl Clone for TransactionRef {
-    fn clone(&self) -> Self {
-        TransactionRef {
-            transaction: self.transaction.clone(),
-        }
-    }
-}
-
-impl Ord for TransactionRef {
+impl Ord for OrderedTransaction {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.transaction.gas_price < other.transaction.gas_price {
             return Ordering::Less;
@@ -40,86 +29,80 @@ impl Ord for TransactionRef {
     }
 }
 
-impl PartialOrd for TransactionRef {
+impl PartialOrd for OrderedTransaction {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for TransactionRef {
+impl PartialEq for OrderedTransaction {
     fn eq(&self, other: &Self) -> bool {
         self.transaction.gas_price == other.transaction.gas_price
     }
 }
 
-impl Eq for TransactionRef {}
+impl Eq for OrderedTransaction {}
 
-pub struct PoolInner {
-    tx_hash_map: HashMap<H256, TransactionRef>,
-    tx_priority_queue: BinaryHeap<TransactionRef>,
+pub struct TransactionPoolInner {
+    hashes: HashSet<H256>,
+    ordered_transactions: BinaryHeap<OrderedTransaction>,
 }
 
-impl PoolInner {
+impl TransactionPoolInner {
     pub fn new() -> Self {
-        PoolInner {
-            tx_hash_map: HashMap::new(),
-            tx_priority_queue: BinaryHeap::new(),
+        TransactionPoolInner {
+            hashes: HashSet::new(),
+            ordered_transactions: BinaryHeap::new(),
         }
     }
 }
 
 pub struct TransactionPool {
     capacity: usize,
-    pool: RwLock<PoolInner>,
+    inner: RwLock<TransactionPoolInner>,
 }
 
-pub type TransactionPoolRef = Arc<TransactionPool>;
+pub type SharedTransactionPool = Arc<TransactionPool>;
 
 impl TransactionPool {
-    pub fn new(cap: usize) -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
         TransactionPool {
-            capacity: cap,
-            pool: RwLock::new(PoolInner::new()),
+            capacity,
+            inner: RwLock::new(TransactionPoolInner::new()),
         }
     }
 
-    pub fn new_ref(cap: usize) -> TransactionPoolRef {
-        Arc::new(Self::new(cap))
-    }
+    pub fn add(&self, transaction: SignedTransaction) -> bool {
+        let mut inner = self.inner.write();
 
-    pub fn import(&self, tx: SignedTransaction) -> bool {
-        let mut pool_write = self.pool.write();
-
-        if self.capacity <= pool_write.tx_hash_map.len() {
+        if self.capacity <= inner.hashes.len() {
             // pool is full
             return false;
         }
 
-        let tx_hash = tx.transaction.hash();
-
-        if pool_write.tx_hash_map.contains_key(&tx_hash) {
+        let hash = transaction.transaction.hash();
+        if inner.hashes.contains(&hash) {
             // already exists
             return false;
         }
 
-        let tx_ref = TransactionRef::new(tx);
-        pool_write.tx_hash_map.insert(tx_hash, tx_ref.clone());
-        pool_write.tx_priority_queue.push(tx_ref);
+        inner.hashes.insert(hash);
+        inner
+            .ordered_transactions
+            .push(OrderedTransaction::new(transaction));
 
         true
     }
 
-    pub fn fetch_transaction(&self) -> Option<SignedTransaction> {
-        let mut pool_write = self.pool.write();
+    pub fn fetch(&self) -> Option<SignedTransaction> {
+        let mut inner = self.inner.write();
 
-        if pool_write.tx_priority_queue.is_empty() {
+        if inner.ordered_transactions.is_empty() {
             return None;
         }
 
-        let tx_ref = pool_write.tx_priority_queue.pop().unwrap();
-        pool_write
-            .tx_hash_map
-            .remove(&tx_ref.transaction.transaction.hash());
-        Some((*tx_ref.transaction).clone())
+        let transaction = inner.ordered_transactions.pop().unwrap();
+        inner.hashes.remove(&transaction.transaction.hash());
+        Some(transaction.transaction)
     }
 }

@@ -30,9 +30,9 @@ extern crate secret_store;
 extern crate txgen;
 // extern crate vm;
 
+mod cache_config;
 mod configuration;
 mod rpc;
-mod cache_config;
 
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
@@ -65,12 +65,13 @@ fn start(
 ) -> Result<Box<Any>, String> {
     let network_config = conf.net_config();
     let cache_config = conf.cache_config();
-    let ledger_cache_config = core::ledger::to_ledger_cache_config(cache_config.blockchain());
+    let ledger_cache_config =
+        core::ledger::to_ledger_cache_config(cache_config.blockchain());
     let ledger = Arc::new(core::Ledger::new(ledger_cache_config));
     ledger.initialize_with_genesis();
 
-    let txpool = TransactionPool::new_ref(10000);
-    let secret_store = SecretStore::new_ref();
+    let txpool = Arc::new(TransactionPool::with_capacity(10000));
+    let secret_store = Arc::new(SecretStore::new());
 
     let account_state = AccountState::new_ref();
     account_state

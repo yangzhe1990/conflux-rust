@@ -5,8 +5,7 @@ extern crate rustc_hex;
 use ethkey::KeyPair;
 use parking_lot::RwLock;
 use rustc_hex::ToHex;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 pub struct StoreInner {
     account_vec: Vec<KeyPair>,
@@ -44,7 +43,7 @@ pub struct SecretStore {
     store: RwLock<StoreInner>,
 }
 
-pub type SecretStoreRef = Arc<SecretStore>;
+pub type SharedSecretStore = Arc<SecretStore>;
 
 impl SecretStore {
     pub fn new() -> Self {
@@ -52,8 +51,6 @@ impl SecretStore {
             store: RwLock::new(StoreInner::new()),
         }
     }
-
-    pub fn new_ref() -> SecretStoreRef { Arc::new(Self::new()) }
 
     pub fn insert(&self, kp: KeyPair) -> bool { self.store.write().insert(kp) }
 

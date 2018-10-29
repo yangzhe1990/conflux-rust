@@ -3,23 +3,22 @@ extern crate ethereum_types;
 extern crate ethkey;
 extern crate network;
 extern crate parking_lot;
+extern crate primitives;
 extern crate rand;
 extern crate secret_store;
-extern crate primitives;
 
 pub use core::execution_engine::{ExecutionEngine, ExecutionEngineRef};
-use core::execution::AccountStateRef;
-use primitives::Transaction;
-use core::transaction_pool::TransactionPoolRef;
+use core::{
+    execution::AccountStateRef, transaction_pool::SharedTransactionPool,
+};
 use ethereum_types::{Address, U256};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
 use network::Error;
 use parking_lot::RwLock;
+use primitives::Transaction;
 use rand::prelude::*;
-use secret_store::SecretStoreRef;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::{thread, time};
+use secret_store::SharedSecretStore;
+use std::{collections::HashMap, sync::Arc, thread, time};
 
 enum TransGenState {
     Start,
@@ -28,15 +27,15 @@ enum TransGenState {
 
 pub struct TransactionGenerator {
     state: RwLock<TransGenState>,
-    txpool: TransactionPoolRef,
-    secret_store: SecretStoreRef,
+    txpool: SharedTransactionPool,
+    secret_store: SharedSecretStore,
     account_state: AccountStateRef,
 }
 
 impl TransactionGenerator {
     pub fn new(
-        engine: ExecutionEngineRef, txpool: TransactionPoolRef,
-        secret_store: SecretStoreRef, account_state: AccountStateRef,
+        engine: ExecutionEngineRef, txpool: SharedTransactionPool,
+        secret_store: SharedSecretStore, account_state: AccountStateRef,
     ) -> Self
     {
         TransactionGenerator {
@@ -114,7 +113,8 @@ impl TransactionGenerator {
             let sender_nonce = *entry;
             *entry += U256::one();
 
-            // Generate the transaction, sign it, and push into the transaction pool
+            // Generate the transaction, sign it, and push into the transaction
+            // pool
             let receiver_address = public_to_address(receiver_kp.public());
             let tx = Transaction {
                 nonce: sender_nonce,
@@ -125,7 +125,7 @@ impl TransactionGenerator {
             };
 
             let signed_tx = tx.sign(sender_kp.secret());
-            txgen.txpool.import(signed_tx);
+            txgen.txpool.add(signed_tx);
 
             thread::sleep(interval);
         }
