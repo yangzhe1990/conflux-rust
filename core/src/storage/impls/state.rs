@@ -1,27 +1,14 @@
 use super::super::state::*;
 
-use super::super::state_union::*;
+use super::super::state_manager::*;
 use execution::EpochId;
 
 pub struct State<'a> {
-    union: &'a StateUnion,
-    target_epoch_id: EpochId,
+    manager: &'a StateManager,
     // TODO(yz): implement.
 }
 
 impl<'a> StateTrait<'a> for State<'a> {
-    fn load_from_union(union: &'a StateUnion, epoch_id: EpochId) -> Self {
-        unimplemented!()
-    }
-
-    fn create_for_transaction_execution(
-        union: &'a StateUnion, parent_epoch_id: EpochId, epoch_id: EpochId,
-    ) -> Self {
-        let mut state = Self::load_from_union(union, parent_epoch_id);
-        state.set_target_epoch_id(epoch_id);
-        state
-    }
-
     fn get(&'a mut self, access_key: &[u8]) -> &'a mut Vec<u8> {
         unimplemented!()
     }
@@ -34,14 +21,7 @@ impl<'a> StateTrait<'a> for State<'a> {
         unimplemented!()
     }
 
-    fn commit() { unimplemented!() }
+    fn commit(epoch_id: EpochId) { unimplemented!() }
 
     fn drop() { unimplemented!() }
-}
-
-impl<'a> State<'a> {
-    fn set_target_epoch_id(&mut self, epoch_id: EpochId) -> &mut Self {
-        self.target_epoch_id = epoch_id;
-        self
-    }
 }

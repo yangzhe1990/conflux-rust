@@ -1,4 +1,4 @@
-use super::state_union::StateUnion;
+use super::state_manager::StateManager;
 use execution::EpochId;
 
 /// A block defines a list of transactions that it sees and the sequence of
@@ -15,12 +15,6 @@ pub use super::impls::state::State;
 // anticipated to be too complex to present in the same file of the API.
 // TODO(yz): check if this is the best way to organize code for this library.
 pub trait StateTrait<'a> {
-    // Constructors.
-    fn load_from_union(union: &'a StateUnion, epoch_id: EpochId) -> Self;
-    fn create_for_transaction_execution(
-        union: &'a StateUnion, parent_epoch_id: EpochId, epoch_id: EpochId,
-    ) -> Self;
-
     // Actions.
     fn get(&'a mut self, access_key: &[u8]) -> &'a mut Vec<u8>;
     fn set(&mut self, access_key: &[u8], value: &[u8]);
@@ -34,7 +28,7 @@ pub trait StateTrait<'a> {
     );
 
     // Finalize
-    fn commit();
+    fn commit(epoch: EpochId);
 
     // TODO(yz): verifiable proof related methods.
 

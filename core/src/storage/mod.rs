@@ -2,6 +2,6 @@
 #![allow(dead_code, unused_variables)]
 
 pub mod state;
-pub mod state_union;
+pub mod state_manager;
 
 mod impls;
