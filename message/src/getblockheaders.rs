@@ -1,5 +1,4 @@
 use ethereum_types::H256;
-use primitives::BlockNumber;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::mem::size_of;
 use Message;

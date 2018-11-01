@@ -39,6 +39,7 @@ use clap::{App, Arg};
 use configuration::Configuration;
 use core::{
     execution::AccountState, transaction_pool::TransactionPool, ConsensusGraph,
+    StateManager,
 };
 use ctrlc::CtrlC;
 use log::LevelFilter;
@@ -79,11 +80,13 @@ fn start(
         .import_random_accounts(secret_store.clone())
         .unwrap();
 
+    let state_manager = Arc::new(StateManager::new());
+
     let execution_engine =
         core::ExecutionEngine::new_ref(ledger.clone(), account_state.clone());
 
     let genesis_block = Block::default();
-    let consensus = Arc::new(ConsensusGraph::with_genesis_block(genesis_block));
+    let consensus = Arc::new(ConsensusGraph::with_genesis_block(genesis_block, state_manager));
 
     let sync_config = core::SynchronizationConfiguration {
         network: network_config,

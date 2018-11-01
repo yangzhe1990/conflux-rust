@@ -175,7 +175,9 @@ impl BlockHeaderBuilder {
         self
     }
 
-    pub fn with_referee_hashes(&mut self, referee_hashes: Vec<H256>) -> &mut Self {
+    pub fn with_referee_hashes(
+        &mut self, referee_hashes: Vec<H256>,
+    ) -> &mut Self {
         self.referee_hashes = referee_hashes;
         self
     }

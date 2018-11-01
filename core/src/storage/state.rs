@@ -2,7 +2,7 @@ use super::{
     impls::{errors::*, merkle_patricia_trie::merkle::MerkleHash},
     state_manager::StateManager,
 };
-use execution::EpochId;
+use primitives::EpochId;
 
 /// A block defines a list of transactions that it sees and the sequence of
 /// the transactions (ledger). At the view of a block, after all

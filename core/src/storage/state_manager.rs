@@ -1,9 +1,9 @@
 use super::state::State;
-use execution::EpochId;
+use primitives::EpochId;
 use snapshot::snapshot::Snapshot;
 
-// State Union is the single entry-point to access State for any epoch.
-// StateUnion has Internal mutability and is thread-safe.
+// StateManager is the single entry-point to access State for any epoch.
+// StateManager has Internal mutability and is thread-safe.
 pub use super::impls::state_manager::StateManager;
 
 // The trait is created to separate the implementation to another file, and the

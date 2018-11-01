@@ -8,7 +8,7 @@ use super::{
         MultiVersionMerklePatriciaTrie,
     },
 };
-use execution::EpochId;
+use primitives::EpochId;
 use std::mem;
 
 pub struct State<'a> {

@@ -8,9 +8,7 @@ extern crate rand;
 extern crate secret_store;
 
 pub use core::execution_engine::{ExecutionEngine, ExecutionEngineRef};
-use core::{
-    execution::AccountStateRef, transaction_pool::SharedTransactionPool,
-};
+use core::{execution::AccountStateRef, SharedTransactionPool};
 use ethereum_types::{Address, U256};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
 use network::Error;

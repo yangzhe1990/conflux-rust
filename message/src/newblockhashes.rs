@@ -1,11 +1,10 @@
 use ethereum_types::H256;
-use primitives::BlockNumber;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use Message;
 use MsgId;
 
 #[derive(Debug, PartialEq)]
-pub struct BlockHash(BlockNumber, H256);
+pub struct BlockHash(u64, H256);
 
 impl Encodable for BlockHash {
     fn rlp_append(&self, stream: &mut RlpStream) {

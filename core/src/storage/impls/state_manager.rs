@@ -4,7 +4,7 @@ use super::{
     super::state::*,
     merkle_patricia_trie::{data_structure::*, *},
 };
-use execution::EpochId;
+use primitives::EpochId;
 use snapshot::snapshot::Snapshot;
 
 #[derive(Default)]
@@ -29,6 +29,8 @@ impl StateManager {
             );
         }
     }
+
+    pub fn new() -> Self { unimplemented!() }
 }
 
 impl StateManagerTrait for StateManager {

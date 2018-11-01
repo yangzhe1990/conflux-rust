@@ -8,7 +8,7 @@ pub struct Account {
 
 impl Decodable for Account {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        let vec= rlp.as_list()?;
+        let vec = rlp.as_list()?;
         Ok(Account {
             balance: vec[0],
             nonce: vec[1],

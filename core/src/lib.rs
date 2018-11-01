@@ -19,24 +19,24 @@ extern crate secret_store;
 extern crate error_chain;
 extern crate slab;
 
-mod consensus;
-pub mod execution_engine;
-pub mod ledger;
 mod cache_manager;
+mod consensus;
+pub mod execution;
+pub mod execution_engine;
+mod executor;
+pub mod ledger;
+pub(crate) mod snapshot;
+pub(crate) mod storage;
 mod sync;
 pub mod transaction_pool;
 
-pub mod execution;
-pub(crate) mod snapshot;
-pub(crate) mod storage;
-
-pub use self::{
-    consensus::{ConsensusGraph, SharedConsensusGraph},
-    sync::{
-        SharedSynchronizationService, SynchronizationConfiguration,
-        SynchronizationService,
-    },
-};
+pub use consensus::{ConsensusGraph, SharedConsensusGraph};
 pub use execution_engine::{ExecutionEngine, ExecutionEngineRef};
 pub use ledger::{Ledger, LedgerRef};
 pub use network::PeerInfo;
+pub use storage::{state::State, state_manager::StateManager};
+pub use sync::{
+    SharedSynchronizationService, SynchronizationConfiguration,
+    SynchronizationService,
+};
+pub use transaction_pool::{SharedTransactionPool, TransactionPool};
