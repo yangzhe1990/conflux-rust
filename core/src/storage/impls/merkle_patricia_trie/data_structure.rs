@@ -3,6 +3,7 @@ use core::slice;
 use std::{
     cmp::min,
     io::{Error, ErrorKind::NotFound},
+    marker::{Send, Sync},
     mem::{self, replace},
     ops::{Deref, DerefMut},
     ptr::null_mut,
@@ -75,6 +76,15 @@ pub struct TrieNode {
     value: MaybeInPlaceByteArray,
     merkle_hash: MerkleHash,
 }
+
+/// Compiler is not sure about the pointer in MaybeInPlaceByteArray fields.
+/// It's Send because TrieNode is move only and it's impossible to change any
+/// part of it without &mut.
+unsafe impl Send for TrieNode {}
+/// Compiler is not sure about the pointer in MaybeInPlaceByteArray fields.
+/// We do not allow a &TrieNode to be able to change anything the pointer
+/// is pointing to, therefore TrieNode is Sync.
+unsafe impl Sync for TrieNode {}
 
 union MaybeInPlaceByteArray {
     in_place: [u8; 8],

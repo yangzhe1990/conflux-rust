@@ -132,7 +132,7 @@ pub struct Slab<T, E: EntryTrait<T> = Entry<T>> {
     /// Fields which are modified when allocate / delete an entry.
     alloc_fields: Mutex<AllocRelatedFields>,
 
-    value_type: PhantomData<*const T>,
+    value_type: PhantomData<T>,
 }
 
 #[derive(Default)]
