@@ -53,8 +53,8 @@
 //!
 //! It is generally a good idea to specify the desired capacity of a slab at
 //! creation time. Note that `Slab` will grow the internal capacity when
-//! attempting to insert a new value once the existing capacity has been reached.
-//! To avoid this, add a check.
+//! attempting to insert a new value once the existing capacity has been
+//! reached. To avoid this, add a check.
 //!
 //! ```
 //! # use slab::*;
@@ -99,35 +99,135 @@
 //! [`Slab::with_capacity`]: struct.Slab.html#with_capacity
 
 #![deny(warnings, missing_docs, missing_debug_implementations)]
+#![allow(clippy::mut_from_ref)]
 #![doc(html_root_url = "https://docs.rs/slab/0.4.1")]
-#![crate_name = "slab"]
 
-use std::{fmt, mem};
-use std::iter::IntoIterator;
-use std::ops;
+use super::super::errors::*;
+use std::{
+    fmt, iter::IntoIterator, marker::PhantomData, mem, ops, ptr, slice,
+    sync::Mutex,
+};
 
-/// Pre-allocated storage for a uniform data type
+/// Pre-allocated storage for a uniform data type.
+/// The modified slab offers internal mutability which mimics the behavior of
+/// independent pointer at best.
 ///
-/// See the [module documentation] for more details.
+/// Resizing the slab itself requires &mut, other operatios can be done with &.
 ///
-/// [module documentation]: index.html
-#[derive(Clone)]
-pub struct Slab<T> {
-    // Chunk of memory
-    entries: Vec<Entry<T>>,
+/// Gettting reference to allocated slot doesn't conflict with any other
+/// operations. Slab doesn't check if user get &mut and & for the same slot.
+/// User should maintain a layer which controls the mutability of each specific
+/// slot. It can be done through the wrapper around the slot index, or in the
+/// type which implements EntryTrait<T>.
+///
+/// Allocation and Deallocation are serialized by mutex because they modify the
+/// slab link-list.
+pub struct Slab<T, E: EntryTrait<T> = Entry<T>> {
+    /// Chunk of memory
+    // entries is always kept full in order to prevent changing vector
+    // when allocating space for new element. We would like to keep the size of
+    // initialized entry in AllocRelatedFields#size_initialized instead of
+    // vector.
+    entries: Vec<E>,
 
+    /// Fields which are modified when allocate / delete an entry.
+    alloc_fields: Mutex<AllocRelatedFields>,
+
+    value_type: PhantomData<*const T>,
+}
+
+#[derive(Default)]
+struct AllocRelatedFields {
     // Number of Filled elements currently in the slab
-    len: usize,
-
+    used: usize,
+    // Size of the memory where it's initialized with data or offset to next
+    // available slot.
+    size_initialized: usize,
     // Offset of the next available slot in the slab. Set to the slab's
     // capacity when the slab is full.
     next: usize,
 }
 
-impl<T> Default for Slab<T> {
-    fn default() -> Self {
-        Slab::new()
+/// Methods which check if the entry holds a value and return reference to the
+/// value. The methods should ont panic.
+pub trait IntoOption<T> {
+    fn into_option_mut(&mut self) -> Option<&mut T>;
+    fn into_option_ref(&self) -> Option<&T>;
+}
+
+/// Allow user to pass into any type which is convertible to T. The intention is
+/// that we pass &T or &mut T cross the interfaces so that we only do memcpy
+/// once.
+pub trait FromInto<T>: Sized {
+    fn from<U: Into<T>>(val: U) -> Self;
+}
+
+/// Slab physically stores a concrete type which implements EntryTrait<T> for
+/// value type T. The EntryTrait<T> is responsible to hold the value type and
+/// the next vacant link list for slab.
+pub trait EntryTrait<T>: IntoOption<T> + FromInto<T> + Sized + Default {
+    fn from_vacant_index(next: usize) -> Self;
+
+    fn take_occupied_and_replace(&mut self, new: Self) -> T {
+        unsafe {
+            let ret = ptr::read(self.get_occupied_mut());
+            // Semantically, val is moved into ret and self is dropped.
+
+            ptr::write(self, new);
+            // Semantically, new is dropped, self now holds new.
+
+            ret
+        }
     }
+
+    fn get_next_vacant_index(&self) -> usize;
+    fn get_occupied_ref(&self) -> &T;
+    fn get_occupied_mut(&mut self) -> &mut T;
+}
+
+impl<T> EntryTrait<T> for Entry<T> {
+    fn from_vacant_index(index: usize) -> Self { Entry::Vacant(index) }
+
+    fn get_next_vacant_index(&self) -> usize {
+        match *self {
+            Entry::Vacant(index) => index,
+            _ => unreachable!(),
+        }
+    }
+
+    fn get_occupied_ref(&self) -> &T {
+        match self {
+            Entry::Occupied(val) => val,
+            _ => unreachable!(),
+        }
+    }
+
+    fn get_occupied_mut(&mut self) -> &mut T {
+        match self {
+            Entry::Occupied(val) => val,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl<T> IntoOption<T> for Entry<T> {
+    fn into_option_ref(&self) -> Option<&T> {
+        match self {
+            Entry::Occupied(ref val) => Some(val),
+            Entry::Vacant(index) => None,
+        }
+    }
+
+    fn into_option_mut(&mut self) -> Option<&mut T> {
+        match self {
+            Entry::Occupied(ref mut val) => Some(val),
+            Entry::Vacant(index) => None,
+        }
+    }
+}
+
+impl<T> FromInto<T> for Entry<T> {
+    fn from<U: Into<T>>(val: U) -> Self { Entry::Occupied(val.into()) }
 }
 
 /// A handle to a vacant entry in a `Slab`.
@@ -153,45 +253,53 @@ impl<T> Default for Slab<T> {
 /// assert_eq!("hello", slab[hello].1);
 /// ```
 #[derive(Debug)]
-pub struct VacantEntry<'a, T: 'a> {
-    slab: &'a mut Slab<T>,
+pub struct VacantEntry<'a, T: 'a, E: 'a + EntryTrait<T>> {
+    slab: &'a Slab<T, E>,
     key: usize,
+    // Panic if insert is not called at all because the allocated slot must be
+    // initialized.
+    inserted: bool,
+}
+
+impl<'a, T: 'a, E: 'a + EntryTrait<T>> Drop for VacantEntry<'a, T, E> {
+    fn drop(&mut self) { assert_eq!(self.inserted, true) }
 }
 
 /// An iterator over the values stored in the `Slab`
-pub struct Iter<'a, T: 'a> {
-    entries: std::slice::Iter<'a, Entry<T>>,
+pub struct Iter<'a, T: 'a, E: 'a + EntryTrait<T>> {
+    entries: slice::Iter<'a, E>,
     curr: usize,
+    value_type: PhantomData<T>,
 }
 
 /// A mutable iterator over the values stored in the `Slab`
-pub struct IterMut<'a, T: 'a> {
-    entries: std::slice::IterMut<'a, Entry<T>>,
+pub struct IterMut<'a, T: 'a, E: 'a + EntryTrait<T>> {
+    entries: slice::IterMut<'a, E>,
     curr: usize,
+    value_type: PhantomData<T>,
 }
 
-#[derive(Clone)]
-enum Entry<T> {
+#[derive(Clone, Debug)]
+pub enum Entry<T> {
     Vacant(usize),
     Occupied(T),
 }
 
-impl<T> Slab<T> {
-    /// Construct a new, empty `Slab`.
-    ///
-    /// The function does not allocate and the returned slab will have no
-    /// capacity until `insert` is called or capacity is explicitly reserved.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use slab::*;
-    /// let slab: Slab<i32> = Slab::new();
-    /// ```
-    pub fn new() -> Slab<T> {
-        Slab::with_capacity(0)
-    }
+impl<T> Default for Entry<T> {
+    fn default() -> Self { Entry::Vacant(0) }
+}
 
+impl<T, E: EntryTrait<T>> Default for Slab<T, E> {
+    fn default() -> Self {
+        Self {
+            entries: Default::default(),
+            alloc_fields: Default::default(),
+            value_type: PhantomData,
+        }
+    }
+}
+
+impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// Construct a new, empty `Slab` with the specified capacity.
     ///
     /// The returned slab will be able to store exactly `capacity` without
@@ -219,12 +327,10 @@ impl<T> Slab<T> {
     /// // ...but this may make the slab reallocate
     /// slab.insert(11);
     /// ```
-    pub fn with_capacity(capacity: usize) -> Slab<T> {
-        Slab {
-            entries: Vec::with_capacity(capacity),
-            next: 0,
-            len: 0,
-        }
+    pub fn with_capacity(capacity: usize) -> Self {
+        let mut new = Slab::default();
+        new.reserve(capacity).unwrap();
+        new
     }
 
     /// Return the number of values the slab can store without reallocating.
@@ -236,9 +342,7 @@ impl<T> Slab<T> {
     /// let slab: Slab<i32> = Slab::with_capacity(10);
     /// assert_eq!(slab.capacity(), 10);
     /// ```
-    pub fn capacity(&self) -> usize {
-        self.entries.capacity()
-    }
+    pub fn capacity(&self) -> usize { self.entries.capacity() }
 
     /// Reserve capacity for at least `additional` more values to be stored
     /// without allocating.
@@ -266,12 +370,19 @@ impl<T> Slab<T> {
     /// slab.reserve(10);
     /// assert!(slab.capacity() >= 11);
     /// ```
-    pub fn reserve(&mut self, additional: usize) {
-        if self.capacity() - self.len >= additional {
-            return;
+    pub fn reserve(&mut self, additional: usize) -> Result<()> {
+        let old_capacity = self.capacity();
+        if old_capacity - self.len() >= additional {
+            return Ok(());
         }
-        let need_add = self.len + additional - self.entries.len();
+        let need_add = self.len() + additional - old_capacity;
         self.entries.reserve(need_add);
+        // TODO(yz): should return error instead of panic, however, try_reserve*
+        // is only in nightly.        self.entries.
+        // try_reserve(need_add).chain_err(|| ErrorKind::OutOfMem)?;
+        let capacity = self.capacity();
+        self.resize_up(old_capacity, capacity);
+        Ok(())
     }
 
     /// Reserve the minimum capacity required to store exactly `additional`
@@ -300,12 +411,32 @@ impl<T> Slab<T> {
     /// slab.reserve_exact(10);
     /// assert!(slab.capacity() >= 11);
     /// ```
-    pub fn reserve_exact(&mut self, additional: usize) {
-        if self.capacity() - self.len >= additional {
-            return;
+    pub fn reserve_exact(&mut self, additional: usize) -> Result<()> {
+        let old_capacity = self.capacity();
+        if old_capacity - self.len() >= additional {
+            return Ok(());
         }
-        let need_add = self.len + additional - self.entries.len();
+        let need_add = self.len() + additional - old_capacity;
+        // TODO(yz): should return error instead of panic, however, try_reserve*
+        // is only in nightly.        self.entries.
+        // try_reserve_exact(need_add).chain_err(|| ErrorKind::OutOfMem)?;
         self.entries.reserve_exact(need_add);
+        let capacity = self.capacity();
+        self.resize_up(old_capacity, capacity);
+        Ok(())
+    }
+
+    // TODO(yz): resize_default is nightly only.
+    fn resize_up(&mut self, capacity: usize, new_capacity: usize) {
+        for i in capacity..new_capacity {
+            self.entries.push(E::default());
+        }
+    }
+
+    fn resize_down(&mut self, capacity: usize, new_capacity: usize) {
+        for i in new_capacity..capacity {
+            self.entries.pop();
+        }
     }
 
     /// Shrink the capacity of the slab as much as possible.
@@ -349,6 +480,11 @@ impl<T> Slab<T> {
     /// assert!(slab.capacity() >= 3);
     /// ```
     pub fn shrink_to_fit(&mut self) {
+        let capacity = self.capacity();
+        let new_capacity =
+            self.alloc_fields.get_mut().unwrap().size_initialized;
+
+        self.resize_down(capacity, new_capacity);
         self.entries.shrink_to_fit();
     }
 
@@ -367,11 +503,7 @@ impl<T> Slab<T> {
     /// slab.clear();
     /// assert!(slab.is_empty());
     /// ```
-    pub fn clear(&mut self) {
-        self.entries.clear();
-        self.len = 0;
-        self.next = 0;
-    }
+    pub fn clear(&mut self) { mem::replace(self, Self::default()); }
 
     /// Return the number of stored values.
     ///
@@ -387,9 +519,7 @@ impl<T> Slab<T> {
     ///
     /// assert_eq!(3, slab.len());
     /// ```
-    pub fn len(&self) -> usize {
-        self.len
-    }
+    pub fn len(&self) -> usize { self.alloc_fields.lock().unwrap().used }
 
     /// Return `true` if there are no values stored in the slab.
     ///
@@ -403,9 +533,7 @@ impl<T> Slab<T> {
     /// slab.insert(1);
     /// assert!(!slab.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
+    pub fn is_empty(&self) -> bool { self.len() == 0 }
 
     /// Return an iterator over the slab.
     ///
@@ -431,10 +559,12 @@ impl<T> Slab<T> {
     /// assert_eq!(iterator.next(), Some((2, &2)));
     /// assert_eq!(iterator.next(), None);
     /// ```
-    pub fn iter(&self) -> Iter<T> {
+    // TODO(yz): let the iter stop at the size_initialized.
+    pub fn iter(&self) -> Iter<T, E> {
         Iter {
             entries: self.entries.iter(),
             curr: 0,
+            value_type: PhantomData,
         }
     }
 
@@ -463,10 +593,12 @@ impl<T> Slab<T> {
     /// assert_eq!(slab[key1], 2);
     /// assert_eq!(slab[key2], 1);
     /// ```
-    pub fn iter_mut(&mut self) -> IterMut<T> {
+    // TODO(yz): let the iter stop at the size_initialized.
+    pub fn iter_mut(&mut self) -> IterMut<T, E> {
         IterMut {
             entries: self.entries.iter_mut(),
             curr: 0,
+            value_type: PhantomData,
         }
     }
 
@@ -486,10 +618,9 @@ impl<T> Slab<T> {
     /// assert_eq!(slab.get(123), None);
     /// ```
     pub fn get(&self, key: usize) -> Option<&T> {
-        match self.entries.get(key) {
-            Some(&Entry::Occupied(ref val)) => Some(val),
-            _ => None,
-        }
+        self.entries
+            .get(key)
+            .and_then(|entry| entry.into_option_ref())
     }
 
     /// Return a mutable reference to the value associated with the given key.
@@ -509,11 +640,12 @@ impl<T> Slab<T> {
     /// assert_eq!(slab[key], "world");
     /// assert_eq!(slab.get_mut(123), None);
     /// ```
-    pub fn get_mut(&mut self, key: usize) -> Option<&mut T> {
-        match self.entries.get_mut(key) {
-            Some(&mut Entry::Occupied(ref mut val)) => Some(val),
-            _ => None,
-        }
+    // This method is unsafe because user may pass the same key to get_mut at
+    // the same time.
+    pub unsafe fn get_mut(&self, key: usize) -> Option<&mut T> {
+        self.entries.get(key).and_then(|entry| {
+            Self::cast_element_ref_mut(entry).into_option_mut()
+        })
     }
 
     /// Return a reference to the value associated with the given key without
@@ -533,10 +665,7 @@ impl<T> Slab<T> {
     /// }
     /// ```
     pub unsafe fn get_unchecked(&self, key: usize) -> &T {
-        match *self.entries.get_unchecked(key) {
-            Entry::Occupied(ref val) => val,
-            _ => unreachable!(),
-        }
+        self.get_element_at(key).get_occupied_ref()
     }
 
     /// Return a mutable reference to the value associated with the given key
@@ -558,18 +687,24 @@ impl<T> Slab<T> {
     ///
     /// assert_eq!(slab[key], 13);
     /// ```
-    pub unsafe fn get_unchecked_mut(&mut self, key: usize) -> &mut T {
-        match *self.entries.get_unchecked_mut(key) {
-            Entry::Occupied(ref mut val) => val,
-            _ => unreachable!(),
-        }
+    pub unsafe fn get_unchecked_mut(&self, key: usize) -> &mut T {
+        self.get_element_at(key).get_occupied_mut()
+    }
+
+    fn cast_element_ref_mut(r: &E) -> &mut E {
+        unsafe { &mut *((r as *const E) as *mut E) }
+    }
+
+    fn get_element_at(&self, key: usize) -> &mut E {
+        unsafe { Self::cast_element_ref_mut(self.entries.get_unchecked(key)) }
     }
 
     /// Insert a value in the slab, returning key assigned to the value.
     ///
-    /// The returned key can later be used to retrieve or remove the value using indexed
-    /// lookup and `remove`. Additional capacity is allocated if needed. See
-    /// [Capacity and reallocation](index.html#capacity-and-reallocation).
+    /// The returned key can later be used to retrieve or remove the value using
+    /// indexed lookup and `remove`. Additional capacity is allocated if
+    /// needed. See [Capacity and
+    /// reallocation](index.html#capacity-and-reallocation).
     ///
     /// # Panics
     ///
@@ -583,12 +718,30 @@ impl<T> Slab<T> {
     /// let key = slab.insert("hello");
     /// assert_eq!(slab[key], "hello");
     /// ```
-    pub fn insert(&mut self, val: T) -> usize {
-        let key = self.next;
-
+    pub fn insert<U: Into<T>>(&self, val: U) -> Result<usize> {
+        let key = self.allocate()?;
         self.insert_at(key, val);
+        Ok(key)
+    }
 
-        key
+    pub fn allocate(&self) -> Result<usize> {
+        let mut alloc_fields = self.alloc_fields.lock().unwrap();
+        let key = alloc_fields.next;
+        if key == self.entries.capacity() {
+            Err(Error::from_kind(ErrorKind::OutOfMem))
+        } else {
+            alloc_fields.used += 1;
+            if key == alloc_fields.size_initialized {
+                alloc_fields.next = key + 1;
+            } else {
+                alloc_fields.next = self.entries[key].get_next_vacant_index();
+            }
+            Ok(key)
+        }
+    }
+
+    fn insert_at<U: Into<T>>(&self, key: usize, val: U) {
+        *self.get_element_at(key) = E::from(val);
     }
 
     /// Return a handle to a vacant entry allowing for further manipulation.
@@ -614,31 +767,12 @@ impl<T> Slab<T> {
     /// assert_eq!(hello, slab[hello].0);
     /// assert_eq!("hello", slab[hello].1);
     /// ```
-    pub fn vacant_entry(&mut self) -> VacantEntry<T> {
-        VacantEntry {
-            key: self.next,
+    pub fn vacant_entry(&self) -> Result<VacantEntry<T, E>> {
+        Ok(VacantEntry {
+            key: self.allocate()?,
             slab: self,
-        }
-    }
-
-    fn insert_at(&mut self, key: usize, val: T) {
-        self.len += 1;
-
-        if key == self.entries.len() {
-            self.entries.push(Entry::Occupied(val));
-            self.next = key + 1;
-        } else {
-            let prev = mem::replace(
-                &mut self.entries[key],
-                Entry::Occupied(val));
-
-            match prev {
-                Entry::Vacant(next) => {
-                    self.next = next;
-                }
-                _ => unreachable!(),
-            }
-        }
+            inserted: false,
+        })
     }
 
     /// Remove and return the value associated with the given key.
@@ -661,24 +795,23 @@ impl<T> Slab<T> {
     /// assert_eq!(slab.remove(hello), "hello");
     /// assert!(!slab.contains(hello));
     /// ```
-    pub fn remove(&mut self, key: usize) -> T {
-        // Swap the entry at the provided value
-        let prev = mem::replace(
-            &mut self.entries[key],
-            Entry::Vacant(self.next));
+    pub fn remove(&self, key: usize) -> Result<T> {
+        let mut alloc_fields = self.alloc_fields.lock().unwrap();
+        let next = alloc_fields.next;
+        let old_value = match self.entries.get(key) {
+            Some(ref val) => {
+                alloc_fields.used -= 1;
+                alloc_fields.next = key;
+                Self::cast_element_ref_mut(val)
+                    .take_occupied_and_replace(E::from_vacant_index(next))
+            }
+            None => {
+                // Index out of range.
+                return Err(Error::from_kind(ErrorKind::SlabKeyError));
+            }
+        };
 
-        match prev {
-            Entry::Occupied(val) => {
-                self.len -= 1;
-                self.next = key;
-                val
-            }
-            _ => {
-                // Woops, the entry is actually vacant, restore the state
-                self.entries[key] = prev;
-                panic!("invalid key");
-            }
-        }
+        Ok(old_value)
     }
 
     /// Return `true` if a value is associated with the given key.
@@ -696,16 +829,7 @@ impl<T> Slab<T> {
     ///
     /// assert!(!slab.contains(hello));
     /// ```
-    pub fn contains(&self, key: usize) -> bool {
-        self.entries.get(key)
-            .map(|e| {
-                match *e {
-                    Entry::Occupied(_) => true,
-                    _ => false,
-                }
-            })
-            .unwrap_or(false)
-    }
+    pub fn contains(&self, key: usize) -> bool { self.get(key).is_some() }
 
     /// Retain only the elements specified by the predicate.
     ///
@@ -732,69 +856,53 @@ impl<T> Slab<T> {
     /// assert_eq!(2, slab.len());
     /// ```
     pub fn retain<F>(&mut self, mut f: F)
-        where F: FnMut(usize, &mut T) -> bool
-    {
+    where F: FnMut(usize, &mut T) -> bool {
         for i in 0..self.entries.len() {
-            let keep = match self.entries[i] {
-                Entry::Occupied(ref mut v) => f(i, v),
-                _ => true,
-            };
+            let keep = unsafe { self.get_mut(i).map_or(true, |v| f(i, v)) };
 
             if !keep {
-                self.remove(i);
+                self.remove(i).unwrap();
             }
         }
     }
 }
 
-impl<T> ops::Index<usize> for Slab<T> {
+impl<T, E: EntryTrait<T>> ops::Index<usize> for Slab<T, E> {
     type Output = T;
 
-    fn index(&self, key: usize) -> &T {
-        match self.entries[key] {
-            Entry::Occupied(ref v) => v,
-            _ => panic!("invalid key"),
-        }
-    }
+    fn index(&self, key: usize) -> &T { self.entries[key].get_occupied_ref() }
 }
 
-impl<T> ops::IndexMut<usize> for Slab<T> {
-    fn index_mut(&mut self, key: usize) -> &mut T {
-        match self.entries[key] {
-            Entry::Occupied(ref mut v) => v,
-            _ => panic!("invalid key"),
-        }
-    }
-}
-
-impl<'a, T> IntoIterator for &'a Slab<T> {
+impl<'a, T, E: EntryTrait<T>> IntoIterator for &'a Slab<T, E> {
+    type IntoIter = Iter<'a, T, E>;
     type Item = (usize, &'a T);
-    type IntoIter = Iter<'a, T>;
 
-    fn into_iter(self) -> Iter<'a, T> {
-        self.iter()
-    }
+    fn into_iter(self) -> Iter<'a, T, E> { self.iter() }
 }
 
-impl<'a, T> IntoIterator for &'a mut Slab<T> {
+impl<'a, T, E: EntryTrait<T>> IntoIterator for &'a mut Slab<T, E> {
+    type IntoIter = IterMut<'a, T, E>;
     type Item = (usize, &'a mut T);
-    type IntoIter = IterMut<'a, T>;
 
-    fn into_iter(self) -> IterMut<'a, T> {
-        self.iter_mut()
-    }
+    fn into_iter(self) -> IterMut<'a, T, E> { self.iter_mut() }
 }
 
-impl<T> fmt::Debug for Slab<T> where T: fmt::Debug {
+impl<T, E: EntryTrait<T>> fmt::Debug for Slab<T, E>
+where T: fmt::Debug
+{
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt,
-               "Slab {{ len: {}, cap: {} }}",
-               self.len,
-               self.capacity())
+        write!(
+            fmt,
+            "Slab {{ len: {}, cap: {} }}",
+            self.len(),
+            self.capacity()
+        )
     }
 }
 
-impl<'a, T: 'a> fmt::Debug for Iter<'a, T> where T: fmt::Debug {
+impl<'a, T: 'a, E: EntryTrait<T>> fmt::Debug for Iter<'a, T, E>
+where T: fmt::Debug
+{
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("Iter")
             .field("curr", &self.curr)
@@ -803,7 +911,9 @@ impl<'a, T: 'a> fmt::Debug for Iter<'a, T> where T: fmt::Debug {
     }
 }
 
-impl<'a, T: 'a> fmt::Debug for IterMut<'a, T> where T: fmt::Debug {
+impl<'a, T: 'a, E: EntryTrait<T>> fmt::Debug for IterMut<'a, T, E>
+where T: fmt::Debug
+{
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("IterMut")
             .field("curr", &self.curr)
@@ -814,7 +924,7 @@ impl<'a, T: 'a> fmt::Debug for IterMut<'a, T> where T: fmt::Debug {
 
 // ===== VacantEntry =====
 
-impl<'a, T> VacantEntry<'a, T> {
+impl<'a, T, E: EntryTrait<T>> VacantEntry<'a, T, E> {
     /// Insert a value in the entry, returning a mutable reference to the value.
     ///
     /// To get the key associated with the value, use `key` prior to calling
@@ -837,13 +947,11 @@ impl<'a, T> VacantEntry<'a, T> {
     /// assert_eq!(hello, slab[hello].0);
     /// assert_eq!("hello", slab[hello].1);
     /// ```
-    pub fn insert(self, val: T) -> &'a mut T {
+    pub fn insert<U>(mut self, val: U) -> &'a mut T
+    where T: From<U> {
+        self.inserted = true;
         self.slab.insert_at(self.key, val);
-
-        match self.slab.entries[self.key] {
-            Entry::Occupied(ref mut v) => v,
-            _ => unreachable!(),
-        }
+        unsafe { self.slab.get_unchecked_mut(self.key) }
     }
 
     /// Return the key associated with this entry.
@@ -867,14 +975,12 @@ impl<'a, T> VacantEntry<'a, T> {
     /// assert_eq!(hello, slab[hello].0);
     /// assert_eq!("hello", slab[hello].1);
     /// ```
-    pub fn key(&self) -> usize {
-        self.key
-    }
+    pub fn key(&self) -> usize { self.key }
 }
 
 // ===== Iter =====
 
-impl<'a, T> Iterator for Iter<'a, T> {
+impl<'a, T, E: EntryTrait<T>> Iterator for Iter<'a, T, E> {
     type Item = (usize, &'a T);
 
     fn next(&mut self) -> Option<(usize, &'a T)> {
@@ -882,8 +988,8 @@ impl<'a, T> Iterator for Iter<'a, T> {
             let curr = self.curr;
             self.curr += 1;
 
-            if let Entry::Occupied(ref v) = *entry {
-                return Some((curr, v));
+            if let Some(ref_v) = entry.into_option_ref() {
+                return Some((curr, ref_v));
             }
         }
 
@@ -893,7 +999,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
 // ===== IterMut =====
 
-impl<'a, T> Iterator for IterMut<'a, T> {
+impl<'a, T, E: EntryTrait<T>> Iterator for IterMut<'a, T, E> {
     type Item = (usize, &'a mut T);
 
     fn next(&mut self) -> Option<(usize, &'a mut T)> {
@@ -901,8 +1007,8 @@ impl<'a, T> Iterator for IterMut<'a, T> {
             let curr = self.curr;
             self.curr += 1;
 
-            if let Entry::Occupied(ref mut v) = *entry {
-                return Some((curr, v));
+            if let Some(ref_mut_v) = entry.into_option_mut() {
+                return Some((curr, ref_mut_v));
             }
         }
 

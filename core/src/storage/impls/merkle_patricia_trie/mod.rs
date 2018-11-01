@@ -15,3 +15,6 @@ pub struct MultiVersionMerklePatriciaTrie {
 
 pub(super) mod data_structure;
 pub(super) mod merkle;
+
+/// Fork to slab in order to compact data.
+mod slab;
