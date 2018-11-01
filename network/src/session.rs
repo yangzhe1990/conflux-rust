@@ -1,17 +1,17 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
-use ethkey::{recover, sign, KeyPair, Secret};
-use hash::keccak;
 use connection::{
     Connection as TcpConnection, PacketSizer as PacketSizerTrait,
-    MAX_PAYLOAD_SIZE,
+    SendQueueStatus, MAX_PAYLOAD_SIZE,
 };
-use ethereum_types::{H256, H520};
 use ethcore_bytes;
+use ethereum_types::{H256, H520};
+use ethkey::{recover, sign, KeyPair, Secret};
+use hash::keccak;
 use io::*;
 use mio::deprecated::*;
 use mio::tcp::*;
 use mio::*;
-use node_table::{Node, NodeContact, NodeId, NodeEndpoint, NodeEntry};
+use node_table::{Node, NodeContact, NodeEndpoint, NodeEntry, NodeId};
 use rlp::{Rlp, RlpStream};
 use service::{HostMetadata, NetworkServiceInner};
 use std::net::SocketAddr;
@@ -64,10 +64,13 @@ pub const PACKET_USER: u8 = 0x10;
 
 impl Session {
     pub fn new<Message: Send + Sync + Clone + 'static>(
-        io: &IoContext<Message>, socket: TcpStream, address: SocketAddr,
-        id: Option<&NodeId>, token: StreamToken, host: &NetworkServiceInner,
-    ) -> Result<Session, Error>
-    {
+        io: &IoContext<Message>,
+        socket: TcpStream,
+        address: SocketAddr,
+        id: Option<&NodeId>,
+        token: StreamToken,
+        host: &NetworkServiceInner,
+    ) -> Result<Session, Error> {
         let originated = id.is_some();
         let mut session = Session {
             metadata: SessionMetadata {
@@ -97,47 +100,68 @@ impl Session {
     }
 
     /// Get id of the remote peer
-    pub fn id(&self) -> Option<&NodeId> { self.metadata.id.as_ref() }
+    pub fn id(&self) -> Option<&NodeId> {
+        self.metadata.id.as_ref()
+    }
 
-    pub fn is_ready(&self) -> bool { self.had_hello }
+    pub fn is_ready(&self) -> bool {
+        self.had_hello
+    }
 
-    pub fn expired(&self) -> bool { self.expired }
+    pub fn expired(&self) -> bool {
+        self.expired
+    }
 
-    pub fn set_expired(&mut self) { self.expired = true; }
+    pub fn set_expired(&mut self) {
+        self.expired = true;
+    }
 
     pub fn done(&self) -> bool {
         self.expired() && !self.connection().is_sending()
     }
 
-    fn connection(&self) -> &Connection { &self.connection }
+    fn connection(&self) -> &Connection {
+        &self.connection
+    }
 
-    pub fn token(&self) -> StreamToken { self.connection().token() }
+    pub fn token(&self) -> StreamToken {
+        self.connection().token()
+    }
 
-    pub fn address(&self) -> SocketAddr { self.address }
+    pub fn address(&self) -> SocketAddr {
+        self.address
+    }
 
     pub fn register_socket<H: Handler>(
-        &self, reg: Token, event_loop: &mut EventLoop<H>,
+        &self,
+        reg: Token,
+        event_loop: &mut EventLoop<H>,
     ) -> Result<(), Error> {
         self.connection.register_socket(reg, event_loop)?;
         Ok(())
     }
 
     pub fn update_socket<H: Handler>(
-        &self, reg: Token, event_loop: &mut EventLoop<H>,
+        &self,
+        reg: Token,
+        event_loop: &mut EventLoop<H>,
     ) -> Result<(), Error> {
         self.connection.update_socket(reg, event_loop)?;
         Ok(())
     }
 
     pub fn deregister_socket<H: Handler>(
-        &self, event_loop: &mut EventLoop<H>,
+        &self,
+        event_loop: &mut EventLoop<H>,
     ) -> Result<(), Error> {
         self.connection().deregister_socket(event_loop)?;
         Ok(())
     }
 
     pub fn readable<Message: Send + Sync + Clone>(
-        &mut self, io: &IoContext<Message>, host: &NetworkServiceInner,
+        &mut self,
+        io: &IoContext<Message>,
+        host: &NetworkServiceInner,
     ) -> Result<SessionData, Error> {
         if self.expired() {
             return Ok(SessionData::None);
@@ -154,7 +178,10 @@ impl Session {
     }
 
     fn read_packet<Message: Send + Sync + Clone>(
-        &mut self, io: &IoContext<Message>, data: &Bytes, host: &NetworkServiceInner,
+        &mut self,
+        io: &IoContext<Message>,
+        data: &Bytes,
+        host: &NetworkServiceInner,
     ) -> Result<SessionData, Error> {
         let packet_id = data[2];
         if packet_id != PACKET_HELLO
@@ -179,7 +206,10 @@ impl Session {
                     self.metadata.id = Some(node_id);
                 } else {
                     if Some(node_id) != self.metadata.id {
-                        return Err(self.disconnect(io, DisconnectReason::WrongEndpointInfo));
+                        return Err(self.disconnect(
+                            io,
+                            DisconnectReason::WrongEndpointInfo,
+                        ));
                     }
                 }
                 let rlp = Rlp::new(signed);
@@ -220,7 +250,11 @@ impl Session {
     }
 
     fn read_hello<Message: Send + Sync + Clone>(
-        &mut self, io: &IoContext<Message>, id: &NodeId, rlp: &Rlp, host: &NetworkServiceInner,
+        &mut self,
+        io: &IoContext<Message>,
+        id: &NodeId,
+        rlp: &Rlp,
+        host: &NetworkServiceInner,
     ) -> Result<(), Error> {
         let host_meta = host.metadata.read();
         let peer_caps: Vec<Capability> = rlp.list_at(0)?;
@@ -236,7 +270,8 @@ impl Session {
         }
 
         caps.retain(|c| {
-            host_meta.capabilities
+            host_meta
+                .capabilities
                 .iter()
                 .any(|hc| hc.protocol == c.protocol && hc.version == c.version)
         });
@@ -276,7 +311,9 @@ impl Session {
         };
         if !entry.endpoint.is_valid() {
             debug!(target: "network", "Got bad address: {:?}", entry);
-        } else if !(entry.endpoint.is_allowed(host.get_ip_filter()) && entry.id != *host_meta.id()) {
+        } else if !(entry.endpoint.is_allowed(host.get_ip_filter())
+            && entry.id != *host_meta.id())
+        {
             debug!(target: "network", "Address not allowed: {:?}", entry);
         } else {
             let mut trusted = host.trusted_nodes.write();
@@ -301,9 +338,12 @@ impl Session {
     }
 
     pub fn send_packet<Message>(
-        &mut self, io: &IoContext<Message>, protocol: Option<ProtocolId>,
-        packet_id: u8, data: &[u8],
-    ) -> Result<(), Error>
+        &mut self,
+        io: &IoContext<Message>,
+        protocol: Option<ProtocolId>,
+        packet_id: u8,
+        data: &[u8],
+    ) -> Result<SendQueueStatus, Error>
     where
         Message: Send + Sync + Clone,
     {
@@ -328,12 +368,13 @@ impl Session {
             packet.put_slice(&protocol);
         }
         packet.put_slice(&data);
-        self.connection.send(io, &packet[..]);
-        Ok(())
+        Ok(self.connection.send(io, &packet[..]))
     }
 
     pub fn disconnect<Message: Send + Sync + Clone>(
-        &mut self, io: &IoContext<Message>, reason: DisconnectReason,
+        &mut self,
+        io: &IoContext<Message>,
+        reason: DisconnectReason,
     ) -> Error {
         let mut rlp = RlpStream::new();
         rlp.begin_list(1).append(&(reason as u32));
@@ -343,19 +384,23 @@ impl Session {
     }
 
     fn send_ping<Message: Send + Sync + Clone>(
-        &mut self, io: &IoContext<Message>,
+        &mut self,
+        io: &IoContext<Message>,
     ) -> Result<(), Error> {
-        self.send_packet(io, None, PACKET_PING, &[])
+        self.send_packet(io, None, PACKET_PING, &[]).map(|_| ())
     }
 
     fn send_pong<Message: Send + Sync + Clone>(
-        &mut self, io: &IoContext<Message>,
+        &mut self,
+        io: &IoContext<Message>,
     ) -> Result<(), Error> {
-        self.send_packet(io, None, PACKET_PONG, &[])
+        self.send_packet(io, None, PACKET_PONG, &[]).map(|_| ())
     }
 
     fn write_hello<Message: Send + Sync + Clone>(
-        &mut self, io: &IoContext<Message>, host: &NetworkServiceInner,
+        &mut self,
+        io: &IoContext<Message>,
+        host: &NetworkServiceInner,
     ) -> Result<(), Error> {
         let host_meta = host.metadata.read();
         debug!(target: "network", "{} Sending Hello", self.token());
@@ -363,7 +408,8 @@ impl Session {
         rlp.append_list(&host_meta.capabilities);
         host_meta.public_endpoint.to_rlp_list(&mut rlp);
 
-        let mut packet = ethcore_bytes::Bytes::with_capacity(rlp.as_raw().len() + 32 + 65);
+        let mut packet =
+            ethcore_bytes::Bytes::with_capacity(rlp.as_raw().len() + 32 + 65);
         packet.resize(32 + 65, 0);
         packet.extend_from_slice(rlp.as_raw());
         let hash = keccak(&packet[(32 + 65)..]);
@@ -378,10 +424,12 @@ impl Session {
         let signed_hash = keccak(&packet[32..]);
         packet[0..32].copy_from_slice(&signed_hash);
         self.send_packet(io, None, PACKET_HELLO, &packet)
+            .map(|_| ())
     }
 
     pub fn writable<Message: Send + Sync + Clone>(
-        &mut self, io: &IoContext<Message>,
+        &mut self,
+        io: &IoContext<Message>,
     ) -> Result<(), Error> {
         self.connection.writable(io)?;
         Ok(())

@@ -66,16 +66,16 @@ impl SynchronizationProtocolHandler {
                 self.on_block_headers(io, &mut *syn, peer, &rlp)
             }
             MsgId::GET_BLOCK_HEADERS => {
-                self.get_block_headers(io, &mut *syn, &rlp, peer)
+                self.on_get_block_headers(io, &mut *syn, &rlp, peer)
             }
             MsgId::NEW_BLOCK => self.on_new_block(io, &mut *syn, peer, &rlp),
             MsgId::BLOCKS => self.on_blocks(io, &mut *syn, peer, &rlp),
-            MsgId::GET_BLOCKS => self.get_blocks(io, &mut *syn, &rlp, peer),
+            MsgId::GET_BLOCKS => self.on_get_blocks(io, &mut *syn, &rlp, peer),
             MsgId::TERMINAL_BLOCK_HASHES => {
                 self.on_terminal_block_hashes(io, &mut *syn, &rlp, peer)
             }
             MsgId::GET_TERMINAL_BLOCK_HASHES => {
-                self.get_terminal_block_hashes(io, &mut *syn, &rlp, peer)
+                self.on_get_terminal_block_hashes(io, &mut *syn, &rlp, peer)
             }
             _ => {
                 debug!(target: "sync", "Unknown message: peer={:?} msgid={:?}", peer, msg_id);
@@ -84,7 +84,7 @@ impl SynchronizationProtocolHandler {
         }.unwrap();
     }
 
-    fn get_block_headers(
+    fn on_get_block_headers(
         &self, io: &NetworkContext, syn: &mut SynchronizationState, rlp: &Rlp,
         peer: PeerId,
     ) -> Result<(), Error>
@@ -113,7 +113,7 @@ impl SynchronizationProtocolHandler {
         Ok(())
     }
 
-    fn get_blocks(
+    fn on_get_blocks(
         &self, io: &NetworkContext, syn: &mut SynchronizationState, rlp: &Rlp,
         peer: PeerId,
     ) -> Result<(), Error>
@@ -138,7 +138,7 @@ impl SynchronizationProtocolHandler {
         Ok(())
     }
 
-    fn get_terminal_block_hashes(
+    fn on_get_terminal_block_hashes(
         &self, io: &NetworkContext, syn: &mut SynchronizationState, rlp: &Rlp,
         peer_id: PeerId,
     ) -> Result<(), Error>

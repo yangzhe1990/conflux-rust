@@ -47,15 +47,19 @@ const NODE_TABLE: TimerToken = SYS_TIMER + 7;
 
 pub const DEFAULT_HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(1);
 // for DISCOVERY_REFRESH TimerToken
-pub const DEFAULT_DISCOVERY_REFRESH_TIMEOUT: Duration = Duration::from_secs(120);
+pub const DEFAULT_DISCOVERY_REFRESH_TIMEOUT: Duration =
+    Duration::from_secs(120);
 // for FAST_DISCOVERY_REFRESH TimerToken
-pub const DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT: Duration = Duration::from_secs(10);
+pub const DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT: Duration =
+    Duration::from_secs(10);
 // for DISCOVERY_ROUND TimerToken
-pub const DEFAULT_DISCOVERY_ROUND_TIMEOUT: Duration = Duration::from_millis(500);
+pub const DEFAULT_DISCOVERY_ROUND_TIMEOUT: Duration =
+    Duration::from_millis(500);
 // for NODE_TABLE TimerToken
 pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(300);
 // The lifetime threshold of the connection for promoting a peer
-pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration = Duration::from_secs(3 * 24 * 3600);
+pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration =
+    Duration::from_secs(3 * 24 * 3600);
 
 pub const MAX_DATAGRAM_SIZE: usize = 1280;
 
@@ -77,7 +81,9 @@ impl UdpChannel {
         }
     }
 
-    pub fn any_sends_queued(&self) -> bool { !self.send_queue.is_empty() }
+    pub fn any_sends_queued(&self) -> bool {
+        !self.send_queue.is_empty()
+    }
 
     pub fn dequeue_send(&mut self) -> Option<Datagram> {
         self.send_queue.pop_front()
@@ -96,10 +102,10 @@ pub struct UdpIoContext<'a> {
 
 impl<'a> UdpIoContext<'a> {
     pub fn new(
-        channel: &'a RwLock<UdpChannel>, trusted_nodes: &'a RwLock<NodeTable>,
+        channel: &'a RwLock<UdpChannel>,
+        trusted_nodes: &'a RwLock<NodeTable>,
         untrusted_nodes: &'a RwLock<NodeTable>,
-    ) -> UdpIoContext<'a>
-    {
+    ) -> UdpIoContext<'a> {
         UdpIoContext {
             channel,
             trusted_nodes,
@@ -191,10 +197,11 @@ impl NetworkService {
     }
     /// Register a new protocol handler
     pub fn register_protocol(
-        &self, handler: Arc<NetworkProtocolHandler + Sync>,
-        protocol: ProtocolId, versions: &[u8],
-    ) -> Result<(), Error>
-    {
+        &self,
+        handler: Arc<NetworkProtocolHandler + Sync>,
+        protocol: ProtocolId,
+        versions: &[u8],
+    ) -> Result<(), Error> {
         self.io_service.as_ref().unwrap().send_message(
             NetworkIoMessage::AddHandler {
                 handler,
@@ -206,7 +213,9 @@ impl NetworkService {
     }
     /// Executes action in the network context
     pub fn with_context<F>(&self, protocol: ProtocolId, action: F)
-    where F: FnOnce(&NetworkContext) {
+    where
+        F: FnOnce(&NetworkContext),
+    {
         let io = IoContext::new(self.io_service.as_ref().unwrap().channel(), 0);
         if let Some(ref inner) = self.inner {
             inner.with_context(protocol, &io, action);
@@ -233,7 +242,9 @@ pub struct HostMetadata {
 }
 
 impl HostMetadata {
-    pub(crate) fn id(&self) -> &NodeId { self.keys.public() }
+    pub(crate) fn id(&self) -> &NodeId {
+        self.keys.public()
+    }
 }
 
 /// The inner implementation of NetworkService. Note that all accesses to the RWLocks of the fields
@@ -400,7 +411,10 @@ impl NetworkServiceInner {
                 debug!(target: "network", "Could not add node {}: {:?}", id, e);
             }
             Ok(n) => {
-                self.add_trusted_node_with_entry(NodeEntry {id: n.id, endpoint: n.endpoint.clone()});
+                self.add_trusted_node_with_entry(NodeEntry {
+                    id: n.id,
+                    endpoint: n.endpoint.clone(),
+                });
             }
         }
     }
@@ -424,13 +438,17 @@ impl NetworkServiceInner {
 
     pub fn add_reserved_node(&self, id: &str) -> Result<(), Error> {
         let n = Node::from_str(id)?;
-        self.add_trusted_node_with_entry(NodeEntry {id: n.id, endpoint: n.endpoint.clone()});
+        self.add_trusted_node_with_entry(NodeEntry {
+            id: n.id,
+            endpoint: n.endpoint.clone(),
+        });
         self.reserved_nodes.write().insert(n.id);
         Ok(())
     }
 
     fn initialize_udp_protocols(
-        &self, io: &IoContext<NetworkIoMessage>,
+        &self,
+        io: &IoContext<NetworkIoMessage>,
     ) -> Result<(), Error> {
         // Initialize discovery
         if let Some(discovery) = self.discovery.lock().as_mut() {
@@ -451,8 +469,14 @@ impl NetworkServiceInner {
                 FAST_DISCOVERY_REFRESH,
                 self.config.fast_discovery_refresh_timeout,
             )?;
-            io.register_timer(DISCOVERY_REFRESH, self.config.discovery_refresh_timeout)?;
-            io.register_timer(DISCOVERY_ROUND, self.config.discovery_round_timeout)?;
+            io.register_timer(
+                DISCOVERY_REFRESH,
+                self.config.discovery_refresh_timeout,
+            )?;
+            io.register_timer(
+                DISCOVERY_ROUND,
+                self.config.discovery_round_timeout,
+            )?;
         }
         io.register_timer(NODE_TABLE, self.config.node_table_timeout)?;
 
@@ -510,8 +534,11 @@ impl NetworkServiceInner {
                 }
 
                 if let Some(c) = last_connected {
-                    if c.success_for_duration(self.config.connection_lifetime_for_promotion) {
-                        let removed_node= untrusted.remove_with_id(id).unwrap();
+                    if c.success_for_duration(
+                        self.config.connection_lifetime_for_promotion,
+                    ) {
+                        let removed_node =
+                            untrusted.remove_with_id(id).unwrap();
                         trusted.add_node(removed_node, false);
                     }
                 }
@@ -574,8 +601,7 @@ impl NetworkServiceInner {
         let egress_attempt_count = max_outgoing_peers - egress_count as u32;
         // Try to connect all reserved peers and trusted peers
         let nodes = reserved_nodes.iter().cloned().chain(
-            trusted_nodes
-                .sample_node_ids(egress_attempt_count, &allow_ips),
+            trusted_nodes.sample_node_ids(egress_attempt_count, &allow_ips),
         );
 
         let max_handshakes_per_round = max_handshakes / 2;
@@ -712,10 +738,12 @@ impl NetworkServiceInner {
     // 1. proactively connect to a peer;
     // 2. passively connected by a peer;
     fn create_connection(
-        &self, socket: TcpStream, address: SocketAddr, id: Option<&NodeId>,
+        &self,
+        socket: TcpStream,
+        address: SocketAddr,
+        id: Option<&NodeId>,
         io: &IoContext<NetworkIoMessage>,
-    ) -> Result<(), Error>
-    {
+    ) -> Result<(), Error> {
         let mut sessions = self.sessions.write();
 
         let token = sessions.insert_with_opt(|token| {
@@ -740,7 +768,11 @@ impl NetworkServiceInner {
                 if let Some(id) = id {
                     // This is an outgoing connection.
                     // Outgoing connection must pick node from trusted node table
-                    self.trusted_nodes.write().note_success(id, true, Some(token));
+                    self.trusted_nodes.write().note_success(
+                        id,
+                        true,
+                        Some(token),
+                    );
                 }
                 io.register_stream(token).map(|_| ()).map_err(Into::into)
             }
@@ -752,14 +784,18 @@ impl NetworkServiceInner {
     }
 
     fn connection_closed(
-        &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
+        &self,
+        stream: StreamToken,
+        io: &IoContext<NetworkIoMessage>,
     ) {
         trace!(target: "network", "Connection closed: {}", stream);
         self.kill_connection(stream, io);
     }
 
     fn session_readable(
-        &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
+        &self,
+        stream: StreamToken,
+        io: &IoContext<NetworkIoMessage>,
     ) {
         // We check dropped_nodes first to make sure we stop processing communications from any
         // dropped peers
@@ -843,7 +879,9 @@ impl NetworkServiceInner {
     }
 
     fn session_writable(
-        &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
+        &self,
+        stream: StreamToken,
+        io: &IoContext<NetworkIoMessage>,
     ) {
         // We check dropped_nodes first to make sure we stop processing communications from any
         // dropped peers
@@ -887,7 +925,9 @@ impl NetworkServiceInner {
     }
 
     fn kill_connection(
-        &self, token: StreamToken, io: &IoContext<NetworkIoMessage>,
+        &self,
+        token: StreamToken,
+        io: &IoContext<NetworkIoMessage>,
     ) {
         let mut to_disconnect: Vec<ProtocolId> = Vec::new();
         let mut deregister = false;
@@ -926,7 +966,9 @@ impl NetworkServiceInner {
     }
 
     pub fn with_context<F>(
-        &self, protocol: ProtocolId, io: &IoContext<NetworkIoMessage>,
+        &self,
+        protocol: ProtocolId,
+        io: &IoContext<NetworkIoMessage>,
         action: F,
     ) where
         F: FnOnce(&NetworkContext),
@@ -998,7 +1040,9 @@ impl NetworkServiceInner {
     }
 
     fn on_udp_packet(
-        &self, packet: &[u8], from: SocketAddr,
+        &self,
+        packet: &[u8],
+        from: SocketAddr,
     ) -> Result<(), Error> {
         let res = match packet[0] {
             UDP_PROTOCOL_DISCOVERY => {
@@ -1038,7 +1082,9 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn stream_hup(
-        &self, io: &IoContext<NetworkIoMessage>, stream: StreamToken,
+        &self,
+        io: &IoContext<NetworkIoMessage>,
+        stream: StreamToken,
     ) {
         trace!(target: "network", "Hup: {}", stream);
         match stream {
@@ -1048,7 +1094,9 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn stream_readable(
-        &self, io: &IoContext<NetworkIoMessage>, stream: StreamToken,
+        &self,
+        io: &IoContext<NetworkIoMessage>,
+        stream: StreamToken,
     ) {
         match stream {
             FIRST_SESSION...LAST_SESSION => self.session_readable(stream, io),
@@ -1059,7 +1107,9 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn stream_writable(
-        &self, io: &IoContext<NetworkIoMessage>, stream: StreamToken,
+        &self,
+        io: &IoContext<NetworkIoMessage>,
+        stream: StreamToken,
     ) {
         match stream {
             FIRST_SESSION...LAST_SESSION => self.session_writable(stream, io),
@@ -1114,7 +1164,9 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn message(
-        &self, io: &IoContext<NetworkIoMessage>, message: &NetworkIoMessage,
+        &self,
+        io: &IoContext<NetworkIoMessage>,
+        message: &NetworkIoMessage,
     ) {
         match *message {
             NetworkIoMessage::Start => self.start(io).unwrap_or_else(|e| {
@@ -1154,10 +1206,11 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn register_stream(
-        &self, stream: StreamToken, reg: Token,
+        &self,
+        stream: StreamToken,
+        reg: Token,
         event_loop: &mut EventLoop<IoManager<NetworkIoMessage>>,
-    )
-    {
+    ) {
         match stream {
             FIRST_SESSION...LAST_SESSION => {
                 let session = self.sessions.read().get(stream).cloned();
@@ -1191,10 +1244,10 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn deregister_stream(
-        &self, stream: StreamToken,
+        &self,
+        stream: StreamToken,
         event_loop: &mut EventLoop<IoManager<NetworkIoMessage>>,
-    )
-    {
+    ) {
         match stream {
             FIRST_SESSION...LAST_SESSION => {
                 let mut sessions = self.sessions.write();
@@ -1215,10 +1268,11 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn update_stream(
-        &self, stream: StreamToken, reg: Token,
+        &self,
+        stream: StreamToken,
+        reg: Token,
         event_loop: &mut EventLoop<IoManager<NetworkIoMessage>>,
-    )
-    {
+    ) {
         match stream {
             FIRST_SESSION...LAST_SESSION => {
                 let session = self.sessions.read().get(stream).cloned();
@@ -1266,10 +1320,10 @@ pub struct NetworkContext<'a> {
 
 impl<'a> NetworkContext<'a> {
     fn new(
-        io: &'a IoContext<NetworkIoMessage>, protocol: ProtocolId,
+        io: &'a IoContext<NetworkIoMessage>,
+        protocol: ProtocolId,
         sessions: Arc<RwLock<Slab<SharedSession>>>,
-    ) -> NetworkContext<'a>
-    {
+    ) -> NetworkContext<'a> {
         NetworkContext {
             io,
             protocol,
@@ -1289,6 +1343,7 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
                 session::PACKET_USER,
                 &msg,
             )?;
+            // TODO: Handle result from send_packet()
         }
         Ok(())
     }
