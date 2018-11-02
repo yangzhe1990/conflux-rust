@@ -1,4 +1,4 @@
-use super::state_manager::StateManager;
+use super::{impls::errors::*, state_manager::StateManager};
 use execution::EpochId;
 
 /// A block defines a list of transactions that it sees and the sequence of
@@ -16,22 +16,19 @@ pub use super::impls::state::State;
 // TODO(yz): check if this is the best way to organize code for this library.
 pub trait StateTrait<'a> {
     // Actions.
-    fn get(&'a mut self, access_key: &[u8]) -> &'a mut Vec<u8>;
-    fn set(&mut self, access_key: &[u8], value: &[u8]);
-    fn delete(&mut self, access_key: &[u8]) -> Vec<u8>;
+    fn get(&self, access_key: &[u8]) -> Result<Box<[u8]>>;
+    fn set(&mut self, access_key: &[u8], value: &[u8]) -> Result<()>;
+    fn delete(&mut self, access_key: &[u8]) -> Result<Vec<u8>>;
     // Delete everything prefixed by access_key and return
     // Contaianer must be a container or type which ignores all inserts. So far
     // there is no standard container traits that we can directly apply.
     // TODO(yz): maybe implement some constrains for Contaianer?
     fn delete_all<Contaianer>(
         &mut self, access_key_prefix: &[u8], removed_kvs: Contaianer,
-    );
+    ) -> Result<()>;
 
     // Finalize
-    fn commit(epoch: EpochId);
+    fn commit(self, epoch: EpochId);
 
     // TODO(yz): verifiable proof related methods.
-
-    // Panic if commit() isn't called.
-    fn drop();
 }

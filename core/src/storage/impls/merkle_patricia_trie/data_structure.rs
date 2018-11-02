@@ -232,7 +232,7 @@ type TrieNodeSlabEntry = super::slab::Entry<TrieNode>;
 type Allocator = Slab<TrieNode, TrieNodeSlabEntry>;
 type VacantEntry<'a> =
     super::slab::VacantEntry<'a, TrieNode, TrieNodeSlabEntry>;
-type AllocatorRef<'trie> = RwLockReadGuard<'trie, Allocator>;
+pub type AllocatorRef<'trie> = RwLockReadGuard<'trie, Allocator>;
 type AllocatorRefRef<'trie> = &'trie AllocatorRef<'trie>;
 
 pub struct NodeMemoryAllocator {
@@ -242,12 +242,6 @@ pub struct NodeMemoryAllocator {
     size_limit: u32,
     // FIXME: implement EntryTrait for TrieNode
     allocator: RwLock<Allocator>,
-}
-
-impl MultiVersionMerklePatriciaTrie {
-    fn get_allocator(&self) -> &NodeMemoryAllocator {
-        &self.node_memory_allocator
-    }
 }
 
 /// The MSB is used to indicate if a node is in mem or on disk,
@@ -397,6 +391,15 @@ impl TrieNode {
 
     fn has_value(&self) -> bool { self.value_size > 0 }
 
+    fn value_as_slice(&self) -> &[u8] {
+        let size = self.value_size;
+        if size > 0 {
+            self.value.get_slice(size)
+        } else {
+            &[]
+        }
+    }
+
     fn value(&self) -> Option<Box<[u8]>> {
         let size = self.value_size;
         if size > 0 {
@@ -447,10 +450,6 @@ impl TrieNode {
 
         Ok(())
     }
-
-    /// merkle hash for new nodes are computed in batch, because it doesn't make
-    /// sense to keep merkle hash between executions in an epoch.
-    fn update_merkle_hash(&mut self) { unimplemented!() }
 }
 
 //struct CompressedPath<'a> {
@@ -1014,7 +1013,7 @@ impl Default for CowNodeRef {
     }
 }
 
-type OwnedNodeSet = BTreeSet<NodeRef>;
+pub type OwnedNodeSet = BTreeSet<NodeRef>;
 
 impl CowNodeRef {
     fn new_from_unowned(node_ref: NodeRef) -> Self {
@@ -1052,25 +1051,19 @@ impl CowNodeRef {
             //            }
             Ok(None)
         } else {
-            let old_node: &TrieNode;
-            match self.node_ref {
-                NodeRef::InMemory { ref index } => {
-                    old_node =
-                        NodeMemoryAllocator::get_node_ref(allocator, index);
-                }
-                _ => unreachable!(),
-            }
+            let old_node =
+                NodeMemoryAllocator::node_as_ref(allocator, &self.node_ref);
 
-            let (node_ref, trie_node) =
+            let (node_ref, new_entry) =
                 NodeMemoryAllocator::new_node(allocator)?;
             owned_node_set.insert(node_ref.clone());
             self.node_ref = node_ref;
 
-            Ok(Some((old_node, trie_node)))
+            Ok(Some((old_node, new_entry)))
         }
     }
 
-    fn delete_node<'trie>(&mut self, allocator: &'trie NodeMemoryAllocator) {
+    fn delete_node(&mut self, allocator: &NodeMemoryAllocator) {
         if self.owned {
             allocator.free_node(&mut self.node_ref);
             self.owned = false;
@@ -1191,6 +1184,7 @@ impl CowNodeRef {
                 new_entry.insert(new_trie_node);
             },
         );
+
         Ok(())
     }
 }
@@ -1232,11 +1226,13 @@ pub struct SubTrieVisitor<'trie> {
 impl<'trie> SubTrieVisitor<'trie> {
     pub fn new(
         trie_ref: &'trie MultiVersionMerklePatriciaTrie, root: NodeRef,
-    ) -> Self {
+        owned_node_set: &'trie mut Option<OwnedNodeSet>,
+    ) -> Self
+    {
         Self {
             trie_ref: trie_ref,
             root: CowNodeRef::new_from_unowned(root),
-            owned_node_set: Default::default(),
+            owned_node_set: ReturnAfterUse::new(owned_node_set),
         }
     }
 
@@ -1268,36 +1264,15 @@ impl<'trie> SubTrieVisitor<'trie> {
         self.memory_allocator().allocator.read().unwrap()
     }
 
-    fn node_as_ref<'a>(
-        allocator: AllocatorRefRef<'a>, node: &CowNodeRef,
-    ) -> &'a TrieNode {
-        let node_ref = &node.node_ref;
-        match node_ref {
-            NodeRef::InMemory { index } => {
-                NodeMemoryAllocator::get_node_ref(allocator, index)
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    fn node_as_mut<'a>(
-        allocator: AllocatorRefRef<'a>, node: &mut CowNodeRef,
-    ) -> &'a mut TrieNode {
-        let node_mut = &mut node.node_ref;
-        match node_mut {
-            NodeRef::InMemory { index } => {
-                NodeMemoryAllocator::get_node_mut(allocator, index)
-            }
-            _ => unimplemented!(),
-        }
-    }
-
     pub fn get<'key>(&self, key: KeyPart<'key>) -> Result<Box<[u8]>> {
         let allocator = self.memory_allocator_borrow();
-        let mut node = self.root.clone();
+        let mut node_cow = self.root.clone();
         let mut key = key;
         loop {
-            let trie_node = Self::node_as_ref(&allocator, &node);
+            let trie_node = NodeMemoryAllocator::node_as_ref(
+                &allocator,
+                &node_cow.node_ref,
+            );
             match trie_node.walk::<Write>(key) {
                 WalkStop::Arrived => {
                     return trie_node.value().map_or_else(
@@ -1310,7 +1285,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     child_index: _,
                     child_node,
                 } => {
-                    node = CowNodeRef::new(
+                    node_cow = CowNodeRef::new(
                         child_node,
                         self.owned_node_set.get_ref(),
                     );
@@ -1334,7 +1309,10 @@ impl<'trie> SubTrieVisitor<'trie> {
         // TODO(yz): be compliant to borrow rule and avoid duplicated
 
         // FIXME: map_split?
-        let trie_node_mut = Self::node_as_mut(&allocator, &mut node_cow);
+        let trie_node_mut = NodeMemoryAllocator::node_as_mut(
+            &allocator,
+            &mut node_cow.node_ref,
+        );
         match trie_node_mut.walk::<Read>(key) {
             WalkStop::Arrived => {
                 // If value doesn't exists, returns invalid key error.
@@ -1371,9 +1349,11 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 child_node_ref,
                                 self.owned_node_set.get_ref(),
                             );
-                            new_path =
-                                Self::node_as_ref(&allocator, &child_node_cow)
-                                    .path_prepended(path_prefix, child_index);
+                            new_path = NodeMemoryAllocator::node_as_ref(
+                                &allocator,
+                                &child_node_cow.node_ref,
+                            )
+                            .path_prepended(path_prefix, child_index);
                         }
                         child_node_cow.cow_set_compressed_path(
                             &allocator,
@@ -1430,9 +1410,9 @@ impl<'trie> SubTrieVisitor<'trie> {
                                     child_node_ref,
                                     self.owned_node_set.get_ref(),
                                 );
-                                new_path = Self::node_as_ref(
+                                new_path = NodeMemoryAllocator::node_as_ref(
                                     &allocator,
-                                    &child_node_cow,
+                                    &child_node_cow.node_ref,
                                 )
                                 .path_prepended(path_prefix, child_index);
                             }
@@ -1495,7 +1475,10 @@ impl<'trie> SubTrieVisitor<'trie> {
         let mut node_cow = replace(&mut self.root, Default::default());
         // TODO(yz): be compliant to borrow rule and avoid duplicated
 
-        let trie_node_mut = Self::node_as_mut(&allocator, &mut node_cow);
+        let trie_node_mut = NodeMemoryAllocator::node_as_mut(
+            &allocator,
+            &mut node_cow.node_ref,
+        );
         match trie_node_mut.walk::<Write>(key) {
             WalkStop::Arrived => {
                 let node_changed = !node_cow.owned;
@@ -1656,8 +1639,12 @@ impl NodeMemoryAllocator {
         })
     }
 
+    pub fn get_allocator<'a>(&'a self) -> AllocatorRef<'a> {
+        self.allocator.read().unwrap()
+    }
+
     // Methods that requires mut borrow of slab.
-    fn enlarge(&self) -> Result<()> {
+    pub fn enlarge(&self) -> Result<()> {
         // TODO(yz): no unwrap to LockResult here?
         let mut allocator_mut = self.allocator.write().unwrap();
         let new_size = allocator_mut.len() + self.idle_size as usize;
@@ -1670,14 +1657,36 @@ impl NodeMemoryAllocator {
         Ok(())
     }
 
+    pub fn node_as_ref<'a>(
+        allocator: AllocatorRefRef<'a>, node: &NodeRef,
+    ) -> &'a TrieNode {
+        match node {
+            NodeRef::InMemory { index } => {
+                NodeMemoryAllocator::get_in_memory_node_ref(allocator, index)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn node_as_mut<'a>(
+        allocator: AllocatorRefRef<'a>, node: &mut NodeRef,
+    ) -> &'a mut TrieNode {
+        match node {
+            NodeRef::InMemory { index } => {
+                NodeMemoryAllocator::get_in_memory_node_mut(allocator, index)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
     // Methods that doesn't requires mut borrow of slab.
-    fn get_node_ref<'a>(
+    pub fn get_in_memory_node_ref<'a>(
         allocator: AllocatorRefRef<'a>, index: &usize,
     ) -> &'a TrieNode {
         unsafe { allocator.get_unchecked(*index) }
     }
 
-    fn get_node_mut<'a>(
+    fn get_in_memory_node_mut<'a>(
         allocator: AllocatorRefRef<'a>, index: &mut usize,
     ) -> &'a mut TrieNode {
         unsafe { allocator.get_unchecked_mut(*index) }

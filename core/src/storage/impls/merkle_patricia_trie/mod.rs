@@ -15,11 +15,13 @@ mod slab;
 /// (OwnedChildrenTable) )
 ///
 /// TODO(yz): explain more about how MAX_TRIE_NODES is chosen.
+#[derive(Default)]
 pub struct MultiVersionMerklePatriciaTrie {
     // We don't distinguish an epoch which doesn't exists from an epoch which
     // contains nothing.
     root_by_version: RwLock<HashMap<EpochId, NodeRef>>,
-    node_memory_allocator: NodeMemoryAllocator,
+    // FIXME: remove pub.
+    pub node_memory_allocator: NodeMemoryAllocator,
     // TODO(yz): do we manage ChildrenTable in the allocator?
 }
 
@@ -30,5 +32,9 @@ impl MultiVersionMerklePatriciaTrie {
 
     pub fn commit_epoch_root(&self, epoch_id: EpochId, root: NodeRef) {
         self.root_by_version.write().unwrap().insert(epoch_id, root);
+    }
+
+    pub fn get_allocator<'a>(&'a self) -> AllocatorRef<'a> {
+        self.node_memory_allocator.get_allocator()
     }
 }

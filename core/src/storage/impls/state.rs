@@ -1,27 +1,118 @@
 use super::super::state::*;
 
-use super::super::state_manager::*;
+use super::{
+    super::state_manager::*,
+    errors::*,
+    merkle_patricia_trie::{
+        data_structure::*, merkle::*, return_after_use::ReturnAfterUse,
+        MultiVersionMerklePatriciaTrie,
+    },
+};
 use execution::EpochId;
+use std::mem;
 
 pub struct State<'a> {
     manager: &'a StateManager,
-    // TODO(yz): implement.
+    // FIXME: change to memory allocator.
+    allocator: &'a MultiVersionMerklePatriciaTrie,
+    root_node: MaybeNodeRef,
+    owned_node_set: Option<OwnedNodeSet>,
+    dirty: bool,
+}
+
+impl<'a> State<'a> {
+    pub fn new(manager: &'a StateManager, root_node: MaybeNodeRef) -> Self {
+        Self {
+            manager: manager,
+            allocator: manager.get_trie_memory_allocator(),
+            root_node: root_node,
+            owned_node_set: Some(Default::default()),
+            dirty: false,
+        }
+    }
+
+    fn pre_modification(&mut self) {
+        if !self.dirty {
+            self.dirty = true
+        }
+        self.allocator.node_memory_allocator.enlarge();
+    }
+
+    // FIXME: move to data_structure mod
+    fn root_node_ref(&self) -> Result<NodeRef> {
+        let node: Option<NodeRef> = self.root_node.into();
+        match node {
+            None => Err(ErrorKind::MPTKeyNotFound.into()),
+            Some(node_ref) => Ok(node_ref),
+        }
+    }
+}
+
+impl<'a> Drop for State<'a> {
+    fn drop(&mut self) {
+        if self.dirty {
+            panic!("State is dirty however is not committed before free.");
+        }
+    }
 }
 
 impl<'a> StateTrait<'a> for State<'a> {
-    fn get(&'a mut self, access_key: &[u8]) -> &'a mut Vec<u8> {
+    fn get(&self, access_key: &[u8]) -> Result<Box<[u8]>> {
+        // Get won't create any new nodes so it's fine to pass an empty
+        // owned_node_set.
+        let mut empty_owned_node_set: Option<OwnedNodeSet> = None;
+        let value = SubTrieVisitor::new(
+            self.allocator,
+            self.root_node_ref()?,
+            &mut empty_owned_node_set,
+        )
+        .get(access_key);
+        // FIXME: Rust thinks that the empty_owned_node_set is still mut while
+        // being dropped at the FIXME: end of the function. It's
+        // actually safe to forget a None. FIXME: we should make sure
+        // rust knows that the &mut is saved into SubTrieVisitor which is
+        // FIXME: dropped at the end of the previous statement so the mutable
+        // borrow is not held.
+        mem::forget(empty_owned_node_set);
+
+        value
+    }
+
+    fn set(&mut self, access_key: &[u8], value: &[u8]) -> Result<()> {
+        self.pre_modification();
+
+        self.root_node = SubTrieVisitor::new(
+            self.allocator,
+            self.root_node_ref()?,
+            &mut self.owned_node_set,
+        )
+        .set(access_key, value)?;
+
+        Ok(())
+    }
+
+    fn delete(&mut self, access_key: &[u8]) -> Result<Vec<u8>> {
+        self.pre_modification();
+
+        let (old_value, _, root_node) = SubTrieVisitor::new(
+            self.allocator,
+            self.root_node_ref()?,
+            &mut self.owned_node_set,
+        )
+        .delete(access_key)?;
+        self.root_node = root_node;
+        Ok(old_value)
+    }
+
+    fn delete_all<T>(
+        &mut self, access_key_prefix: &[u8], removed_kvs: T,
+    ) -> Result<()> {
         unimplemented!()
     }
 
-    fn set(&mut self, access_key: &[u8], value: &[u8]) { unimplemented!() }
+    fn commit(mut self, epoch_id: EpochId) {
+        self.dirty = false;
 
-    fn delete(&mut self, access_key: &[u8]) -> Vec<u8> { unimplemented!() }
-
-    fn delete_all<T>(&mut self, access_key_prefix: &[u8], removed_kvs: T) {
-        unimplemented!()
+        self.manager.commit_state_root(epoch_id, self.root_node);
     }
-
-    fn commit(epoch_id: EpochId) { unimplemented!() }
-
-    fn drop() { unimplemented!() }
 }

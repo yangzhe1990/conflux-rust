@@ -24,25 +24,22 @@ impl<'a, T> Drop for ReturnAfterUse<'a, T> {
 }
 
 impl<'a, T> ReturnAfterUse<'a, T> {
-    pub fn new(value: T) -> ReturnAfterUse<'a, T> {
-        Self {
+    pub fn new(option: &'a mut Option<T>) -> Self {
+        let mut ret = Self {
             origin: None,
-            current: Some(value),
-        }
+            current: None,
+        };
+        swap(&mut ret.current, option);
+        ret.origin = Some(option);
+
+        ret
     }
 
     pub fn new_from_origin<'b>(
         origin: &'b mut ReturnAfterUse<'a, T>,
     ) -> ReturnAfterUse<'b, T>
     where 'a: 'b {
-        let mut ret = Self {
-            origin: None,
-            current: None,
-        };
-        swap(&mut ret.current, &mut origin.current);
-        ret.origin = Some(&mut origin.current);
-
-        ret
+        Self::new(&mut origin.current)
     }
 
     pub fn get_ref(&self) -> &T { return self.current.as_ref().unwrap(); }
