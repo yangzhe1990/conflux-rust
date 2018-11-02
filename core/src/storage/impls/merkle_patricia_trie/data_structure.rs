@@ -1,7 +1,7 @@
 use self::access_mode::*;
 use super::{
     super::errors::*,
-    merkle::MerkleHash,
+    merkle::*,
     return_after_use::ReturnAfterUse,
     slab::{EntryTrait, Slab},
 };
@@ -90,7 +90,7 @@ pub struct TrieNode {
     /// manage the length and content separately.
     value_size: u16,
     value: MaybeInPlaceByteArray,
-    merkle_hash: MerkleHash,
+    pub merkle_hash: MerkleHash,
 }
 
 /// Compiler is not sure about the pointer in MaybeInPlaceByteArray fields.
@@ -220,7 +220,7 @@ impl MaybeInPlaceByteArray {
     const MAX_SIZE: u16 = 0xffff;
 }
 
-const CHILDREN_COUNT: usize = 16;
+pub const CHILDREN_COUNT: usize = 16;
 // TODO(yz): statically check the size to be 64B
 /// The children table for a non-leaf trie node.
 type ChildrenTable = [MaybeNodeRef; CHILDREN_COUNT];
@@ -233,7 +233,7 @@ type Allocator = Slab<TrieNode, TrieNodeSlabEntry>;
 type VacantEntry<'a> =
     super::slab::VacantEntry<'a, TrieNode, TrieNodeSlabEntry>;
 pub type AllocatorRef<'trie> = RwLockReadGuard<'trie, Allocator>;
-type AllocatorRefRef<'trie> = &'trie AllocatorRef<'trie>;
+pub type AllocatorRefRef<'trie> = &'trie AllocatorRef<'trie>;
 
 pub struct NodeMemoryAllocator {
     /// The number of available memory for nodes.
@@ -461,9 +461,9 @@ struct CompressedPath {
     end_mask: u8,
 }
 
-struct CompressedPathRef<'a> {
-    path_slice: &'a [u8],
-    end_mask: u8,
+pub struct CompressedPathRef<'a> {
+    pub path_slice: &'a [u8],
+    pub end_mask: u8,
 }
 
 #[derive(Default)]
@@ -993,14 +993,14 @@ use super::MultiVersionMerklePatriciaTrie;
 // There is no need of allocator for deletion.
 // Allocation can happen as creation of this object.
 // OwnedChecker is only required when creating the CowNodeRef.
-struct CowNodeRef {
+pub struct CowNodeRef {
     // TODO(yz): if moved no deletion happens when SubTrieVisitor goes out of
     // scope. Maybe this is not the best way but we will see. TODO(yz): if
     // this is not the best way maybe we keep a reference to allocator to make
     // sure that it definitely result into a deletion if not used.
     moved: bool,
     owned: bool,
-    node_ref: NodeRef,
+    pub node_ref: NodeRef,
 }
 
 impl Default for CowNodeRef {
@@ -1024,7 +1024,7 @@ impl CowNodeRef {
         }
     }
 
-    fn new<'trie>(
+    pub fn new<'trie>(
         node_ref: NodeRef, owned_node_set: &'trie OwnedNodeSet,
     ) -> Self {
         Self {
@@ -1077,6 +1077,76 @@ impl CowNodeRef {
             self.node_ref.clone().into()
         } else {
             MaybeNodeRef::NULL_NODE
+        }
+    }
+
+    /// Only called on Merkle computation.
+    fn load_merkles_from_children<'trie>(
+        &self, trie: &'trie MultiVersionMerklePatriciaTrie,
+        allocator: AllocatorRefRef<'trie>, owned_node_set: &'trie OwnedNodeSet,
+        trie_node: &'trie TrieNode,
+    ) -> MaybeMerkleTable
+    {
+        match trie_node.children_table {
+            None => None,
+            Some(ref table) => {
+                let mut merkles = ChildrenMerkleTable::default();
+                for i in 0..CHILDREN_COUNT {
+                    let maybe_child_node: Option<NodeRef> = table[i].into();
+                    merkles[i] = match maybe_child_node {
+                        None => super::merkle::MERKLE_NULL_NODE,
+                        Some(node_ref) => {
+                            let mut cow_child_node =
+                                Self::new(node_ref, owned_node_set);
+                            let mut trie_node =
+                                NodeMemoryAllocator::node_as_mut(
+                                    allocator,
+                                    &mut cow_child_node.node_ref,
+                                );
+                            cow_child_node.get_or_compute_merkle(
+                                trie,
+                                allocator,
+                                owned_node_set,
+                                trie_node,
+                            )
+                        }
+                    }
+                }
+                Some(merkles)
+            }
+        }
+    }
+
+    fn set_merkle(
+        &mut self, children_merkles: MaybeMerkleTable, trie_node: &mut TrieNode,
+    ) -> MerkleHash {
+        let merkle = compute_merkle(
+            trie_node.compressed_path_ref(),
+            children_merkles,
+            trie_node.value_as_slice(),
+        );
+        trie_node.merkle_hash = merkle;
+
+        merkle
+    }
+
+    /// get if unowned, compute if owned.
+    pub fn get_or_compute_merkle<'trie>(
+        &mut self, trie: &'trie MultiVersionMerklePatriciaTrie,
+        allocator: AllocatorRefRef<'trie>, owned_node_set: &'trie OwnedNodeSet,
+        trie_node: &mut TrieNode,
+    ) -> MerkleHash
+    {
+        if self.owned {
+            let mut children_merkles = self.load_merkles_from_children(
+                trie,
+                allocator,
+                owned_node_set,
+                trie_node,
+            );
+            self.set_merkle(children_merkles, trie_node)
+        } else {
+            trie_node.merkle_hash
         }
     }
 

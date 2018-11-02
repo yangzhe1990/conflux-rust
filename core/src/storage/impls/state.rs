@@ -110,9 +110,33 @@ impl<'a> StateTrait<'a> for State<'a> {
         unimplemented!()
     }
 
-    fn commit(mut self, epoch_id: EpochId) {
+    fn commit(mut self, epoch_id: EpochId) -> MerkleHash {
         self.dirty = false;
 
+        let maybe_root_node: Option<NodeRef> = self.root_node.into();
+        let merkle = match maybe_root_node {
+            None => MERKLE_NULL_NODE,
+            Some(root_node) => {
+                let allocator = self.allocator.get_allocator();
+                let mut cow_root = CowNodeRef::new(
+                    root_node,
+                    self.owned_node_set.as_ref().unwrap(),
+                );
+                let mut trie_node_root = NodeMemoryAllocator::node_as_mut(
+                    &allocator,
+                    &mut cow_root.node_ref,
+                );
+                cow_root.get_or_compute_merkle(
+                    self.allocator,
+                    &allocator,
+                    self.owned_node_set.as_ref().unwrap(),
+                    trie_node_root,
+                )
+            }
+        };
+
         self.manager.commit_state_root(epoch_id, self.root_node);
+
+        merkle
     }
 }

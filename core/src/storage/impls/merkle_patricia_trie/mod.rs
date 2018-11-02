@@ -1,10 +1,10 @@
 // TODO(yz): evict to key-value store on disk when out-of-memory.
-use self::data_structure::*;
+use self::{data_structure::*, merkle::*};
 use execution::EpochId;
 use std::{collections::HashMap, sync::RwLock};
 
 pub(super) mod data_structure;
-pub(super) mod merkle;
+pub mod merkle;
 pub(super) mod return_after_use;
 
 /// Fork to slab in order to compact data.
@@ -36,5 +36,25 @@ impl MultiVersionMerklePatriciaTrie {
 
     pub fn get_allocator<'a>(&'a self) -> AllocatorRef<'a> {
         self.node_memory_allocator.get_allocator()
+    }
+
+    pub fn get_merkle_at_node(&self, node: MaybeNodeRef) -> MerkleHash {
+        match self.get_merkle(&self.get_allocator(), node) {
+            Some(hash) => hash,
+            None => MERKLE_NULL_NODE,
+        }
+    }
+
+    fn get_merkle<'a>(
+        &'a self, allocator: AllocatorRefRef<'a>, maybe_node: MaybeNodeRef,
+    ) -> Option<MerkleHash> {
+        let mut maybe_node: Option<NodeRef> = maybe_node.into();
+        match maybe_node {
+            Some(node) => Some(
+                NodeMemoryAllocator::node_as_ref(allocator, &node).merkle_hash,
+            ),
+            None => None,
+        }
+        // FIXME: the node memory should take a NodeRef instead.
     }
 }

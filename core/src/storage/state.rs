@@ -1,4 +1,7 @@
-use super::{impls::errors::*, state_manager::StateManager};
+use super::{
+    impls::{errors::*, merkle_patricia_trie::merkle::MerkleHash},
+    state_manager::StateManager,
+};
 use execution::EpochId;
 
 /// A block defines a list of transactions that it sees and the sequence of
@@ -28,7 +31,7 @@ pub trait StateTrait<'a> {
     ) -> Result<()>;
 
     // Finalize
-    fn commit(self, epoch: EpochId);
+    fn commit(self, epoch: EpochId) -> MerkleHash;
 
     // TODO(yz): verifiable proof related methods.
 }
