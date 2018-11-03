@@ -3,7 +3,7 @@ use self::{data_structure::*, merkle::*};
 use execution::EpochId;
 use std::{collections::HashMap, sync::RwLock};
 
-pub(super) mod data_structure;
+pub(in super::super) mod data_structure;
 pub mod merkle;
 pub(super) mod return_after_use;
 

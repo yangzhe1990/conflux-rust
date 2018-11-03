@@ -39,12 +39,24 @@ impl<'a> State<'a> {
     }
 
     // FIXME: move to data_structure mod
-    fn root_node_ref(&self) -> Result<NodeRef> {
+    fn get_root_node(&self) -> Result<NodeRef> {
         let node: Option<NodeRef> = self.root_node.into();
         match node {
             None => Err(ErrorKind::MPTKeyNotFound.into()),
             Some(node_ref) => Ok(node_ref),
         }
+    }
+
+    fn get_or_create_root_node(&mut self) -> Result<NodeRef> {
+        if self.root_node == MaybeNodeRef::NULL_NODE {
+            self.root_node = CowNodeRef::new_empty_node(
+                &self.allocator.get_allocator(),
+                self.owned_node_set.as_mut().unwrap(),
+            )?
+            .into_child();
+        }
+
+        self.get_root_node()
     }
 }
 
@@ -60,20 +72,14 @@ impl<'a> StateTrait<'a> for State<'a> {
     fn get(&self, access_key: &[u8]) -> Result<Box<[u8]>> {
         // Get won't create any new nodes so it's fine to pass an empty
         // owned_node_set.
-        let mut empty_owned_node_set: Option<OwnedNodeSet> = None;
+        let mut empty_owned_node_set: Option<OwnedNodeSet> =
+            Some(Default::default());
         let value = SubTrieVisitor::new(
             self.allocator,
-            self.root_node_ref()?,
+            self.get_root_node()?,
             &mut empty_owned_node_set,
         )
         .get(access_key);
-        // FIXME: Rust thinks that the empty_owned_node_set is still mut while
-        // being dropped at the FIXME: end of the function. It's
-        // actually safe to forget a None. FIXME: we should make sure
-        // rust knows that the &mut is saved into SubTrieVisitor which is
-        // FIXME: dropped at the end of the previous statement so the mutable
-        // borrow is not held.
-        mem::forget(empty_owned_node_set);
 
         value
     }
@@ -83,7 +89,7 @@ impl<'a> StateTrait<'a> for State<'a> {
 
         self.root_node = SubTrieVisitor::new(
             self.allocator,
-            self.root_node_ref()?,
+            self.get_or_create_root_node()?,
             &mut self.owned_node_set,
         )
         .set(access_key, value)?;
@@ -96,7 +102,7 @@ impl<'a> StateTrait<'a> for State<'a> {
 
         let (old_value, _, root_node) = SubTrieVisitor::new(
             self.allocator,
-            self.root_node_ref()?,
+            self.get_or_create_root_node()?,
             &mut self.owned_node_set,
         )
         .delete(access_key)?;

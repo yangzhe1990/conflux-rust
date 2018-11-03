@@ -39,8 +39,8 @@ impl TrieNode {
 
     fn second_nibble(x: u8) -> u8 { (x & Self::BITS_4_7_MASK) >> 4 }
 
-    fn set_second_nibble(x: u8, second_nibble: u8) -> u8 {
-        Self::first_nibble(x) & (second_nibble << 4)
+    pub fn set_second_nibble(x: u8, second_nibble: u8) -> u8 {
+        Self::first_nibble(x) | (second_nibble << 4)
     }
 }
 
@@ -1016,12 +1016,20 @@ impl Default for CowNodeRef {
 pub type OwnedNodeSet = BTreeSet<NodeRef>;
 
 impl CowNodeRef {
-    fn new_from_unowned(node_ref: NodeRef) -> Self {
-        Self {
-            owned: false,
+    pub fn new_empty_node<'trie>(
+        allocator: AllocatorRefRef<'trie>,
+        owned_node_set: &'trie mut OwnedNodeSet,
+    ) -> Result<Self>
+    {
+        let (node_ref, new_entry) = NodeMemoryAllocator::new_node(allocator)?;
+        new_entry.insert(Default::default());
+        owned_node_set.insert(node_ref.clone());
+
+        Ok(Self {
+            owned: true,
             moved: false,
             node_ref: node_ref,
-        }
+        })
     }
 
     pub fn new<'trie>(
@@ -1071,7 +1079,7 @@ impl CowNodeRef {
         self.moved = true;
     }
 
-    fn into_child(&mut self) -> MaybeNodeRef {
+    pub fn into_child(&mut self) -> MaybeNodeRef {
         if !self.moved {
             self.moved = true;
             self.node_ref.clone().into()
@@ -1188,15 +1196,15 @@ impl CowNodeRef {
     ) -> Result<Vec<u8>>
     {
         let copied = self.into_owned(allocator, owned_node_set)?;
-        Ok(copied.map_or_else(
-            || unsafe { trie_node.delete_value_unchecked() },
-            |(old, new_entry)| {
+        Ok(match copied {
+            None => unsafe { trie_node.delete_value_unchecked() },
+            Some((old, new_entry)) => {
                 new_entry.insert(unsafe {
                     old.copy_and_replace_fields(Some(None), None, None)
                 });
                 old.value().unwrap().into()
-            },
-        ))
+            }
+        })
     }
 
     fn cow_replace_value_unchecked<'trie>(
@@ -1206,15 +1214,15 @@ impl CowNodeRef {
     ) -> Result<Option<Vec<u8>>>
     {
         let copied = self.into_owned(allocator, owned_node_set)?;
-        Ok(copied.map_or_else(
-            || unsafe { trie_node.replace_value_unchecked(value) },
-            |(old, new_entry)| {
+        Ok(match copied {
+            None => unsafe { trie_node.replace_value_unchecked(value) },
+            Some((old, new_entry)) => {
                 new_entry.insert(unsafe {
-                    old.copy_and_replace_fields(Some(None), None, None)
+                    old.copy_and_replace_fields(Some(Some(value)), None, None)
                 });
                 old.value().map(|value| value.into_vec())
-            },
-        ))
+            }
+        })
     }
 
     fn cow_delete_children_table<'trie>(
@@ -1223,16 +1231,16 @@ impl CowNodeRef {
     ) -> Result<()>
     {
         let copied = self.into_owned(allocator, owned_node_set)?;
-        copied.map_or_else(
-            || unsafe {
+        match copied {
+            None => {
                 trie_node.children_table = None;
-            },
-            |(old, new_entry)| {
+            }
+            Some((old, new_entry)) => {
                 new_entry.insert(unsafe {
                     old.copy_and_replace_fields(None, None, Some(None))
                 });
-            },
-        );
+            }
+        }
         Ok(())
     }
 
@@ -1243,17 +1251,17 @@ impl CowNodeRef {
     ) -> Result<()>
     {
         let copied = self.into_owned(allocator, owned_node_set)?;
-        copied.map_or_else(
-            || unsafe {
+        match copied {
+            None => unsafe {
                 trie_node.set_child(child_index, child_node);
             },
-            |(old, new_entry)| {
+            Some((old, new_entry)) => {
                 let mut new_trie_node =
                     unsafe { old.copy_and_replace_fields(None, None, None) };
                 new_trie_node.set_child(child_index, child_node);
                 new_entry.insert(new_trie_node);
-            },
-        );
+            }
+        }
 
         Ok(())
     }
@@ -1301,7 +1309,7 @@ impl<'trie> SubTrieVisitor<'trie> {
     {
         Self {
             trie_ref: trie_ref,
-            root: CowNodeRef::new_from_unowned(root),
+            root: CowNodeRef::new(root, owned_node_set.as_ref().unwrap()),
             owned_node_set: ReturnAfterUse::new(owned_node_set),
         }
     }
@@ -1599,7 +1607,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 // replacement node create a new node for
                 // insertion (if key_remaining is non-empty), set it to child,
                 // with key_remaining.
-                let (new_node_ref, new_node_entry) =
+                let (mut new_node_ref, mut new_node_entry) =
                     NodeMemoryAllocator::new_node(&allocator)?;
                 let mut new_node = TrieNode::default();
                 // set compressed path.
@@ -1641,6 +1649,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                         new_node.set_child(child_index, child_node_ref.into());
                     }
                 }
+                new_node_entry.insert(new_node);
                 Ok((true, new_node_ref.into()))
             }
             WalkStop::ChildNotFound {
