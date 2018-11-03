@@ -52,6 +52,10 @@ impl SynchronizationService {
     pub fn get_peer_info(&self) -> Vec<PeerInfo> {
         self.network.get_peer_info().unwrap()
     }
+
+    pub fn sign_challenge(&self, challenge: Vec<u8>) -> Result<Vec<u8>, NetworkError> {
+        self.network.sign_challenge(challenge)
+    }
 }
 
 pub type SharedSynchronizationService = Arc<SynchronizationService>;

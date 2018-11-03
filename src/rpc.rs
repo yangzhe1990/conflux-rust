@@ -81,7 +81,7 @@ build_rpc_trait! {
         fn get_block(&self, H256) -> RpcResult<RpcBlock>;
 
         #[rpc(name = "generate")]
-        fn generate(&self, usize) -> RpcResult<()>;
+        fn generate(&self, usize, usize) -> RpcResult<Vec<H256>>;
 
         #[rpc(name = "addnode")]
         fn add_peer(&self, NodeId, SocketAddr) -> RpcResult<()>;
@@ -94,6 +94,10 @@ build_rpc_trait! {
 
         #[rpc(name = "stop")]
         fn stop(&self) -> RpcResult<()>;
+
+        #[rpc(name = "getnodeid")]
+        fn get_nodeid(&self, Vec<u8>) -> RpcResult<Vec<u8>>;
+
     }
 }
 
@@ -107,11 +111,12 @@ struct RpcImpl {
 
 impl RpcImpl {
     fn new(
-        ledger: LedgerRef, execution_engine: ExecutionEngineRef,
-        sync: SharedSynchronizationService, block_gen: BlockGeneratorRef,
+        ledger: LedgerRef,
+        execution_engine: ExecutionEngineRef,
+        sync: SharedSynchronizationService,
+        block_gen: BlockGeneratorRef,
         exit: Arc<(Mutex<bool>, Condvar)>,
-    ) -> Self
-    {
+    ) -> Self {
         RpcImpl {
             ledger,
             execution_engine,
@@ -123,7 +128,9 @@ impl RpcImpl {
 }
 
 impl Rpc for RpcImpl {
-    fn say_hello(&self) -> RpcResult<String> { Ok("Hello, world".into()) }
+    fn say_hello(&self) -> RpcResult<String> {
+        Ok("Hello, world".into())
+    }
 
     fn get_balance(&self, addr: Address) -> RpcResult<U256> {
         info!("RPC Request: get_balance({:?})", addr);
@@ -218,12 +225,18 @@ impl Rpc for RpcImpl {
         }
     }
 
-    fn generate(&self, num_blocks: usize) -> RpcResult<()> {
+    fn generate(
+        &self,
+        num_blocks: usize,
+        num_txs: usize,
+    ) -> RpcResult<Vec<H256>> {
         info!("RPC Request: generate({:?})", num_blocks);
+        let mut hashes = Vec::new();
         for _i in 0..num_blocks {
-            self.block_gen.generate_block(0usize);
+            let mut hash = self.block_gen.generate_block(num_txs);
+            //            hashes.append(&mut hash);
         }
-        Ok(())
+        Ok(hashes)
     }
 
     fn get_peer_info(&self) -> RpcResult<Vec<PeerInfo>> {
@@ -236,6 +249,13 @@ impl Rpc for RpcImpl {
         self.exit.1.notify_all();
 
         Ok(())
+    }
+
+    fn get_nodeid(&self, challenge: Vec<u8>) -> RpcResult<Vec<u8>> {
+        match self.sync.sign_challenge(challenge) {
+            Ok(r) => Ok(r),
+            Err(_) => Err(RpcError::internal_error()),
+        }
     }
 }
 
@@ -250,15 +270,15 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
             dependencies.sync.clone(),
             dependencies.block_gen.clone(),
             dependencies.exit.clone(),
-        )
-        .to_delegate(),
+        ).to_delegate(),
     );
 
     handler
 }
 
 pub fn new_tcp(
-    conf: TcpConfiguration, dependencies: &Dependencies,
+    conf: TcpConfiguration,
+    dependencies: &Dependencies,
 ) -> Result<Option<TcpServer>, String> {
     if !conf.enabled {
         return Ok(None);
@@ -279,7 +299,8 @@ pub fn new_tcp(
 }
 
 pub fn new_http(
-    conf: HttpConfiguration, dependencies: &Dependencies,
+    conf: HttpConfiguration,
+    dependencies: &Dependencies,
 ) -> Result<Option<HttpServer>, String> {
     if !conf.enabled {
         return Ok(None);

@@ -14,9 +14,10 @@ import tempfile
 import time
 import urllib.parse
 
+from conflux.utils import get_nodeid
 from .authproxy import JSONRPCException
 from .util import (delete_cookie_file, get_rpc_proxy,
-                   rpc_url, wait_until, p2p_port)
+                   rpc_url, wait_until, p2p_port, bytes_to_hex_str)
 
 CONFLUX_RPC_WAIT_TIMEOUT = 60
 
@@ -32,13 +33,22 @@ class ErrorMatch(Enum):
 
 
 class TestNode:
-    def __init__(self, index, datadir, rpchost, confluxd, rpc_timeout=None):
+    def __init__(self, index, datadir, rpchost, confluxd, rpc_timeout=None, remote=False, ip=None, user=None):
         self.index = index
         self.datadir = datadir
         self.stdout_dir = os.path.join(self.datadir, "stdout")
         self.stderr_dir = os.path.join(self.datadir, "stderr")
         self.log = os.path.join(self.datadir, "node" + str(index) + ".log")
+        self.remote = remote
         self.rpchost = rpchost
+        if remote:
+            self.ip = ip
+            self.user = user
+        else:
+            self.ip = "127.0.0.1"
+        self.port = str(p2p_port(index))
+        if self.rpchost is None:
+            self.rpchost = ip  # + ":" + str(rpc_port(index))
         self.rpc_timeout = CONFLUX_RPC_WAIT_TIMEOUT if rpc_timeout is None else rpc_timeout
         self.binary = confluxd
         self.args = [
@@ -52,7 +62,7 @@ class TestNode:
         self.rpc = None
         self.log = logging.getLogger('TestFramework.node%d' % index)
         self.cleanup_on_exit = True
-
+        # self.key = "0x" + "0"*125+"{:03d}".format(self.index);
         self.p2ps = []
 
     def _node_msg(self, msg: str) -> str:
@@ -72,6 +82,12 @@ class TestNode:
             # this destructor is called.
             print(self._node_msg("Cleaning up leftover process"))
             self.process.kill()
+            if self.remote == True:
+                cli_kill = "ssh {}@{} killall conflux".format(
+                    self.user, self.ip)
+                print(self.ip, self.index, subprocess.Popen(
+                    cli_kill, shell=True).wait())
+
 
     def __getattr__(self, name):
         """Dispatches any unrecognised messages to the RPC connection."""
@@ -93,14 +109,29 @@ class TestNode:
                 delete=False)
         self.stderr = stderr
         self.stdout = stdout
+        if extra_args is not None:
+            self.args += extra_args
+        self.args += ["--public-address", "{}:{}".format(self.ip, self.port)]
 
         # Delete any existing cookie file -- if such a file exists (eg due to
         # unclean shutdown), it will get overwritten anyway by bitcoind, and
         # potentially interfere with our attempt to authenticate
         delete_cookie_file(self.datadir)
-
-        self.process = subprocess.Popen(
-            self.args, stdout=stdout, stderr=stderr, **kwargs)
+        my_env = os.environ.copy()
+        my_env["RUST_BACKTRACE"] = "1"
+        if self.remote:
+            cli_mkdir = "ssh {}@{} mkdir -p {};".format(
+                self.user, self.ip, self.datadir)
+            cli_conf = "scp -r {0}/. {1}@{2}:{0};".format(
+                self.datadir, self.user, self.ip)
+            cli_exe = "ssh {}@{} {}".format(
+                self.user, self.ip, " ".join(self.args))
+            print(cli_mkdir + cli_conf + cli_exe)
+            self.process = subprocess.Popen(cli_mkdir + cli_conf + cli_exe,
+                                            stdout=stdout, stderr=stderr, shell=True, **kwargs)
+        else:
+            self.process = subprocess.Popen(
+                self.args, stdout=stdout, stderr=stderr, env=my_env, **kwargs)
 
         self.running = True
         self.log.debug("conflux started, waiting for RPC to come up")
@@ -117,7 +148,7 @@ class TestNode:
                         format(self.process.returncode)))
             try:
                 self.rpc = get_rpc_proxy(
-                    rpc_url(self.datadir, self.index, self.rpchost),
+                    rpc_url(self.index, self.rpchost),
                     self.index,
                     timeout=self.rpc_timeout)
                 self.rpc.getbestblockhash()
@@ -137,6 +168,11 @@ class TestNode:
                     raise
             time.sleep(1.0 / poll_per_s)
         self._raise_assertion_error("Unable to connect to bitcoind")
+
+    def wait_for_nodeid(self):
+        self.key = bytes_to_hex_str(get_nodeid(self))
+        self.log.debug("Get node {} nodeid {}".format(self.index, self.key))
+
 
     def stop_node(self, expected_stderr=''):
         """Stop the node."""

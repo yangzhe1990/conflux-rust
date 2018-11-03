@@ -267,7 +267,7 @@ def wait_until(predicate,
 ################
 
 
-def initialize_datadir(dirname, n):
+def initialize_datadir(dirname, n, ip="127.0.0.1"):
     datadir = get_datadir_path(dirname, n)
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
@@ -277,6 +277,7 @@ def initialize_datadir(dirname, n):
         f.write("jsonrpc-http-port=" + str(rpc_port(n)) + "\n")
         f.write("log-file=\"" + os.path.join(datadir, "conflux.log") + "\"\n")
         f.write("log-level=\"trace\"\n")
+        f.write("netconf-dir=\"" + os.path.join(datadir, "config") + "\"\n")
         os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)
         os.makedirs(os.path.join(datadir, 'stdout'), exist_ok=True)
     return datadir
@@ -363,17 +364,31 @@ def check_handshake(from_connection, target_addr):
     return False
 
 
-def connect_nodes(from_connection, node_num):
-    peer_addr = "127.0.0.1:" + str(p2p_port(node_num))
-    from_connection.addnode(peer_addr)
+def get_peer_addr(from_connection, node_num):
+    return "{}:{}".format(from_connection.ip, str(p2p_port(node_num)))
+
+
+# def connect_nodes(from_connection, node_num, key):
+#     peer_addr = get_peer_addr(from_connection, node_num)
+#     from_connection.addnode(key, peer_addr)
+#     # poll until hello handshake complete to avoid race conditions
+#     # with transaction relaying
+#     wait_until(lambda: check_handshake(from_connection, peer_addr))
+#
+#
+# def connect_nodes_bi(nodes, a, b):
+#     connect_nodes(nodes[a], b, "0x"+nodes[b].key)
+#     connect_nodes(nodes[b], a, "0x"+nodes[a].key)
+
+
+def connect_nodes(nodes, a, node_num):
+    from_connection = nodes[a]
+    key = "0x" + nodes[node_num].key
+    peer_addr = get_peer_addr(from_connection, node_num)
+    from_connection.addnode(key, peer_addr)
     # poll until hello handshake complete to avoid race conditions
     # with transaction relaying
     wait_until(lambda: check_handshake(from_connection, peer_addr))
-
-
-def connect_nodes_bi(nodes, a, b):
-    connect_nodes(nodes[a], b)
-    connect_nodes(nodes[b], a)
 
 
 def sync_blocks(rpc_connections, *, wait=1, timeout=60):
@@ -387,7 +402,8 @@ def sync_blocks(rpc_connections, *, wait=1, timeout=60):
     stop_time = time.time() + timeout
     while time.time() <= stop_time:
         best_hash = [x.getbestblockhash() for x in rpc_connections]
-        if best_hash.count(best_hash[0]) == len(rpc_connections):
+        block_count = [x.getblockcount() for x in rpc_connections]
+        if best_hash.count(best_hash[0]) == len(rpc_connections) and block_count.count(block_count[0]) == len(rpc_connections):
             return
         time.sleep(wait)
     raise AssertionError("Block sync timed out:{}".format("".join(
@@ -412,12 +428,14 @@ def sync_mempools(rpc_connections, *, wait=1, timeout=60,
     raise AssertionError("Mempool sync timed out:{}".format("".join(
         "\n  {!r}".format(m) for m in pool)))
 
+def wait_for_block_count(node, count):
+    wait_until(lambda:node.getblockcount() >= count)
 
 # RPC/P2P connection constants and functions
 ############################################
 
 # The maximum number of nodes a single test can spawn
-MAX_NODES = 8
+MAX_NODES = 16
 # Don't assign rpc or p2p ports lower than this
 PORT_MIN = 11000
 # The number of ports to "reserve" for p2p and rpc, each
@@ -466,7 +484,8 @@ def rpc_port(n):
         PORT_RANGE - 1 - MAX_NODES)
 
 
-def rpc_url(datadir, i, rpchost=None):
-    host = '127.0.0.1'
+def rpc_url(i, rpchost=None):
+    if rpchost is None:
+        rpchost = "localhost"
     port = rpc_port(i)
-    return "http://%s:%d" % (host, int(port))
+    return "http://%s:%d" % (rpchost, int(port))

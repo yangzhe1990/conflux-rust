@@ -1,11 +1,12 @@
 import rlp
+# import sender as sender
 from rlp.sedes import big_endian_int, binary
 
 from .exceptions import InvalidTransaction
 from . import utils
 from .utils import TT256, mk_contract_address, zpad, int_to_32bytearray, \
     big_endian_to_int, ecsign, ecrecover_to_pub, normalize_key, str_to_bytes, \
-    encode_hex
+    encode_hex, address
 
 
 class Transaction(rlp.Serializable):
@@ -29,11 +30,10 @@ class Transaction(rlp.Serializable):
 
     fields = [
         ('nonce', big_endian_int),
-        ('gasprice', big_endian_int),
-        ('startgas', big_endian_int),
-        ('to', utils.address),
+        ('gas_price', big_endian_int),
+        ('gas', big_endian_int),
         ('value', big_endian_int),
-        ('data', binary),
+        ('receiver', address),
         ('v', big_endian_int),
         ('r', big_endian_int),
         ('s', big_endian_int),
@@ -41,16 +41,19 @@ class Transaction(rlp.Serializable):
 
     _sender = None
 
-    def __init__(self, nonce, gasprice, startgas, to, value, data, v=0, r=0,
+    def __init__(self, nonce, gas_price, gas, value, receiver, v=0, r=0,
                  s=0):
-        to = utils.normalize_address(to, allow_blank=True)
 
         super(Transaction, self).__init__(
-            nonce, gasprice, startgas, to, value, data, v, r, s
+            nonce, gas_price, gas, value, receiver, v, r, s
         )
-        if self.gasprice >= TT256 or self.startgas >= TT256 or \
+        if self.gas_price >= TT256 or \
                 self.value >= TT256 or self.nonce >= TT256:
             raise InvalidTransaction("Values way too high!")
+
+    @property
+    def sender(self):
+        return self._sender
 
     @sender.setter
     def sender(self, value):
@@ -78,8 +81,6 @@ class Transaction(rlp.Serializable):
         d = {}
         for name, _ in self.__class__._meta.fields:
             d[name] = getattr(self, name)
-            if name in ('to', 'data'):
-                d[name] = '0x' + encode_hex(d[name])
         d['sender'] = '0x' + encode_hex(self.sender)
         d['hash'] = '0x' + encode_hex(self.hash)
         return d
@@ -111,8 +112,7 @@ def unsigned_tx_from_tx(tx):
     return UnsignedTransaction(
         nonce=tx.nonce,
         gasprice=tx.gasprice,
-        startgas=tx.startgas,
-        to=tx.to,
+        startgas=tx.gas,
         value=tx.value,
-        data=tx.data
+        receiver=tx.receiver
     )

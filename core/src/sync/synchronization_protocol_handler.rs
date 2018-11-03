@@ -42,7 +42,7 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), NetworkError> {
         let mut raw = Bytes::new();
         raw.push(msg.msg_id().into());
-        raw.extend(msg.rlp_bytes());
+        raw.extend(msg.rlp_bytes().iter());
         io.send(peer, raw).map_err(|e| {
             debug!(target: "sync", "Error sending message: {:?}", e);
             io.disconnect_peer(peer);

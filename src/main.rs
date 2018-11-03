@@ -61,7 +61,8 @@ use txgen::TransactionGenerator;
 
 // Start all key components of Conflux and pass out their handles
 fn start(
-    conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
+    conf: Configuration,
+    exit: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<Box<Any>, String> {
     let network_config = conf.net_config();
     let cache_config = conf.cache_config();
@@ -203,6 +204,19 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("netconf-dir")
+                .long("netconf-dir")
+                .value_name("NETCONF_DIR")
+                .help("Sets a custom directory for network configurations")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("public-address")
+                .long("public-address")
+                .value_name("ADDRESS")
+                .help("Sets a custom public address to be connected by others")
+                .takes_value(true),
+        ).arg(
             Arg::with_name("ledger-cache-size")
                 .short("lcs")
                 .long("ledger-cache-size")
@@ -251,6 +265,18 @@ fn main() {
                     .appender("logfile")
                     .additive(false)
                     .build("rpc", conf.log_level),
+            )
+            .logger(
+                Logger::builder()
+                    .appender("logfile")
+                    .additive(false)
+                    .build("sync", conf.log_level),
+            )
+            .logger(
+                Logger::builder()
+                    .appender("logfile")
+                    .additive(false)
+                    .build("discovery", conf.log_level),
             )
             .build(Root::builder().appender("stdout").build(LevelFilter::Info))
             .unwrap()

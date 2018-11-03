@@ -10,12 +10,16 @@ pub struct CacheConfig {
 }
 
 impl Default for CacheConfig {
-    fn default() -> Self { CacheConfig::new(DEFAULT_LEDGER_CACHE_SIZE) }
+    fn default() -> Self {
+        CacheConfig::new(DEFAULT_LEDGER_CACHE_SIZE)
+    }
 }
 
 impl CacheConfig {
     /// Creates new cache config with gitven details.
-    pub fn new(blockchain: usize) -> Self { CacheConfig { blockchain } }
+    pub fn new(blockchain: usize) -> Self {
+        CacheConfig { blockchain }
+    }
 
     /// Size of the blockchain cache.
     pub fn blockchain(&self) -> usize {

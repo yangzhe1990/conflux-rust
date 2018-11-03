@@ -9,7 +9,7 @@ PortSeed.n = os.getpid()
 
 tmpdir = tempfile.mkdtemp(prefix="test")
 nodes = []
-for i in range(2):
+for i in range(3):
     initialize_datadir(tmpdir, i)
     nodes.append(
         TestNode(
@@ -20,18 +20,22 @@ for i in range(2):
                 os.path.dirname(os.path.realpath(__file__)),
                 "../target/debug/conflux")))
 
+print(tmpdir)
 nodes[0].start()
 nodes[1].start()
+nodes[2].start()
 nodes[0].wait_for_rpc_connection()
 nodes[1].wait_for_rpc_connection()
+nodes[2].wait_for_rpc_connection()
 print(nodes[0].getblockcount())
-nodes[0].generate(3)
 print(nodes[0].getblockcount())
 print(nodes[0].getbestblockhash())
 print(nodes[1].getblockcount())
 print(nodes[1].getbestblockhash())
-connect_nodes(nodes[0], 1)
-sync_blocks(nodes[0:2])
+connect_nodes(nodes[0], 1, nodes[1].key)
+connect_nodes(nodes[1], 2, nodes[2].key)
+nodes[0].generate(3)
+sync_blocks(nodes)
 print(nodes[0].getpeerinfo())
 print(nodes[1].getblockcount())
-print(nodes[1].getbestblockhash())
+print(nodes[2].getbestblockhash())

@@ -23,7 +23,7 @@ from .util import (
     PortSeed,
     assert_equal,
     check_json_precision,
-    connect_nodes_bi,
+    connect_nodes,
     disconnect_nodes,
     get_datadir_path,
     initialize_datadir,
@@ -255,7 +255,7 @@ class ConfluxTestFramework:
         # to split the network between nodes 1 and 2 to get
         # two halves that can work on competing chains.
         for i in range(self.num_nodes - 1):
-            connect_nodes_bi(self.nodes, i, i + 1)
+            connect_nodes(self.nodes, i, i + 1)
         self.sync_all()
 
     def setup_nodes(self):
@@ -278,13 +278,32 @@ class ConfluxTestFramework:
                     confluxd=binary[i],
                 ))
 
-    def start_node(self, i, *args, **kwargs):
+    def add_remote_nodes(self, num_nodes, ip, user, rpchost=None, binary=None):
+        """Instantiate TestNode objects"""
+        if binary is None:
+            binary = [self.options.conflux] * num_nodes
+        assert_equal(len(binary), num_nodes)
+        for i in range(num_nodes):
+            self.nodes.append(
+                TestNode(
+                    i,
+                    get_datadir_path(self.options.tmpdir, i),
+                    rpchost=rpchost,
+                    ip=ip,
+                    user=user,
+                    rpc_timeout=self.rpc_timewait,
+                    confluxd=binary[i],
+                    remote=True
+                ))
+
+    def start_node(self, i, extra_args=None, *args, **kwargs):
         """Start a bitcoind"""
 
         node = self.nodes[i]
 
-        node.start(*args, **kwargs)
+        node.start(extra_args, *args, **kwargs)
         node.wait_for_rpc_connection()
+        node.wait_for_nodeid()
 
         if self.options.coveragedir is not None:
             coverage.write_all_rpc_commands(self.options.coveragedir, node.rpc)
@@ -294,9 +313,10 @@ class ConfluxTestFramework:
 
         try:
             for i, node in enumerate(self.nodes):
-                node.start(*args, **kwargs)
+                node.start(extra_args, *args, **kwargs)
             for node in self.nodes:
                 node.wait_for_rpc_connection()
+                node.wait_for_nodeid()
         except:
             # If one node failed to start, stop the others
             self.stop_nodes()

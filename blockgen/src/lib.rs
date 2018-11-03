@@ -75,7 +75,7 @@ impl BlockGenerator {
 //                value: U256::zero(),
 //                receiver: Address::default(),
 //            };
-//            let secret = Secret::zero();
+//            let secret :Secret = "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f".parse().unwrap();
 //            let tx = tx.sign(&secret);
 //            tx_rlp.append(&tx);
 //            txs.push(tx);

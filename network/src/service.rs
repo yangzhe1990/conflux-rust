@@ -27,6 +27,8 @@ use {
     NetworkContext as NetworkContextTrait, NetworkIoMessage,
     NetworkProtocolHandler, PeerId, PeerInfo, ProtocolId,
 };
+use keccak_hash::keccak;
+use ethkey::sign;
 
 type Slab<T> = ::slab::Slab<T, usize>;
 
@@ -56,10 +58,11 @@ pub const DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT: Duration =
 pub const DEFAULT_DISCOVERY_ROUND_TIMEOUT: Duration =
     Duration::from_millis(500);
 // for NODE_TABLE TimerToken
-pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(300);
+//pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(300);
+pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(1);
 // The lifetime threshold of the connection for promoting a peer
-pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration =
-    Duration::from_secs(3 * 24 * 3600);
+//pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration = Duration::from_secs(3 * 24 * 3600);
+pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration = Duration::from_secs(1);
 
 pub const MAX_DATAGRAM_SIZE: usize = 1280;
 
@@ -224,6 +227,19 @@ impl NetworkService {
     /// Return the current connected peers
     pub fn get_peer_info(&self) -> Option<Vec<PeerInfo>> {
         self.inner.as_ref().map(|inner| inner.get_peer_info())
+    }
+    /// Sign a challenge to provide self NodeId
+    pub fn sign_challenge(&self, challenge: Vec<u8>) -> Result<Vec<u8>, Error> {
+        let hash = keccak(challenge);
+        let inner = self.inner.as_ref().unwrap();
+        let signature = match sign(inner.metadata.read().keys.secret(), &hash) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(target: "network", "Error signing hello packet");
+                return Err(Error::from(e));
+            }
+        };
+        Ok(signature[..].to_owned())
     }
 }
 
@@ -518,7 +534,6 @@ impl NetworkServiceInner {
                 }
             }
         }
-
         // Check each live connection for its lifetime.
         // Promote the peers with live connection for a threshold period
         let mut trusted = self.trusted_nodes.write();
@@ -596,13 +611,16 @@ impl NetworkServiceInner {
 
         let (handshake_count, egress_count, ingress_count) =
             self.session_count();
-        let trusted_nodes = self.trusted_nodes.read();
+        let samples;
+        {
+            let trusted_nodes = self.trusted_nodes.read();
+            let egress_attempt_count = max_outgoing_peers - egress_count as u32;
+            samples = trusted_nodes
+                    .sample_node_ids(egress_attempt_count, &allow_ips);
+        }
         let reserved_nodes = self.reserved_nodes.read();
-        let egress_attempt_count = max_outgoing_peers - egress_count as u32;
         // Try to connect all reserved peers and trusted peers
-        let nodes = reserved_nodes.iter().cloned().chain(
-            trusted_nodes.sample_node_ids(egress_attempt_count, &allow_ips),
-        );
+        let nodes = reserved_nodes.iter().cloned().chain(samples);
 
         let max_handshakes_per_round = max_handshakes / 2;
         let mut started: usize = 0;

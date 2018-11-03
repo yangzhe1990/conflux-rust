@@ -296,7 +296,10 @@ impl Session {
 
         let hello_from = NodeEndpoint::from_rlp(&rlp.at(1)?)?;
 
+        // TODO Temporary remove for local test.
         if self.address.ip() != hello_from.address.ip() {
+            trace!(target: "network", "IP in Hello does not match session IP, \
+            Session IP: {:?}, Hello IP: {:?}", self.address.ip(), hello_from.address.ip());
             return Err(self.disconnect(io, DisconnectReason::WrongEndpointInfo));
         }
 
@@ -316,6 +319,7 @@ impl Session {
         {
             debug!(target: "network", "Address not allowed: {:?}", entry);
         } else {
+            debug!(target: "network", "Receive valid endpoint {:?}", entry);
             let mut trusted = host.trusted_nodes.write();
             let mut untrusted = host.untrusted_nodes.write();
 

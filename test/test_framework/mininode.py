@@ -4,45 +4,27 @@
 `P2PConnection: A low-level connection object to a node's P2P interface
 P2PInterface: A high-level interface object for communicating to a node over P2P
 """
+from eth_utils import big_endian_to_int
 
+from conflux import utils
+from conflux.messages import *
 import asyncore
 from collections import defaultdict
 from io import BytesIO
 import rlp
-from rlp.sedes import binary, big_endian_int, CountableList
+from rlp.sedes import binary, big_endian_int, CountableList, boolean
 import logging
 import socket
 import struct
 import sys
 import threading
 
+from conflux.transactions import Transaction
+from conflux.utils import hash32, hash20, sha3, int_to_bytes, sha3_256, ecrecover_to_pub, ec_random_keys, ecsign, \
+    bytes_to_int, encode_int32
+from test_framework.util import wait_until
+
 logger = logging.getLogger("TestFramework.mininode")
-
-PACKET_HELLO = 0x80
-PACKET_DISCONNECT = 0x01
-PACKET_PING = 0x02
-PACKET_PONG = 0x0
-PACKET_PROTOCOL = 0x10
-
-
-class Capability(rlp.Serializable):
-    fields = [
-        ("protocol", binary),
-        ("version", big_endian_int)
-    ]
-
-
-class Hello(rlp.Serializable):
-    fields = [
-        ("capabilities", CountableList(Capability)),
-        ("junk", big_endian_int)
-    ]
-
-
-class Disconnect(rlp.Serializable):
-    fields = [
-        ("reason", big_endian_int)
-    ]
 
 
 class P2PConnection(asyncore.dispatcher):
@@ -142,12 +124,11 @@ class P2PConnection(asyncore.dispatcher):
                 packet_id = self.recvbuf[2]
                 if packet_id != PACKET_HELLO and packet_id != PACKET_DISCONNECT and (not self.had_hello):
                     raise ValueError("bad protocol")
-                payload = self.recvbuf[3:2+packet_size]
-                self.recvbuf = self.recvbuf[2+packet_size:]
+                payload = self.recvbuf[3:2 + packet_size]
+                self.recvbuf = self.recvbuf[2 + packet_size:]
                 self._log_message("receive", packet_id)
                 if packet_id == PACKET_HELLO:
-                    hello = rlp.decode(payload, Hello)
-                    self.on_hello(hello)
+                    self.on_hello(payload)
                 elif packet_id == PACKET_DISCONNECT:
                     disconnect = rlp.decode(payload, Disconnect)
                     self.on_disconnect(disconnect)
@@ -162,8 +143,7 @@ class P2PConnection(asyncore.dispatcher):
             logger.exception('Error reading message: ' + repr(e))
             raise
 
-    def on_hello(self, hello):
-        self.send_packet(PACKET_HELLO, rlp.encode(hello, Hello))
+    def on_hello(self, payload):
         self.had_hello = True
 
     def on_disconnect(self, disconnect):
@@ -171,6 +151,7 @@ class P2PConnection(asyncore.dispatcher):
 
     def on_ping(self):
         self.send_packet(PACKET_PONG, b"")
+        pass
 
     def on_protocol_packet(self, payload):
         """Callback for processing a protocol-specific P2P payload. Must be overridden by derived class."""
@@ -211,9 +192,10 @@ class P2PConnection(asyncore.dispatcher):
         if self.state != "connected" and not pushbuf:
             raise IOError('Not connected, no pushbuf')
         self._log_message("send", packet_id)
-        buf = struct.pack("<h", len(payload) + 3)
+        buf = struct.pack("<h", len(payload) + 1)
         buf += struct.pack("<B", packet_id)
         buf += payload
+
         with mininode_lock:
             if (len(self.sendbuf) == 0 and not pushbuf):
                 try:
@@ -223,6 +205,15 @@ class P2PConnection(asyncore.dispatcher):
                     self.sendbuf = buf
             else:
                 self.sendbuf += buf
+
+    def send_protocol_packet(self, payload):
+        """Send packet of protocols"""
+        self.send_packet(PACKET_PROTOCOL, self.protocol + payload)
+
+    def send_protocol_msg(self, msg):
+        """Send packet of protocols"""
+        self.send_protocol_packet(int_to_bytes(
+            get_msg_id(msg)) + rlp.encode(msg))
 
     # Class utility methods
 
@@ -255,12 +246,33 @@ class P2PInterface(P2PConnection):
         # Track number of messages of each type received and the most recent
         # message of each type
         self.message_count = defaultdict(int)
+        self.protocol_message_count = defaultdict(int)
         self.last_message = {}
+        self.last_protocol_message = {}
+
+        # Default protocol version
+        self.protocol = b'cfx'
+        self.protocol_version = 1
+        self.genesis = Block(BlockHeader(difficulty=0))
+        self.best_block_hash = self.genesis.block_header.hash
+        self.total_difficulty = 0
+        self.blocks = {self.genesis.block_header.hash: self.genesis}
+        self.peer_pubkey = None
+        self.priv_key, self.pub_key = ec_random_keys()
+        self.had_status = False
 
     def peer_connect(self, *args, **kwargs):
         super().peer_connect(*args, **kwargs)
 
+    def wait_for_status(self, timeout=60):
+        wait_until(lambda: self.had_status, timeout=timeout, lock=mininode_lock)
+
     # Message receiving methods
+
+    def send_status(self):
+        status = Status(self.protocol_version, 0,
+                        self.best_block_hash, self.genesis.block_header.hash)
+        self.send_protocol_msg(status)
 
     def on_protocol_packet(self, payload):
         """Receive message and dispatch message to appropriate callback.
@@ -270,8 +282,104 @@ class P2PInterface(P2PConnection):
         with mininode_lock:
             try:
                 protocol = payload[0:3]
+                assert(protocol == self.protocol)  # Possible to be false?
+                packet_type = payload[3]
+                payload = payload[4:]
+                # print(rlp.decode(payload))
+                self.protocol_message_count[packet_type] += 1
+                if packet_type == STATUS:
+                    status = rlp.decode(payload, Status)
+                    self._log_message("receive", "STATUS, protocol_version:{}, best:{}"
+                                      .format(status.protocol_version,
+                                              utils.encode_hex(status.best_block_hash)))
+                    self.had_status = True
+                    self.on_status(status)
+                elif packet_type == GET_BLOCK_HEADERS:
+                    get_headers = rlp.decode(payload, GetBlockHeaders)
+                    self._log_message("receive", "GET_BLOCK_HEADERS of {} {}".format(get_headers.hash, get_headers.max_blocks))
+                    self.on_get_block_headers(get_headers)
+                elif packet_type == GET_BLOCK_BODIES:
+                    get_block_bodies = rlp.decode(rlp, GetBlockBodies)
+                    hashes = get_block_bodies.hashes
+                    self._log_message("receive", "GET_BLOCK_BODIES of {} blocks".format(len(hashes)))
+                    self.on_get_block_bodies(hashes)
+                elif packet_type == BLOCK_HEADERS:
+                    headers = rlp.decode(payload, BlockHeaders).headers
+                    self._log_message("receive", "BLOCK_HEADERS of {} headers".format(len(headers)))
+                    self.on_block_headers(headers)
+                elif packet_type == BLOCK_BODIES:
+                    bodies = rlp.decode(payload, BlockBodies)
+                    self._log_message("receive", "BLOCK_BODIES of {} blocks".format(len(bodies)))
+                    self.on_block_bodies(bodies)
+                elif packet_type == NEW_BLOCK:
+                    new_block = rlp.decode(payload, NewBlock)
+                    self._log_message("receive", "NEW_BLOCK, hash:{}".format(new_block.header.hash))
+                elif packet_type == GET_BLOCK_HASHES:
+                    gethashes = rlp.decode(payload, GetBlockHashes)
+                    self._log_message("receive", "GET_BLOCK_HASHES, hash:{}, max_blocks:{}"
+                                      .format(gethashes.hash, gethashes.max_blocks))
+                elif packet_type == BLOCK_HASHES:
+                    block_hashes = rlp.decode(payload, BlockHashes)
+                    self._log_message("receive", "BLOCK_HASHES, {} hashes".format(len(block_hashes.hashes)))
+                elif packet_type == GET_TERMINAL_BLOCK_HASHES:
+                    self._log_message("receive", "GET_TERMINAL_BLOCK_HASHES")
+                elif packet_type == TRANSACTIONS:
+                    transactions = rlp.decode(payload, Transactions)
+                    self._log_message("receive", "TRANSACTIONS, {} transactions".format(len(transactions.transactions)))
+                elif packet_type == TERMINAL_BLOCK_HASHES:
+                    hashes = rlp.decode(payload, TerminalBlockHashes)
+                    self._log_message("receive", "TERMINAL_BLOCK_HASHES, {} hashes".format(len(hashes.hashes)))
+                elif packet_type == NEW_BLOCK_HASHES:
+                    hashes = rlp.decode(payload, NewBlockHashes)
+                    self._log_message(("receive", "NEW_BLOCK_HASHES, {} hashes".format(len(hashes.hashes))))
+                elif packet_type == BLOCKS:
+                    blocks = rlp.decode(payload, Blocks)
+                    self._log_message("receive", "BLOCKS, {} blocks".format(len(blocks.blocks)))
+                elif packet_type == GET_BLOCKS:
+                    getblocks = rlp.decode(payload, GetBlocks)
+                    self._log_message("receive", "GET_BLOCKS, {} hashes".format(len(getblocks.hashes)))
+                else:
+                    self._log_message("receive", "Unknown packet {}".format(packet_type))
             except:
                 raise
+
+    def on_hello(self, payload):
+        h = payload[:32]
+        hash_signed = sha3_256(payload[32:])
+        if h != hash_signed:
+            return
+        signature = payload[32:32+65]
+        r = big_endian_to_int(signature[:32])
+        s = big_endian_to_int(signature[32:64])
+        v = big_endian_to_int(signature[64:]) + 27
+        signed = payload[32+65:]
+        h_signed = sha3_256(signed)
+        node_id = ecrecover_to_pub(h_signed, v, r, s)
+        # if node_id == encode_int32(self.pub_key[0])+encode_int32(self.pub_key[1]):
+        #     print("Match")
+        # else:
+        #     print(node_id, encode_int32(self.pub_key[0])+encode_int32(self.pub_key[1]))
+        self.peer_pubkey = node_id
+        hello = rlp.decode(signed, Hello)
+
+        capabilities = []
+        for c in hello.capabilities:
+            capabilities.append((c.protocol, c.version))
+        self._log_message(
+            "receive", "Hello, capabilities:{}".format(capabilities))
+        ip = [127, 0, 0, 1]
+        endpoint = NodeEndpoint(address=bytes(ip), port=32325, udp_port=32325)
+        hello = Hello([Capability(self.protocol, self.protocol_version)], endpoint)
+        to_sign = rlp.encode(hello, Hello)
+        sig = ecsign(sha3_256(to_sign), self.priv_key)
+        v = (sig[0] - 27).to_bytes(1, "big")
+        r = sig[1].to_bytes(32, "big")
+        s = sig[2].to_bytes(32, "big")
+        to_hash = r + s + v + to_sign
+        hash_signed = sha3_256(to_hash)
+        self.send_packet(PACKET_HELLO, hash_signed + to_hash)
+        self.had_hello = True
+        self.send_status()
 
     # Callback methods. Can be overridden by subclasses in individual test
     # cases to provide custom message handling behaviour.
@@ -280,6 +388,21 @@ class P2PInterface(P2PConnection):
 
     def on_close(self): pass
 
+    """Function to override"""
+    def on_block_headers(self, headers):
+        pass
+
+    def on_block_bodies(self, bodies):
+        pass
+
+    def on_status(self, status):
+        pass
+
+    def on_get_block_headers(self, get_block_headers):
+        pass
+
+    def on_get_block_bodies(self, hashes):
+        pass
 
 # Keep our own socket map for asyncore, so that we can track disconnects
 # ourselves (to work around an issue with closing an asyncore socket when
@@ -296,6 +419,7 @@ mininode_lock = threading.RLock()
 
 
 class NetworkThread(threading.Thread):
+
     def __init__(self):
         super().__init__(name="NetworkThread")
 

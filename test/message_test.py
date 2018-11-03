@@ -3,7 +3,7 @@ from rlp.sedes import Binary, BigEndianInt
 
 from conflux import utils
 from conflux.utils import encode_hex, bytes_to_int
-from test_framework.blocktools import create_block
+from test_framework.blocktools import create_block, create_transaction
 from test_framework.test_framework import ConfluxTestFramework
 # from test_framework.mininode import (
 #     P2PInterface,
@@ -15,13 +15,10 @@ from test_framework.mininode import *
 from test_framework.util import *
 
 
-class P2PTest(ConfluxTestFramework):
+class MessageTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 4
-        self.block_number = 10
-        self.difficulty = 10
-        self.generate_period = 2
 
     def setup_network(self):
         self.setup_nodes()
@@ -40,24 +37,36 @@ class P2PTest(ConfluxTestFramework):
         # block_time = int(b['timestamp'], 0) + 1
         block_time = int(1)
 
-        for i in range(2, self.block_number + 1):
-            # Use the mininode and blocktools functionality to manually build a block
-            # Calling the generate() rpc is easier, but this allows us to exactly
-            # control the blocks and transactions.
-            block = create_block(tip, block_time, self.difficulty)
+        # Use the mininode and blocktools functionality to manually build a block
+        # Calling the generate() rpc is easier, but this allows us to exactly
+        # control the blocks and transactions.
+        new_block = create_block(tip, block_time)
+        new_transaction = create_transaction()
 
-            """ This triggers panic of conflux now """
-            self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block))
-            tip = block.block_header.hash
-            blocks.append(block)
-            block_time += 1
-        wait_for_block_count(self.nodes[0], self.block_number)
-        sync_blocks(self.nodes)
+        self.send_msg(GetBlockHashes(hash=blocks[0], max_blocks=1))
+        self.send_msg(GetBlockHeaders(hash=blocks[0], max_blocks=1))
+        self.send_msg(GetBlockBodies(hashes=[blocks[0]]))
+        self.send_msg(GetBlocks(hashes=[blocks[0]]))
+        self.send_msg(BlockHashes(hashes=[blocks[0]]))
+        self.send_msg(BlockHeaders(headers=[default_node.genesis.block_header]))
+        self.send_msg(BlockBodies(bodies=[default_node.genesis]))
+        self.send_msg(Blocks(blocks=[default_node.genesis]))
+        self.send_msg(NewBlockHashes(block_hashes=[BlockHash(number=1, hash=new_block.block_header.hash)]))
+        self.send_msg(NewBlock(block=new_block))
+        self.send_msg(GetTerminalBlockHashes())
+        self.send_msg(TerminalBlockHashes(hashes=[blocks[0]]))
+        self.send_msg(Transactions(transactions=[new_transaction]))
+
+        # wait_for_block_count(self.nodes[0], self.block_number)
+        # sync_blocks(self.nodes)
         # self.nodes[0].generate(1)
         # wait_for_block_count(self.nodes[0], self.block_number+1)
         print("pass")
         while True:
             pass
+
+    def send_msg(self, msg):
+        self.nodes[0].p2p.send_protocol_msg(msg)
 
 
 class DefaultNode(P2PInterface):
@@ -68,4 +77,4 @@ class DefaultNode(P2PInterface):
 
 
 if __name__ == "__main__":
-    P2PTest().main()
+    MessageTest().main()

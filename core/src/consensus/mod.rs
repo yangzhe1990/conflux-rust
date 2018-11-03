@@ -72,6 +72,7 @@ impl ConsensusGraphInner {
         if parent != NULL {
             self.terminal_block_hashes.remove(&self.arena[parent].hash);
             self.terminal_block_hashes.insert(hash);
+            self.arena[parent].children.push(index);
         }
 
         index

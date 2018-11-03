@@ -126,6 +126,27 @@ def ecsign(rawhash, key):
     return v, r, s
 
 
+def ec_random_keys():
+    priv_key = random.randint(0, 2 ** 32).to_bytes(4, "big")
+    pub_key = privtopub(priv_key)
+    return priv_key, pub_key
+
+
+def convert_to_nodeid(signature, challenge):
+    r = big_endian_to_int(signature[:32])
+    s = big_endian_to_int(signature[32:64])
+    v = big_endian_to_int(signature[64:]) + 27
+    signed = int_to_bytes(challenge)
+    h_signed = sha3_256(signed)
+    return ecrecover_to_pub(h_signed, v, r, s)
+
+
+def get_nodeid(node):
+    challenge = random.randint(0, 2**32-1)
+    signature = node.getnodeid(list(int_to_bytes(challenge)))
+    return convert_to_nodeid(signature, challenge)
+
+
 def mk_contract_address(sender, nonce):
     return sha3(rlp.encode([normalize_address(sender), nonce]))[12:]
 
@@ -547,6 +568,7 @@ int20 = BigEndianInt(20)
 int32 = BigEndianInt(32)
 int256 = BigEndianInt(256)
 hash32 = Binary.fixed_length(32)
+hash20 = Binary.fixed_length(20)
 trie_root = Binary.fixed_length(32, allow_empty=True)
 
 

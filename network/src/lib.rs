@@ -28,6 +28,7 @@ extern crate enum_map_derive;
 extern crate strum;
 #[macro_use]
 extern crate strum_macros;
+extern crate keccak_hash;
 
 pub type ProtocolId = [u8; 3];
 pub type PeerId = usize;
