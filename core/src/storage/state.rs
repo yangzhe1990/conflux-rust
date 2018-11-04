@@ -31,7 +31,7 @@ pub trait StateTrait<'a> {
     ) -> Result<()>;
 
     // Finalize
-    fn commit(self, epoch: EpochId) -> MerkleHash;
+    fn commit(&mut self, epoch: EpochId) -> MerkleHash;
 
     // TODO(yz): verifiable proof related methods.
 }

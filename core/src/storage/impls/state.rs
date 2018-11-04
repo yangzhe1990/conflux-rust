@@ -120,7 +120,7 @@ impl<'a> StateTrait<'a> for State<'a> {
         unimplemented!()
     }
 
-    fn commit(mut self, epoch_id: EpochId) -> MerkleHash {
+    fn commit(&mut self, epoch_id: EpochId) -> MerkleHash {
         self.dirty = false;
 
         let maybe_root_node: Option<NodeRef> = self.root_node.into();
