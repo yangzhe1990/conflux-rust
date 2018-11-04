@@ -49,11 +49,15 @@ impl<'a> State<'a> {
 
     fn get_or_create_root_node(&mut self) -> Result<NodeRef> {
         if self.root_node == MaybeNodeRef::NULL_NODE {
-            self.root_node = CowNodeRef::new_empty_node(
-                &self.allocator.get_allocator(),
+            let allocator = self.allocator.get_allocator();
+            let (mut root_cow, entry) = CowNodeRef::new_uninitialized_node(
+                &allocator,
                 self.owned_node_set.as_mut().unwrap(),
-            )?
-            .into_child();
+            )?;
+            // Insert empty node.
+            entry.insert(Default::default());
+
+            self.root_node = root_cow.into_child();
         }
 
         self.get_root_node()
@@ -132,12 +136,15 @@ impl<'a> StateTrait<'a> for State<'a> {
                     &allocator,
                     &mut cow_root.node_ref,
                 );
-                cow_root.get_or_compute_merkle(
+                let merkle = cow_root.get_or_compute_merkle(
                     self.allocator,
                     &allocator,
                     self.owned_node_set.as_ref().unwrap(),
                     trie_node_root,
-                )
+                );
+                cow_root.into_child();
+
+                merkle
             }
         };
 

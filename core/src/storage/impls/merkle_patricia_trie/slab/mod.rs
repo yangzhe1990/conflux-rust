@@ -732,6 +732,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
             alloc_fields.used += 1;
             if key == alloc_fields.size_initialized {
                 alloc_fields.next = key + 1;
+                alloc_fields.size_initialized = alloc_fields.next;
             } else {
                 alloc_fields.next = self.entries[key].get_next_vacant_index();
             }

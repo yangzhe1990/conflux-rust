@@ -697,12 +697,12 @@ impl TrieNode {
                                 0,
                             ),
                             unmatched_child_index: Self::first_nibble(
-                                key[memcmp_len],
+                                path_slice[memcmp_len],
                             ),
-                            // No compressed path remaining since the last half
-                            // byte is
-                            // in unmatched_child_index.
-                            unmatched_path_remaining: Default::default(),
+                            unmatched_path_remaining: CompressedPathRaw::new(
+                                &path_slice[memcmp_len..],
+                                         self.path_end_mask,
+                            ),
                         };
                     }
                 } else {
@@ -1016,20 +1016,20 @@ impl Default for CowNodeRef {
 pub type OwnedNodeSet = BTreeSet<NodeRef>;
 
 impl CowNodeRef {
-    pub fn new_empty_node<'trie>(
-        allocator: AllocatorRefRef<'trie>,
-        owned_node_set: &'trie mut OwnedNodeSet,
-    ) -> Result<Self>
-    {
+    pub fn new_uninitialized_node<'trie>(
+        allocator: AllocatorRefRef<'trie>, owned_node_set: &mut OwnedNodeSet,
+    ) -> Result<(Self, VacantEntry<'trie>)> {
         let (node_ref, new_entry) = NodeMemoryAllocator::new_node(allocator)?;
-        new_entry.insert(Default::default());
         owned_node_set.insert(node_ref.clone());
 
-        Ok(Self {
-            owned: true,
-            moved: false,
-            node_ref: node_ref,
-        })
+        Ok((
+            Self {
+                owned: true,
+                moved: false,
+                node_ref: node_ref,
+            },
+            new_entry,
+        ))
     }
 
     pub fn new<'trie>(
@@ -1062,6 +1062,7 @@ impl CowNodeRef {
             let old_node =
                 NodeMemoryAllocator::node_as_ref(allocator, &self.node_ref);
 
+            // TODO(yz): maybe use Self::new_uninitialized_node().
             let (node_ref, new_entry) =
                 NodeMemoryAllocator::new_node(allocator)?;
             owned_node_set.insert(node_ref.clone());
@@ -1111,12 +1112,18 @@ impl CowNodeRef {
                                     allocator,
                                     &mut cow_child_node.node_ref,
                                 );
-                            cow_child_node.get_or_compute_merkle(
+                            let merkle = cow_child_node.get_or_compute_merkle(
                                 trie,
                                 allocator,
                                 owned_node_set,
                                 trie_node,
-                            )
+                            );
+
+                            // The child node isn't replaced so it's safe to not
+                            // insert into to parent node.
+                            cow_child_node.into_child();
+
+                            merkle
                         }
                     }
                 }
@@ -1351,7 +1358,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 &allocator,
                 &node_cow.node_ref,
             );
-            match trie_node.walk::<Write>(key) {
+            match trie_node.walk::<Read>(key) {
                 WalkStop::Arrived => {
                     return trie_node.value().map_or_else(
                         || Err(Error::from_kind(ErrorKind::MPTKeyNotFound)),
@@ -1607,8 +1614,11 @@ impl<'trie> SubTrieVisitor<'trie> {
                 // replacement node create a new node for
                 // insertion (if key_remaining is non-empty), set it to child,
                 // with key_remaining.
-                let (mut new_node_ref, mut new_node_entry) =
-                    NodeMemoryAllocator::new_node(&allocator)?;
+                let (mut new_node_cow, mut new_node_entry) =
+                    CowNodeRef::new_uninitialized_node(
+                        &allocator,
+                        self.owned_node_set.get_mut(),
+                    )?;
                 let mut new_node = TrieNode::default();
                 // set compressed path.
                 new_node.set_compressed_path(matched_path);
@@ -1627,14 +1637,16 @@ impl<'trie> SubTrieVisitor<'trie> {
                 match key_child_index {
                     None => {
                         // Insert value at the current node
-
                         new_node.replace_value_unchecked(value);
                     }
                     Some(child_index) => {
                         // TODO(yz): Maybe create CowNodeRef on NULL then
                         // cow_set_value then set path.
-                        let (child_node_ref, child_node_entry) =
-                            NodeMemoryAllocator::new_node(&allocator)?;
+                        let (mut child_node_cow, child_node_entry) =
+                            CowNodeRef::new_uninitialized_node(
+                                &allocator,
+                                self.owned_node_set.get_mut(),
+                            )?;
                         let mut new_child_node = TrieNode::default();
                         // set compressed path.
                         new_child_node.copy_compressed_path(
@@ -1646,11 +1658,14 @@ impl<'trie> SubTrieVisitor<'trie> {
                         new_child_node.replace_value_unchecked(value);
                         child_node_entry.insert(new_child_node);
 
-                        new_node.set_child(child_index, child_node_ref.into());
+                        new_node.set_child(
+                            child_index,
+                            child_node_cow.into_child(),
+                        );
                     }
                 }
                 new_node_entry.insert(new_node);
-                Ok((true, new_node_ref.into()))
+                Ok((true, new_node_cow.into_child()))
             }
             WalkStop::ChildNotFound {
                 key_remaining,
@@ -1658,8 +1673,11 @@ impl<'trie> SubTrieVisitor<'trie> {
             } => {
                 // TODO(yz): Maybe create CowNodeRef on NULL then cow_set_value
                 // then set path.
-                let (child_node_ref, child_node_entry) =
-                    NodeMemoryAllocator::new_node(&allocator)?;
+                let (mut child_node_cow, child_node_entry) =
+                    CowNodeRef::new_uninitialized_node(
+                        &allocator,
+                        self.owned_node_set.get_mut(),
+                    )?;
                 let mut new_child_node = TrieNode::default();
                 // set compressed path.
                 new_child_node.copy_compressed_path(CompressedPathRef {
@@ -1675,7 +1693,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     self.owned_node_set.get_mut(),
                     trie_node_mut,
                     child_index,
-                    child_node_ref.into(),
+                    child_node_cow.into_child(),
                 );
 
                 Ok((node_changed, node_cow.into_child()))
