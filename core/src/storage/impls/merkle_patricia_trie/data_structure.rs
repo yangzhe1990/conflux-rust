@@ -1380,7 +1380,12 @@ impl<'trie> SubTrieVisitor<'trie> {
         match trie_node_mut.walk::<Read>(key) {
             WalkStop::Arrived => {
                 // If value doesn't exists, returns invalid key error.
-                let action = trie_node_mut.check_delete_value()?;
+                let result = trie_node_mut.check_delete_value();
+                if result.is_err() {
+                    node_cow.into_child();
+                    return Err(result.err().unwrap());
+                }
+                let action = result.unwrap();
                 match action {
                     TrieNodeAction::DELETE => {
                         // The current node is going to be dropped if owned.
@@ -1457,9 +1462,15 @@ impl<'trie> SubTrieVisitor<'trie> {
                 child_node,
                 child_index,
             } => {
-                let (value, mut child_replaced, mut new_child_node) = self
+                let result = self
                     .new_visitor_for_subtree(child_node)
-                    .delete(key_remaining)?;
+                    .delete(key_remaining);
+                if result.is_err() {
+                    node_cow.into_child();
+                    return result;
+                }
+                let (value, mut child_replaced, mut new_child_node) =
+                    result.unwrap();
                 if child_replaced {
                     let action = trie_node_mut
                         .check_replace_child(child_index, new_child_node);
@@ -1534,7 +1545,10 @@ impl<'trie> SubTrieVisitor<'trie> {
                 }
             }
 
-            _ => Err(Error::from_kind(ErrorKind::MPTKeyNotFound)),
+            _ => {
+                node_cow.into_child();
+                Err(Error::from_kind(ErrorKind::MPTKeyNotFound))
+            }
         }
     }
 
@@ -1570,9 +1584,14 @@ impl<'trie> SubTrieVisitor<'trie> {
                 child_node,
                 child_index,
             } => {
-                let (mut child_changed, mut new_child_node) = self
+                let result = self
                     .new_visitor_for_subtree(child_node)
-                    .insert_checked_value(key_remaining, value)?;
+                    .insert_checked_value(key_remaining, value);
+                if result.is_err() {
+                    node_cow.into_child();
+                    return result;
+                }
+                let (mut child_changed, mut new_child_node) = result.unwrap();
 
                 // No node deletion can happen
                 if child_changed {
