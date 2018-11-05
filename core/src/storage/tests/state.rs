@@ -7,7 +7,7 @@ use super::super::{
     state_manager::*,
 };
 use ethereum_types::H256;
-use rand::{chacha::ChaChaRng, Rng, SeedableRng};
+use rand::{ChaChaRng, Rng, SeedableRng};
 use std::mem;
 
 fn generate_keys() -> Vec<[u8; 4]> {
@@ -23,13 +23,15 @@ fn generate_keys() -> Vec<[u8; 4]> {
     keys_num.sort();
 
     let mut keys: Vec<[u8; 4]> = Default::default();
-    let mut old_key = keys_num[0];
+    let mut last_key = keys_num[0];
     for key in &keys_num[1..number_of_keys] {
-        if (*key != old_key) {
+        if (*key != last_key) {
             keys.push(unsafe { mem::transmute::<u32, [u8; 4]>(key.clone()) });
         }
-        old_key = *key;
+        last_key = *key;
     }
+
+    rng.shuffle(&mut keys);
     keys
 }
 
@@ -70,7 +72,6 @@ fn test_get_set_at_second_commit() {
     let mut rng = get_rng_for_test();
     let mut state_manager = StateManager::default();
     let mut keys: Vec<[u8; 4]> = generate_keys();
-    rng.shuffle(&mut keys);
     let set_size = 10000;
     let (keys_0, keys_1_new, keys_remain, keys_1_overwritten) = (
         &keys[0..set_size * 2],
@@ -138,4 +139,33 @@ fn test_get_set_at_second_commit() {
     let mut epoch_id_1 = H256::default();;
     epoch_id_1[0] = 2;
     state_1.commit(epoch_id_1);
+}
+
+#[test]
+fn test_set_delete() {
+    let mut rng = get_rng_for_test();
+    let mut state_manager = StateManager::default();
+    let mut state = state_manager.get_state_at(H256::default());
+    let mut keys: Vec<[u8; 4]> = generate_keys();
+
+    println!("Testing with {} set operations.", keys.len());
+
+    for key in &keys {
+        state.set(key, key).expect("Failed to insert key.");
+    }
+
+    rng.shuffle(keys.as_mut());
+
+    println!("Testing with {} delete operations.", keys.len());
+    let mut count = 0;
+    for key in &keys {
+        count += 1;
+        let value = state.delete(key).expect("Failed to delete key.");
+        let equal = key.eq(value.as_slice());
+        assert_eq!(equal, true);
+    }
+
+    let mut epoch_id = H256::default();
+    epoch_id[0] = 1;
+    state.commit(epoch_id);
 }

@@ -195,7 +195,7 @@ impl MaybeInPlaceByteArray {
     }
 
     fn new_uninitialized(size: u16) -> Self {
-        Self::new(Vec::with_capacity(size as usize).into_boxed_slice(), size)
+        Self::new(vec![0u8; size as usize].into_boxed_slice(), size)
     }
 
     fn copy_from(value: &[u8], size: u16) -> Self {
@@ -701,7 +701,7 @@ impl TrieNode {
                             ),
                             unmatched_path_remaining: CompressedPathRaw::new(
                                 &path_slice[memcmp_len..],
-                                         self.path_end_mask,
+                                self.path_end_mask,
                             ),
                         };
                     }
@@ -797,7 +797,7 @@ impl TrieNode {
         let prefix_size = prefix.path_slice.len();
         let path_size = self.get_compressed_path_size();
         // TODO(yz): it happens to be the same no matter what end_mask is,
-        // because we u8 = 2 nibbles. When we switch to u32 as path unit
+        // because u8 = 2 nibbles. When we switch to u32 as path unit
         // the concated size may vary.
         let concated_size = prefix_size as u16 + path_size;
 
@@ -810,15 +810,15 @@ impl TrieNode {
             let slice = new_path.path.get_slice_mut(concated_size);
             if (prefix.end_mask == 0) {
                 slice[0..prefix_size].copy_from_slice(prefix.path_slice);
-                slice[prefix_size..].copy_from_slice(path.path_slice)
+                slice[prefix_size..].copy_from_slice(path.path_slice);
             } else {
                 slice[0..prefix_size - 1]
                     .copy_from_slice(&prefix.path_slice[0..prefix_size - 1]);
-                slice[prefix_size] = Self::set_second_nibble(
-                    prefix.path_slice[prefix_size],
+                slice[prefix_size - 1] = Self::set_second_nibble(
+                    prefix.path_slice[prefix_size - 1],
                     child_index,
                 );
-                slice[prefix_size..].copy_from_slice(path.path_slice)
+                slice[prefix_size..].copy_from_slice(path.path_slice);
             }
         }
 
@@ -834,26 +834,7 @@ impl TrieNode {
         ret
     }
 
-    // FIXME: when calling delete, it's unknown whether the value exists.
-    // Therefore this method FIXME: maybe called on a TrieNode which
-    // SubTrieVisitor doesn't own. FIXME: in this case it's actually better
-    // to split the method into 2 parts. 1st checks whether FIXME: value
-    // exists, 2nd (maybe create a copy then) delete the value.
-    // FIXME: delete_value should be called on something that the SubTrieVisitor
-    // owns because it modifies its FIXME: value in any cases.
-    // FIXME: possibilities: invalid-key,
-    // FIXME: (owned) + delete_value, (owned) + delete + merge_with_child,
-    // (owned) + delete FIXME: copy_without_value, merge_with_child, none
-    // FIXME: copy-and-delete-value,
-    // FIXME: return value: (Action, replace: bool, replacement: MaybeNodeRef)
-    // FIXME: return value: 1. (delete_value, false, N/A)
-    // FIXME: return value: 2. (delete + merge_with_child, true, child*(unknown
-    // at this function)) FIXME: return value: 3. (delete, true, none)
-    // FIXME: return value: 4. (copy_without_value, true, copied)
-    // FIXME: return value: 5. (merge_with_child, true, new_child(unknown at
-    // this function) FIXME: return value: 6. (no-op, true, none)
-
-    /// Returns old_value, is_self_about_to_delete, replacement_node_for_self
+    /// Returns: old_value, is_self_about_to_delete, replacement_node_for_self
     fn check_delete_value(&self) -> Result<TrieNodeAction> {
         if self.has_value() {
             let number_of_children_plus_value =
@@ -964,14 +945,12 @@ impl TrieNode {
         }
         if delta == -1 {
             match self.number_of_children_plus_value {
-                1 => {
-                    // It's not possible to have 0 child 0 value after delete a
-                    // child, because the previous state
-                    // must be 1 child 0 value, which can not exist.
-                    unreachable!()
-                }
-                2 => {
-                    if self.has_value() {
+                count @ 1...2 => {
+                    // It's not possible for non-root node to have 0 child 0
+                    // value after delete a child, because
+                    // the previous state must be 1 child 0
+                    // value, which can not exist.
+                    if count == 1 || self.has_value() {
                         // There is no children.
                         TrieNodeAction::DELETE_CHILDREN_TABLE
                     } else {
@@ -1412,7 +1391,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                         // trie_node_mut.
                         node_cow.delete_node(self.memory_allocator());
                         // FIXME: maybe unify NULL_NODE into
-                        // node_mut.into_child()?
+                        // node_cow.into_child()?
                         Ok((value, true, MaybeNodeRef::NULL_NODE))
                     }
                     TrieNodeAction::MERGE_PATH {
@@ -1440,11 +1419,16 @@ impl<'trie> SubTrieVisitor<'trie> {
                             )
                             .path_prepended(path_prefix, child_index);
                         }
+                        // FIXME: error processing for OOM.
+                        let child_trie_node = NodeMemoryAllocator::node_as_mut(
+                            &allocator,
+                            &mut child_node_cow.node_ref,
+                        );
                         child_node_cow.cow_set_compressed_path(
                             &allocator,
                             self.owned_node_set.get_mut(),
                             new_path,
-                            trie_node_mut,
+                            child_trie_node,
                         );
 
                         // FIXME: how to represent that trie_node_mut is invalid
@@ -1501,11 +1485,16 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 )
                                 .path_prepended(path_prefix, child_index);
                             }
+                            let child_trie_node =
+                                NodeMemoryAllocator::node_as_mut(
+                                    &allocator,
+                                    &mut child_node_cow.node_ref,
+                                );
                             child_node_cow.cow_set_compressed_path(
                                 &allocator,
                                 self.owned_node_set.get_mut(),
                                 new_path,
-                                trie_node_mut,
+                                child_trie_node,
                             );
 
                             // FIXME: how to represent that trie_node_mut is
