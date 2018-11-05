@@ -3,24 +3,31 @@ use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use {Message, MsgId};
 
 #[derive(Debug, PartialEq)]
-pub struct BlockHashes {
+pub struct GetBlockHashesResponse {
+    reqid: u16,
     hashes: Vec<H256>,
 }
 
-impl Message for BlockHashes {
-    fn msg_id(&self) -> MsgId { MsgId::BLOCK_HASHES }
-}
-
-impl Encodable for BlockHashes {
-    fn rlp_append(&self, stream: &mut RlpStream) {
-        stream.append_list(&self.hashes);
+impl Message for GetBlockHashesResponse {
+    fn msg_id(&self) -> MsgId {
+        MsgId::GET_BLOCK_HASHES_RESPONSE
     }
 }
 
-impl Decodable for BlockHashes {
+impl Encodable for GetBlockHashesResponse {
+    fn rlp_append(&self, stream: &mut RlpStream) {
+        stream
+            .begin_list(2)
+            .append(&self.reqid)
+            .append_list(&self.hashes);
+    }
+}
+
+impl Decodable for GetBlockHashesResponse {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        Ok(BlockHashes {
-            hashes: rlp.as_list()?,
+        Ok(GetBlockHashesResponse {
+            reqid: rlp.val_at(0)?,
+            hashes: rlp.list_at(1)?,
         })
     }
 }

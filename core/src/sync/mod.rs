@@ -15,7 +15,7 @@ pub use self::{
         SynchronizationService,
     },
     synchronization_state::{
-        SynchronizationPeerAsking, SynchronizationPeerState,
-        SynchronizationState,
+        SynchronizationPeerState, SynchronizationState,
+        MAX_INFLIGHT_REQUEST_COUNT,
     },
 };

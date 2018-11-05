@@ -4,24 +4,31 @@ use Message;
 use MsgId;
 
 #[derive(Debug, PartialEq)]
-pub struct TerminalBlockHashes {
+pub struct GetTerminalBlockHashesResponse {
+    pub reqid: u16,
     pub hashes: Vec<H256>,
 }
 
-impl Message for TerminalBlockHashes {
-    fn msg_id(&self) -> MsgId { MsgId::TERMINAL_BLOCK_HASHES }
-}
-
-impl Encodable for TerminalBlockHashes {
-    fn rlp_append(&self, stream: &mut RlpStream) {
-        stream.append_list(&self.hashes);
+impl Message for GetTerminalBlockHashesResponse {
+    fn msg_id(&self) -> MsgId {
+        MsgId::GET_TERMINAL_BLOCK_HASHES_RESPONSE
     }
 }
 
-impl Decodable for TerminalBlockHashes {
+impl Encodable for GetTerminalBlockHashesResponse {
+    fn rlp_append(&self, stream: &mut RlpStream) {
+        stream
+            .begin_list(2)
+            .append(&self.reqid)
+            .append_list(&self.hashes);
+    }
+}
+
+impl Decodable for GetTerminalBlockHashesResponse {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        Ok(TerminalBlockHashes {
-            hashes: rlp.as_list()?,
+        Ok(GetTerminalBlockHashesResponse {
+            reqid: rlp.val_at(0)?,
+            hashes: rlp.list_at(1)?,
         })
     }
 }

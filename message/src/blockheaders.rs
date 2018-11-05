@@ -4,24 +4,31 @@ use Message;
 use MsgId;
 
 #[derive(Debug, PartialEq, Default)]
-pub struct BlockHeaders {
+pub struct GetBlockHeadersResponse {
+    pub reqid: u16,
     pub headers: Vec<BlockHeader>,
 }
 
-impl Message for BlockHeaders {
-    fn msg_id(&self) -> MsgId { MsgId::BLOCK_HEADERS }
-}
-
-impl Encodable for BlockHeaders {
-    fn rlp_append(&self, stream: &mut RlpStream) {
-        stream.append_list(&self.headers);
+impl Message for GetBlockHeadersResponse {
+    fn msg_id(&self) -> MsgId {
+        MsgId::GET_BLOCK_HEADERS_RESPONSE
     }
 }
 
-impl Decodable for BlockHeaders {
-    fn decode(rlp: &Rlp) -> Result<BlockHeaders, DecoderError> {
-        Ok(BlockHeaders {
-            headers: rlp.as_list()?,
+impl Encodable for GetBlockHeadersResponse {
+    fn rlp_append(&self, stream: &mut RlpStream) {
+        stream
+            .begin_list(2)
+            .append(&self.reqid)
+            .append_list(&self.headers);
+    }
+}
+
+impl Decodable for GetBlockHeadersResponse {
+    fn decode(rlp: &Rlp) -> Result<GetBlockHeadersResponse, DecoderError> {
+        Ok(GetBlockHeadersResponse {
+            reqid: rlp.val_at(0)?,
+            headers: rlp.list_at(1)?,
         })
     }
 }

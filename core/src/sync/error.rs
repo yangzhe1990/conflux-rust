@@ -16,6 +16,16 @@ error_chain! {
             display("Invalid block"),
         }
 
+        UnknownPeer {
+            description("Unknown peer"),
+            display("Unknown peer"),
+        }
+
+        UnexpectedResponse {
+            description("Unexpected response"),
+            display("Unexpected response"),
+        }
+
         Useless {
             description("Useless block"),
             display("Useless block"),

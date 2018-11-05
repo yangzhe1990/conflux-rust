@@ -1,21 +1,23 @@
 use super::{
-    Error, ErrorKind, SynchronizationGraph, SynchronizationPeerAsking,
-    SynchronizationPeerState, SynchronizationState,
+    Error, ErrorKind, SynchronizationGraph, SynchronizationPeerState,
+    SynchronizationState, MAX_INFLIGHT_REQUEST_COUNT,
 };
 use bytes::Bytes;
 use consensus::SharedConsensusGraph;
 use ethereum_types::H256;
 use io::TimerToken;
 use message::{
-    BlockHeaders, Blocks, GetBlockHeaders, GetBlocks, Message, MsgId, NewBlock,
-    Status, TerminalBlockHashes,
+    GetBlockHeaders, GetBlockHeadersResponse, GetBlocks, GetBlocksResponse,
+    GetTerminalBlockHashes, GetTerminalBlockHashesResponse, Message, MsgId,
+    NewBlock, Status,
 };
 use network::{
     Error as NetworkError, NetworkContext, NetworkProtocolHandler, PeerId,
 };
 use parking_lot::RwLock;
 use rlp::Rlp;
-use std::{cmp, time::Instant};
+use slab::Slab;
+use std::{cmp, collections::VecDeque, time::Instant};
 
 pub const SYNCHRONIZATION_PROTOCOL_VERSION: u8 = 0x01;
 
@@ -38,7 +40,7 @@ impl SynchronizationProtocolHandler {
     }
 
     fn send_message(
-        &self, io: &NetworkContext, peer: PeerId, msg: Box<dyn Message>,
+        &self, io: &NetworkContext, peer: PeerId, msg: &Message,
     ) -> Result<(), NetworkError> {
         let mut raw = Bytes::new();
         raw.push(msg.msg_id().into());
@@ -62,17 +64,17 @@ impl SynchronizationProtocolHandler {
         }
         match msg_id {
             MsgId::STATUS => self.on_status(io, &mut *syn, peer, &rlp),
-            MsgId::BLOCK_HEADERS => {
-                self.on_block_headers(io, &mut *syn, peer, &rlp)
+            MsgId::GET_BLOCK_HEADERS_RESPONSE => {
+                self.on_block_headers_response(io, &mut *syn, peer, &rlp)
             }
             MsgId::GET_BLOCK_HEADERS => {
                 self.on_get_block_headers(io, &mut *syn, &rlp, peer)
             }
             MsgId::NEW_BLOCK => self.on_new_block(io, &mut *syn, peer, &rlp),
-            MsgId::BLOCKS => self.on_blocks(io, &mut *syn, peer, &rlp),
+            MsgId::GET_BLOCKS_RESPONSE => self.on_blocks_response(io, &mut *syn, peer, &rlp),
             MsgId::GET_BLOCKS => self.on_get_blocks(io, &mut *syn, &rlp, peer),
-            MsgId::TERMINAL_BLOCK_HASHES => {
-                self.on_terminal_block_hashes(io, &mut *syn, &rlp, peer)
+            MsgId::GET_TERMINAL_BLOCK_HASHES_RESPONSE => {
+                self.on_terminal_block_hashes_response(io, &mut *syn, &rlp, peer)
             }
             MsgId::GET_TERMINAL_BLOCK_HASHES => {
                 self.on_get_terminal_block_hashes(io, &mut *syn, &rlp, peer)
@@ -93,7 +95,8 @@ impl SynchronizationProtocolHandler {
         trace!(target: "sync", "Peer {:?} requested {:?} block headers starting at {:?}", peer, req.max_blocks, req.hash);
 
         let mut hash = req.hash;
-        let mut block_headers = BlockHeaders::default();
+        let mut block_headers_resp = GetBlockHeadersResponse::default();
+        block_headers_resp.reqid = req.reqid;
 
         for _n in 0..cmp::min(MAX_HEADERS_TO_SEND, req.max_blocks) {
             let header = self.graph.block_header_by_hash(&hash);
@@ -101,15 +104,16 @@ impl SynchronizationProtocolHandler {
                 break;
             }
             let header = header.unwrap();
-            block_headers.headers.push(header.clone());
+            block_headers_resp.headers.push(header.clone());
             if hash == *self.graph.genesis_hash() {
                 break;
             }
             hash = header.parent_hash().clone();
         }
-        trace!(target: "sync", "Returned {:?} block headers to peer {:?}", block_headers.headers.len(), peer);
+        trace!(target: "sync", "Returned {:?} block headers to peer {:?}", block_headers_resp.headers.len(), peer);
 
-        self.send_message(io, peer, Box::new(block_headers))?;
+        let msg: Box<dyn Message> = Box::new(block_headers_resp);
+        self.send_message(io, peer, msg.as_ref())?;
         Ok(())
     }
 
@@ -122,18 +126,16 @@ impl SynchronizationProtocolHandler {
         if req.hashes.is_empty() {
             debug!(target: "sync", "Received empty getblockheaders message: peer={:?}", peer);
         } else {
-            self.send_message(
-                io,
-                peer,
-                Box::new(Blocks {
-                    blocks: req
-                        .hashes
-                        .iter()
-                        .take(MAX_BLOCKS_TO_SEND as usize)
-                        .filter_map(|hash| self.graph.block_by_hash(hash))
-                        .collect(),
-                }),
-            )?;
+            let msg: Box<dyn Message> = Box::new(GetBlocksResponse {
+                reqid: req.reqid,
+                blocks: req
+                    .hashes
+                    .iter()
+                    .take(MAX_BLOCKS_TO_SEND as usize)
+                    .filter_map(|hash| self.graph.block_by_hash(hash))
+                    .collect(),
+            });
+            self.send_message(io, peer, msg.as_ref())?;
         }
         Ok(())
     }
@@ -143,22 +145,24 @@ impl SynchronizationProtocolHandler {
         peer_id: PeerId,
     ) -> Result<(), Error>
     {
-        self.send_message(
-            io,
-            peer_id,
-            Box::new(TerminalBlockHashes {
-                hashes: self.consensus_graph.terminal_block_hashes(),
-            }),
-        )?;
+        let req = rlp.as_val::<GetTerminalBlockHashes>()?;
+        let msg: Box<dyn Message> = Box::new(GetTerminalBlockHashesResponse {
+            reqid: req.reqid,
+            hashes: self.consensus_graph.terminal_block_hashes(),
+        });
+        self.send_message(io, peer_id, msg.as_ref())?;
         Ok(())
     }
 
-    fn on_terminal_block_hashes(
+    fn on_terminal_block_hashes_response(
         &self, io: &NetworkContext, syn: &mut SynchronizationState, rlp: &Rlp,
         peer_id: PeerId,
     ) -> Result<(), Error>
     {
-        let terminal_block_hashes = rlp.as_val::<TerminalBlockHashes>()?;
+        let terminal_block_hashes =
+            rlp.as_val::<GetTerminalBlockHashesResponse>()?;
+        self.match_request(io, syn, peer_id, terminal_block_hashes.reqid)?;
+
         for hash in &terminal_block_hashes.hashes {
             if !self.graph.contains_block_header(&hash) {
                 self.request_block_headers(io, syn, peer_id, hash, 256);
@@ -181,11 +185,13 @@ impl SynchronizationProtocolHandler {
 
         let status = rlp.as_val::<Status>()?;
         let peer = SynchronizationPeerState {
+            id: peer_id,
             protocol_version: status.protocol_version,
             genesis_hash: status.genesis_hash,
-            asking: SynchronizationPeerAsking::Nothing,
-            asking_headers: Vec::new(),
-            asking_blocks: Vec::new(),
+            inflight_requests: Slab::with_capacity(
+                MAX_INFLIGHT_REQUEST_COUNT as usize,
+            ),
+            pending_requests: VecDeque::new(),
         };
 
         trace!(target: "sync", "New peer (pv={:?}, gh={:?})",
@@ -203,14 +209,16 @@ impl SynchronizationProtocolHandler {
         Ok(())
     }
 
-    fn on_block_headers(
+    fn on_block_headers_response(
         &self, io: &NetworkContext, syn: &mut SynchronizationState,
         peer_id: PeerId, rlp: &Rlp,
     ) -> Result<(), Error>
     {
-        let block_headers = rlp.as_val::<BlockHeaders>()?;
+        let block_headers = rlp.as_val::<GetBlockHeadersResponse>()?;
+        self.match_request(io, syn, peer_id, block_headers.reqid)?;
+
         if block_headers.headers.is_empty() {
-            trace!(target: "sync", "Received empty BlockHeaders message");
+            trace!(target: "sync", "Received empty GetBlockHeadersResponse message");
             return Ok(());
         }
 
@@ -245,12 +253,13 @@ impl SynchronizationProtocolHandler {
         Ok(())
     }
 
-    fn on_blocks(
-        &self, _io: &NetworkContext, _syn: &mut SynchronizationState,
-        _peer_id: PeerId, rlp: &Rlp,
+    fn on_blocks_response(
+        &self, io: &NetworkContext, syn: &mut SynchronizationState,
+        peer_id: PeerId, rlp: &Rlp,
     ) -> Result<(), Error>
     {
-        let blocks = rlp.as_val::<Blocks>()?;
+        let blocks = rlp.as_val::<GetBlocksResponse>()?;
+        self.match_request(io, syn, peer_id, blocks.reqid)?;
 
         for block in blocks.blocks {
             let hash = block.hash();
@@ -295,16 +304,13 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), NetworkError> {
         trace!(target: "sync", "Sending status message to {:?}", peer);
 
-        self.send_message(
-            io,
-            peer,
-            Box::new(Status {
-                protocol_version: SYNCHRONIZATION_PROTOCOL_VERSION,
-                network_id: 0x0,
-                genesis_hash: *self.graph.genesis_hash(),
-                best_epoch_hash: H256::default(),
-            }),
-        )
+        let msg: Box<dyn Message> = Box::new(Status {
+            protocol_version: SYNCHRONIZATION_PROTOCOL_VERSION,
+            network_id: 0x0,
+            genesis_hash: *self.graph.genesis_hash(),
+            best_epoch_hash: H256::default(),
+        });
+        self.send_message(io, peer, msg.as_ref())
     }
 
     fn request_block_headers(
@@ -318,8 +324,8 @@ impl SynchronizationProtocolHandler {
             io,
             syn,
             peer_id,
-            SynchronizationPeerAsking::BlockHeaders,
             Box::new(GetBlockHeaders {
+                reqid: 0,
                 hash: *hash,
                 max_blocks,
             }),
@@ -337,23 +343,50 @@ impl SynchronizationProtocolHandler {
             io,
             syn,
             peer_id,
-            SynchronizationPeerAsking::Blocks,
-            Box::new(GetBlocks { hashes }),
-        )
+            Box::new(GetBlocks { reqid: 0, hashes }),
+        );
     }
 
     fn send_request(
         &self, io: &NetworkContext, syn: &mut SynchronizationState,
-        peer_id: PeerId, asking: SynchronizationPeerAsking,
-        msg: Box<dyn Message>,
+        peer_id: PeerId, mut msg: Box<dyn Message>,
     )
     {
         if let Some(ref mut peer) = syn.peers.get_mut(&peer_id) {
-            if peer.asking != SynchronizationPeerAsking::Nothing {
-                warn!(target: "sync", "Requesting {:?} from peer {:?} while asking {:?}", asking, peer_id, peer.asking);
+            if let Some(reqid) = peer.next_request_id() {
+                msg.set_request_id(reqid as u16);
+                self.send_message(io, peer_id, msg.as_ref()).unwrap();
+                peer.append_inflight_request(reqid, msg);
+            } else {
+                peer.append_pending_request(msg);
             }
-            peer.asking = asking;
-            self.send_message(io, peer_id, msg).unwrap();
+        }
+    }
+
+    fn match_request(
+        &self, io: &NetworkContext, syn: &mut SynchronizationState,
+        peer_id: PeerId, request_id: u16,
+    ) -> Result<(), Error>
+    {
+        if let Some(ref mut peer) = syn.peers.get_mut(&peer_id) {
+            let reqid = request_id as usize;
+            if peer.is_inflight_request(reqid) {
+                if peer.has_pending_requests() {
+                    let pending_req = peer.pop_pending_request().unwrap();
+                    let mut pending_msg = pending_req.message;
+                    pending_msg.set_request_id(request_id);
+                    self.send_message(io, peer_id, pending_msg.as_ref())
+                        .unwrap();
+                    peer.append_inflight_request(reqid, pending_msg);
+                } else {
+                    peer.remove_inflight_request(reqid);
+                }
+                Ok(())
+            } else {
+                Err(ErrorKind::UnexpectedResponse.into())
+            }
+        } else {
+            Err(ErrorKind::UnknownPeer.into())
         }
     }
 }
