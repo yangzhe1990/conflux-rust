@@ -37,7 +37,7 @@ pub struct ProofOfWorkProblem {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct ProofOfWorkAnswer {
+pub struct ProofOfWorkSolution {
     nonce: u64,
 }
 
@@ -52,6 +52,7 @@ pub struct BlockGenerator {
 }
 
 pub struct Worker {
+    #[allow(dead_code)]
     thread: thread::JoinHandle<()>,
 }
 
@@ -77,9 +78,9 @@ pub fn compute(nonce: &u64, block_hash: &H256) -> H256 {
 }
 
 pub fn validate(
-    problem: &ProofOfWorkProblem, answer: &ProofOfWorkAnswer,
+    problem: &ProofOfWorkProblem, solution: &ProofOfWorkSolution,
 ) -> bool {
-    let nonce = answer.nonce;
+    let nonce = solution.nonce;
     let hash = compute(&nonce, &problem.block_hash);
     hash < problem.boundary
 }
@@ -88,7 +89,7 @@ pub type BlockGeneratorRef = Arc<BlockGenerator>;
 
 impl Worker {
     pub fn new(
-        bg: Arc<BlockGenerator>, sender: mpsc::Sender<ProofOfWorkAnswer>,
+        bg: Arc<BlockGenerator>, sender: mpsc::Sender<ProofOfWorkSolution>,
         receiver: mpsc::Receiver<ProofOfWorkProblem>,
     ) -> Self
     {
@@ -121,8 +122,8 @@ impl Worker {
                         if hash < boundary {
                             // problem solved
                             sender
-                                .send(ProofOfWorkAnswer { nonce })
-                                .expect("Failed to send the PoW answer.");
+                                .send(ProofOfWorkSolution { nonce })
+                                .expect("Failed to send the PoW solution.");
                             problem = None;
                             break;
                         }
@@ -158,7 +159,8 @@ impl BlockGenerator {
         *write = MiningState::Stop;
     }
 
-    pub fn set_problem(bg: Arc<BlockGenerator>, problem: ProofOfWorkProblem) {
+    /// Send new PoW problem to workers
+    pub fn send_problem(bg: Arc<BlockGenerator>, problem: ProofOfWorkProblem) {
         for item in bg.workers.lock().unwrap().iter() {
             item.1
                 .send(problem)
@@ -166,53 +168,46 @@ impl BlockGenerator {
         }
     }
 
-    pub fn generate_block(&self, num_txs: usize) {
+    /// Assemble a new block without nonce
+    pub fn assemble_new_block(&self, num_txs: usize) -> Block {
         // get the best block
         let best_block_hash = self.ledger.best_epoch_hash();
         let best_block_info =
             self.ledger.block_by_hash(&best_block_hash).unwrap();
-
-        let mut txs: Vec<SignedTransaction> = Vec::new();
-        let mut tx_rlp = RlpStream::new_list(num_txs);
-        for _i in 0..num_txs {
-            let tx = Transaction {
-                nonce: U256::zero(),
-                gas_price: U256::from(1_000_000_000_000_000u64),
-                gas: U256::from(200u64),
-                value: U256::zero(),
-                receiver: Address::default(),
-            };
-            let secret :Secret = "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f".parse().unwrap();
-            let tx = tx.sign(&secret);
-            tx_rlp.append(&tx);
-            txs.push(tx);
+        let transactions = self.txpool.pack_transactions(num_txs);
+        let mut tx_rlp = RlpStream::new_list(transactions.len());
+        for tx in transactions.iter() {
+            tx_rlp.append(tx);
         }
-        let mut header = BlockHeaderBuilder::new()
+        let block_header = BlockHeaderBuilder::new()
             .with_transactions_root(keccak(tx_rlp.out()))
             .with_parent_hash(best_block_info.hash())
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
             .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
-            .with_difficulty(10.into())
+            .with_difficulty(10.into()) //TODO: adjust difficulty
             .with_referee_hashes(Vec::new()) //TODO: get referee hashes
+            .with_nonce(0)
             .build();
-        header.compute_hash();
-        let hash = header.hash();
+        Block {
+            block_header,
+            transactions,
+        }
+    }
 
-        let block = Block {
-            block_header: header.clone(),
-            transactions: txs,
-        };
+    /// Update and sync a new block
+    pub fn execute_and_sync(&self, block: Block) {
+        let hash = block.hash();
+        let header = block.block_header.clone();
+        let parent_hash = header.parent_hash();
 
         // adjust the ledger
         self.ledger.add_block_header_by_hash(&hash, header.clone());
         self.ledger.add_block_by_hash(&hash, block);
-        self.ledger.add_child(&best_block_info.hash(), &hash);
+        self.ledger.add_child(&parent_hash, &hash);
         let mut blocks_to_adjust: VecDeque<H256> = VecDeque::new();
         blocks_to_adjust.push_back(hash);
         self.ledger.adjust_main_chain(blocks_to_adjust);
-
-        // execute
         let best_epoch_number = self.ledger.best_epoch_number();
         self.engine.execute_up_to(best_epoch_number);
 
@@ -222,9 +217,40 @@ impl BlockGenerator {
         self.sync.announce_new_blocks(&hashes[..]);
     }
 
+    /// Check if we need to mine on a new block
+    pub fn is_mining_block_outdated(&self, block: &Block) -> bool {
+        // 1st Check: if the parent block changed
+        let best_block_hash = self.ledger.best_epoch_hash();
+        if best_block_hash != *block.block_header.parent_hash() {
+            return true;
+        }
+        // TODO: 2nd check: if the referee hashes changed
+        // TODO: 3rd check: if we want to pack a new set of transactions
+        false
+    }
+
+    /// Generate a block with fake transactions
+    pub fn generate_block(&self, num_txs: usize) {
+        for _ in 0..num_txs {
+            let tx = Transaction {
+                nonce: U256::zero(),
+                gas_price: U256::from(1_000_000_000_000_000u64),
+                gas: U256::from(200u64),
+                value: U256::zero(),
+                receiver: Address::default(),
+            };
+            let secret :Secret = "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f".parse().unwrap();
+            let tx = tx.sign(&secret);
+            self.txpool.add(tx);
+        }
+        let block = self.assemble_new_block(num_txs);
+        self.execute_and_sync(block);
+    }
+
+    /// Start num_worker new workers
     pub fn start_new_worker(
         num_worker: u32, bg: Arc<BlockGenerator>,
-    ) -> mpsc::Receiver<ProofOfWorkAnswer> {
+    ) -> mpsc::Receiver<ProofOfWorkSolution> {
         let (tx, rx) = mpsc::channel();
         let mut workers = bg.workers.lock().unwrap();
         for _ in 0..num_worker {
@@ -238,16 +264,11 @@ impl BlockGenerator {
     }
 
     pub fn start_mining(bg: Arc<BlockGenerator>, _payload_len: u32) {
-        let mut current_mining_header_builder = BlockHeaderBuilder::new();
-        let mut current_mining_block = Block {
-            block_header: BlockHeader::new(),
-            transactions: Vec::new(),
-        };
+        let mut current_mining_block = Block::default();
         let mut current_problem: Option<ProofOfWorkProblem> = None;
+        let sleep_duration = time::Duration::from_millis(1000);
 
-        let sleep_duration = time::Duration::from_millis(100);
-
-        let receiver: mpsc::Receiver<ProofOfWorkAnswer> =
+        let receiver: mpsc::Receiver<ProofOfWorkSolution> =
             BlockGenerator::start_new_worker(1, bg.clone());
 
         loop {
@@ -256,103 +277,49 @@ impl BlockGenerator {
                 _ => {}
             }
 
-            // get the best block
-            let best_block_hash = bg.ledger.best_epoch_hash();
-            let best_block_info =
-                bg.ledger.block_by_hash(&best_block_hash).unwrap();
+            if bg.is_mining_block_outdated(&current_mining_block) {
+                // TODO: #transations TBD
+                current_mining_block = bg.assemble_new_block(10);
 
-            // check if the main chain changed
-            if current_problem.is_some()
-                && *current_mining_block.block_header.parent_hash()
-                    == best_block_info.hash()
-            {
-                // check if mined one new block
-                let mut new_answer = receiver.try_recv();
+                // set a mining problem
+                let current_difficulty =
+                    current_mining_block.block_header.difficulty();
+                let problem = ProofOfWorkProblem {
+                    block_hash: current_mining_block
+                        .block_header
+                        .problem_hash(),
+                    difficulty: *current_difficulty,
+                    boundary: difficulty_to_boundary(current_difficulty),
+                };
+                BlockGenerator::send_problem(bg.clone(), problem);
+                current_problem = Some(problem);
+            } else {
+                // check if the problem solved
+                let mut new_solution = receiver.try_recv();
                 loop {
                     // check if the block received valid
-                    if new_answer.is_ok()
+                    if new_solution.is_ok()
                         && !validate(
                             &current_problem.unwrap(),
-                            &new_answer.unwrap(),
+                            &new_solution.unwrap(),
                         ) {
-                        new_answer = receiver.try_recv();
+                        new_solution = receiver.try_recv();
                     } else {
                         break;
                     }
                 }
-
-                if new_answer.is_ok() {
-                    let answer = new_answer.unwrap();
-                    let hash = current_mining_block.hash();
-
-                    // adjust the ledger
-                    let current_mining_header =
-                        current_mining_header_builder.build();
-                    bg.ledger
-                        .add_block_header_by_hash(&hash, current_mining_header);
-                    bg.ledger.add_block_by_hash(&hash, current_mining_block);
-                    bg.ledger.add_child(&best_block_info.hash(), &hash);
-                    let mut blocks_to_adjust: VecDeque<
-                        H256,
-                    > = VecDeque::new();
-                    blocks_to_adjust.push_back(hash);
-                    bg.ledger.adjust_main_chain(blocks_to_adjust);
-
-                    // execute
-                    let best_epoch_number = bg.ledger.best_epoch_number();
-                    bg.engine.execute_up_to(best_epoch_number);
-
-                    // sync
-                    let mut hashes: Vec<H256> = Vec::new();
-                    hashes.push(hash);
-                    bg.sync.announce_new_blocks(&hashes[..]);
-
-                    //initialize for the next block
-                    current_mining_header_builder = BlockHeaderBuilder::new();
-                    current_mining_block = Block {
-                        block_header: BlockHeader::new(),
-                        transactions: Vec::new(),
-                    };
+                if new_solution.is_ok() {
+                    let solution = new_solution.unwrap();
+                    current_mining_block.block_header.set_nonce(solution.nonce);
+                    bg.execute_and_sync(current_mining_block);
+                    current_mining_block = Block::default();
+                    current_problem = None;
+                } else {
+                    // wait a moment and check again
+                    thread::sleep(sleep_duration);
                     continue;
                 }
-                // wait for 100 millis and check again
-                thread::sleep(sleep_duration);
-                continue;
             }
-
-            // build a new block
-            let txs = bg.txpool.pack_transactions(10);
-            let mut tx_rlp = RlpStream::new_list(txs.len());
-            for tx in txs.iter() {
-                tx_rlp.append(tx);
-            }
-            // TODO: adjust difficulty
-            let new_difficulty = *best_block_info.block_header.difficulty();
-            current_mining_header_builder
-                .with_transactions_root(keccak(tx_rlp.out()))
-                .with_parent_hash(best_block_info.hash())
-                .with_timestamp(0) //TODO: get timestamp
-                .with_author(Address::default()) //TODO: get author
-                .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
-                .with_difficulty(new_difficulty)
-                .with_referee_hashes(Vec::new()); //TODO: get referee hashes
-
-            let mut current_mining_header =
-                current_mining_header_builder.build();
-            current_mining_header.compute_hash();
-            current_mining_block = Block {
-                block_header: current_mining_header,
-                transactions: txs,
-            };
-
-            // set a mining problem
-            let problem = ProofOfWorkProblem {
-                block_hash: current_mining_block.hash(),
-                difficulty: new_difficulty,
-                boundary: difficulty_to_boundary(&new_difficulty),
-            };
-            BlockGenerator::set_problem(bg.clone(), problem);
-            current_problem = Some(problem);
         }
     }
 }

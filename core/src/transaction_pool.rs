@@ -116,7 +116,7 @@ impl TransactionPool {
     }
 
     /// pack at most num_txs transactions randomly
-    pub fn pack_transactions(&self, num_txs: u32) -> Vec<SignedTransaction> {
+    pub fn pack_transactions(&self, num_txs: usize) -> Vec<SignedTransaction> {
         //TODO: should be done by O(num_txs * log)
         let mut transaction_sequence: Vec<SignedTransaction> = Vec::new();
         let mut packed_transaction: Vec<SignedTransaction> = Vec::new();
@@ -135,7 +135,7 @@ impl TransactionPool {
         }
 
         let len = transaction_sequence.len();
-        let num_txs = min(num_txs as usize, len);
+        let num_txs = min(num_txs, len);
         for _ in 0..num_txs {
             let mut rand_value: U512 = U512::from(H512::random());
             rand_value = rand_value % sum_gas_price;

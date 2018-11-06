@@ -22,16 +22,12 @@ pub struct BlockHeader {
     referee_hashes: Vec<H256>,
     /// Hash of the block
     hash: Option<H256>,
+    /// Nonce of the block
+    nonce: u64,
 }
 
 impl PartialEq for BlockHeader {
     fn eq(&self, o: &BlockHeader) -> bool {
-        if let (&Some(ref h), &Some(ref hh)) = (&self.hash, &o.hash) {
-            if h == hh {
-                return true;
-            }
-        }
-
         self.parent_hash == o.parent_hash
             && self.timestamp == o.timestamp
             && self.author == o.author
@@ -53,6 +49,7 @@ impl Default for BlockHeader {
             difficulty: U256::default(),
             referee_hashes: Vec::new(),
             hash: None,
+            nonce: 0,
         }
     }
 }
@@ -82,6 +79,12 @@ impl BlockHeader {
     /// Get the referee hashes field of the header.
     pub fn referee_hashes(&self) -> &Vec<H256> { &self.referee_hashes }
 
+    /// Get the nonce field of the header.
+    pub fn nonce(&self) -> u64 { self.nonce }
+
+    /// Set the nonce field of the header.
+    pub fn set_nonce(&mut self, nonce: u64) { self.nonce = nonce; }
+
     /// Compute the hash of the block.
     pub fn compute_hash(&mut self) -> H256 {
         let hash = self.hash();
@@ -94,8 +97,18 @@ impl BlockHeader {
         self.hash.unwrap_or_else(|| keccak(self.rlp()))
     }
 
+    /// Get the hash of PoW problem.
+    pub fn problem_hash(&self) -> H256 { keccak(self.rlp_without_nonce()) }
+
     /// Get the hash of the block.
-    pub fn bare_hash(&self) -> H256 { keccak(self.rlp()) }
+    pub fn bare_hash(&self) -> H256 { keccak(self.rlp_without_nonce()) }
+
+    /// Get the RLP representation of this header(except nonce).
+    pub fn rlp_without_nonce(&self) -> Bytes {
+        let mut stream = RlpStream::new();
+        self.stream_rlp_without_nonce(&mut stream);
+        stream.out()
+    }
 
     /// Get the RLP representation of this header.
     pub fn rlp(&self) -> Bytes {
@@ -104,8 +117,8 @@ impl BlockHeader {
         stream.out()
     }
 
-    /// Place this header into an RLP stream `stream`.
-    fn stream_rlp(&self, stream: &mut RlpStream) {
+    /// Place this header(except nonce) into an RLP stream `stream`.
+    fn stream_rlp_without_nonce(&self, stream: &mut RlpStream) {
         stream
             .begin_list(7)
             .append(&self.parent_hash)
@@ -115,6 +128,20 @@ impl BlockHeader {
             .append(&self.deferred_state_root)
             .append(&self.difficulty)
             .append_list(&self.referee_hashes);
+    }
+
+    /// Place this header into an RLP stream `stream`.
+    fn stream_rlp(&self, stream: &mut RlpStream) {
+        stream
+            .begin_list(8)
+            .append(&self.parent_hash)
+            .append(&self.timestamp)
+            .append(&self.author)
+            .append(&self.transactions_root)
+            .append(&self.deferred_state_root)
+            .append(&self.difficulty)
+            .append_list(&self.referee_hashes)
+            .append(&self.nonce);
     }
 }
 
@@ -126,6 +153,7 @@ pub struct BlockHeaderBuilder {
     deferred_state_root: H256,
     difficulty: U256,
     referee_hashes: Vec<H256>,
+    nonce: u64,
 }
 
 impl BlockHeaderBuilder {
@@ -138,6 +166,7 @@ impl BlockHeaderBuilder {
             deferred_state_root: KECCAK_NULL_RLP,
             difficulty: U256::default(),
             referee_hashes: Vec::new(),
+            nonce: 0,
         }
     }
 
@@ -182,6 +211,11 @@ impl BlockHeaderBuilder {
         self
     }
 
+    pub fn with_nonce(&mut self, nonce: u64) -> &mut Self {
+        self.nonce = nonce;
+        self
+    }
+
     pub fn build(&self) -> BlockHeader {
         BlockHeader {
             parent_hash: self.parent_hash,
@@ -192,6 +226,7 @@ impl BlockHeaderBuilder {
             difficulty: self.difficulty,
             referee_hashes: self.referee_hashes.clone(),
             hash: None,
+            nonce: self.nonce,
         }
     }
 }
@@ -210,6 +245,7 @@ impl Decodable for BlockHeader {
             deferred_state_root: r.val_at(4)?,
             difficulty: r.val_at(5)?,
             referee_hashes: r.list_at(6)?,
+            nonce: r.val_at(7)?,
             hash: keccak(r.as_raw()).into(),
         })
     }
