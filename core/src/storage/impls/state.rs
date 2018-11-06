@@ -4,8 +4,7 @@ use super::{
     super::state_manager::*,
     errors::*,
     merkle_patricia_trie::{
-        data_structure::*, merkle::*,
-        MultiVersionMerklePatriciaTrie,
+        data_structure::*, merkle::*, MultiVersionMerklePatriciaTrie,
     },
 };
 use primitives::EpochId;

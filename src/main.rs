@@ -17,18 +17,21 @@ extern crate parking_lot;
 #[macro_use]
 extern crate log;
 extern crate ethereum_types;
+extern crate keccak_hash as hash;
 extern crate log4rs;
 extern crate network;
+extern crate rlp;
 extern crate slab;
 extern crate toml;
 
 extern crate blockgen;
 extern crate core;
+extern crate ethkey;
 extern crate primitives;
+extern crate rand;
 extern crate rpc as conflux_rpc;
 extern crate secret_store;
 extern crate txgen;
-// extern crate vm;
 
 mod cache_config;
 mod configuration;
@@ -37,11 +40,12 @@ mod rpc;
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
-use core::{
-    execution::AccountState, transaction_pool::TransactionPool, ConsensusGraph,
-    StateManager,
-};
+use core::{ConsensusGraph, StateManager, TransactionPool};
+use ethkey::{public_to_address, Generator, Random};
+
 use ctrlc::CtrlC;
+use ethereum_types::U256;
+use hash::keccak;
 use log::LevelFilter;
 use log4rs::{
     append::{console::ConsoleAppender, file::FileAppender},
@@ -49,10 +53,13 @@ use log4rs::{
 };
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
-use primitives::Block;
+use primitives::{Block, BlockHeaderBuilder, Transaction};
+use rand::{thread_rng, Rng};
+use rlp::RlpStream;
 use secret_store::SecretStore;
 use std::{
     any::Any,
+    collections::HashSet,
     io::{self as stdio, Write},
     process,
     sync::Arc,
@@ -60,60 +67,93 @@ use std::{
 };
 use txgen::TransactionGenerator;
 
+fn make_genesis(num_addresses: i32, secret_store: Arc<SecretStore>) -> Block {
+    let mut addresses = HashSet::new();
+    let mut genesis_transactions = Vec::new();
+    let mut rng = thread_rng();
+
+    for _ in 0..num_addresses {
+        let kp = Random.generate().unwrap();
+        let address = public_to_address(kp.public());
+        if addresses.contains(&address) {
+            continue;
+        }
+        addresses.insert(address);
+
+        let transaction = Transaction {
+            nonce: U256::zero(),
+            gas_price: U256::from(1_000_000_000_000_000u64),
+            gas: U256::from(200u64),
+            value: U256::from(rng.gen::<u64>()),
+            receiver: address.clone(),
+        };
+        genesis_transactions.push(transaction.sign(kp.secret()));
+
+        secret_store.insert(kp);
+    }
+
+    let mut stream = RlpStream::new_list(genesis_transactions.len());
+    for transaction in &genesis_transactions {
+        stream.append(transaction);
+    }
+
+    Block {
+        block_header: BlockHeaderBuilder::new()
+            .with_transactions_root(keccak(stream.out()))
+            .build(),
+        transactions: genesis_transactions,
+    }
+}
+
 // Start all key components of Conflux and pass out their handles
 fn start(
-    conf: Configuration,
-    exit: Arc<(Mutex<bool>, Condvar)>,
+    conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<Box<Any>, String> {
     let network_config = conf.net_config();
-    let cache_config = conf.cache_config();
-    let ledger_cache_config =
-        core::ledger::to_ledger_cache_config(cache_config.blockchain());
-    let ledger = Arc::new(core::Ledger::new(ledger_cache_config));
-    ledger.initialize_with_genesis();
+    let _cache_config = conf.cache_config();
 
-    let txpool = Arc::new(TransactionPool::with_capacity(10000));
     let secret_store = Arc::new(SecretStore::new());
-
-    let account_state = AccountState::new_ref();
-    account_state
-        .import_random_accounts(secret_store.clone())
-        .unwrap();
+    let genesis_block = make_genesis(10, secret_store.clone());
 
     let state_manager = Arc::new(StateManager::new());
 
-    let execution_engine =
-        core::ExecutionEngine::new_ref(ledger.clone(), account_state.clone());
-
-    let genesis_block = Block::default();
-    let consensus = Arc::new(ConsensusGraph::with_genesis_block(genesis_block, state_manager));
+    let consensus = Arc::new(ConsensusGraph::with_genesis_block(
+        genesis_block,
+        state_manager.clone(),
+    ));
 
     let sync_config = core::SynchronizationConfiguration {
         network: network_config,
-        consensus,
+        consensus: consensus.clone(),
     };
-
     let mut sync = core::SynchronizationService::new(sync_config);
-    sync.start();
+    sync.start().unwrap();
     let sync = Arc::new(sync);
+
+    let txpool = Arc::new(TransactionPool::with_capacity(10000));
+
+    let blockgen = Arc::new(BlockGenerator::new(
+        consensus.clone(),
+        txpool.clone(),
+        sync.clone(),
+    ));
+
+    let txgen = Arc::new(TransactionGenerator::new(
+        consensus.clone(),
+        state_manager.clone(),
+        txpool.clone(),
+        secret_store.clone(),
+    ));
+    let txgen_handle = thread::spawn(move || {
+        TransactionGenerator::generate_transactions(txgen).unwrap();
+    });
 
     let event_loop = EventLoop::spawn();
 
-    let blockgen = Arc::new(BlockGenerator::new(
-        ledger.clone(),
-        txpool.clone(),
-        execution_engine.clone(),
-        sync.clone(),
-    ));
-    /*let bgen = blockgen.clone();
-    let block_gen_handle = thread::spawn(move || {
-        BlockGenerator::start_mining(bgen, 0);
-    });*/
-
     let rpc_deps = rpc::Dependencies {
         remote: event_loop.raw_remote(),
-        ledger: ledger.clone(),
-        execution_engine: execution_engine.clone(),
+        state_manager: state_manager.clone(),
+        consensus: consensus.clone(),
         sync: sync.clone(),
         block_gen: blockgen.clone(),
         exit: exit,
@@ -126,16 +166,6 @@ fn start(
         rpc::HttpConfiguration::new(conf.jsonrpc_http_port),
         &rpc_deps,
     )?;
-
-    let txgen = Arc::new(TransactionGenerator::new(
-        execution_engine.clone(),
-        txpool.clone(),
-        secret_store.clone(),
-        account_state.clone(),
-    ));
-    let txgen_handle = thread::spawn(move || {
-        TransactionGenerator::generate_transactions(txgen).unwrap();
-    });
 
     Ok(Box::new((
         event_loop,

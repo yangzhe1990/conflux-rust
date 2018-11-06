@@ -2,9 +2,10 @@ use ethereum_types::H256;
 use message::{GetBlockHeaders, Message};
 use network::PeerId;
 use slab::Slab;
-use std::collections::{HashMap, VecDeque};
-use std::time::Instant;
-use std::time::{SystemTime};
+use std::{
+    collections::{HashMap, VecDeque},
+    time::{Instant, SystemTime},
+};
 
 pub const MAX_INFLIGHT_REQUEST_COUNT: usize = 64;
 
@@ -50,9 +51,7 @@ impl SynchronizationPeerState {
     }
 
     pub fn append_inflight_request(
-        &mut self,
-        reqid: usize,
-        msg: Box<dyn Message>,
+        &mut self, reqid: usize, msg: Box<dyn Message>,
     ) {
         let slot = self.inflight_requests.get_mut(reqid).unwrap();
         slot.timestamp = SystemTime::now();

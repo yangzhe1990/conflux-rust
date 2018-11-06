@@ -8,9 +8,7 @@ extern crate rand;
 extern crate rlp;
 
 use core::{
-    execution_engine::ExecutionEngineRef,
-    transaction_pool::SharedTransactionPool, LedgerRef,
-    SharedSynchronizationService,
+    SharedConsensusGraph, SharedSynchronizationService, SharedTransactionPool,
 };
 use ethereum_types::{Address, H256, U256, U512};
 use ethkey::Secret;
@@ -19,7 +17,6 @@ use parking_lot::RwLock;
 use primitives::*;
 use rlp::RlpStream;
 use std::{
-    collections::VecDeque,
     sync::{mpsc, Arc, Mutex},
     thread, time,
 };
@@ -43,9 +40,8 @@ pub struct ProofOfWorkSolution {
 
 /// The interface for a conflux block generator
 pub struct BlockGenerator {
-    ledger: LedgerRef,
+    consensus: SharedConsensusGraph,
     txpool: SharedTransactionPool,
-    engine: ExecutionEngineRef,
     sync: SharedSynchronizationService,
     state: RwLock<MiningState>,
     workers: Mutex<Vec<(Worker, mpsc::Sender<ProofOfWorkProblem>)>>,
@@ -84,8 +80,6 @@ pub fn validate(
     let hash = compute(&nonce, &problem.block_hash);
     hash < problem.boundary
 }
-
-pub type BlockGeneratorRef = Arc<BlockGenerator>;
 
 impl Worker {
     pub fn new(
@@ -139,14 +133,13 @@ impl Worker {
 
 impl BlockGenerator {
     pub fn new(
-        ledger: LedgerRef, txpool: SharedTransactionPool,
-        engine: ExecutionEngineRef, sync: SharedSynchronizationService,
+        consensus: SharedConsensusGraph, txpool: SharedTransactionPool,
+        sync: SharedSynchronizationService,
     ) -> Self
     {
         BlockGenerator {
-            ledger,
+            consensus,
             txpool,
-            engine,
             sync,
             state: RwLock::new(MiningState::Start),
             workers: Mutex::new(Vec::new()),
@@ -171,9 +164,7 @@ impl BlockGenerator {
     /// Assemble a new block without nonce
     pub fn assemble_new_block(&self, num_txs: usize) -> Block {
         // get the best block
-        let best_block_hash = self.ledger.best_epoch_hash();
-        let best_block_info =
-            self.ledger.block_by_hash(&best_block_hash).unwrap();
+        let best_block_hash = self.consensus.best_block_hash();
         let transactions = self.txpool.pack_transactions(num_txs);
         let mut tx_rlp = RlpStream::new_list(transactions.len());
         for tx in transactions.iter() {
@@ -181,7 +172,7 @@ impl BlockGenerator {
         }
         let block_header = BlockHeaderBuilder::new()
             .with_transactions_root(keccak(tx_rlp.out()))
-            .with_parent_hash(best_block_info.hash())
+            .with_parent_hash(best_block_hash)
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
             .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
@@ -189,6 +180,7 @@ impl BlockGenerator {
             .with_referee_hashes(Vec::new()) //TODO: get referee hashes
             .with_nonce(0)
             .build();
+
         Block {
             block_header,
             transactions,
@@ -196,31 +188,14 @@ impl BlockGenerator {
     }
 
     /// Update and sync a new block
-    pub fn execute_and_sync(&self, block: Block) {
-        let hash = block.hash();
-        let header = block.block_header.clone();
-        let parent_hash = header.parent_hash();
-
-        // adjust the ledger
-        self.ledger.add_block_header_by_hash(&hash, header.clone());
-        self.ledger.add_block_by_hash(&hash, block);
-        self.ledger.add_child(&parent_hash, &hash);
-        let mut blocks_to_adjust: VecDeque<H256> = VecDeque::new();
-        blocks_to_adjust.push_back(hash);
-        self.ledger.adjust_main_chain(blocks_to_adjust);
-        let best_epoch_number = self.ledger.best_epoch_number();
-        self.engine.execute_up_to(best_epoch_number);
-
-        // sync
-        let mut hashes: Vec<H256> = Vec::new();
-        hashes.push(hash);
-        self.sync.announce_new_blocks(&hashes[..]);
+    pub fn on_mined_block(&self, block: Block) {
+        self.sync.on_mined_block(block);
     }
 
     /// Check if we need to mine on a new block
     pub fn is_mining_block_outdated(&self, block: &Block) -> bool {
         // 1st Check: if the parent block changed
-        let best_block_hash = self.ledger.best_epoch_hash();
+        let best_block_hash = self.consensus.best_block_hash();
         if best_block_hash != *block.block_header.parent_hash() {
             return true;
         }
@@ -244,7 +219,7 @@ impl BlockGenerator {
             self.txpool.add(tx);
         }
         let block = self.assemble_new_block(num_txs);
-        self.execute_and_sync(block);
+        self.on_mined_block(block);
     }
 
     /// Start num_worker new workers
@@ -298,11 +273,10 @@ impl BlockGenerator {
                 let mut new_solution = receiver.try_recv();
                 loop {
                     // check if the block received valid
-                    if new_solution.is_ok()
-                        && !validate(
-                            &current_problem.unwrap(),
-                            &new_solution.unwrap(),
-                        ) {
+                    if new_solution.is_ok() && !validate(
+                        &current_problem.unwrap(),
+                        &new_solution.unwrap(),
+                    ) {
                         new_solution = receiver.try_recv();
                     } else {
                         break;
@@ -311,7 +285,7 @@ impl BlockGenerator {
                 if new_solution.is_ok() {
                     let solution = new_solution.unwrap();
                     current_mining_block.block_header.set_nonce(solution.nonce);
-                    bg.execute_and_sync(current_mining_block);
+                    bg.on_mined_block(current_mining_block);
                     current_mining_block = Block::default();
                     current_problem = None;
                 } else {

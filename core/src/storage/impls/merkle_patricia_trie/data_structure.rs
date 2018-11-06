@@ -1,16 +1,13 @@
 use self::access_mode::*;
 use super::{
-    super::errors::*,
-    merkle::*,
-    return_after_use::ReturnAfterUse,
-    slab::{Slab},
+    super::errors::*, merkle::*, return_after_use::ReturnAfterUse, slab::Slab,
 };
 use core::slice;
 use std::{
-    cmp::{min},
+    cmp::min,
     collections::BTreeSet,
     marker::{Send, Sync},
-    mem::{replace},
+    mem::replace,
     ptr::null_mut,
     sync::{RwLock, RwLockReadGuard},
     vec::Vec,
@@ -1240,7 +1237,7 @@ impl CowNodeRef {
         match copied {
             None => {
                 trie_node.set_child(child_index, child_node);
-            },
+            }
             Some((old, new_entry)) => {
                 let mut new_trie_node =
                     unsafe { old.copy_and_replace_fields(None, None, None) };

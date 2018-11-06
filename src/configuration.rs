@@ -163,7 +163,7 @@ impl Configuration {
                 .map(|mut i| i.next())
             {
                 Ok(sock_addr) => sock_addr,
-                Err(e) => {
+                Err(_e) => {
                     debug!(target: "network", "public_address in config is invalid");
                     None
                 }

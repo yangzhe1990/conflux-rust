@@ -1,6 +1,6 @@
 // TODO(yz): evict to key-value store on disk when out-of-memory.
 use self::{data_structure::*, merkle::*};
-use execution::EpochId;
+use primitives::EpochId;
 use std::{collections::HashMap, sync::RwLock};
 
 pub(in super::super) mod data_structure;

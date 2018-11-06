@@ -7,6 +7,7 @@ use network::{
     node_table::NodeEntry, Error as NetworkError, NetworkConfiguration,
     NetworkService, PeerInfo,
 };
+use primitives::Block;
 use std::sync::Arc;
 
 pub struct SynchronizationConfiguration {
@@ -39,6 +40,12 @@ impl SynchronizationService {
         Ok(())
     }
 
+    pub fn on_mined_block(&self, block: Block) {
+        let hash = block.hash();
+        self.protocol_handler.on_mined_block(block);
+        self.announce_new_blocks(&[hash]);
+    }
+
     pub fn announce_new_blocks(&self, _hashes: &[H256]) {}
 
     pub fn add_peer(&self, node: NodeEntry) -> Result<(), NetworkError> {
@@ -53,7 +60,9 @@ impl SynchronizationService {
         self.network.get_peer_info().unwrap()
     }
 
-    pub fn sign_challenge(&self, challenge: Vec<u8>) -> Result<Vec<u8>, NetworkError> {
+    pub fn sign_challenge(
+        &self, challenge: Vec<u8>,
+    ) -> Result<Vec<u8>, NetworkError> {
         self.network.sign_challenge(challenge)
     }
 }

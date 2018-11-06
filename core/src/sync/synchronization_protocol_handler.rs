@@ -15,6 +15,7 @@ use network::{
     Error as NetworkError, NetworkContext, NetworkProtocolHandler, PeerId,
 };
 use parking_lot::RwLock;
+use primitives::Block;
 use rlp::Rlp;
 use slab::Slab;
 use std::{cmp, collections::VecDeque, time::Instant};
@@ -273,6 +274,19 @@ impl SynchronizationProtocolHandler {
         }
 
         Ok(())
+    }
+
+    pub fn on_mined_block(&self, block: Block) {
+        let hash = block.block_header.hash();
+        let parent_hash = block.block_header.parent_hash();
+
+        assert!(self.graph.contains_block_header(parent_hash));
+
+        assert!(!self.graph.contains_block_header(&hash));
+        self.graph.insert_block_header(block.block_header.clone());
+
+        assert!(!self.graph.contains_block(&hash));
+        self.graph.insert_block(block.clone());
     }
 
     fn on_new_block(

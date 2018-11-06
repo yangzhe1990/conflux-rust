@@ -1,6 +1,3 @@
-use core::ledger::{DEFAULT_LEDGER_CACHE_SIZE, MIN_LEDGER_CACHE_MB};
-use std::cmp::max;
-
 /// Configuration for application cache sizes.
 /// All	values are represented in MB.
 #[derive(Debug, PartialEq)]
@@ -10,19 +7,14 @@ pub struct CacheConfig {
 }
 
 impl Default for CacheConfig {
-    fn default() -> Self {
-        CacheConfig::new(DEFAULT_LEDGER_CACHE_SIZE)
-    }
+    fn default() -> Self { CacheConfig::new(8) }
 }
 
 impl CacheConfig {
     /// Creates new cache config with gitven details.
-    pub fn new(blockchain: usize) -> Self {
-        CacheConfig { blockchain }
-    }
+    pub fn new(blockchain: usize) -> Self { CacheConfig { blockchain } }
 
     /// Size of the blockchain cache.
-    pub fn blockchain(&self) -> usize {
-        max(self.blockchain, MIN_LEDGER_CACHE_MB)
-    }
+    #[allow(dead_code)]
+    pub fn blockchain(&self) -> usize { self.blockchain }
 }

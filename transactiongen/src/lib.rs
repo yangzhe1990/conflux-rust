@@ -7,8 +7,10 @@ extern crate primitives;
 extern crate rand;
 extern crate secret_store;
 
-pub use core::execution_engine::{ExecutionEngine, ExecutionEngineRef};
-use core::{execution::AccountStateRef, SharedTransactionPool};
+use core::{
+    get_balance, get_nonce, SharedConsensusGraph, SharedTransactionPool, State,
+    StateManager, StateManagerTrait,
+};
 use ethereum_types::{Address, U256};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
 use network::Error;
@@ -24,23 +26,25 @@ enum TransGenState {
 }
 
 pub struct TransactionGenerator {
-    state: RwLock<TransGenState>,
+    consensus: SharedConsensusGraph,
+    state_manager: Arc<StateManager>,
     txpool: SharedTransactionPool,
     secret_store: SharedSecretStore,
-    account_state: AccountStateRef,
+    state: RwLock<TransGenState>,
 }
 
 impl TransactionGenerator {
     pub fn new(
-        engine: ExecutionEngineRef, txpool: SharedTransactionPool,
-        secret_store: SharedSecretStore, account_state: AccountStateRef,
+        consensus: SharedConsensusGraph, state_manager: Arc<StateManager>,
+        txpool: SharedTransactionPool, secret_store: SharedSecretStore,
     ) -> Self
     {
         TransactionGenerator {
-            state: RwLock::new(TransGenState::Start),
+            consensus,
+            state_manager,
             txpool,
             secret_store,
-            account_state,
+            state: RwLock::new(TransGenState::Start),
         }
     }
 
@@ -55,6 +59,10 @@ impl TransactionGenerator {
                 TransGenState::Stop => return Ok(()),
                 _ => {}
             }
+
+            let state = txgen
+                .state_manager
+                .get_state_at(txgen.consensus.best_block_hash());
 
             // Randomly select sender and receiver.
             // Sender must exist in the account list.
@@ -86,8 +94,7 @@ impl TransactionGenerator {
             // Randomly generate the to-be-transferred value
             // based on the balance of sender
             let sender_address = public_to_address(sender_kp.public());
-            let sender_balance =
-                txgen.account_state.get_balance(&sender_address);
+            let sender_balance = get_balance(&state, &sender_address);
             if sender_balance == None {
                 thread::sleep(interval);
                 continue;
@@ -100,7 +107,7 @@ impl TransactionGenerator {
 
             // Generate nonce for the transaction
             let sender_state_nonce =
-                txgen.account_state.get_nonce(&sender_address).unwrap();
+                get_nonce(&state, &sender_address).unwrap();
             let entry = nonce_map
                 .entry(sender_address)
                 .or_insert(sender_state_nonce);

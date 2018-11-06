@@ -1,8 +1,8 @@
-use super::StateManager;
+use super::{State, StateManager};
 use ethereum_types::{H256, U256};
 use executor::Executor;
 use parking_lot::RwLock;
-use primitives::{Block};
+use primitives::Block;
 use slab::Slab;
 use std::{
     cell::RefCell,
@@ -145,15 +145,14 @@ impl ConsensusGraphInner {
         }
 
         if fork_at < self.pivot_chain.len() {
-            let enqueue_if_obsolete =
-                |queue: &mut VecDeque<usize>, index| {
-                    let mut epoch_number =
-                        self.arena[index].data.epoch_number.borrow_mut();
-                    if *epoch_number != NULL && *epoch_number >= fork_at {
-                        *epoch_number = NULL;
-                        queue.push_back(index);
-                    }
-                };
+            let enqueue_if_obsolete = |queue: &mut VecDeque<usize>, index| {
+                let mut epoch_number =
+                    self.arena[index].data.epoch_number.borrow_mut();
+                if *epoch_number != NULL && *epoch_number >= fork_at {
+                    *epoch_number = NULL;
+                    queue.push_back(index);
+                }
+            };
 
             let mut queue = VecDeque::new();
             enqueue_if_obsolete(&mut queue, *self.pivot_chain.last().unwrap());
@@ -314,6 +313,8 @@ impl ConsensusGraph {
     pub fn best_block_hash(&self) -> H256 {
         self.inner.read().best_block_hash()
     }
+
+    pub fn block_count(&self) -> usize { self.blocks.read().len() }
 
     pub fn terminal_block_hashes(&self) -> Vec<H256> {
         self.inner

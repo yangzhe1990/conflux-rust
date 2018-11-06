@@ -1,6 +1,4 @@
-use super::{
-    impls::{errors::*, merkle_patricia_trie::merkle::MerkleHash},
-};
+use super::impls::{errors::*, merkle_patricia_trie::merkle::MerkleHash};
 use primitives::EpochId;
 
 /// A block defines a list of transactions that it sees and the sequence of

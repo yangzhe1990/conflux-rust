@@ -1,7 +1,4 @@
-use super::super::{
-    state::*,
-    state_manager::*,
-};
+use super::super::{state::*, state_manager::*};
 use ethereum_types::H256;
 use rand::{ChaChaRng, Rng, SeedableRng};
 use std::mem;

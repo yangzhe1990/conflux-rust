@@ -1,9 +1,8 @@
 extern crate rand;
 
-use ethereum_types::{H256, H512, U256, U512};
+use ethereum_types::{H256, H512, U512};
 use parking_lot::RwLock;
 use primitives::SignedTransaction;
-use rand::prelude::*;
 use std::{
     cmp::{min, Ordering},
     collections::{BTreeSet, BinaryHeap, HashSet},
