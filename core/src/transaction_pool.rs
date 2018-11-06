@@ -1,9 +1,12 @@
-use ethereum_types::H256;
+extern crate rand;
+
+use ethereum_types::{H256, H512, U256, U512};
 use parking_lot::RwLock;
 use primitives::SignedTransaction;
+use rand::prelude::*;
 use std::{
-    cmp::Ordering,
-    collections::{BinaryHeap, HashSet},
+    cmp::{min, Ordering},
+    collections::{BTreeSet, BinaryHeap, HashSet},
     sync::Arc,
 };
 
@@ -45,14 +48,16 @@ impl Eq for OrderedTransaction {}
 
 pub struct TransactionPoolInner {
     hashes: HashSet<H256>,
-    ordered_transactions: BinaryHeap<OrderedTransaction>,
+    transaction_set: BTreeSet<OrderedTransaction>,
+    transaction_heap: BinaryHeap<OrderedTransaction>,
 }
 
 impl TransactionPoolInner {
     pub fn new() -> Self {
         TransactionPoolInner {
             hashes: HashSet::new(),
-            ordered_transactions: BinaryHeap::new(),
+            transaction_set: BTreeSet::new(),
+            transaction_heap: BinaryHeap::new(),
         }
     }
 }
@@ -88,8 +93,11 @@ impl TransactionPool {
 
         inner.hashes.insert(hash);
         inner
-            .ordered_transactions
-            .push(OrderedTransaction::new(transaction));
+            .transaction_set
+            .insert(OrderedTransaction::new(transaction.clone()));
+        inner
+            .transaction_heap
+            .push(OrderedTransaction::new(transaction.clone()));
 
         true
     }
@@ -97,12 +105,51 @@ impl TransactionPool {
     pub fn fetch(&self) -> Option<SignedTransaction> {
         let mut inner = self.inner.write();
 
-        if inner.ordered_transactions.is_empty() {
+        if inner.transaction_heap.is_empty() {
             return None;
         }
 
-        let transaction = inner.ordered_transactions.pop().unwrap();
+        let transaction = inner.transaction_heap.pop().unwrap();
         inner.hashes.remove(&transaction.transaction.hash());
+        inner.transaction_set.remove(&transaction);
         Some(transaction.transaction)
+    }
+
+    /// pack at most num_txs transactions randomly
+    pub fn pack_transactions(&self, num_txs: u32) -> Vec<SignedTransaction> {
+        //TODO: should be done by O(num_txs * log)
+        let mut transaction_sequence: Vec<SignedTransaction> = Vec::new();
+        let mut packed_transaction: Vec<SignedTransaction> = Vec::new();
+        let mut gas_price_sequence: Vec<U512> = Vec::new();
+        let mut sum_gas_price: U512 = 0.into();
+
+        let inner = self.inner.read();
+        for tx in inner.transaction_set.iter() {
+            let transaction = tx.transaction.clone();
+            if transaction.gas_price == 0.into() {
+                continue;
+            }
+            sum_gas_price += U512::from(transaction.gas_price);
+            gas_price_sequence.push(U512::from(transaction.gas_price));
+            transaction_sequence.push(transaction);
+        }
+
+        let len = transaction_sequence.len();
+        let num_txs = min(num_txs as usize, len);
+        for _ in 0..num_txs {
+            let mut rand_value: U512 = U512::from(H512::random());
+            rand_value = rand_value % sum_gas_price;
+
+            for id in 0..len {
+                if gas_price_sequence[id] > rand_value {
+                    sum_gas_price -= gas_price_sequence[id];
+                    gas_price_sequence[id] = 0.into();
+                    packed_transaction.push(transaction_sequence[id].clone());
+                    break;
+                }
+                rand_value -= gas_price_sequence[id];
+            }
+        }
+        packed_transaction
     }
 }
