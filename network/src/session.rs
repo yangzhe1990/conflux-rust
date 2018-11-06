@@ -4,8 +4,8 @@ use connection::{
     SendQueueStatus, MAX_PAYLOAD_SIZE,
 };
 use ethcore_bytes;
-use ethereum_types::{H256, H520};
-use ethkey::{recover, sign, KeyPair, Secret};
+use ethereum_types::{H520};
+use ethkey::{recover, sign};
 use hash::keccak;
 use io::*;
 use mio::deprecated::*;
@@ -13,7 +13,7 @@ use mio::tcp::*;
 use mio::*;
 use node_table::{Node, NodeContact, NodeEndpoint, NodeEntry, NodeId};
 use rlp::{Rlp, RlpStream};
-use service::{HostMetadata, NetworkServiceInner};
+use service::{NetworkServiceInner};
 use std::net::SocketAddr;
 use std::str;
 use {

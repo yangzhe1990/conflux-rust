@@ -6,10 +6,10 @@ use node_table::NodeId;
 use node_table::*;
 use rlp::{Rlp, RlpStream};
 use service::{
-    Datagram, UdpIoContext, MAX_DATAGRAM_SIZE, UDP_PROTOCOL_DISCOVERY,
+    UdpIoContext, MAX_DATAGRAM_SIZE, UDP_PROTOCOL_DISCOVERY,
 };
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use {Error, ErrorKind, IpFilter};
@@ -48,6 +48,7 @@ struct FindNodeRequest {
     answered: bool,
 }
 
+#[allow(dead_code)]
 pub struct Discovery {
     id: NodeId,
     id_hash: H256,

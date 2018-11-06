@@ -87,7 +87,7 @@ impl SynchronizationProtocolHandler {
     }
 
     fn on_get_block_headers(
-        &self, io: &NetworkContext, syn: &mut SynchronizationState, rlp: &Rlp,
+        &self, io: &NetworkContext, _syn: &mut SynchronizationState, rlp: &Rlp,
         peer: PeerId,
     ) -> Result<(), Error>
     {
@@ -118,7 +118,7 @@ impl SynchronizationProtocolHandler {
     }
 
     fn on_get_blocks(
-        &self, io: &NetworkContext, syn: &mut SynchronizationState, rlp: &Rlp,
+        &self, io: &NetworkContext, _syn: &mut SynchronizationState, rlp: &Rlp,
         peer: PeerId,
     ) -> Result<(), Error>
     {
@@ -141,7 +141,7 @@ impl SynchronizationProtocolHandler {
     }
 
     fn on_get_terminal_block_hashes(
-        &self, io: &NetworkContext, syn: &mut SynchronizationState, rlp: &Rlp,
+        &self, io: &NetworkContext, _syn: &mut SynchronizationState, rlp: &Rlp,
         peer_id: PeerId,
     ) -> Result<(), Error>
     {

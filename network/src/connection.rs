@@ -27,6 +27,7 @@ pub trait PacketSizer {
 }
 
 /// This information is to measure the congestion situation of network.
+#[allow(dead_code)]
 pub struct SendQueueStatus {
     queue_length: usize,
 }

@@ -139,7 +139,7 @@ impl AccountState {
             let account_address = public_to_address(kp.public());
 
             let mut rng = thread_rng();
-            let mut balance = U256::from(rng.gen::<u64>());
+            let balance = U256::from(rng.gen::<u64>());
 
             if account_set.contains(&account_address) {
                 account_count -= 1;

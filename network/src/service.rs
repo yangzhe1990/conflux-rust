@@ -13,7 +13,7 @@ use parking_lot::{Mutex, RwLock};
 use session;
 use session::Session;
 use session::SessionData;
-use std::cmp::{max, min};
+use std::cmp::{min};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Read, Write};
@@ -265,6 +265,7 @@ impl HostMetadata {
 
 /// The inner implementation of NetworkService. Note that all accesses to the RWLocks of the fields
 /// have to follow the defined order to avoid race
+#[allow(dead_code)]
 pub struct NetworkServiceInner {
     sessions: Arc<RwLock<Slab<SharedSession>>>,
     pub metadata: RwLock<HostMetadata>,
@@ -375,7 +376,7 @@ impl NetworkServiceInner {
 
         let nodes_path = config.config_path.clone();
 
-        let mut inner = NetworkServiceInner {
+        let inner = NetworkServiceInner {
             metadata: RwLock::new(HostMetadata {
                 keys,
                 capabilities: Vec::new(),
@@ -605,7 +606,7 @@ impl NetworkServiceInner {
 
         let self_id = *meta.id();
         let max_outgoing_peers = self.config.max_outgoing_peers;
-        let max_incoming_peers = self.config.max_incoming_peers;
+        //let max_incoming_peers = self.config.max_incoming_peers;
         let max_handshakes = self.config.max_handshakes;
         let allow_ips = self.config.ip_filter.clone();
 
@@ -1073,7 +1074,7 @@ impl NetworkServiceInner {
                         ),
                         &packet[1..],
                         from,
-                    );
+                    )?;
                     Ok(())
                 } else {
                     warn!(target: "network", "Discovery is not ready. Drop the message!");

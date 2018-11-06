@@ -1,6 +1,5 @@
 use super::{
     impls::{errors::*, merkle_patricia_trie::merkle::MerkleHash},
-    state_manager::StateManager,
 };
 use primitives::EpochId;
 

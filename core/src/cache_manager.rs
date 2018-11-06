@@ -1,16 +1,20 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     hash::Hash,
 };
 
 const COLLECTION_QUEUE_SIZE: usize = 8;
 
+// FIXME: We should remove this once we finished the cache manager code
+#[allow(dead_code)]
 pub enum CacheEntryState {
     Clean,
     Dirty,
     Invalid,
 }
 
+// FIXME: We should remove this once we finished the cache manager code
+#[allow(dead_code)]
 pub struct WriteBackCacheManager<T> {
     pref_cache_size: usize,
     max_cache_size: usize,
@@ -18,6 +22,8 @@ pub struct WriteBackCacheManager<T> {
     cache_usage: VecDeque<HashMap<T, CacheEntryState>>,
 }
 
+// FIXME: We should remove this once we finished the cache manager code
+#[allow(dead_code)]
 impl<T> WriteBackCacheManager<T>
 where T: Eq + Hash + Clone
 {

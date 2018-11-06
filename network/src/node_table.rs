@@ -190,6 +190,7 @@ impl NodeContact {
 
     /// Filters and old contact, returning `None` if it happened longer than a
     /// week ago.
+    #[allow(dead_code)]
     fn recent(&self) -> Option<&NodeContact> {
         let t = self.time();
         if let Ok(d) = t.elapsed() {
@@ -336,7 +337,7 @@ impl NodeTable {
             match contact {
                 NodeContact::Success(_) => NodeReputation::Success,
                 NodeContact::Failure(_) => NodeReputation::Failure,
-                _ => panic!("Unknown contact information!"),
+                //_ => panic!("Unknown contact information!"),
             }
         } else {
             NodeReputation::Unknown
@@ -385,10 +386,10 @@ impl NodeTable {
     }
 
     pub fn sample_nodes(
-        &self, count: u32, filter: &IpFilter,
+        &self, count: u32, _filter: &IpFilter,
     ) -> Vec<NodeEntry> {
         let mut nodes: Vec<NodeEntry> = Vec::new();
-        for i in 0..count {
+        for _i in 0..count {
             let mut rng = rand::thread_rng();
             let node_rep_idx = rng.gen::<usize>() % NODE_REPUTATION_LEVEL_COUNT;
             let node_rep = NodeReputation::iter().nth(node_rep_idx).unwrap();
@@ -415,10 +416,10 @@ impl NodeTable {
 
     /// Return a random sample set of nodes inside the table
     pub fn sample_node_ids(
-        &self, count: u32, filter: &IpFilter,
+        &self, count: u32, _filter: &IpFilter,
     ) -> Vec<NodeId> {
         let mut node_id_set: HashSet<NodeId> = HashSet::new();
-        for i in 0..count {
+        for _i in 0..count {
             let mut rng = rand::thread_rng();
             let node_rep_idx = rng.gen::<usize>() % NODE_REPUTATION_LEVEL_COUNT;
             let node_rep = NodeReputation::iter().nth(node_rep_idx).unwrap();
@@ -441,7 +442,7 @@ impl NodeTable {
     }
 
     // If node exists, update last contact, insert otherwise
-    pub fn update_last_contact(&mut self, mut node: Node) {
+    pub fn update_last_contact(&mut self, node: Node) {
         let mut _index = NodeReputationIndex::default();
         let mut exist = false;
         if let Some(index) = self.node_index.get_mut(&node.id) {
@@ -521,11 +522,9 @@ impl NodeTable {
                 return Some(removed_node);
             } else {
                 panic!("Should not happen!");
-                return None;
             }
         } else {
             panic!("Should not happen!");
-            return None;
         }
     }
 

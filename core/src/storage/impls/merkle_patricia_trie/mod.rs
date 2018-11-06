@@ -48,7 +48,7 @@ impl MultiVersionMerklePatriciaTrie {
     fn get_merkle<'a>(
         &'a self, allocator: AllocatorRefRef<'a>, maybe_node: MaybeNodeRef,
     ) -> Option<MerkleHash> {
-        let mut maybe_node: Option<NodeRef> = maybe_node.into();
+        let maybe_node: Option<NodeRef> = maybe_node.into();
         match maybe_node {
             Some(node) => Some(
                 NodeMemoryAllocator::node_as_ref(allocator, &node).merkle_hash,

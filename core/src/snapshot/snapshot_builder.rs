@@ -1,6 +1,7 @@
 use super::snapshot::Snapshot;
 
 // Build snapshot
+#[allow(dead_code)]
 pub struct SnapshotBuilder {}
 
 trait SnapshotBuilderTrait {

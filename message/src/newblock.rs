@@ -1,4 +1,3 @@
-use ethereum_types::U256;
 use primitives::Block;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use Message;

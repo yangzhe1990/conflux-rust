@@ -4,12 +4,11 @@ use super::{
     super::state_manager::*,
     errors::*,
     merkle_patricia_trie::{
-        data_structure::*, merkle::*, return_after_use::ReturnAfterUse,
+        data_structure::*, merkle::*,
         MultiVersionMerklePatriciaTrie,
     },
 };
 use primitives::EpochId;
-use std::mem;
 
 pub struct State<'a> {
     manager: &'a StateManager,
@@ -35,7 +34,7 @@ impl<'a> State<'a> {
         if !self.dirty {
             self.dirty = true
         }
-        self.allocator.node_memory_allocator.enlarge();
+        self.allocator.node_memory_allocator.enlarge().unwrap();
     }
 
     // FIXME: move to data_structure mod

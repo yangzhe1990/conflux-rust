@@ -39,5 +39,5 @@ impl fmt::Display for MsgId {
 
 pub trait Message: Send + Sync + Encodable + 'static {
     fn msg_id(&self) -> MsgId;
-    fn set_request_id(&mut self, reqid: u16) {}
+    fn set_request_id(&mut self, _reqid: u16) {}
 }

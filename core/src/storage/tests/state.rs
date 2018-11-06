@@ -1,8 +1,4 @@
 use super::super::{
-    impls::{
-        errors::*,
-        merkle_patricia_trie::data_structure::{TrieNode, CHILDREN_COUNT},
-    },
     state::*,
     state_manager::*,
 };
@@ -25,7 +21,7 @@ fn generate_keys() -> Vec<[u8; 4]> {
     let mut keys: Vec<[u8; 4]> = Default::default();
     let mut last_key = keys_num[0];
     for key in &keys_num[1..number_of_keys] {
-        if (*key != last_key) {
+        if *key != last_key {
             keys.push(unsafe { mem::transmute::<u32, [u8; 4]>(key.clone()) });
         }
         last_key = *key;
@@ -40,7 +36,7 @@ fn get_rng_for_test() -> ChaChaRng { ChaChaRng::from_seed([123; 32]) }
 #[test]
 fn test_set_get() {
     let mut rng = get_rng_for_test();
-    let mut state_manager = StateManager::default();
+    let state_manager = StateManager::default();
     let mut state = state_manager.get_state_at(H256::default());
     let mut keys: Vec<[u8; 4]> = generate_keys()
         .iter()
@@ -69,9 +65,9 @@ fn test_set_get() {
 
 #[test]
 fn test_get_set_at_second_commit() {
-    let mut rng = get_rng_for_test();
-    let mut state_manager = StateManager::default();
-    let mut keys: Vec<[u8; 4]> = generate_keys();
+    let rng = get_rng_for_test();
+    let state_manager = StateManager::default();
+    let keys: Vec<[u8; 4]> = generate_keys();
     let set_size = 10000;
     let (keys_0, keys_1_new, keys_remain, keys_1_overwritten) = (
         &keys[0..set_size * 2],
@@ -144,7 +140,7 @@ fn test_get_set_at_second_commit() {
 #[test]
 fn test_set_delete() {
     let mut rng = get_rng_for_test();
-    let mut state_manager = StateManager::default();
+    let state_manager = StateManager::default();
     let mut state = state_manager.get_state_at(H256::default());
     let mut keys: Vec<[u8; 4]> = generate_keys();
 

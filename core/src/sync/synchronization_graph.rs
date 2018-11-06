@@ -12,6 +12,7 @@ const NULL: usize = !0;
 
 const BLOCK_HEADER_ONLY: u8 = 0;
 const BLOCK_READY: u8 = 1;
+#[allow(dead_code)]
 const BLOCK_PARENTAL_TREE_READY: u8 = 2;
 const BLOCK_GRAPH_READY: u8 = 3;
 

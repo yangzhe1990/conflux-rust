@@ -1,9 +1,11 @@
-use ethereum_types::{H256, U256};
+use ethereum_types::{H256};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use Message;
 use MsgId;
 
+#[allow(dead_code)]
 pub const MAINNET_ID: u8 = 0x0;
+#[allow(dead_code)]
 pub const TESTNET_ID: u8 = 0x1;
 
 #[derive(Debug, PartialEq)]

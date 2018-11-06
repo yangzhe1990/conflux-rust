@@ -39,7 +39,7 @@ impl SynchronizationService {
         Ok(())
     }
 
-    pub fn announce_new_blocks(&self, hashes: &[H256]) {}
+    pub fn announce_new_blocks(&self, _hashes: &[H256]) {}
 
     pub fn add_peer(&self, node: NodeEntry) -> Result<(), NetworkError> {
         self.network.add_peer(node)

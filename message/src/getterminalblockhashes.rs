@@ -1,4 +1,3 @@
-use ethereum_types::H256;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use Message;
 use MsgId;

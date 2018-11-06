@@ -12,6 +12,7 @@ pub struct BestEpoch {
     pub best_epoch_number: EpochNumber,
 }
 
+#[allow(dead_code)]
 pub struct BlockIndex {
     /// The hash of the parent of this block
     parent: H256,
@@ -28,6 +29,7 @@ pub struct BlockIndex {
 pub const MIN_LEDGER_CACHE_MB: usize = 4;
 pub const DEFAULT_LEDGER_CACHE_SIZE: usize = 8;
 
+#[allow(dead_code)]
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 enum CacheId {
     Block(H256),
@@ -50,6 +52,7 @@ pub fn to_ledger_cache_config(cache_size: usize) -> LedgerCacheConfig {
     }
 }
 
+#[allow(dead_code)]
 pub struct Ledger {
     best_epoch: RwLock<BestEpoch>,
     epoch_indices:
@@ -226,7 +229,7 @@ impl Ledger {
         self.blocks.write().insert(hash.clone(), block);
     }
 
-    pub fn add_child(&self, parent: &H256, child: &H256) {
+    pub fn add_child(&self, _parent: &H256, _child: &H256) {
         //        let mut write = self.block_indices.write();
         //        let block_index =
         // write.entry(parent.clone()).or_insert(BlockIndex {
@@ -247,7 +250,7 @@ impl Ledger {
         //        }
     }
 
-    pub fn adjust_main_chain(&self, blocks_to_adjust: VecDeque<H256>) -> bool {
+    pub fn adjust_main_chain(&self, _blocks_to_adjust: VecDeque<H256>) -> bool {
         false
         //
         //        let mut best_block = self.best_block.write();

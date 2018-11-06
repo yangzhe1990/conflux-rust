@@ -2,7 +2,7 @@ use super::StateManager;
 use ethereum_types::{H256, U256};
 use executor::Executor;
 use parking_lot::RwLock;
-use primitives::{Block, EpochId};
+use primitives::{Block};
 use slab::Slab;
 use std::{
     cell::RefCell,
@@ -145,7 +145,7 @@ impl ConsensusGraphInner {
         }
 
         if fork_at < self.pivot_chain.len() {
-            let mut enqueue_if_obsolete =
+            let enqueue_if_obsolete =
                 |queue: &mut VecDeque<usize>, index| {
                     let mut epoch_number =
                         self.arena[index].data.epoch_number.borrow_mut();
@@ -166,8 +166,8 @@ impl ConsensusGraphInner {
         }
 
         while fork_at < new_pivot_chain.len() {
-            /// First, identify all the blocks in the current epoch
-            let mut enqueue_if_new = |queue: &mut Vec<usize>, index| {
+            // First, identify all the blocks in the current epoch
+            let enqueue_if_new = |queue: &mut Vec<usize>, index| {
                 let mut epoch_number =
                     self.arena[index].data.epoch_number.borrow_mut();
                 if *epoch_number == NULL {
@@ -188,8 +188,8 @@ impl ConsensusGraphInner {
                 at += 1;
             }
 
-            /// Second, sort all the blocks based on their topological order
-            /// and break ties with block hash
+            // Second, sort all the blocks based on their topological order
+            // and break ties with block hash
             let index_set: HashSet<usize> =
                 HashSet::from_iter(queue.iter().cloned());
             let mut num_incoming_edges = HashMap::new();
@@ -243,7 +243,7 @@ impl ConsensusGraphInner {
                 }
             }
 
-            /// Third, apply transactions in the determined total order
+            // Third, apply transactions in the determined total order
             let mut state = self
                 .state_manager
                 .get_state_at(self.arena[new_pivot_chain[fork_at - 1]].hash);

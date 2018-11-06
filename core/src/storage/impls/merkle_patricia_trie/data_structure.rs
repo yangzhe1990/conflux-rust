@@ -3,14 +3,14 @@ use super::{
     super::errors::*,
     merkle::*,
     return_after_use::ReturnAfterUse,
-    slab::{EntryTrait, Slab},
+    slab::{Slab},
 };
 use core::slice;
 use std::{
-    cmp::{min, Ord},
+    cmp::{min},
     collections::BTreeSet,
     marker::{Send, Sync},
-    mem::{replace, swap},
+    mem::{replace},
     ptr::null_mut,
     sync::{RwLock, RwLockReadGuard},
     vec::Vec,
@@ -600,7 +600,7 @@ impl TrieNode {
                     let unmatched_child_index: u8;
                     let unmatched_path_remaining: &[u8];
 
-                    if Self::first_nibble((path_slice[i] ^ key[i])) == 0 {
+                    if Self::first_nibble(path_slice[i] ^ key[i]) == 0 {
                         // "First half" matched
                         matched_path = CompressedPathRaw::new(
                             &path_slice[0..i + 1],
@@ -737,13 +737,13 @@ impl TrieNode {
 /// the action must be translated into trie node operations, which may vary
 /// depends on whether the node is owned by current version, etc.
 enum TrieNodeAction {
-    MODIFY,
-    DELETE,
-    MERGE_PATH {
+    Modify,
+    Delete,
+    MergePath {
         child_index: u8,
         child_node_ref: NodeRef,
     },
-    DELETE_CHILDREN_TABLE,
+    DeleteChildrenTable,
 }
 
 /// Update
@@ -808,7 +808,7 @@ impl TrieNode {
 
         {
             let slice = new_path.path.get_slice_mut(concated_size);
-            if (prefix.end_mask == 0) {
+            if prefix.end_mask == 0 {
                 slice[0..prefix_size].copy_from_slice(prefix.path_slice);
                 slice[prefix_size..].copy_from_slice(path.path_slice);
             } else {
@@ -840,9 +840,9 @@ impl TrieNode {
             let number_of_children_plus_value =
                 self.number_of_children_plus_value - 1;
             Ok(match number_of_children_plus_value {
-                0 => TrieNodeAction::DELETE,
+                0 => TrieNodeAction::Delete,
                 1 => self.merge_path_action(),
-                _ => TrieNodeAction::MODIFY,
+                _ => TrieNodeAction::Modify,
             })
         } else {
             Err(ErrorKind::MPTKeyNotFound.into())
@@ -861,7 +861,7 @@ impl TrieNode {
         let children_table_ref = self.get_children_table_unchecked();
         for i in 0..CHILDREN_COUNT {
             if children_table_ref[i] != MaybeNodeRef::NULL_NODE {
-                return TrieNodeAction::MERGE_PATH {
+                return TrieNodeAction::MergePath {
                     child_index: i as u8,
                     child_node_ref: Option::<NodeRef>::from(
                         children_table_ref[i],
@@ -881,7 +881,7 @@ impl TrieNode {
             if i != child_index as usize
                 && children_table_ref[i] != MaybeNodeRef::NULL_NODE
             {
-                return TrieNodeAction::MERGE_PATH {
+                return TrieNodeAction::MergePath {
                     child_index: i as u8,
                     child_node_ref: Option::<NodeRef>::from(
                         children_table_ref[i],
@@ -952,15 +952,15 @@ impl TrieNode {
                     // value, which can not exist.
                     if count == 1 || self.has_value() {
                         // There is no children.
-                        TrieNodeAction::DELETE_CHILDREN_TABLE
+                        TrieNodeAction::DeleteChildrenTable
                     } else {
                         self.merge_path_action_after_child_deletion(child_index)
                     }
                 }
-                _ => TrieNodeAction::MODIFY,
+                _ => TrieNodeAction::Modify,
             }
         } else {
-            TrieNodeAction::MODIFY
+            TrieNodeAction::Modify
         }
     }
 }
@@ -1026,7 +1026,7 @@ impl CowNodeRef {
         owned_node_set: &'trie mut OwnedNodeSet,
     ) -> Result<Option<(&'trie TrieNode, VacantEntry<'trie>)>>
     {
-        if (self.owned) {
+        if self.owned {
             // TODO(yz): check if unused at all.
             //            let node: &'trie mut TrieNode;
             //            match self.node_ref {
@@ -1132,7 +1132,7 @@ impl CowNodeRef {
     ) -> MerkleHash
     {
         if self.owned {
-            let mut children_merkles = self.load_merkles_from_children(
+            let children_merkles = self.load_merkles_from_children(
                 trie,
                 allocator,
                 owned_node_set,
@@ -1201,7 +1201,7 @@ impl CowNodeRef {
     {
         let copied = self.into_owned(allocator, owned_node_set)?;
         Ok(match copied {
-            None => unsafe { trie_node.replace_value_unchecked(value) },
+            None => trie_node.replace_value_unchecked(value),
             Some((old, new_entry)) => {
                 new_entry.insert(unsafe {
                     old.copy_and_replace_fields(Some(Some(value)), None, None)
@@ -1238,7 +1238,7 @@ impl CowNodeRef {
     {
         let copied = self.into_owned(allocator, owned_node_set)?;
         match copied {
-            None => unsafe {
+            None => {
                 trie_node.set_child(child_index, child_node);
             },
             Some((old, new_entry)) => {
@@ -1387,7 +1387,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 }
                 let action = result.unwrap();
                 match action {
-                    TrieNodeAction::DELETE => {
+                    TrieNodeAction::Delete => {
                         // The current node is going to be dropped if owned.
                         let value = unsafe {
                             node_cow.delete_value_if_owned(trie_node_mut)
@@ -1399,7 +1399,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                         // node_cow.into_child()?
                         Ok((value, true, MaybeNodeRef::NULL_NODE))
                     }
-                    TrieNodeAction::MERGE_PATH {
+                    TrieNodeAction::MergePath {
                         child_index,
                         child_node_ref,
                     } => {
@@ -1434,7 +1434,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                             self.owned_node_set.get_mut(),
                             new_path,
                             child_trie_node,
-                        );
+                        )?;
 
                         // FIXME: how to represent that trie_node_mut is invalid
                         // after call to node_mut.delete_node?
@@ -1444,7 +1444,7 @@ impl<'trie> SubTrieVisitor<'trie> {
 
                         Ok((value, true, child_node_cow.into_child()))
                     }
-                    TrieNodeAction::MODIFY => {
+                    TrieNodeAction::Modify => {
                         let node_changed = !node_cow.owned;
                         let value = node_cow.cow_delete_value_unchecked(
                             &allocator,
@@ -1475,7 +1475,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     let action = trie_node_mut
                         .check_replace_child(child_index, new_child_node);
                     match action {
-                        TrieNodeAction::MERGE_PATH {
+                        TrieNodeAction::MergePath {
                             child_index,
                             child_node_ref,
                         } => {
@@ -1506,7 +1506,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 self.owned_node_set.get_mut(),
                                 new_path,
                                 child_trie_node,
-                            );
+                            )?;
 
                             // FIXME: how to represent that trie_node_mut is
                             // invalid after call to node_mut.delete_node?
@@ -1516,17 +1516,17 @@ impl<'trie> SubTrieVisitor<'trie> {
 
                             Ok((value, true, child_node_cow.into_child()))
                         }
-                        TrieNodeAction::DELETE_CHILDREN_TABLE => {
+                        TrieNodeAction::DeleteChildrenTable => {
                             let node_changed = !node_cow.owned;
                             node_cow.cow_delete_children_table(
                                 &allocator,
                                 self.owned_node_set.get_mut(),
                                 trie_node_mut,
-                            );
+                            )?;
 
                             Ok((value, node_changed, node_cow.into_child()))
                         }
-                        TrieNodeAction::MODIFY => {
+                        TrieNodeAction::Modify => {
                             let node_changed = !node_cow.owned;
                             node_cow.cow_replace_child(
                                 &allocator,
@@ -1534,7 +1534,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 trie_node_mut,
                                 child_index,
                                 new_child_node,
-                            );
+                            )?;
 
                             Ok((value, node_changed, node_cow.into_child()))
                         }
@@ -1575,7 +1575,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     self.owned_node_set.get_mut(),
                     trie_node_mut,
                     value,
-                );
+                )?;
 
                 Ok((node_changed, node_cow.into_child()))
             }
@@ -1602,7 +1602,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                         trie_node_mut,
                         child_index,
                         new_child_node,
-                    );
+                    )?;
 
                     Ok((node_changed, node_cow.into_child()))
                 } else {
@@ -1636,7 +1636,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     self.owned_node_set.get_mut(),
                     unmatched_path_remaining,
                     trie_node_mut,
-                );
+                )?;
 
                 new_node
                     .set_child(unmatched_child_index, node_cow.into_child());
@@ -1702,7 +1702,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     trie_node_mut,
                     child_index,
                     child_node_cow.into_child(),
-                );
+                )?;
 
                 Ok((node_changed, node_cow.into_child()))
             }
@@ -1710,7 +1710,7 @@ impl<'trie> SubTrieVisitor<'trie> {
     }
 
     pub fn set<'key>(
-        mut self, key: KeyPart<'key>, value: &[u8],
+        self, key: KeyPart<'key>, value: &[u8],
     ) -> Result<MaybeNodeRef> {
         TrieNode::check_value_size(key)?;
         TrieNode::check_value_size(value)?;
@@ -1718,7 +1718,7 @@ impl<'trie> SubTrieVisitor<'trie> {
         unsafe {
             new_root = self.insert_checked_value(key, value)?.1;
         }
-        Ok((new_root))
+        Ok(new_root)
     }
 }
 

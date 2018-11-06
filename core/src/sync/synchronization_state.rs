@@ -4,7 +4,7 @@ use network::PeerId;
 use slab::Slab;
 use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
-use std::time::{self, Duration, SystemTime};
+use std::time::{SystemTime};
 
 pub const MAX_INFLIGHT_REQUEST_COUNT: usize = 64;
 
