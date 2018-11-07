@@ -9,7 +9,7 @@ use io::TimerToken;
 use message::{
     GetBlockHeaders, GetBlockHeadersResponse, GetBlocks, GetBlocksResponse,
     GetTerminalBlockHashes, GetTerminalBlockHashesResponse, Message, MsgId,
-    NewBlock, Status,
+    NewBlock, NewBlockHashes, Status,
 };
 use network::{
     Error as NetworkError, NetworkContext, NetworkProtocolHandler, PeerId,
@@ -69,16 +69,17 @@ impl SynchronizationProtocolHandler {
                 self.on_block_headers_response(io, &mut *syn, peer, &rlp)
             }
             MsgId::GET_BLOCK_HEADERS => {
-                self.on_get_block_headers(io, &mut *syn, &rlp, peer)
+                self.on_get_block_headers(io, &mut *syn, peer, &rlp)
             }
             MsgId::NEW_BLOCK => self.on_new_block(io, &mut *syn, peer, &rlp),
+            MsgId::NEW_BLOCK_HASHES => self.on_new_block_hashes(io, &mut *syn, peer, &rlp),
             MsgId::GET_BLOCKS_RESPONSE => self.on_blocks_response(io, &mut *syn, peer, &rlp),
-            MsgId::GET_BLOCKS => self.on_get_blocks(io, &mut *syn, &rlp, peer),
+            MsgId::GET_BLOCKS => self.on_get_blocks(io, &mut *syn, peer, &rlp),
             MsgId::GET_TERMINAL_BLOCK_HASHES_RESPONSE => {
-                self.on_terminal_block_hashes_response(io, &mut *syn, &rlp, peer)
+                self.on_terminal_block_hashes_response(io, &mut *syn, peer, &rlp)
             }
             MsgId::GET_TERMINAL_BLOCK_HASHES => {
-                self.on_get_terminal_block_hashes(io, &mut *syn, &rlp, peer)
+                self.on_get_terminal_block_hashes(io, &mut *syn, peer, &rlp)
             }
             _ => {
                 debug!(target: "sync", "Unknown message: peer={:?} msgid={:?}", peer, msg_id);
@@ -88,8 +89,8 @@ impl SynchronizationProtocolHandler {
     }
 
     fn on_get_block_headers(
-        &self, io: &NetworkContext, _syn: &mut SynchronizationState, rlp: &Rlp,
-        peer: PeerId,
+        &self, io: &NetworkContext, _syn: &mut SynchronizationState,
+        peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error>
     {
         let req = rlp.as_val::<GetBlockHeaders>()?;
@@ -119,8 +120,8 @@ impl SynchronizationProtocolHandler {
     }
 
     fn on_get_blocks(
-        &self, io: &NetworkContext, _syn: &mut SynchronizationState, rlp: &Rlp,
-        peer: PeerId,
+        &self, io: &NetworkContext, _syn: &mut SynchronizationState,
+        peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error>
     {
         let req = rlp.as_val::<GetBlocks>()?;
@@ -142,8 +143,8 @@ impl SynchronizationProtocolHandler {
     }
 
     fn on_get_terminal_block_hashes(
-        &self, io: &NetworkContext, _syn: &mut SynchronizationState, rlp: &Rlp,
-        peer_id: PeerId,
+        &self, io: &NetworkContext, _syn: &mut SynchronizationState,
+        peer_id: PeerId, rlp: &Rlp,
     ) -> Result<(), Error>
     {
         let req = rlp.as_val::<GetTerminalBlockHashes>()?;
@@ -156,8 +157,8 @@ impl SynchronizationProtocolHandler {
     }
 
     fn on_terminal_block_hashes_response(
-        &self, io: &NetworkContext, syn: &mut SynchronizationState, rlp: &Rlp,
-        peer_id: PeerId,
+        &self, io: &NetworkContext, syn: &mut SynchronizationState,
+        peer_id: PeerId, rlp: &Rlp,
     ) -> Result<(), Error>
     {
         let terminal_block_hashes =
@@ -262,7 +263,7 @@ impl SynchronizationProtocolHandler {
         let blocks = rlp.as_val::<GetBlocksResponse>()?;
         self.match_request(io, syn, peer_id, blocks.reqid)?;
 
-        for block in blocks.blocks {
+        let new_block_hashes: Vec<H256> = blocks.blocks.into_iter().map(|block| {
             let hash = block.hash();
 
             if !self.graph.contains_block_header(&hash) {
@@ -270,7 +271,23 @@ impl SynchronizationProtocolHandler {
             }
             if !self.graph.contains_block(&hash) {
                 self.graph.insert_block(block);
+                Some(hash)
+            } else {
+                None
             }
+        }).filter_map(|h| {h}).collect();
+
+        if !new_block_hashes.is_empty() {
+            let new_block_hash_msg: Box<dyn Message> =
+                Box::new(NewBlockHashes {
+                    block_hashes: new_block_hashes,
+                });
+            self.broadcast_message(
+                io,
+                syn,
+                peer_id,
+                new_block_hash_msg.as_ref(),
+            )?;
         }
 
         Ok(())
@@ -302,14 +319,70 @@ impl SynchronizationProtocolHandler {
             self.graph
                 .insert_block_header(new_block.block.block_header.clone());
         }
-        if !self.graph.contains_block(&hash) {
+
+        let is_new = if !self.graph.contains_block(&hash) {
             self.graph.insert_block(new_block.block.clone());
-        }
+            true
+        } else {
+            false
+        };
 
         if !self.graph.contains_block_header(parent_hash) {
             self.request_block_headers(io, syn, peer_id, parent_hash, 256);
         }
 
+        if is_new {
+            // broadcast the hash of the newly got block
+            let mut block_hashes: Vec<H256> = Vec::new();
+            block_hashes.push(hash);
+            let new_block_hash_msg: Box<dyn Message> =
+                Box::new(NewBlockHashes { block_hashes });
+            self.broadcast_message(
+                io,
+                syn,
+                peer_id,
+                new_block_hash_msg.as_ref(),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn on_new_block_hashes(
+        &self, io: &NetworkContext, syn: &mut SynchronizationState,
+        peer_id: PeerId, rlp: &Rlp,
+    ) -> Result<(), Error>
+    {
+        let new_block_hashes = rlp.as_val::<NewBlockHashes>()?;
+
+        for hash in new_block_hashes.block_hashes.iter() {
+            if !self.graph.contains_block_header(hash) {
+                self.request_block_headers(io, syn, peer_id, hash, 256);
+                // FIXME: This might need better design.
+                // The current rationale is that newblockhashes message
+                // are only produced in 2 cases.
+                // 1. After seeing a new block, the newblockhashes only
+                // contains 1 hash value of the new block;
+                // 2. After getting a series of blocks from getblockresponse
+                // message, those blocks are in a same parental chain and in
+                // reverse order, so we only need to fetch the first header
+                // backward following the parental chain.
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn broadcast_message(
+        &self, io: &NetworkContext, syn: &mut SynchronizationState,
+        skip_id: PeerId, msg: &Message,
+    ) -> Result<(), NetworkError>
+    {
+        for (id, _) in syn.peers.iter() {
+            if *id != skip_id {
+                self.send_message(io, *id, msg)?;
+            }
+        }
         Ok(())
     }
 
@@ -401,6 +474,18 @@ impl SynchronizationProtocolHandler {
             }
         } else {
             Err(ErrorKind::UnknownPeer.into())
+        }
+    }
+
+    pub fn announce_new_blocks(&self, io: &NetworkContext, hashes: &[H256]) {
+        let syn = self.syn.write();
+        for hash in hashes {
+            let block = self.graph.block_by_hash(hash).unwrap();
+            let msg: Box<dyn Message> = Box::new(NewBlock { block });
+            for (id, _) in syn.peers.iter() {
+                self.send_message(io, *id, msg.as_ref())
+                    .expect("Error sending new blocks!");
+            }
         }
     }
 }

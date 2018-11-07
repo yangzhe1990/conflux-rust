@@ -5,7 +5,7 @@ use consensus::SharedConsensusGraph;
 use ethereum_types::H256;
 use network::{
     node_table::NodeEntry, Error as NetworkError, NetworkConfiguration,
-    NetworkService, PeerInfo,
+    NetworkService, PeerInfo, ProtocolId,
 };
 use primitives::Block;
 use std::sync::Arc;
@@ -18,6 +18,7 @@ pub struct SynchronizationConfiguration {
 pub struct SynchronizationService {
     network: NetworkService,
     protocol_handler: Arc<SynchronizationProtocolHandler>,
+    protocol: ProtocolId,
 }
 
 impl SynchronizationService {
@@ -27,6 +28,7 @@ impl SynchronizationService {
             protocol_handler: Arc::new(SynchronizationProtocolHandler::new(
                 config.consensus,
             )),
+            protocol: *b"cfx",
         }
     }
 
@@ -34,10 +36,16 @@ impl SynchronizationService {
         self.network.start()?;
         self.network.register_protocol(
             self.protocol_handler.clone(),
-            *b"cfx",
+            self.protocol,
             &[SYNCHRONIZATION_PROTOCOL_VERSION],
         )?;
         Ok(())
+    }
+    
+    pub fn announce_new_blocks(&self, hashes: &[H256]) {
+        self.network.with_context(self.protocol, |io| {
+            self.protocol_handler.announce_new_blocks(io, hashes);
+        });
     }
 
     pub fn on_mined_block(&self, block: Block) {
@@ -45,8 +53,6 @@ impl SynchronizationService {
         self.protocol_handler.on_mined_block(block);
         self.announce_new_blocks(&[hash]);
     }
-
-    pub fn announce_new_blocks(&self, _hashes: &[H256]) {}
 
     pub fn add_peer(&self, node: NodeEntry) -> Result<(), NetworkError> {
         self.network.add_peer(node)

@@ -4,23 +4,8 @@ use Message;
 use MsgId;
 
 #[derive(Debug, PartialEq)]
-pub struct BlockHash(u64, H256);
-
-impl Encodable for BlockHash {
-    fn rlp_append(&self, stream: &mut RlpStream) {
-        stream.begin_list(2).append(&self.0).append(&self.1);
-    }
-}
-
-impl Decodable for BlockHash {
-    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        Ok(BlockHash(rlp.val_at(0)?, rlp.val_at(1)?))
-    }
-}
-
-#[derive(Debug, PartialEq)]
 pub struct NewBlockHashes {
-    pub block_hashes: Vec<BlockHash>,
+    pub block_hashes: Vec<H256>,
 }
 
 impl Message for NewBlockHashes {
