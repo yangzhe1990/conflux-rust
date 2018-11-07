@@ -97,6 +97,9 @@ build_rpc_trait! {
         #[rpc(name = "getnodeid")]
         fn get_nodeid(&self, Vec<u8>) -> RpcResult<Vec<u8>>;
 
+        #[rpc(name = "addlatency")]
+        fn add_latency(&self, NodeId, f64) -> RpcResult<()>;
+
     }
 }
 
@@ -214,6 +217,13 @@ impl Rpc for RpcImpl {
     fn get_nodeid(&self, challenge: Vec<u8>) -> RpcResult<Vec<u8>> {
         match self.sync.sign_challenge(challenge) {
             Ok(r) => Ok(r),
+            Err(_) => Err(RpcError::internal_error()),
+        }
+    }
+
+    fn add_latency(&self, id: NodeId, latency_ms: f64) -> RpcResult<()> {
+        match self.sync.add_latency(id, latency_ms) {
+            Ok(_) => Ok(()),
             Err(_) => Err(RpcError::internal_error()),
         }
     }

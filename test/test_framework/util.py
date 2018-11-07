@@ -202,30 +202,6 @@ def check_json_precision():
         raise RuntimeError("JSON encode/decode loses precision")
 
 
-def count_bytes(hex_string):
-    return len(bytearray.fromhex(hex_string))
-
-
-def bytes_to_hex_str(byte_str):
-    return hexlify(byte_str).decode('ascii')
-
-
-def hash256(byte_str):
-    sha256 = hashlib.sha256()
-    sha256.update(byte_str)
-    sha256d = hashlib.sha256()
-    sha256d.update(sha256.digest())
-    return sha256d.digest()[::-1]
-
-
-def hex_str_to_bytes(hex_str):
-    return unhexlify(hex_str.encode('ascii'))
-
-
-def str_to_b64str(string):
-    return b64encode(string.encode('utf-8')).decode('ascii')
-
-
 def satoshi_round(amount):
     return Decimal(amount).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
 
@@ -278,6 +254,7 @@ def initialize_datadir(dirname, n, ip="127.0.0.1"):
         f.write("log-file=\"" + os.path.join(datadir, "conflux.log") + "\"\n")
         f.write("log-level=\"trace\"\n")
         f.write("netconf-dir=\"" + os.path.join(datadir, "config") + "\"\n")
+        f.write("test-mode=true")
         os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)
         os.makedirs(os.path.join(datadir, 'stdout'), exist_ok=True)
     return datadir
@@ -368,22 +345,9 @@ def get_peer_addr(from_connection, node_num):
     return "{}:{}".format(from_connection.ip, str(p2p_port(node_num)))
 
 
-# def connect_nodes(from_connection, node_num, key):
-#     peer_addr = get_peer_addr(from_connection, node_num)
-#     from_connection.addnode(key, peer_addr)
-#     # poll until hello handshake complete to avoid race conditions
-#     # with transaction relaying
-#     wait_until(lambda: check_handshake(from_connection, peer_addr))
-#
-#
-# def connect_nodes_bi(nodes, a, b):
-#     connect_nodes(nodes[a], b, "0x"+nodes[b].key)
-#     connect_nodes(nodes[b], a, "0x"+nodes[a].key)
-
-
 def connect_nodes(nodes, a, node_num):
     from_connection = nodes[a]
-    key = "0x" + nodes[node_num].key
+    key = nodes[node_num].key
     peer_addr = get_peer_addr(from_connection, node_num)
     from_connection.addnode(key, peer_addr)
     # poll until hello handshake complete to avoid race conditions

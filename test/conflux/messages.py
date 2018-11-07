@@ -8,6 +8,8 @@ P2PInterface: A high-level interface object for communicating to a node over P2P
 import asyncore
 from collections import defaultdict
 from io import BytesIO
+
+import eth_utils
 import rlp
 from rlp.exceptions import ObjectSerializationError, ObjectDeserializationError
 from rlp.sedes import binary, big_endian_int, CountableList, boolean
@@ -84,14 +86,7 @@ class Status(rlp.Serializable):
     ]
 
 
-class BlockHash(rlp.Serializable):
-    fields = [
-        ("number", big_endian_int),
-        ("hash", hash32)
-    ]
-
-
-class NewBlockHashes:
+class NewBlockHashes(rlp.Serializable):
     def __init__(self, block_hashes=[]):
         assert is_sequence(block_hashes)
         self.block_hashes = block_hashes
@@ -105,11 +100,11 @@ class NewBlockHashes:
 
     @classmethod
     def serialize(cls, obj):
-        return CountableList(BlockHash).serialize(obj.block_hashes)
+        return CountableList(hash32).serialize(obj.block_hashes)
 
     @classmethod
     def deserialize(cls, serial):
-        return cls(block_hashes=CountableList(BlockHash).deserialize(serial))
+        return cls(block_hashes=CountableList(hash32).deserialize(serial))
 
 
 class Transactions:
@@ -135,37 +130,39 @@ class Transactions:
 
 class GetBlockHashes(rlp.Serializable):
     fields = [
+        ("reqid", big_endian_int),
         ("hash", hash32),
         ("max_blocks", big_endian_int)
     ]
 
+    def __init__(self, hash, max_blocks, reqid=0):
+        super().__init__(
+            reqid=reqid,
+            hash=hash,
+            max_blocks=max_blocks,
+        )
 
-class BlockHashes:
-    def __init__(self, hashes=[]):
-        assert is_sequence(hashes)
-        self.hashes = hashes
 
-    @classmethod
-    def serializable(cls, obj):
-        if is_sequence(obj.hashes):
-            return True
-        else:
-            return False
-
-    @classmethod
-    def serialize(cls, obj):
-        return CountableList(hash32).serialize(obj.hashes)
-
-    @classmethod
-    def deserialize(cls, serial):
-        return cls(hashes=CountableList(hash32).deserialize(serial))
+class BlockHashes(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("hashes", CountableList(hash32)),
+    ]
 
 
 class GetBlockHeaders(rlp.Serializable):
     fields = [
+        ("reqid", big_endian_int),
         ("hash", hash32),
         ("max_blocks", big_endian_int),
     ]
+
+    def __init__(self, hash, max_blocks, reqid=0):
+        super().__init__(
+            reqid=reqid,
+            hash=hash,
+            max_blocks=max_blocks
+        )
 
 
 class BlockHeader(rlp.Serializable):
@@ -197,51 +194,31 @@ class BlockHeader(rlp.Serializable):
     def hash(self):
         return sha3(rlp.encode(self))
 
+    def get_hex_hash(self):
+        return eth_utils.encode_hex(self.hash)
+
 
 # class BlockHeaders(CountableList(BlockHeader)):
 #     fields = [
 #         ("headers", CountableList(BlockHeader))
 #     ]
-class BlockHeaders:
-    def __init__(self, headers=[]):
-        assert is_sequence(headers)
-        self.headers = headers
+class BlockHeaders(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("headers", CountableList(BlockHeader)),
+    ]
 
-    @classmethod
-    def serializable(cls, obj):
-        if is_sequence(obj.headers):
-            return True
-        else:
-            return False
+class GetBlockBodies(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("hashes", CountableList(hash32)),
+    ]
 
-    @classmethod
-    def serialize(cls, obj):
-        return CountableList(BlockHeader).serialize(obj.headers)
-
-    @classmethod
-    def deserialize(cls, serial):
-        return cls(headers=CountableList(BlockHeader).deserialize(serial))
-
-
-class GetBlockBodies:
-    def __init__(self, hashes=[]):
-        assert is_sequence(hashes)
-        self.hashes = hashes
-
-    @classmethod
-    def serializable(cls, obj):
-        if is_sequence(obj.hashes):
-            return True
-        else:
-            return False
-
-    @classmethod
-    def serialize(cls, obj):
-        return CountableList(hash32).serialize(obj.hashes)
-
-    @classmethod
-    def deserialize(cls, serial):
-        return cls(hashes=CountableList(hash32).deserialize(serial))
+    def __init__(self, reqid=0, hashes=[]):
+        super().__init__(
+            reqid=reqid,
+            hashes=hashes
+        )
 
 
 class Block(rlp.Serializable):
@@ -257,25 +234,11 @@ class Block(rlp.Serializable):
         )
 
 
-class BlockBodies:
-    def __init__(self, bodies=[]):
-        assert is_sequence(bodies)
-        self.bodies = bodies
-
-    @classmethod
-    def serializable(cls, obj):
-        if is_sequence(obj.bodies):
-            return True
-        else:
-            return False
-
-    @classmethod
-    def serialize(cls, obj):
-        return CountableList(Block).serialize(obj.bodies)
-
-    @classmethod
-    def deserialize(cls, serial):
-        return cls(bodies=CountableList(Block).deserialize(serial))
+class BlockBodies(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("bodies", CountableList(Block)),
+    ]
 
 
 class NewBlock(rlp.Serializable):
@@ -295,103 +258,40 @@ class NewBlock(rlp.Serializable):
         return cls(block=Block.deserialize(serial))
 
 
-# class TerminalBlockHashes(rlp.Serializable):
-#     fields = [
-#         ("hashes", CountableList(hash32))
-#     ]
-class TerminalBlockHashes:
-    def __init__(self, hashes=[]):
-        assert is_sequence(hashes)
-        self.hashes = hashes
-
-    @classmethod
-    def serializable(cls, obj):
-        if is_sequence(obj.hashes):
-            return True
-        else:
-            return False
-
-    @classmethod
-    def serialize(cls, obj):
-        return CountableList(hash32).serialize(obj.hashes)
-
-    @classmethod
-    def deserialize(cls, serial):
-        return cls(hashes=CountableList(hash32).deserialize(serial))
+class TerminalBlockHashes(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("hashes", CountableList(hash32)),
+    ]
 
 
-# class GetTerminalBlockHashes(rlp.Serializable):
-#     fields = [
-#
-#     ]
-#
-#     def serialize(self, obj):
-#         if not obj:
-#             raise ObjectSerializationError(obj=obj, message="GetTerminalBlockHashes is not an empty object")
-#         return []
-#
-#     def deserialize(self, serial):
-#         if not serial:
-#             raise ObjectDeserializationError(serial=serial, message="GetTerminalBlockHashes is not an empty object")
-#         return GetTerminalBlockHashes()
-class GetTerminalBlockHashes:
-    def __init__(self):
-        pass
+class GetTerminalBlockHashes(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+    ]
 
-    @classmethod
-    def serializable(cls, obj):
-            return True
-
-    @classmethod
-    def serialize(cls, obj):
-        return []
-
-    @classmethod
-    def deserialize(cls, serial):
-        assert not serial
-        return cls()
+    def __init__(self, reqid=0):
+        super().__init__(reqid)
 
 
-class GetBlocks:
-    def __init__(self, hashes=[]):
-        assert is_sequence(hashes)
-        self.hashes = hashes
+class GetBlocks(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("hashes", CountableList(hash32)),
+    ]
 
-    @classmethod
-    def serializable(cls, obj):
-        if is_sequence(obj.hashes):
-            return True
-        else:
-            return False
-
-    @classmethod
-    def serialize(cls, obj):
-        return CountableList(hash32).serialize(obj.hashes)
-
-    @classmethod
-    def deserialize(cls, serial):
-        return cls(hashes=CountableList(hash32).deserialize(serial))
+    def __init__(self, reqid=0, hashes=[]):
+        super().__init__(
+            reqid=reqid,
+            hashes=hashes
+        )
 
 
-class Blocks:
-    def __init__(self, blocks=[]):
-        assert is_sequence(blocks)
-        self.blocks = blocks
-
-    @classmethod
-    def serializable(cls, obj):
-        if is_sequence(obj.blocks):
-            return True
-        else:
-            return False
-
-    @classmethod
-    def serialize(cls, obj):
-        return CountableList(Block).serialize(obj.blocks)
-
-    @classmethod
-    def deserialize(cls, serial):
-        return cls(blocks=CountableList(Block).deserialize(serial))
+class Blocks(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("blocks", CountableList(Block)),
+    ]
 
 
 msg_id = {

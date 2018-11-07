@@ -115,7 +115,7 @@ fn start(
     let secret_store = Arc::new(SecretStore::new());
     let genesis_block = make_genesis(10, secret_store.clone());
 
-    let state_manager = Arc::new(StateManager::new());
+    let state_manager = Arc::new(StateManager::default());
 
     let consensus = Arc::new(ConsensusGraph::with_genesis_block(
         genesis_block,
@@ -255,6 +255,13 @@ fn main() {
                 .long("ledger-cache-size")
                 .value_name("SIZE")
                 .help("Sets the ledger cache size")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("test-mode")
+                .long("test-mode")
+                .value_name("BOOL")
+                .help("Sets test mode for adding latency")
                 .takes_value(true),
         )
         .get_matches_from(std::env::args().collect::<Vec<_>>());

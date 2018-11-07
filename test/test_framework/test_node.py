@@ -14,10 +14,12 @@ import tempfile
 import time
 import urllib.parse
 
+import eth_utils
+
 from conflux.utils import get_nodeid
 from .authproxy import JSONRPCException
 from .util import (delete_cookie_file, get_rpc_proxy,
-                   rpc_url, wait_until, p2p_port, bytes_to_hex_str)
+                   rpc_url, wait_until, p2p_port)
 
 CONFLUX_RPC_WAIT_TIMEOUT = 60
 
@@ -122,8 +124,9 @@ class TestNode:
         if self.remote:
             cli_mkdir = "ssh {}@{} mkdir -p {};".format(
                 self.user, self.ip, self.datadir)
-            cli_conf = "scp -r {0}/. {1}@{2}:{0};".format(
-                self.datadir, self.user, self.ip)
+            cli_conf = "scp -r {0}/. {3} {1}@{2}:{0};".format(
+                self.datadir, self.user, self.ip, self.binary)
+            self.args[0] = "~/conflux"
             cli_exe = "ssh {}@{} {}".format(
                 self.user, self.ip, " ".join(self.args))
             print(cli_mkdir + cli_conf + cli_exe)
@@ -170,7 +173,7 @@ class TestNode:
         self._raise_assertion_error("Unable to connect to bitcoind")
 
     def wait_for_nodeid(self):
-        self.key = bytes_to_hex_str(get_nodeid(self))
+        self.key = eth_utils.encode_hex(get_nodeid(self))
         self.log.debug("Get node {} nodeid {}".format(self.index, self.key))
 
 

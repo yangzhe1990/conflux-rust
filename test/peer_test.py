@@ -25,7 +25,7 @@ class PeerTest(ConfluxTestFramework):
         self.add_nodes(self.num_nodes)
         bootnode = self.nodes[0]
         self.start_node(0)
-        bootnode_id = "cfxnode://{}@{}:{}".format(bootnode.key, bootnode.ip, bootnode.port)
+        bootnode_id = "cfxnode://{}@{}:{}".format(bootnode.key[2:], bootnode.ip, bootnode.port)
         extra_args = ["--bootnodes", bootnode_id]
         for i in range(1, self.num_nodes):
             self.start_node(i, extra_args=extra_args)

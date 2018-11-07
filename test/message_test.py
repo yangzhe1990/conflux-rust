@@ -2,7 +2,7 @@
 from rlp.sedes import Binary, BigEndianInt
 
 from conflux import utils
-from conflux.utils import encode_hex, bytes_to_int
+from conflux.utils import encode_hex, bytes_to_int, int_to_hex
 from test_framework.blocktools import create_block, create_transaction
 from test_framework.test_framework import ConfluxTestFramework
 # from test_framework.mininode import (
@@ -27,9 +27,16 @@ class MessageTest(ConfluxTestFramework):
 
     def run_test(self):
         default_node = self.nodes[0].add_p2p_connection(DefaultNode())
+        another_genesis = Block(BlockHeader(difficulty=0))
+        assert default_node.genesis == another_genesis
+        assert default_node.genesis.block_header == another_genesis.block_header
+        assert create_transaction() == create_transaction()
         network_thread_start()
         self.nodes[0].p2p.wait_for_status()
-
+        # print(self.nodes[0].getbestblockhash())
+        # remote_genesis = self.nodes[0].getblock(default_node.genesis.block_header.get_hex_hash())
+        # print(remote_genesis)
+        # assert default_node.genesis == remote_genesis
         """Start Some P2P Message Test From Here"""
         blocks = [default_node.genesis.block_header.hash]
         tip = default_node.genesis.block_header.hash
@@ -47,14 +54,14 @@ class MessageTest(ConfluxTestFramework):
         self.send_msg(GetBlockHeaders(hash=blocks[0], max_blocks=1))
         self.send_msg(GetBlockBodies(hashes=[blocks[0]]))
         self.send_msg(GetBlocks(hashes=[blocks[0]]))
-        self.send_msg(BlockHashes(hashes=[blocks[0]]))
-        self.send_msg(BlockHeaders(headers=[default_node.genesis.block_header]))
-        self.send_msg(BlockBodies(bodies=[default_node.genesis]))
-        self.send_msg(Blocks(blocks=[default_node.genesis]))
-        self.send_msg(NewBlockHashes(block_hashes=[BlockHash(number=1, hash=new_block.block_header.hash)]))
+        # self.send_msg(BlockHashes(reqid=0, hashes=[blocks[0]]))
+        # self.send_msg(BlockHeaders(reqid=0, headers=[default_node.genesis.block_header]))
+        # self.send_msg(BlockBodies(reqid=0, bodies=[default_node.genesis]))
+        # self.send_msg(Blocks(reqid=0, blocks=[default_node.genesis]))
+        self.send_msg(NewBlockHashes([new_block.block_header.hash]))
         self.send_msg(NewBlock(block=new_block))
         self.send_msg(GetTerminalBlockHashes())
-        self.send_msg(TerminalBlockHashes(hashes=[blocks[0]]))
+        # self.send_msg(TerminalBlockHashes(reqid=0, hashes=[blocks[0]]))
         self.send_msg(Transactions(transactions=[new_transaction]))
 
         # wait_for_block_count(self.nodes[0], self.block_number)

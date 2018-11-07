@@ -9,6 +9,7 @@ use network::{
 };
 use primitives::Block;
 use std::sync::Arc;
+use network::node_table::NodeId;
 
 pub struct SynchronizationConfiguration {
     pub network: NetworkConfiguration,
@@ -70,6 +71,10 @@ impl SynchronizationService {
         &self, challenge: Vec<u8>,
     ) -> Result<Vec<u8>, NetworkError> {
         self.network.sign_challenge(challenge)
+    }
+
+    pub fn add_latency(&self, id: NodeId, latency_ms: f64) -> Result<(), NetworkError> {
+        self.network.add_latency(id, latency_ms)
     }
 }
 

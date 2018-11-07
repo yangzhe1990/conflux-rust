@@ -166,11 +166,12 @@ impl ConsensusGraphInner {
 
         while fork_at < new_pivot_chain.len() {
             // First, identify all the blocks in the current epoch
+            let copy_of_fork_at = fork_at;
             let enqueue_if_new = |queue: &mut Vec<usize>, index| {
                 let mut epoch_number =
                     self.arena[index].data.epoch_number.borrow_mut();
                 if *epoch_number == NULL {
-                    *epoch_number = fork_at;
+                    *epoch_number = copy_of_fork_at;
                     queue.push(index);
                 }
             };
@@ -257,6 +258,7 @@ impl ConsensusGraphInner {
                 });
             }
             state.commit(self.arena[new_pivot_chain[fork_at]].hash);
+            fork_at += 1;
         }
 
         self.pivot_chain = new_pivot_chain;

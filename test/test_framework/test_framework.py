@@ -160,7 +160,7 @@ class ConfluxTestFramework:
             self.options.tmpdir = os.path.abspath(self.options.tmpdir)
             os.makedirs(self.options.tmpdir, exist_ok=False)
         else:
-            self.options.tmpdir = tempfile.mkdtemp(prefix="test")
+            self.options.tmpdir = tempfile.mkdtemp(prefix="test", dir="/tmp")
         self._start_logging()
 
         success = TestStatus.FAILED

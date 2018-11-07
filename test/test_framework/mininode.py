@@ -21,7 +21,7 @@ import threading
 
 from conflux.transactions import Transaction
 from conflux.utils import hash32, hash20, sha3, int_to_bytes, sha3_256, ecrecover_to_pub, ec_random_keys, ecsign, \
-    bytes_to_int, encode_int32
+    bytes_to_int, encode_int32, int_to_hex
 from test_framework.util import wait_until
 
 logger = logging.getLogger("TestFramework.mininode")
@@ -259,6 +259,8 @@ class P2PInterface(P2PConnection):
         self.blocks = {self.genesis.block_header.hash: self.genesis}
         self.peer_pubkey = None
         self.priv_key, self.pub_key = ec_random_keys()
+        x, y = self.pub_key
+        self.key = "0x"+int_to_hex(x)[2:]+int_to_hex(y)[2:]
         self.had_status = False
 
     def peer_connect(self, *args, **kwargs):

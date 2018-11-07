@@ -46,36 +46,27 @@ class MessageTest(ConfluxTestFramework):
         challenge = random.randint(0, 2**32-1)
         signature = rpc.getnodeid(list(int_to_bytes(challenge)))
         node_id = convert_to_nodeid(signature, challenge)
-        print("get nodeid", bytes_to_hex_str(node_id))
-        """Start Some P2P Message Test From Here"""
+        print("get nodeid", eth_utils.encode_hex(node_id))
+        # b = self.nodes[0].getblock(self.nodes[0].getbestblockhash())
+        # block_time = int(b['timestamp'], 0) + 1
+
         blocks = [default_node.genesis.block_header.hash]
         tip = default_node.genesis.block_header.hash
         # b = self.nodes[0].getblock(self.nodes[0].getbestblockhash())
         # block_time = int(b['timestamp'], 0) + 1
         block_time = int(1)
 
-        # Use the mininode and blocktools functionality to manually build a block
-        # Calling the generate() rpc is easier, but this allows us to exactly
-        # control the blocks and transactions.
-        new_block = create_block(tip, block_time)
-        new_transaction = create_transaction()
+        for i in range(2, 10):
+            # Use the mininode and blocktools functionality to manually build a block
+            # Calling the generate() rpc is easier, but this allows us to exactly
+            # control the blocks and transactions.
 
-        headers = BlockHeaders(headers=[default_node.genesis.block_header])
-        assert_equal(rlp.decode(rlp.encode(headers, BlockHeaders), BlockHeaders).headers[0].parent_hash, headers.headers[0].parent_hash)
-
-        self.send_msg(GetBlockHashes(hash=blocks[0], max_blocks=1))
-        self.send_msg(GetBlockHeaders(hash=blocks[0], max_blocks=1))
-        self.send_msg(GetBlockBodies(hashes=[blocks[0]]))
-        self.send_msg(GetBlocks(hashes=[blocks[0]]))
-        self.send_msg(BlockHashes(hashes=[blocks[0]]))
-        self.send_msg(BlockHeaders(headers=[default_node.genesis.block_header]))
-        self.send_msg(BlockBodies(bodies=[default_node.genesis]))
-        self.send_msg(Blocks(blocks=[default_node.genesis]))
-        self.send_msg(NewBlockHashes(block_hashes=[BlockHash(number=1, hash=new_block.block_header.hash)]))
-        self.send_msg(NewBlock(block=new_block))
-        self.send_msg(GetTerminalBlockHashes())
-        self.send_msg(TerminalBlockHashes(hashes=[blocks[0]]))
-        self.send_msg(Transactions(transactions=[new_transaction]))
+            """ This triggers panic of conflux now """
+            block = create_block(tip, block_time, 1)
+            self.node.send_protocol_msg(NewBlock(block=block))
+            tip = block.block_header.hash
+            blocks.append(block)
+            block_time += 1
 
         # wait_for_block_count(self.nodes[0], self.block_number)
         # sync_blocks(self.nodes)

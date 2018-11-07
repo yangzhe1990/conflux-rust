@@ -27,6 +27,9 @@ use {
     NetworkContext as NetworkContextTrait, NetworkIoMessage,
     NetworkProtocolHandler, PeerId, PeerInfo, ProtocolId,
 };
+use std::collections::BinaryHeap;
+use std::time::Instant;
+use std::cmp::Ordering;
 use keccak_hash::keccak;
 use ethkey::sign;
 
@@ -46,6 +49,7 @@ const DISCOVERY_REFRESH: TimerToken = SYS_TIMER + 4;
 const FAST_DISCOVERY_REFRESH: TimerToken = SYS_TIMER + 5;
 const DISCOVERY_ROUND: TimerToken = SYS_TIMER + 6;
 const NODE_TABLE: TimerToken = SYS_TIMER + 7;
+const SEND_DELAYED_MESSAGES: TimerToken = SYS_TIMER + 8;
 
 pub const DEFAULT_HOUSEKEEPING_TIMEOUT: Duration = Duration::from_secs(1);
 // for DISCOVERY_REFRESH TimerToken
@@ -100,8 +104,7 @@ impl UdpChannel {
 pub struct UdpIoContext<'a> {
     pub channel: &'a RwLock<UdpChannel>,
     pub trusted_nodes: &'a RwLock<NodeTable>,
-    pub untrusted_nodes: &'a RwLock<NodeTable>,
-}
+    pub untrusted_nodes: &'a RwLock<NodeTable>,}
 
 impl<'a> UdpIoContext<'a> {
     pub fn new(
@@ -157,7 +160,7 @@ impl NetworkService {
         NetworkService {
             io_service: None,
             inner: None,
-            config: config,
+            config,
         }
     }
     /// Create and start the event loop inside the NetworkService
@@ -166,7 +169,12 @@ impl NetworkService {
         self.io_service = Some(raw_io_service);
 
         if self.inner.is_none() {
-            let inner = Arc::new(NetworkServiceInner::new(&self.config)?);
+            let inner = Arc::new(
+                match self.config.test_mode {
+                    true => NetworkServiceInner::new_with_latency(&self.config)?,
+                    false => NetworkServiceInner::new(&self.config)?
+                }
+            );
             self.io_service
                 .as_ref()
                 .unwrap()
@@ -231,15 +239,26 @@ impl NetworkService {
     /// Sign a challenge to provide self NodeId
     pub fn sign_challenge(&self, challenge: Vec<u8>) -> Result<Vec<u8>, Error> {
         let hash = keccak(challenge);
-        let inner = self.inner.as_ref().unwrap();
-        let signature = match sign(inner.metadata.read().keys.secret(), &hash) {
-            Ok(s) => s,
-            Err(e) => {
-                warn!(target: "network", "Error signing hello packet");
-                return Err(Error::from(e));
-            }
-        };
-        Ok(signature[..].to_owned())
+        if let Some(ref inner) = self.inner {
+            let signature = match sign(inner.metadata.read().keys.secret(), &hash) {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!(target: "network", "Error signing hello packet");
+                    return Err(Error::from(e));
+                }
+            };
+            Ok(signature[..].to_owned())
+        } else {
+            Err("Network service not started yet!".into())
+        }
+    }
+
+    pub fn add_latency(&self, id: NodeId, latency_ms: f64) -> Result<(), Error>{
+        if let Some(ref inner) = self.inner {
+            inner.add_latency(id, latency_ms)
+        } else {
+            Err("Network service not started yet!".into())
+        }
     }
 }
 
@@ -281,6 +300,48 @@ pub struct NetworkServiceInner {
     reserved_nodes: RwLock<HashSet<NodeId>>,
     nodes: RwLock<HashMap<NodeId, NodeEntry>>,
     dropped_nodes: RwLock<HashSet<StreamToken>>,
+
+    /// Delayed message queue and corresponding latency
+    delayed_queue: Option<DelayedQueue>,
+}
+
+struct DelayedQueue {
+    queue: Mutex<BinaryHeap<DelayMessageContext>>,
+    latencies: RwLock<HashMap<NodeId, Duration>>,
+}
+
+impl DelayedQueue {
+    fn new() -> Self {
+        DelayedQueue {
+            queue: Mutex::new(BinaryHeap::new()),
+            latencies: RwLock::new(HashMap::new()),
+        }
+    }
+
+    fn send_delayed_messages(&self) {
+        let queue_lock = &self.queue;
+        let mut queue = queue_lock.lock();
+        loop {
+            if queue.is_empty() {
+                break;
+            }
+            let send_now = queue.peek().map_or(false,|tuple: &DelayMessageContext | {
+                (*tuple).ts > Instant::now()
+            });
+            if send_now {
+                let context = queue.pop().unwrap();
+                context.session.lock().send_packet(
+                    &context.io,
+                    Some(context.protocol),
+                    session::PACKET_USER,
+                    &context.msg).unwrap();
+                // TODO: Handle result from send_packet()
+                continue;
+            } else {
+                break;
+            }
+        }
+    }
 }
 
 impl NetworkServiceInner {
@@ -402,6 +463,7 @@ impl NetworkServiceInner {
             reserved_nodes: RwLock::new(HashSet::new()),
             nodes: RwLock::new(HashMap::new()),
             dropped_nodes: RwLock::new(HashSet::new()),
+            delayed_queue: None,
         };
 
         for n in &config.boot_nodes {
@@ -416,6 +478,29 @@ impl NetworkServiceInner {
         }
 
         Ok(inner)
+    }
+
+    pub fn new_with_latency(
+    config: &NetworkConfiguration,
+    ) -> Result<NetworkServiceInner, Error> {
+        let r = NetworkServiceInner:: new(config);
+        if r.is_err() {
+            return r
+        }
+        let mut inner = r.unwrap();
+        inner.delayed_queue = Some(DelayedQueue::new());
+        Ok(inner)
+    }
+
+    pub fn add_latency(&self, peer: NodeId, latency_ms: f64) -> Result<(), Error> {
+        match self.delayed_queue {
+            Some(ref queue) => {
+                let mut latencies = queue.latencies.write();
+                latencies.insert(peer, Duration::from_millis(latency_ms as u64));
+                Ok(())
+            },
+            None => Err("conflux not in test mode, and does not support add_latency".into()),
+        }
     }
 
     pub fn get_ip_filter(&self) -> &IpFilter {
@@ -879,7 +964,7 @@ impl NetworkServiceInner {
                         &NetworkContext::new(
                             io,
                             protocol,
-                            self.sessions.clone(),
+                            self,
                         ),
                         stream,
                     );
@@ -889,7 +974,7 @@ impl NetworkServiceInner {
         for (protocol, data) in messages {
             if let Some(handler) = handlers.get(&protocol).clone() {
                 handler.on_message(
-                    &NetworkContext::new(io, protocol, self.sessions.clone()),
+                    &NetworkContext::new(io, protocol, self),
                     stream,
                     &data,
                 );
@@ -972,7 +1057,7 @@ impl NetworkServiceInner {
             if let Some(h) = self.handlers.read().get(&p).clone() {
                 println!("{}: peer {} disconnected", self.local_addr(), token);
                 h.on_peer_disconnected(
-                    &NetworkContext::new(io, p, self.sessions.clone()),
+                    &NetworkContext::new(io, p, self),
                     token,
                 );
             }
@@ -992,7 +1077,7 @@ impl NetworkServiceInner {
     ) where
         F: FnOnce(&NetworkContext),
     {
-        let context = NetworkContext::new(io, protocol, self.sessions.clone());
+        let context = NetworkContext::new(io, protocol, self);
         action(&context);
     }
 
@@ -1178,6 +1263,16 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                 self.untrusted_nodes.write().save();
                 self.untrusted_nodes.write().clear_useless();
             }
+            SEND_DELAYED_MESSAGES => {
+                match self.delayed_queue {
+                    Some(ref queue) => {
+                        queue.send_delayed_messages();
+                    }
+                    None => {
+                        error!(target:"network", "SEND_DELAYED_MESSAGES is triggered when delayed_queuq is None");
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -1200,7 +1295,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                 h.initialize(&NetworkContext::new(
                     io,
                     *protocol,
-                    self.sessions.clone(),
+                    self,
                 ));
                 self.handlers.write().insert(*protocol, h);
                 let mut metadata = self.metadata.write();
@@ -1331,37 +1426,100 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 }
 
+struct DelayMessageContext {
+    ts: Instant,
+    io: IoContext<NetworkIoMessage>,
+    protocol: ProtocolId,
+    session: SharedSession,
+    msg: Vec<u8>,
+}
+
+impl DelayMessageContext {
+    pub fn new(
+        ts: Instant,
+        io: IoContext<NetworkIoMessage>,
+        protocol: ProtocolId,
+        session: SharedSession,
+        msg: Vec<u8>,
+    ) -> Self {
+        DelayMessageContext{
+            ts,
+            io,
+            protocol,
+            session,
+            msg,
+        }
+    }
+}
+
+impl Ord for DelayMessageContext {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.ts.cmp(&other.ts)
+    }
+}
+
+impl PartialOrd for DelayMessageContext {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Eq for DelayMessageContext {}
+
+impl PartialEq for DelayMessageContext {
+    fn eq(&self, other: &Self) -> bool { self.ts == other.ts}
+}
+
 pub struct NetworkContext<'a> {
     io: &'a IoContext<NetworkIoMessage>,
     protocol: ProtocolId,
-    sessions: Arc<RwLock<Slab<SharedSession>>>,
+    network_service: &'a NetworkServiceInner,
 }
 
 impl<'a> NetworkContext<'a> {
     fn new(
         io: &'a IoContext<NetworkIoMessage>,
         protocol: ProtocolId,
-        sessions: Arc<RwLock<Slab<SharedSession>>>,
+        network_service: &'a NetworkServiceInner,
     ) -> NetworkContext<'a> {
         NetworkContext {
             io,
             protocol,
-            sessions,
+            network_service,
         }
     }
 }
 
 impl<'a> NetworkContextTrait for NetworkContext<'a> {
+
     fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error> {
-        let session = { self.sessions.read().get(peer).cloned() };
+        let session = { self.network_service.sessions.read().get(peer).cloned() };
         trace!(target: "network", "Sending {} bytes to {}", msg.len(), peer);
         if let Some(session) = session {
-            session.lock().send_packet(
-                self.io,
-                Some(self.protocol),
-                session::PACKET_USER,
-                &msg,
-            )?;
+            let latency = self.network_service.delayed_queue.as_ref().map_or(None,|q| {
+                session.lock().metadata.id.map_or(None,|id| {
+                    q.latencies.read().get(&id).map(|latency| {
+                        latency.clone()
+                    })
+                })
+            });
+            match latency {
+                Some(latency) => {
+                    let q = self.network_service.delayed_queue.as_ref().unwrap();
+                    let mut queue = q.queue.lock();
+                    queue.push(DelayMessageContext::new(
+                        Instant::now() + latency, self.io.clone(), self.protocol, session, msg));
+                    self.io.register_timer_once(SEND_DELAYED_MESSAGES, latency)?;
+                }
+                None => {
+                    session.lock().send_packet(
+                        self.io,
+                        Some(self.protocol),
+                        session::PACKET_USER,
+                        &msg,
+                    )?;
+                }
+            }
             // TODO: Handle result from send_packet()
         }
         Ok(())
@@ -1369,7 +1527,7 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
 
     fn disconnect_peer(&self, peer: PeerId) {
         // FIXME: Here we cannot get the handler to call on_peer_disconnected()
-        let sessions = self.sessions.read();
+        let sessions = self.network_service.sessions.read();
         if let Some(session) = sessions.get(peer).cloned() {
             let mut sess = session.lock();
             if !sess.expired() {

@@ -100,6 +100,7 @@ pub struct NetworkConfiguration {
     pub node_table_timeout: Duration,
     /// Connection lifetime threshold for promotion
     pub connection_lifetime_for_promotion: Duration,
+    pub test_mode: bool,
 }
 
 impl Default for NetworkConfiguration {
@@ -128,6 +129,7 @@ impl NetworkConfiguration {
             discovery_round_timeout: DEFAULT_DISCOVERY_ROUND_TIMEOUT,
             node_table_timeout: DEFAULT_NODE_TABLE_TIMEOUT,
             connection_lifetime_for_promotion: DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION,
+            test_mode: false,
         }
     }
 

@@ -7,7 +7,7 @@ import os
 
 PortSeed.n = os.getpid()
 
-tmpdir = tempfile.mkdtemp(prefix="test")
+tmpdir = tempfile.mkdtemp(prefix="test", dir="/tmp")
 nodes = []
 for i in range(3):
     initialize_datadir(tmpdir, i)

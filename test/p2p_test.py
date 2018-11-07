@@ -44,17 +44,17 @@ class P2PTest(ConfluxTestFramework):
             # Use the mininode and blocktools functionality to manually build a block
             # Calling the generate() rpc is easier, but this allows us to exactly
             # control the blocks and transactions.
-            block = create_block(tip, block_time, self.difficulty)
 
             """ This triggers panic of conflux now """
+            block = create_block(tip, block_time, self.difficulty)
             self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block))
             tip = block.block_header.hash
             blocks.append(block)
             block_time += 1
         wait_for_block_count(self.nodes[0], self.block_number)
         sync_blocks(self.nodes)
-        # self.nodes[0].generate(1)
-        # wait_for_block_count(self.nodes[0], self.block_number+1)
+        self.nodes[0].generate(1)
+        wait_for_block_count(self.nodes[0], self.block_number+1)
         print("pass")
         while True:
             pass

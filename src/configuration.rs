@@ -17,6 +17,7 @@ pub struct Configuration {
     pub netconf_dir: Option<String>,
     pub public_address: Option<String>,
     pub ledger_cache_size: Option<usize>,
+    pub test_mode: bool,
 }
 
 impl Default for Configuration {
@@ -32,6 +33,7 @@ impl Default for Configuration {
             netconf_dir: None,
             public_address: None,
             ledger_cache_size: None,
+            test_mode: false,
         }
     }
 }
@@ -95,6 +97,10 @@ impl Configuration {
                 config.ledger_cache_size =
                     cache_size.as_integer().map(|x| x as usize);
             }
+            if let Some(test_mode) = config_value.get("test-mode") {
+                config.test_mode =
+                    test_mode.as_bool().map_or(false, |x| x as bool);
+            }
         }
 
         if let Some(port) = matches.value_of("port") {
@@ -143,6 +149,11 @@ impl Configuration {
         if let Some(public_address) = matches.value_of("public-address") {
             config.public_address = Some(public_address.to_owned());
         }
+        if let Some(test_mode) = matches.value_of("test-mode") {
+            config.test_mode = test_mode
+                .parse()
+                .map_err(|_| "test-mode not boolean".to_owned())?;
+        }
         Ok(config)
     }
 
@@ -169,6 +180,7 @@ impl Configuration {
                 }
             };
         }
+        network_config.test_mode = self.test_mode;
         network_config
     }
 

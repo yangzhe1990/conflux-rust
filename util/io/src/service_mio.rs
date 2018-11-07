@@ -81,6 +81,7 @@ where Message: Send + Sized
 }
 
 /// IO access point. This is passed to all IO handlers and provides an interface to the IO subsystem.
+#[derive(Clone)]
 pub struct IoContext<Message>
 where Message: Send + Sync + 'static
 {

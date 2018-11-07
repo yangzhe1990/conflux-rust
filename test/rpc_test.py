@@ -1,3 +1,9 @@
+import datetime
+import time
+
+from conflux.messages import GetBlockHeaders
+from conflux.utils import int_to_hex
+from test_framework.mininode import network_thread_start, P2PInterface
 from test_framework.test_framework import ConfluxTestFramework
 from test_framework.util import assert_equal, connect_nodes, get_peer_addr, wait_until
 
@@ -22,6 +28,7 @@ class RpcTest(ConfluxTestFramework):
         self._test_getbestblockhash()
         self._test_getblock()
         self._test_getpeerinfo()
+        self._test_addlatency()
 
         # Test stop at last
         self._test_stop()
@@ -66,6 +73,24 @@ class RpcTest(ConfluxTestFramework):
         except Exception:
             assert False
 
+    def _test_addlatency(self):
+        class DefaultNode(P2PInterface):
+            def on_block_headers(self, headers):
+                assert (datetime.datetime.now() - self.start_time).total_seconds() * 1000 >= self.latency_ms
+                self.wait = False
+
+        default_node = self.nodes[0].add_p2p_connection(DefaultNode())
+        network_thread_start()
+        self.nodes[0].p2p.wait_for_status()
+        latency_ms = 1000
+        x, y = default_node.pub_key
+        self.nodes[0].addlatency("0x"+int_to_hex(x)[2:]+int_to_hex(y)[2:], latency_ms)
+        default_node.start_time = datetime.datetime.now()
+        default_node.latency_ms = latency_ms
+        default_node.wait = True
+        self.nodes[0].p2p.send_protocol_msg(GetBlockHeaders(hash=default_node.genesis.block_header.hash, max_blocks=1))
+        wait_until(lambda: not default_node.wait)
+
     def _test_stop(self):
         self.log.info("Test stop")
         try:
@@ -74,6 +99,7 @@ class RpcTest(ConfluxTestFramework):
             assert False
         except Exception:
             pass
+
 
 
 if __name__ == "__main__":
