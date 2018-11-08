@@ -45,6 +45,7 @@ use ethkey::{public_to_address, Generator, Random};
 
 use ctrlc::CtrlC;
 use ethereum_types::U256;
+use ethkey::{KeyPair, Secret};
 use hash::keccak;
 use log::LevelFilter;
 use log4rs::{
@@ -73,18 +74,24 @@ fn make_genesis(num_addresses: i32, secret_store: Arc<SecretStore>) -> Block {
     let mut rng = thread_rng();
 
     for _ in 0..num_addresses {
-        let kp = Random.generate().unwrap();
+        //        let kp = Random.generate().unwrap();
+        let sp: Secret =
+            "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"
+                .parse()
+                .unwrap();
+        let kp = KeyPair::from_secret(sp).unwrap();
+
         let address = public_to_address(kp.public());
-        if addresses.contains(&address) {
-            continue;
-        }
+        //        if addresses.contains(&address) {
+        //            continue;
+        //        }
         addresses.insert(address);
 
         let transaction = Transaction {
             nonce: U256::zero(),
             gas_price: U256::from(1_000_000_000_000_000u64),
             gas: U256::from(200u64),
-            value: U256::from(rng.gen::<u64>()),
+            value: U256::from(1_000_000_000),
             receiver: address.clone(),
         };
         genesis_transactions.push(transaction.sign(kp.secret()));
@@ -138,16 +145,6 @@ fn start(
         sync.clone(),
     ));
 
-    let txgen = Arc::new(TransactionGenerator::new(
-        consensus.clone(),
-        state_manager.clone(),
-        txpool.clone(),
-        secret_store.clone(),
-    ));
-    let txgen_handle = thread::spawn(move || {
-        TransactionGenerator::generate_transactions(txgen).unwrap();
-    });
-
     let event_loop = EventLoop::spawn();
 
     let rpc_deps = rpc::Dependencies {
@@ -174,8 +171,6 @@ fn start(
         sync,
         blockgen,
         secret_store.clone(),
-        //block_gen_handle,
-        txgen_handle,
     )))
 }
 

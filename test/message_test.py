@@ -27,27 +27,14 @@ class MessageTest(ConfluxTestFramework):
 
     def run_test(self):
         default_node = self.nodes[0].add_p2p_connection(DefaultNode())
-        another_genesis = Block(BlockHeader(difficulty=0))
-        assert default_node.genesis == another_genesis
-        assert default_node.genesis.block_header == another_genesis.block_header
-        assert create_transaction() == create_transaction()
         network_thread_start()
         self.nodes[0].p2p.wait_for_status()
-        # print(self.nodes[0].getbestblockhash())
-        # remote_genesis = self.nodes[0].getblock(default_node.genesis.block_header.get_hex_hash())
-        # print(remote_genesis)
-        # assert default_node.genesis == remote_genesis
-        """Start Some P2P Message Test From Here"""
-        blocks = [default_node.genesis.block_header.hash]
-        tip = default_node.genesis.block_header.hash
-        # b = self.nodes[0].getblock(self.nodes[0].getbestblockhash())
-        # block_time = int(b['timestamp'], 0) + 1
-        block_time = int(1)
 
         # Use the mininode and blocktools functionality to manually build a block
         # Calling the generate() rpc is easier, but this allows us to exactly
         # control the blocks and transactions.
-        new_block = create_block(tip, block_time)
+        blocks = [default_node.genesis.block_header.hash]
+        new_block = create_block(blocks[0], 1)
         new_transaction = create_transaction()
 
         self.send_msg(GetBlockHashes(hash=blocks[0], max_blocks=1))
@@ -64,10 +51,6 @@ class MessageTest(ConfluxTestFramework):
         # self.send_msg(TerminalBlockHashes(reqid=0, hashes=[blocks[0]]))
         self.send_msg(Transactions(transactions=[new_transaction]))
 
-        # wait_for_block_count(self.nodes[0], self.block_number)
-        # sync_blocks(self.nodes)
-        # self.nodes[0].generate(1)
-        # wait_for_block_count(self.nodes[0], self.block_number+1)
         print("pass")
         while True:
             pass

@@ -26,7 +26,8 @@ class P2PTest(ConfluxTestFramework):
     def setup_network(self):
         self.setup_nodes()
         for i in range(self.num_nodes - 1):
-            connect_nodes(self.nodes, i, i + 1)
+            for j in range(i+1, self.num_nodes):
+                connect_nodes(self.nodes, i, j)
 
     def run_test(self):
         default_node = self.nodes[0].add_p2p_connection(DefaultNode())
@@ -36,16 +37,12 @@ class P2PTest(ConfluxTestFramework):
         """Start Some P2P Message Test From Here"""
         blocks = [default_node.genesis.block_header.hash]
         tip = default_node.genesis.block_header.hash
-        # b = self.nodes[0].getblock(self.nodes[0].getbestblockhash())
-        # block_time = int(b['timestamp'], 0) + 1
-        block_time = int(1)
+        block_time = 1
 
-        for i in range(2, self.block_number + 1):
+        for i in range(1, self.block_number):
             # Use the mininode and blocktools functionality to manually build a block
             # Calling the generate() rpc is easier, but this allows us to exactly
             # control the blocks and transactions.
-
-            """ This triggers panic of conflux now """
             block = create_block(tip, block_time, self.difficulty)
             self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block))
             tip = block.block_header.hash
@@ -53,11 +50,9 @@ class P2PTest(ConfluxTestFramework):
             block_time += 1
         wait_for_block_count(self.nodes[0], self.block_number)
         sync_blocks(self.nodes)
-        self.nodes[0].generate(1)
-        wait_for_block_count(self.nodes[0], self.block_number+1)
+        # self.nodes[0].generate(1)
+        # wait_for_block_count(self.nodes[0], self.block_number+1)
         print("pass")
-        while True:
-            pass
 
 
 class DefaultNode(P2PInterface):

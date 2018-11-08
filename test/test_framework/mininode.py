@@ -22,6 +22,7 @@ import threading
 from conflux.transactions import Transaction
 from conflux.utils import hash32, hash20, sha3, int_to_bytes, sha3_256, ecrecover_to_pub, ec_random_keys, ecsign, \
     bytes_to_int, encode_int32, int_to_hex
+from test_framework.blocktools import make_genesis
 from test_framework.util import wait_until
 
 logger = logging.getLogger("TestFramework.mininode")
@@ -253,7 +254,7 @@ class P2PInterface(P2PConnection):
         # Default protocol version
         self.protocol = b'cfx'
         self.protocol_version = 1
-        self.genesis = Block(BlockHeader(difficulty=0))
+        self.genesis = make_genesis(10)
         self.best_block_hash = self.genesis.block_header.hash
         self.total_difficulty = 0
         self.blocks = {self.genesis.block_header.hash: self.genesis}

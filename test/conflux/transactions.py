@@ -66,6 +66,7 @@ class Transaction(rlp.Serializable):
         key = normalize_key(key)
 
         v, r, s = ecsign(rawhash, key)
+        v = v - 27
 
         ret = self.copy(
             v=v, r=r, s=s
@@ -111,8 +112,8 @@ class UnsignedTransaction(rlp.Serializable):
 def unsigned_tx_from_tx(tx):
     return UnsignedTransaction(
         nonce=tx.nonce,
-        gasprice=tx.gasprice,
-        startgas=tx.gas,
+        gas_price=tx.gas_price,
+        gas=tx.gas,
         value=tx.value,
         receiver=tx.receiver
     )

@@ -3,6 +3,7 @@ import time
 
 from conflux.messages import GetBlockHeaders
 from conflux.utils import int_to_hex
+from test_framework.blocktools import make_genesis
 from test_framework.mininode import network_thread_start, P2PInterface
 from test_framework.test_framework import ConfluxTestFramework
 from test_framework.util import assert_equal, connect_nodes, get_peer_addr, wait_until
@@ -12,15 +13,14 @@ class RpcTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
-        self.best_block_hash = None
-        self.block_bumber = 10
 
     def setup_network(self):
         self.setup_nodes()
 
     def run_test(self):
-        blocks = self.nodes[0].generate(self.block_bumber, 0)
-        self.best_block_hash = blocks[-1]
+        # blocks = self.nodes[0].generate(self.block_bumber, 0)
+        self.best_block_hash = make_genesis(10).block_header.hash
+        self.block_number = 1
 
         self._test_getblockcount()
         self._test_sayhello()
@@ -42,7 +42,7 @@ class RpcTest(ConfluxTestFramework):
     def _test_getblockcount(self):
         self.log.info("Test getblockcount")
         res = self.nodes[0].getblockcount()
-        assert_equal(self.block_bumber, res)
+        assert_equal(self.block_number, res)
 
     def _test_getbalance(self):
         self.log.info("Test getbalance")

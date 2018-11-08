@@ -173,7 +173,8 @@ class BlockHeader(rlp.Serializable):
         ("transactions_root", hash32),
         ("deferred_state_root", hash32),
         ("difficulty", big_endian_int),
-        ("referee_hashes", CountableList(hash32))
+        ("referee_hashes", CountableList(hash32)),
+        ("nonce", big_endian_int),
     ]
 
     def __init__(self,
@@ -183,7 +184,8 @@ class BlockHeader(rlp.Serializable):
                  transactions_root=trie.BLANK_ROOT,
                  deferred_state_root=trie.BLANK_ROOT,
                  difficulty=default_config['GENESIS_DIFFICULTY'],
-                 referee_hashes=[]):
+                 referee_hashes=[],
+                 nonce=0):
         # at the beginning of a method, locals() is a dict of all arguments
         fields = {k: v for k, v in locals().items() if
                   k not in ['self', '__class__']}
