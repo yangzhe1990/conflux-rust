@@ -12,6 +12,7 @@ pub mod block_header;
 pub mod epoch;
 pub mod transaction;
 
+pub use account::Account;
 pub use block::Block;
 pub use block_header::{BlockHeader, BlockHeaderBuilder};
 pub use epoch::EpochId;

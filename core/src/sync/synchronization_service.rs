@@ -4,12 +4,12 @@ use super::{
 use consensus::SharedConsensusGraph;
 use ethereum_types::H256;
 use network::{
-    node_table::NodeEntry, Error as NetworkError, NetworkConfiguration,
-    NetworkService, PeerInfo, ProtocolId,
+    node_table::{NodeEntry, NodeId},
+    Error as NetworkError, NetworkConfiguration, NetworkService, PeerInfo,
+    ProtocolId,
 };
 use primitives::Block;
 use std::sync::Arc;
-use network::node_table::NodeId;
 
 pub struct SynchronizationConfiguration {
     pub network: NetworkConfiguration,
@@ -42,7 +42,7 @@ impl SynchronizationService {
         )?;
         Ok(())
     }
-    
+
     pub fn announce_new_blocks(&self, hashes: &[H256]) {
         self.network.with_context(self.protocol, |io| {
             self.protocol_handler.announce_new_blocks(io, hashes);
@@ -73,7 +73,9 @@ impl SynchronizationService {
         self.network.sign_challenge(challenge)
     }
 
-    pub fn add_latency(&self, id: NodeId, latency_ms: f64) -> Result<(), NetworkError> {
+    pub fn add_latency(
+        &self, id: NodeId, latency_ms: f64,
+    ) -> Result<(), NetworkError> {
         self.network.add_latency(id, latency_ms)
     }
 }

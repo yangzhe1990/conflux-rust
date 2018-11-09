@@ -137,11 +137,11 @@ impl Rpc for RpcImpl {
             .state_manager
             .get_state_at(self.consensus.best_block_hash());
 
-        let acc = core::get_balance(&state, &addr);
-        if acc.is_none() {
+        let account = core::get_account(&state, &addr);
+        if account.is_none() {
             Err(RpcError::invalid_params("Unknown account"))
         } else {
-            Ok(acc.unwrap())
+            Ok(account.unwrap().balance)
         }
     }
 

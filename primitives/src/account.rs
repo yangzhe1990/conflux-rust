@@ -2,22 +2,33 @@ use ethereum_types::U256;
 use rlp::*;
 
 pub struct Account {
-    balance: U256,
-    nonce: U256,
+    pub balance: U256,
+    pub nonce: U256,
+}
+
+impl Default for Account {
+    fn default() -> Self {
+        Account {
+            balance: U256::zero(),
+            nonce: U256::zero(),
+        }
+    }
 }
 
 impl Decodable for Account {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        let vec = rlp.as_list()?;
         Ok(Account {
-            balance: vec[0],
-            nonce: vec[1],
+            balance: rlp.val_at(0)?,
+            nonce: rlp.val_at(1)?,
         })
     }
 }
 
 impl Encodable for Account {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2).append(&self.balance).append(&self.nonce);
+    fn rlp_append(&self, stream: &mut RlpStream) {
+        stream
+            .begin_list(2)
+            .append(&self.balance)
+            .append(&self.nonce);
     }
 }

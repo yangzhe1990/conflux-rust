@@ -8,7 +8,7 @@ extern crate rand;
 extern crate secret_store;
 
 use core::{
-    get_balance, get_nonce, SharedConsensusGraph, SharedTransactionPool, State,
+    get_account, SharedConsensusGraph, SharedTransactionPool, State,
     StateManager, StateManagerTrait,
 };
 use ethereum_types::{Address, U256};
@@ -94,7 +94,8 @@ impl TransactionGenerator {
             // Randomly generate the to-be-transferred value
             // based on the balance of sender
             let sender_address = public_to_address(sender_kp.public());
-            let sender_balance = get_balance(&state, &sender_address);
+            let sender_balance = get_account(&state, &sender_address)
+                .map(|account| account.balance);
             if sender_balance == None {
                 thread::sleep(interval);
                 continue;
@@ -106,8 +107,9 @@ impl TransactionGenerator {
             balance_to_transfer *= sender_balance;
 
             // Generate nonce for the transaction
-            let sender_state_nonce =
-                get_nonce(&state, &sender_address).unwrap();
+            let sender_state_nonce = get_account(&state, &sender_address)
+                .map(|account| account.nonce)
+                .unwrap();
             let entry = nonce_map
                 .entry(sender_address)
                 .or_insert(sender_state_nonce);

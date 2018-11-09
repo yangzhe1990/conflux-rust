@@ -263,19 +263,24 @@ impl SynchronizationProtocolHandler {
         let blocks = rlp.as_val::<GetBlocksResponse>()?;
         self.match_request(io, syn, peer_id, blocks.reqid)?;
 
-        let new_block_hashes: Vec<H256> = blocks.blocks.into_iter().map(|block| {
-            let hash = block.hash();
+        let new_block_hashes: Vec<H256> = blocks
+            .blocks
+            .into_iter()
+            .map(|block| {
+                let hash = block.hash();
 
-            if !self.graph.contains_block_header(&hash) {
-                self.graph.insert_block_header(block.block_header.clone());
-            }
-            if !self.graph.contains_block(&hash) {
-                self.graph.insert_block(block);
-                Some(hash)
-            } else {
-                None
-            }
-        }).filter_map(|h| {h}).collect();
+                if !self.graph.contains_block_header(&hash) {
+                    self.graph.insert_block_header(block.block_header.clone());
+                }
+                if !self.graph.contains_block(&hash) {
+                    self.graph.insert_block(block);
+                    Some(hash)
+                } else {
+                    None
+                }
+            })
+            .filter_map(|h| h)
+            .collect();
 
         if !new_block_hashes.is_empty() {
             let new_block_hash_msg: Box<dyn Message> =

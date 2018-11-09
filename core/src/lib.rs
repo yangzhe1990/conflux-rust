@@ -26,10 +26,10 @@ mod sync;
 pub mod transaction_pool;
 
 pub use consensus::{ConsensusGraph, SharedConsensusGraph};
-pub use executor::{get_balance, get_nonce};
+pub use executor::get_account;
 pub use network::PeerInfo;
 pub use storage::{
-    state::State,
+    state::{State, StateTrait},
     state_manager::{StateManager, StateManagerTrait},
 };
 pub use sync::{

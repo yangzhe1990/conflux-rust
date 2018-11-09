@@ -247,17 +247,15 @@ impl ConsensusGraphInner {
             let mut state = self
                 .state_manager
                 .get_state_at(self.arena[new_pivot_chain[fork_at - 1]].hash);
-            {
-                let executor = Executor::new(&mut state);
-                reversed_indices.iter().rev().for_each(|index| {
-                    let block =
-                        block_by_hash.get(&self.arena[*index].hash).unwrap();
-                    for transaction in &block.transactions {
-                        executor.apply(transaction);
-                    }
-                });
-            }
-            state.commit(self.arena[new_pivot_chain[fork_at]].hash);
+            let mut executor = Executor::new(&mut state);
+            reversed_indices.iter().rev().for_each(|index| {
+                let block =
+                    block_by_hash.get(&self.arena[*index].hash).unwrap();
+                for transaction in &block.transactions {
+                    executor.apply(transaction);
+                }
+            });
+            executor.commit(self.arena[new_pivot_chain[fork_at]].hash);
             fork_at += 1;
         }
 
