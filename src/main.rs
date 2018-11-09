@@ -64,6 +64,7 @@ use std::{
     process,
     sync::Arc,
 };
+use txgen::TransactionGenerator;
 
 fn make_genesis(num_addresses: i32, secret_store: Arc<SecretStore>) -> Block {
     let mut addresses = HashSet::new();
@@ -136,11 +137,23 @@ fn start(
 
     let txpool = Arc::new(TransactionPool::with_capacity(10000));
 
+    let txgen = Arc::new(TransactionGenerator::new(
+        consensus.clone(),
+        state_manager.clone(),
+        txpool.clone(),
+        secret_store.clone(),
+    ));
+
     let blockgen = Arc::new(BlockGenerator::new(
         consensus.clone(),
         txpool.clone(),
         sync.clone(),
+        txgen.clone(),
     ));
+
+//    let txgen_handle = thread::spawn(move || {
+//        TransactionGenerator::generate_transactions(txgen).unwrap();
+//    });
 
     let event_loop = EventLoop::spawn();
 

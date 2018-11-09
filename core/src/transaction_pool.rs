@@ -21,9 +21,10 @@ impl OrderedTransaction {
 
 impl Ord for OrderedTransaction {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.transaction.gas_price < other.transaction.gas_price {
+        if self.transaction.hash() < other.transaction.hash() {
             return Ordering::Less;
-        } else if self.transaction.gas_price > other.transaction.gas_price {
+        }
+        if self.transaction.hash() > other.transaction.hash() {
             return Ordering::Greater;
         } else {
             return Ordering::Equal;
@@ -39,7 +40,7 @@ impl PartialOrd for OrderedTransaction {
 
 impl PartialEq for OrderedTransaction {
     fn eq(&self, other: &Self) -> bool {
-        self.transaction.gas_price == other.transaction.gas_price
+        self.transaction.hash() == other.transaction.hash()
     }
 }
 
@@ -48,7 +49,6 @@ impl Eq for OrderedTransaction {}
 pub struct TransactionPoolInner {
     hashes: HashSet<H256>,
     transaction_set: BTreeSet<OrderedTransaction>,
-    transaction_heap: BinaryHeap<OrderedTransaction>,
 }
 
 impl TransactionPoolInner {
@@ -56,7 +56,6 @@ impl TransactionPoolInner {
         TransactionPoolInner {
             hashes: HashSet::new(),
             transaction_set: BTreeSet::new(),
-            transaction_heap: BinaryHeap::new(),
         }
     }
 }
@@ -84,7 +83,7 @@ impl TransactionPool {
             return false;
         }
 
-        let hash = transaction.transaction.hash();
+        let hash = transaction.hash();
         if inner.hashes.contains(&hash) {
             // already exists
             return false;
@@ -94,24 +93,21 @@ impl TransactionPool {
         inner
             .transaction_set
             .insert(OrderedTransaction::new(transaction.clone()));
-        inner
-            .transaction_heap
-            .push(OrderedTransaction::new(transaction.clone()));
 
         true
     }
 
-    pub fn fetch(&self) -> Option<SignedTransaction> {
+    pub fn remove(&mut self, transaction: SignedTransaction) -> bool {
         let mut inner = self.inner.write();
-
-        if inner.transaction_heap.is_empty() {
-            return None;
+        let hash = transaction.hash();
+        if !inner.hashes.contains(&hash) {
+            return false;
         }
-
-        let transaction = inner.transaction_heap.pop().unwrap();
-        inner.hashes.remove(&transaction.transaction.hash());
-        inner.transaction_set.remove(&transaction);
-        Some(transaction.transaction)
+        inner.hashes.remove(&hash);
+        inner
+            .transaction_set
+            .remove(&OrderedTransaction::new(transaction.clone()));
+        true
     }
 
     /// pack at most num_txs transactions randomly

@@ -6,6 +6,7 @@ extern crate parking_lot;
 extern crate primitives;
 extern crate rand;
 extern crate rlp;
+extern crate txgen;
 
 #[macro_use]
 extern crate log;
@@ -23,6 +24,7 @@ use std::{
     sync::{mpsc, Arc, Mutex},
     thread, time,
 };
+use txgen::SharedTransactionGenerator;
 
 enum MiningState {
     Start,
@@ -45,6 +47,7 @@ pub struct ProofOfWorkSolution {
 pub struct BlockGenerator {
     consensus: SharedConsensusGraph,
     txpool: SharedTransactionPool,
+    txgen: SharedTransactionGenerator,
     sync: SharedSynchronizationService,
     state: RwLock<MiningState>,
     workers: Mutex<Vec<(Worker, mpsc::Sender<ProofOfWorkProblem>)>>,
@@ -137,12 +140,13 @@ impl Worker {
 impl BlockGenerator {
     pub fn new(
         consensus: SharedConsensusGraph, txpool: SharedTransactionPool,
-        sync: SharedSynchronizationService,
+        sync: SharedSynchronizationService, txgen: SharedTransactionGenerator,
     ) -> Self
     {
         BlockGenerator {
             consensus,
             txpool,
+            txgen,
             sync,
             state: RwLock::new(MiningState::Start),
             workers: Mutex::new(Vec::new()),
@@ -208,22 +212,27 @@ impl BlockGenerator {
     }
 
     /// Generate a block with fake transactions
-    pub fn generate_block(&self, num_txs: usize) {
+    pub fn generate_block(&self, num_txs: usize) -> H256 {
         for _ in 0..num_txs {
-            let tx = Transaction {
-                nonce: U256::zero(),
-                gas_price: U256::from(1_000_000_000_000_000u64),
-                gas: U256::from(200u64),
-                value: U256::zero(),
-                receiver: Address::default(),
-            };
-            let secret :Secret = "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f".parse().unwrap();
-            let tx = tx.sign(&secret);
+            let tx = self.txgen.generate_transaction();
+            //            let tx = Transaction {
+            //                nonce: U256::zero(),
+            //                gas_price: U256::from(1_000_000_000_000_000u64),
+            //                gas: U256::from(200u64),
+            //                value: U256::zero(),
+            //                receiver: Address::default(),
+            //            };
+            //            let secret :Secret =
+            // "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f".
+            // parse().unwrap();            let tx =
+            // tx.sign(&secret);
             self.txpool.add(tx);
         }
         let block = self.assemble_new_block(num_txs);
+        let hash = block.hash();
         debug!(target:"sync", "generate_block with block header:{:?}, hash:{:?}", block.block_header, block.hash());
         self.on_mined_block(block);
+        hash
     }
 
     /// Start num_worker new workers
@@ -277,10 +286,11 @@ impl BlockGenerator {
                 let mut new_solution = receiver.try_recv();
                 loop {
                     // check if the block received valid
-                    if new_solution.is_ok() && !validate(
-                        &current_problem.unwrap(),
-                        &new_solution.unwrap(),
-                    ) {
+                    if new_solution.is_ok()
+                        && !validate(
+                            &current_problem.unwrap(),
+                            &new_solution.unwrap(),
+                        ) {
                         new_solution = receiver.try_recv();
                     } else {
                         break;

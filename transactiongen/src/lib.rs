@@ -11,11 +11,11 @@ use core::{
     get_account, SharedConsensusGraph, SharedTransactionPool, State,
     StateManager, StateManagerTrait,
 };
-use ethereum_types::{Address, U256};
+use ethereum_types::{Address, H512, U256, U512};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
 use network::Error;
 use parking_lot::RwLock;
-use primitives::Transaction;
+use primitives::{SignedTransaction, Transaction};
 use rand::prelude::*;
 use secret_store::SharedSecretStore;
 use std::{collections::HashMap, sync::Arc, thread, time};
@@ -33,6 +33,8 @@ pub struct TransactionGenerator {
     state: RwLock<TransGenState>,
 }
 
+pub type SharedTransactionGenerator = Arc<TransactionGenerator>;
+
 impl TransactionGenerator {
     pub fn new(
         consensus: SharedConsensusGraph, state_manager: Arc<StateManager>,
@@ -46,6 +48,55 @@ impl TransactionGenerator {
             secret_store,
             state: RwLock::new(TransGenState::Start),
         }
+    }
+
+    pub fn generate_transaction(&self) -> SignedTransaction {
+        let is_send_to_new_address = true;
+        let receiver_address = match is_send_to_new_address {
+            false => {
+                let account_count = self.secret_store.count();
+                let index: usize = random::<usize>() % account_count;
+                let kp = self.secret_store.get_keypair(index);
+                public_to_address(kp.public())
+            }
+            true => {
+                let kp = Random.generate().expect("Fail to generate KeyPair.");
+                self.secret_store.insert(kp.clone());
+                public_to_address(kp.public())
+            }
+        };
+
+        let account_count = self.secret_store.count();
+        let sender_index: usize = random::<usize>() % account_count;
+        let sender_kp = self.secret_store.get_keypair(sender_index);
+        let sender_address = public_to_address(sender_kp.public());
+
+        let state = self
+            .state_manager
+            .get_state_at(self.consensus.best_block_hash());
+        let sender_balance = get_account(&state, &sender_address)
+            .map(|account| account.balance)
+            .unwrap();
+
+        let sender_nonce = get_account(&state, &sender_address)
+            .map(|account| account.nonce)
+            .unwrap();
+
+        let mut balance_to_transfer: U256 = 0.into();
+        if sender_balance > 0.into() {
+            balance_to_transfer = U256::from(
+                U512::from(H512::random()) % U512::from(sender_balance),
+            );
+        }
+
+        let tx = Transaction {
+            nonce: sender_nonce,
+            gas_price: U256::from(1_000_000_000_000_000u64),
+            gas: U256::from(200u64),
+            value: balance_to_transfer,
+            receiver: receiver_address,
+        };
+        tx.sign(sender_kp.secret())
     }
 
     pub fn generate_transactions(
