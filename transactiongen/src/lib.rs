@@ -76,11 +76,11 @@ impl TransactionGenerator {
             .get_state_at(self.consensus.best_block_hash());
         let sender_balance = get_account(&state, &sender_address)
             .map(|account| account.balance)
-            .unwrap();
+            .unwrap_or(0.into());
 
         let sender_nonce = get_account(&state, &sender_address)
             .map(|account| account.nonce)
-            .unwrap();
+            .unwrap_or(0.into());
 
         let mut balance_to_transfer: U256 = 0.into();
         if sender_balance > 0.into() {

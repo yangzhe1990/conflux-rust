@@ -97,7 +97,7 @@ impl TransactionPool {
         true
     }
 
-    pub fn remove(&mut self, transaction: SignedTransaction) -> bool {
+    pub fn remove(&self, transaction: SignedTransaction) -> bool {
         let mut inner = self.inner.write();
         let hash = transaction.hash();
         if !inner.hashes.contains(&hash) {

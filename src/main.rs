@@ -122,9 +122,12 @@ fn start(
     let state_manager = Arc::new(StateManager::default());
     state_manager.initialize(genesis_block.hash());
 
+    let txpool = Arc::new(TransactionPool::with_capacity(10000));
+
     let consensus = Arc::new(ConsensusGraph::with_genesis_block(
         genesis_block,
         state_manager.clone(),
+        txpool.clone(),
     ));
 
     let sync_config = core::SynchronizationConfiguration {
@@ -134,8 +137,6 @@ fn start(
     let mut sync = core::SynchronizationService::new(sync_config);
     sync.start().unwrap();
     let sync = Arc::new(sync);
-
-    let txpool = Arc::new(TransactionPool::with_capacity(10000));
 
     let txgen = Arc::new(TransactionGenerator::new(
         consensus.clone(),

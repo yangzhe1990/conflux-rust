@@ -1,4 +1,4 @@
-use super::{StateManager};
+use super::{StateManager, transaction_pool::SharedTransactionPool};
 use ethereum_types::{H256, U256};
 use executor::Executor;
 use parking_lot::RwLock;
@@ -271,13 +271,14 @@ pub struct ConsensusGraph {
     pub blocks: RwLock<HashMap<H256, Block>>,
     pub inner: RwLock<ConsensusGraphInner>,
     genesis_block_hash: H256,
+    txpool: SharedTransactionPool,
 }
 
 pub type SharedConsensusGraph = Arc<ConsensusGraph>;
 
 impl ConsensusGraph {
     pub fn with_genesis_block(
-        genesis_block: Block, state_mananger: Arc<StateManager>,
+        genesis_block: Block, state_mananger: Arc<StateManager>, txpool: SharedTransactionPool,
     ) -> Self {
         let genesis_block_hash = genesis_block.hash();
 
@@ -291,6 +292,7 @@ impl ConsensusGraph {
             )),
             blocks: RwLock::new(blocks),
             genesis_block_hash,
+            txpool,
         }
     }
 
@@ -306,6 +308,10 @@ impl ConsensusGraph {
     pub fn on_new_block(&self, block: Block) {
         let mut blocks = self.blocks.write();
         blocks.insert(block.hash(), block.clone());
+
+        for tx in block.transactions.iter() {
+            self.txpool.remove(tx.clone());
+        }
 
         self.inner.write().on_new_block(&block, &*blocks);
     }
