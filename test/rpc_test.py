@@ -1,6 +1,8 @@
 import datetime
 import time
 
+import eth_utils
+
 from conflux.messages import GetBlockHeaders
 from conflux.utils import int_to_hex
 from test_framework.blocktools import make_genesis
@@ -58,7 +60,7 @@ class RpcTest(ConfluxTestFramework):
 
     def _test_getblock(self):
         self.log.info("Test getbestblockhash")
-        res = self.nodes[0].getblock(self.best_block_hash)
+        res = self.nodes[0].getblock(eth_utils.encode_hex(self.best_block_hash))
         assert_equal(self.best_block_hash, res['hash'])
 
     def _test_getpeerinfo(self):

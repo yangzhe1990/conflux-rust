@@ -316,7 +316,7 @@ class P2PInterface(P2PConnection):
                     self.on_block_bodies(bodies)
                 elif packet_type == NEW_BLOCK:
                     new_block = rlp.decode(payload, NewBlock)
-                    self._log_message("receive", "NEW_BLOCK, hash:{}".format(new_block.header.hash))
+                    self._log_message("receive", "NEW_BLOCK, hash:{}".format(new_block.block.block_header.hash))
                 elif packet_type == GET_BLOCK_HASHES:
                     gethashes = rlp.decode(payload, GetBlockHashes)
                     self._log_message("receive", "GET_BLOCK_HASHES, hash:{}, max_blocks:{}"

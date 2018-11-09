@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
+from eth_utils import decode_hex
 from rlp.sedes import Binary, BigEndianInt
 
 from conflux import utils
-from conflux.utils import encode_hex, bytes_to_int
+from conflux.utils import encode_hex, bytes_to_int, privtoaddr, parse_as_int
 from test_framework.blocktools import create_block
 from test_framework.test_framework import ConfluxTestFramework
 # from test_framework.mininode import (
@@ -31,6 +32,7 @@ class P2PTest(ConfluxTestFramework):
 
     def run_test(self):
         default_node = self.nodes[0].add_p2p_connection(DefaultNode())
+        print("genesis", encode_hex(default_node.genesis.block_header.hash))
         network_thread_start()
         self.nodes[0].p2p.wait_for_status()
 
@@ -43,13 +45,19 @@ class P2PTest(ConfluxTestFramework):
             # Use the mininode and blocktools functionality to manually build a block
             # Calling the generate() rpc is easier, but this allows us to exactly
             # control the blocks and transactions.
-            block = create_block(tip, block_time, self.difficulty)
-            self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block))
-            tip = block.block_header.hash
-            blocks.append(block)
-            block_time += 1
+            # block = create_block(tip, block_time, self.difficulty)
+            # self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block))
+            # tip = block.block_header.hash
+            # blocks.append(block)
+            # block_time += 1
+            # print("generate block", encode_hex(tip))
+            self.nodes[0].generate(1, 10)
         wait_for_block_count(self.nodes[0], self.block_number)
         sync_blocks(self.nodes)
+        print(self.nodes[0].getbestblockhash())
+        balance = self.nodes[0].getbalance(eth_utils.encode_hex(privtoaddr(decode_hex("0x46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"))))
+        print(parse_as_int(balance))
+        # assert_equal(self.nodes[0].getbestblockhash()[2:], encode_hex(tip))
         # self.nodes[0].generate(1)
         # wait_for_block_count(self.nodes[0], self.block_number+1)
         print("pass")

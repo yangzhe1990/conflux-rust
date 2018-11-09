@@ -1,5 +1,5 @@
 use super::{State, StateTrait};
-use ethereum_types::{Address, U256};
+use ethereum_types::{Address};
 use primitives::{Account, EpochId, SignedTransaction};
 use rlp::{decode, encode};
 use std::collections::HashMap;

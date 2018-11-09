@@ -41,7 +41,7 @@ use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
 use core::{ConsensusGraph, StateManager, TransactionPool};
-use ethkey::{public_to_address, Generator, Random};
+use ethkey::{public_to_address};
 
 use ctrlc::CtrlC;
 use ethereum_types::U256;
@@ -55,7 +55,6 @@ use log4rs::{
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
 use primitives::{Block, BlockHeaderBuilder, Transaction};
-use rand::{thread_rng, Rng};
 use rlp::RlpStream;
 use secret_store::SecretStore;
 use std::{
@@ -64,14 +63,11 @@ use std::{
     io::{self as stdio, Write},
     process,
     sync::Arc,
-    thread,
 };
-use txgen::TransactionGenerator;
 
 fn make_genesis(num_addresses: i32, secret_store: Arc<SecretStore>) -> Block {
     let mut addresses = HashSet::new();
     let mut genesis_transactions = Vec::new();
-    let mut rng = thread_rng();
 
     for _ in 0..num_addresses {
         //        let kp = Random.generate().unwrap();
@@ -123,6 +119,7 @@ fn start(
     let genesis_block = make_genesis(10, secret_store.clone());
 
     let state_manager = Arc::new(StateManager::default());
+    state_manager.initialize(genesis_block.hash());
 
     let consensus = Arc::new(ConsensusGraph::with_genesis_block(
         genesis_block,

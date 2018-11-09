@@ -1,4 +1,4 @@
-use super::{State, StateManager};
+use super::{StateManager};
 use ethereum_types::{H256, U256};
 use executor::Executor;
 use parking_lot::RwLock;
@@ -10,7 +10,7 @@ use std::{
     iter::FromIterator,
     sync::Arc,
 };
-use storage::{state::StateTrait, state_manager::StateManagerTrait};
+use storage::{state_manager::StateManagerTrait};
 
 const NULL: usize = !0;
 
@@ -122,6 +122,9 @@ impl ConsensusGraphInner {
         me = self.genesis_block_index;
         loop {
             new_pivot_chain.push(me);
+            if self.arena[me].children.len() == 0 {
+                break;
+            }
             let heaviest = self.arena[me]
                 .children
                 .iter()
@@ -129,9 +132,6 @@ impl ConsensusGraphInner {
                 .cloned()
                 .unwrap();
             me = heaviest;
-            if self.arena[me].children.len() == 0 {
-                break;
-            }
         }
 
         let mut fork_at = 0;

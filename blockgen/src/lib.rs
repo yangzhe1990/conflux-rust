@@ -7,6 +7,9 @@ extern crate primitives;
 extern crate rand;
 extern crate rlp;
 
+#[macro_use]
+extern crate log;
+
 use core::{
     SharedConsensusGraph, SharedSynchronizationService, SharedTransactionPool,
 };
@@ -219,6 +222,7 @@ impl BlockGenerator {
             self.txpool.add(tx);
         }
         let block = self.assemble_new_block(num_txs);
+        debug!(target:"sync", "generate_block with block header:{:?}, hash:{:?}", block.block_header, block.hash());
         self.on_mined_block(block);
     }
 
