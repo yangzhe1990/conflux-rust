@@ -21,15 +21,15 @@ class RpcTest(ConfluxTestFramework):
 
     def run_test(self):
         # blocks = self.nodes[0].generate(self.block_bumber, 0)
-        self.best_block_hash = make_genesis(10).block_header.hash
+        self.best_block_hash = make_genesis().block_header.hash
         self.block_number = 1
 
-        self._test_getblockcount()
-        self._test_sayhello()
-        self._test_getbalance()
-        self._test_getbestblockhash()
-        self._test_getblock()
-        self._test_getpeerinfo()
+        # self._test_getblockcount()
+        # self._test_sayhello()
+        # self._test_getbalance()
+        # self._test_getbestblockhash()
+        # self._test_getblock()
+        # self._test_getpeerinfo()
         self._test_addlatency()
 
         # Test stop at last
@@ -85,8 +85,7 @@ class RpcTest(ConfluxTestFramework):
         network_thread_start()
         self.nodes[0].p2p.wait_for_status()
         latency_ms = 1000
-        x, y = default_node.pub_key
-        self.nodes[0].addlatency("0x"+int_to_hex(x)[2:]+int_to_hex(y)[2:], latency_ms)
+        self.nodes[0].addlatency(default_node.key, latency_ms)
         default_node.start_time = datetime.datetime.now()
         default_node.latency_ms = latency_ms
         default_node.wait = True

@@ -4,10 +4,11 @@ use super::{
     super::state::*,
     merkle_patricia_trie::{data_structure::*, *},
 };
-use primitives::EpochId;
-use snapshot::snapshot::Snapshot;
 use ethkey::KeyPair;
-use primitives::Account;
+use primitives::{Account, EpochId};
+use secret_store::SecretStore;
+use snapshot::snapshot::Snapshot;
+use get_account;
 
 #[derive(Default)]
 pub struct StateManager {
@@ -34,19 +35,26 @@ impl StateManager {
 
     pub fn new() -> Self { unimplemented!() }
 
-    pub fn initialize(&self, genesis: EpochId) {
+    pub fn initialize(&self, genesis: EpochId, secret_store: &SecretStore) {
         let mut state = self.get_state_at(genesis);
-        let kp = KeyPair::from_secret("46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"
-            .parse()
-            .unwrap()
-        ).unwrap();
+        let kp = KeyPair::from_secret(
+            "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"
+                .parse()
+                .unwrap(),
+        )
+        .unwrap();
         let addr = kp.address();
         let account = Account {
-            balance:1_000_000_000.into(),
-            nonce:0.into()
+            balance: 1_000_000_000.into(),
+            nonce: 0.into(),
         };
-        state.set(addr.as_ref(), rlp::encode(&account).as_ref()).unwrap();
+        state
+            .set(addr.as_ref(), rlp::encode(&account).as_ref())
+            .unwrap();
         state.commit(genesis);
+        secret_store.insert(kp);
+        assert_eq!(get_account(&self.get_state_at(genesis), &addr).map(|account| account.balance)
+                       .unwrap(), 1_000_000_000.into());
     }
 }
 

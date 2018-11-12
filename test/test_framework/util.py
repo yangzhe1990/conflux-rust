@@ -336,7 +336,7 @@ def disconnect_nodes(from_connection, node_num):
 def check_handshake(from_connection, target_addr):
     peers = from_connection.getpeerinfo()
     for peer in peers:
-        if (peer['addr'] == target_addr) and (peer['caps'] != None):
+        if (peer['addr'].split(":")[0] == target_addr.split(":")[0]) and (peer['caps'] != None):
             return True
     return False
 
@@ -371,7 +371,7 @@ def sync_blocks(rpc_connections, *, wait=1, timeout=60):
             return
         time.sleep(wait)
     raise AssertionError("Block sync timed out:{}".format("".join(
-        "\n  {!r}".format(b) for b in best_hash)))
+        "\n  {!r}".format(b) for b in best_hash + block_count)))
 
 
 def sync_mempools(rpc_connections, *, wait=1, timeout=60,
@@ -392,8 +392,9 @@ def sync_mempools(rpc_connections, *, wait=1, timeout=60,
     raise AssertionError("Mempool sync timed out:{}".format("".join(
         "\n  {!r}".format(m) for m in pool)))
 
-def wait_for_block_count(node, count):
-    wait_until(lambda:node.getblockcount() >= count)
+
+def wait_for_block_count(node, count, timeout=10):
+    wait_until(lambda: node.getblockcount() >= count, timeout=timeout)
 
 # RPC/P2P connection constants and functions
 ############################################

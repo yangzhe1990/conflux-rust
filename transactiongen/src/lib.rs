@@ -6,6 +6,8 @@ extern crate parking_lot;
 extern crate primitives;
 extern crate rand;
 extern crate secret_store;
+#[macro_use]
+extern crate log;
 
 use core::{
     get_account, SharedConsensusGraph, SharedTransactionPool, State,
@@ -74,6 +76,9 @@ impl TransactionGenerator {
         let state = self
             .state_manager
             .get_state_at(self.consensus.best_block_hash());
+
+        debug!(target:"sync", "account_count:{} sender_addr:{:?} epoch_id:{:?}", account_count,
+               sender_address, self.consensus.best_block_hash());
         let sender_balance = get_account(&state, &sender_address)
             .map(|account| account.balance)
             .unwrap_or(0.into());

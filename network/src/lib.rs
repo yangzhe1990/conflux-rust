@@ -115,7 +115,7 @@ impl NetworkConfiguration {
             public_address: None,
             udp_port: None,
             nat_enabled: true,
-            discovery_enabled: true,
+            discovery_enabled: false,
             boot_nodes: Vec::new(),
             use_secret: None,
             max_outgoing_peers: 16,

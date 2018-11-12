@@ -17,3 +17,4 @@ rand = "0.5"
 secret-store = { path = "../secret_store" }
 network = { path = "../network" }
 ethkey = { path = "../ethkey" }
+log = "0.4"

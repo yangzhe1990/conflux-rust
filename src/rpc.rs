@@ -195,9 +195,9 @@ impl Rpc for RpcImpl {
         &self, num_blocks: usize, num_txs: usize,
     ) -> RpcResult<Vec<H256>> {
         info!("RPC Request: generate({:?})", num_blocks);
-        let hashes = Vec::new();
+        let mut hashes = Vec::new();
         for _i in 0..num_blocks {
-            let mut _hash = self.block_gen.generate_block(num_txs);
+            hashes.push(self.block_gen.generate_block(num_txs));
         }
         Ok(hashes)
     }

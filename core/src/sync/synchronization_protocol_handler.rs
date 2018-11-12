@@ -237,15 +237,15 @@ impl SynchronizationProtocolHandler {
 
         for header in &block_headers.headers {
             let hash = header.hash();
-            if self.graph.contains_block_header(&hash) {
-                break;
-            } else {
+            if !self.graph.contains_block_header(&hash) {
                 self.graph.insert_block_header(header.clone());
+                hashes.push(hash);
+            } else if !self.graph.contains_block(&hash) {
                 hashes.push(hash);
             }
         }
 
-        if !self.graph.contains_block_header(&parent_hash) {
+        if parent_hash != H256::default() && !self.graph.contains_block_header(&parent_hash) {
             self.request_block_headers(io, syn, peer_id, &parent_hash, 256);
         }
         if !hashes.is_empty() {

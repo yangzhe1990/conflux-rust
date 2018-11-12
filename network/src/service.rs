@@ -62,11 +62,11 @@ pub const DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT: Duration =
 pub const DEFAULT_DISCOVERY_ROUND_TIMEOUT: Duration =
     Duration::from_millis(500);
 // for NODE_TABLE TimerToken
-//pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(300);
-pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(1);
+pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(300);
+//pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(1);
 // The lifetime threshold of the connection for promoting a peer
-//pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration = Duration::from_secs(3 * 24 * 3600);
-pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration = Duration::from_secs(1);
+pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration = Duration::from_secs(3 * 24 * 3600);
+//pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration = Duration::from_secs(1);
 
 pub const MAX_DATAGRAM_SIZE: usize = 1280;
 
@@ -321,12 +321,13 @@ impl DelayedQueue {
     fn send_delayed_messages(&self) {
         let queue_lock = &self.queue;
         let mut queue = queue_lock.lock();
+        trace!(target:"network", "Try to send delayed messages with queue length {}", queue.len());
         loop {
             if queue.is_empty() {
                 break;
             }
             let send_now = queue.peek().map_or(false,|tuple: &DelayMessageContext | {
-                (*tuple).ts > Instant::now()
+                (*tuple).ts <= Instant::now()
             });
             if send_now {
                 let context = queue.pop().unwrap();
@@ -1509,7 +1510,8 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
                     let mut queue = q.queue.lock();
                     queue.push(DelayMessageContext::new(
                         Instant::now() + latency, self.io.clone(), self.protocol, session, msg));
-                    self.io.register_timer_once(SEND_DELAYED_MESSAGES, latency)?;
+//                    trace!(target:"network", "Add SEND_DELAYED_MESSAGES after {:?}", latency);
+                    self.io.register_timer(SEND_DELAYED_MESSAGES, latency)?;
                 }
                 None => {
                     session.lock().send_packet(

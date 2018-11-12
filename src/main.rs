@@ -41,12 +41,8 @@ use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
 use core::{ConsensusGraph, StateManager, TransactionPool};
-use ethkey::{public_to_address};
 
 use ctrlc::CtrlC;
-use ethereum_types::U256;
-use ethkey::{KeyPair, Secret};
-use hash::keccak;
 use log::LevelFilter;
 use log4rs::{
     append::{console::ConsoleAppender, file::FileAppender},
@@ -54,58 +50,20 @@ use log4rs::{
 };
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
-use primitives::{Block, BlockHeaderBuilder, Transaction};
-use rlp::RlpStream;
+use primitives::{Block, BlockHeaderBuilder};
 use secret_store::SecretStore;
 use std::{
     any::Any,
-    collections::HashSet,
     io::{self as stdio, Write},
     process,
     sync::Arc,
 };
 use txgen::TransactionGenerator;
 
-fn make_genesis(num_addresses: i32, secret_store: Arc<SecretStore>) -> Block {
-    let mut addresses = HashSet::new();
-    let mut genesis_transactions = Vec::new();
-
-    for _ in 0..num_addresses {
-        //        let kp = Random.generate().unwrap();
-        let sp: Secret =
-            "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"
-                .parse()
-                .unwrap();
-        let kp = KeyPair::from_secret(sp).unwrap();
-
-        let address = public_to_address(kp.public());
-        //        if addresses.contains(&address) {
-        //            continue;
-        //        }
-        addresses.insert(address);
-
-        let transaction = Transaction {
-            nonce: U256::zero(),
-            gas_price: U256::from(1_000_000_000_000_000u64),
-            gas: U256::from(200u64),
-            value: U256::from(1_000_000_000),
-            receiver: address.clone(),
-        };
-        genesis_transactions.push(transaction.sign(kp.secret()));
-
-        secret_store.insert(kp);
-    }
-
-    let mut stream = RlpStream::new_list(genesis_transactions.len());
-    for transaction in &genesis_transactions {
-        stream.append(transaction);
-    }
-
+fn make_genesis() -> Block {
     Block {
-        block_header: BlockHeaderBuilder::new()
-            .with_transactions_root(keccak(stream.out()))
-            .build(),
-        transactions: genesis_transactions,
+        block_header: BlockHeaderBuilder::new().build(),
+        transactions: Vec::new(),
     }
 }
 
@@ -117,10 +75,10 @@ fn start(
     let _cache_config = conf.cache_config();
 
     let secret_store = Arc::new(SecretStore::new());
-    let genesis_block = make_genesis(10, secret_store.clone());
+    let genesis_block = make_genesis();
 
     let state_manager = Arc::new(StateManager::default());
-    state_manager.initialize(genesis_block.hash());
+    state_manager.initialize(genesis_block.hash(), secret_store.as_ref());
 
     let txpool = Arc::new(TransactionPool::with_capacity(10000));
 

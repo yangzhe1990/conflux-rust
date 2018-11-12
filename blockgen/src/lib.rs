@@ -183,7 +183,7 @@ impl BlockGenerator {
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
             .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
-            .with_difficulty(10.into()) //TODO: adjust difficulty
+            .with_difficulty(rand::random::<u64>().into()) //TODO: adjust difficulty
             .with_referee_hashes(Vec::new()) //TODO: get referee hashes
             .with_nonce(0)
             .build();
