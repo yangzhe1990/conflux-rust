@@ -5,10 +5,11 @@ use super::{
     merkle_patricia_trie::{data_structure::*, *},
 };
 use ethkey::KeyPair;
+use get_account;
 use primitives::{Account, EpochId};
+use rlp::encode;
 use secret_store::SecretStore;
 use snapshot::snapshot::Snapshot;
-use get_account;
 
 #[derive(Default)]
 pub struct StateManager {
@@ -48,13 +49,15 @@ impl StateManager {
             balance: 1_000_000_000.into(),
             nonce: 0.into(),
         };
-        state
-            .set(addr.as_ref(), rlp::encode(&account).as_ref())
-            .unwrap();
+        state.set(addr.as_ref(), encode(&account).as_ref()).unwrap();
         state.commit(genesis);
         secret_store.insert(kp);
-        assert_eq!(get_account(&self.get_state_at(genesis), &addr).map(|account| account.balance)
-                       .unwrap(), 1_000_000_000.into());
+        assert_eq!(
+            get_account(&self.get_state_at(genesis), &addr)
+                .map(|account| account.balance)
+                .unwrap(),
+            1_000_000_000.into()
+        );
     }
 }
 
