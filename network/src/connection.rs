@@ -1,12 +1,12 @@
 use bytes::Bytes;
 use io::{IoContext, StreamToken};
-use mio::deprecated::*;
-use mio::tcp::*;
-use mio::*;
-use std::collections::VecDeque;
-use std::io::{self, Read, Write};
-use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use mio::{deprecated::*, tcp::*, *};
+use std::{
+    collections::VecDeque,
+    io::{self, Read, Write},
+    marker::PhantomData,
+    sync::atomic::{AtomicBool, Ordering as AtomicOrdering},
+};
 
 use Error;
 
@@ -16,7 +16,7 @@ pub enum WriteStatus {
     Complete,
 }
 
-pub const MAX_PAYLOAD_SIZE: usize = (1 << 16) - 1;
+pub const MAX_PAYLOAD_SIZE: usize = (1 << 24) - 1;
 
 pub trait GenericSocket: Read + Write {}
 
@@ -76,8 +76,7 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
     }
 
     pub fn writable<Message: Sync + Send + Clone + 'static>(
-        &mut self,
-        io: &IoContext<Message>,
+        &mut self, io: &IoContext<Message>,
     ) -> Result<WriteStatus, Error> {
         {
             let buf = match self.send_queue.front_mut() {
@@ -115,9 +114,7 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
     }
 
     pub fn send<Message: Sync + Send + Clone + 'static>(
-        &mut self,
-        io: &IoContext<Message>,
-        data: &[u8],
+        &mut self, io: &IoContext<Message>, data: &[u8],
     ) -> SendQueueStatus {
         if !data.is_empty() {
             trace!(target: "network", "Sending {} bytes token={:?}", data.len(), self.token);
@@ -134,9 +131,7 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
         }
     }
 
-    pub fn is_sending(&self) -> bool {
-        self.interest.is_writable()
-    }
+    pub fn is_sending(&self) -> bool { self.interest.is_writable() }
 }
 
 pub type Connection<Sizer> = GenericConnection<TcpStream, Sizer>;
@@ -155,9 +150,7 @@ impl<Sizer: PacketSizer> Connection<Sizer> {
     }
 
     pub fn register_socket<H: Handler>(
-        &self,
-        reg: Token,
-        event_loop: &mut EventLoop<H>,
+        &self, reg: Token, event_loop: &mut EventLoop<H>,
     ) -> io::Result<()> {
         if self.registered.load(AtomicOrdering::SeqCst) {
             return Ok(());
@@ -176,9 +169,7 @@ impl<Sizer: PacketSizer> Connection<Sizer> {
     }
 
     pub fn update_socket<H: Handler>(
-        &self,
-        reg: Token,
-        event_loop: &mut EventLoop<H>,
+        &self, reg: Token, event_loop: &mut EventLoop<H>,
     ) -> io::Result<()> {
         trace!(target: "network", "Connection reregister; token={:?} reg={:?}", self.token, reg);
         if !self.registered.load(AtomicOrdering::SeqCst) {
@@ -194,24 +185,23 @@ impl<Sizer: PacketSizer> Connection<Sizer> {
     }
 
     pub fn deregister_socket<H: Handler>(
-        &self,
-        event_loop: &mut EventLoop<H>,
+        &self, event_loop: &mut EventLoop<H>,
     ) -> io::Result<()> {
         trace!(target: "network", "Connection deregister; token={:?}", self.token);
         event_loop.deregister(&self.socket).ok();
         Ok(())
     }
 
-    pub fn token(&self) -> StreamToken {
-        self.token
-    }
+    pub fn token(&self) -> StreamToken { self.token }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::cmp;
-    use std::collections::VecDeque;
-    use std::io::{Error, ErrorKind, Read, Result, Write};
+    use std::{
+        cmp,
+        collections::VecDeque,
+        io::{Error, ErrorKind, Read, Result, Write},
+    };
 
     use super::*;
     use bytes::{Buf, Bytes, IntoBuf};
