@@ -136,6 +136,8 @@ class P2PConnection(asyncore.dispatcher):
                 elif packet_id == PACKET_PING:
                     self.on_ping()
                 elif packet_id == PACKET_PONG:
+                    self.on_pong()
+                elif packet_id == PACKET_PONG:
                     pass
                 else:
                     assert packet_id == PACKET_PROTOCOL
@@ -152,6 +154,9 @@ class P2PConnection(asyncore.dispatcher):
 
     def on_ping(self):
         self.send_packet(PACKET_PONG, b"")
+        pass
+
+    def on_pong(self):
         pass
 
     def on_protocol_packet(self, payload):
@@ -263,12 +268,19 @@ class P2PInterface(P2PConnection):
         x, y = self.pub_key
         self.key = "0x"+int_to_hex(x)[2:]+int_to_hex(y)[2:]
         self.had_status = False
+        self.on_packet_func = {}
 
     def peer_connect(self, *args, **kwargs):
         super().peer_connect(*args, **kwargs)
 
     def wait_for_status(self, timeout=60):
         wait_until(lambda: self.had_status, timeout=timeout, lock=mininode_lock)
+
+    def set_callback(self, msgid, func):
+        self.on_packet_func[msgid] = func
+
+    def reset_callback(self, msgid):
+        del self.on_packet_func[msgid]
 
     # Message receiving methods
 
@@ -288,61 +300,61 @@ class P2PInterface(P2PConnection):
                 assert(protocol == self.protocol)  # Possible to be false?
                 packet_type = payload[3]
                 payload = payload[4:]
-                # print(rlp.decode(payload))
                 self.protocol_message_count[packet_type] += 1
+                msg = None
                 if packet_type == STATUS:
-                    status = rlp.decode(payload, Status)
+                    msg = rlp.decode(payload, Status)
                     self._log_message("receive", "STATUS, protocol_version:{}, best:{}"
-                                      .format(status.protocol_version,
-                                              utils.encode_hex(status.best_block_hash)))
+                                      .format(msg.protocol_version,
+                                              utils.encode_hex(msg.best_block_hash)))
                     self.had_status = True
-                    self.on_status(status)
                 elif packet_type == GET_BLOCK_HEADERS:
-                    get_headers = rlp.decode(payload, GetBlockHeaders)
-                    self._log_message("receive", "GET_BLOCK_HEADERS of {} {}".format(get_headers.hash, get_headers.max_blocks))
-                    self.on_get_block_headers(get_headers)
+                    msg = rlp.decode(payload, GetBlockHeaders)
+                    self._log_message("receive", "GET_BLOCK_HEADERS of {} {}".format(msg.hash, msg.max_blocks))
                 elif packet_type == GET_BLOCK_BODIES:
-                    get_block_bodies = rlp.decode(rlp, GetBlockBodies)
-                    hashes = get_block_bodies.hashes
+                    msg = rlp.decode(rlp, GetBlockBodies)
+                    hashes = msg.hashes
                     self._log_message("receive", "GET_BLOCK_BODIES of {} blocks".format(len(hashes)))
-                    self.on_get_block_bodies(hashes)
-                elif packet_type == BLOCK_HEADERS:
-                    headers = rlp.decode(payload, BlockHeaders).headers
-                    self._log_message("receive", "BLOCK_HEADERS of {} headers".format(len(headers)))
-                    self.on_block_headers(headers)
-                elif packet_type == BLOCK_BODIES:
-                    bodies = rlp.decode(payload, BlockBodies)
-                    self._log_message("receive", "BLOCK_BODIES of {} blocks".format(len(bodies)))
-                    self.on_block_bodies(bodies)
+                elif packet_type == GET_BLOCK_HEADERS_RESPONSE:
+                    msg = rlp.decode(payload, BlockHeaders)
+                    self._log_message("receive", "BLOCK_HEADERS of {} headers".format(len(msg.headers)))
+                    self.on_block_headers(msg)
+                elif packet_type == GET_BLOCK_BODIES_RESPONSE:
+                    msg = rlp.decode(payload, BlockBodies)
+                    self._log_message("receive", "BLOCK_BODIES of {} blocks".format(len(msg)))
                 elif packet_type == NEW_BLOCK:
-                    new_block = rlp.decode(payload, NewBlock)
-                    self._log_message("receive", "NEW_BLOCK, hash:{}".format(new_block.block.block_header.hash))
+                    msg = rlp.decode(payload, NewBlock)
+                    self._log_message("receive", "NEW_BLOCK, hash:{}".format(msg.block.block_header.hash))
                 elif packet_type == GET_BLOCK_HASHES:
-                    gethashes = rlp.decode(payload, GetBlockHashes)
+                    msg = rlp.decode(payload, GetBlockHashes)
                     self._log_message("receive", "GET_BLOCK_HASHES, hash:{}, max_blocks:{}"
-                                      .format(gethashes.hash, gethashes.max_blocks))
-                elif packet_type == BLOCK_HASHES:
+                                      .format(msg.hash, msg.max_blocks))
+                elif packet_type == GET_BLOCK_HASHES_RESPONSE:
                     block_hashes = rlp.decode(payload, BlockHashes)
                     self._log_message("receive", "BLOCK_HASHES, {} hashes".format(len(block_hashes.hashes)))
                 elif packet_type == GET_TERMINAL_BLOCK_HASHES:
+                    msg = rlp.decode(payload, GetTerminalBlockHashes)
                     self._log_message("receive", "GET_TERMINAL_BLOCK_HASHES")
                 elif packet_type == TRANSACTIONS:
-                    transactions = rlp.decode(payload, Transactions)
-                    self._log_message("receive", "TRANSACTIONS, {} transactions".format(len(transactions.transactions)))
-                elif packet_type == TERMINAL_BLOCK_HASHES:
-                    hashes = rlp.decode(payload, TerminalBlockHashes)
-                    self._log_message("receive", "TERMINAL_BLOCK_HASHES, {} hashes".format(len(hashes.hashes)))
+                    msg = rlp.decode(payload, Transactions)
+                    self._log_message("receive", "TRANSACTIONS, {} transactions".format(len(msg.transactions)))
+                elif packet_type == GET_TERMINAL_BLOCK_HASHES_RESPONSE:
+                    msg = rlp.decode(payload, TerminalBlockHashes)
+                    self._log_message("receive", "TERMINAL_BLOCK_HASHES, {} hashes".format(len(msg.hashes)))
                 elif packet_type == NEW_BLOCK_HASHES:
-                    hashes = rlp.decode(payload, NewBlockHashes)
-                    self._log_message(("receive", "NEW_BLOCK_HASHES, {} hashes".format(len(hashes.hashes))))
-                elif packet_type == BLOCKS:
-                    blocks = rlp.decode(payload, Blocks)
-                    self._log_message("receive", "BLOCKS, {} blocks".format(len(blocks.blocks)))
+                    msg = rlp.decode(payload, NewBlockHashes)
+                    self._log_message(("receive", "NEW_BLOCK_HASHES, {} hashes".format(len(msg.hashes))))
+                elif packet_type == GET_BLOCKS_RESPONSE:
+                    msg = rlp.decode(payload, Blocks)
+                    self._log_message("receive", "BLOCKS, {} blocks".format(len(msg.blocks)))
                 elif packet_type == GET_BLOCKS:
-                    getblocks = rlp.decode(payload, GetBlocks)
-                    self._log_message("receive", "GET_BLOCKS, {} hashes".format(len(getblocks.hashes)))
+                    msg = rlp.decode(payload, GetBlocks)
+                    self._log_message("receive", "GET_BLOCKS, {} hashes".format(len(msg.hashes)))
                 else:
                     self._log_message("receive", "Unknown packet {}".format(packet_type))
+                    return
+                if packet_type in self.on_packet_func and msg is not None:
+                    self.on_packet_func[packet_type](self, msg)
             except:
                 raise
 

@@ -19,7 +19,7 @@ from test_framework.util import *
 class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 8
+        self.num_nodes = 16
 
     def setup_network(self):
         self.setup_nodes()
@@ -33,7 +33,7 @@ class P2PTest(ConfluxTestFramework):
                     p = random.randint(0, self.num_nodes - 1)
                     if p not in peer[i] and not p == i:
                         peer[i].append(p)
-                        lat = random.randint(0, 100)
+                        lat = random.randint(0, 300)
                         latencies[i][p] = lat
                         latencies[p][i] = lat
                         break
@@ -46,12 +46,13 @@ class P2PTest(ConfluxTestFramework):
         sync_blocks(self.nodes)
 
     def run_test(self):
-        block_number = 10
+        block_number = 100
 
         for i in range(1, block_number):
             chosen_peer = random.randint(0, self.num_nodes - 1)
             block_hash = self.nodes[chosen_peer].generate(1, 10)
             print("generate block ", block_hash)
+            time.sleep(random.random())
         wait_for_block_count(self.nodes[0], block_number)
         sync_blocks(self.nodes, timeout=10)
         self.log.info("remotely generated blocks received by all")

@@ -396,11 +396,29 @@ def sync_mempools(rpc_connections, *, wait=1, timeout=60,
 def wait_for_block_count(node, count, timeout=10):
     wait_until(lambda: node.getblockcount() >= count, timeout=timeout)
 
+
+class WaitHandler:
+    def __init__(self, node, msgid, func=None):
+        self.keep_wait = True
+        self.node = node
+        self.msgid = msgid
+
+        def stop_wait(obj, msg):
+            if func is not None:
+                func(obj, msg)
+            self.keep_wait = False
+        node.set_callback(msgid, stop_wait)
+
+    def wait(self, timeout=10):
+        wait_until(lambda: not self.keep_wait, timeout=timeout)
+        self.node.reset_callback(self.msgid)
+
+
 # RPC/P2P connection constants and functions
 ############################################
 
 # The maximum number of nodes a single test can spawn
-MAX_NODES = 16
+MAX_NODES = 100
 # Don't assign rpc or p2p ports lower than this
 PORT_MIN = 11000
 # The number of ports to "reserve" for p2p and rpc, each

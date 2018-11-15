@@ -169,11 +169,13 @@ impl Session {
         match packet_id {
             PACKET_HELLO => {
                 debug!(target: "network", "{}: Hello", self.token());
+                if data.len() <= 32+65 {
+                    return Err(ErrorKind::BadProtocol.into());
+                }
                 let hash_signed = keccak(&data[32..]);
                 if hash_signed[..] != data[0..32] {
                     return Err(ErrorKind::BadProtocol.into());
                 }
-
                 let signed = &data[(32 + 65)..];
                 let signature = H520::from_slice(&data[32..(32 + 65)]);
                 let node_id = recover(&signature.into(), &keccak(signed))?;

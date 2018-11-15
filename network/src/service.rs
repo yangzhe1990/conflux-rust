@@ -836,6 +836,7 @@ impl NetworkServiceInner {
         self.initialize_udp_protocols(io)?;
         io.register_stream(UDP_MESSAGE)?;
         io.register_stream(TCP_ACCEPT)?;
+        io.register_timer(SEND_DELAYED_MESSAGES, Duration::from_millis(100))?;
         Ok(())
     }
 
@@ -1511,7 +1512,6 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
                     queue.push(DelayMessageContext::new(
                         Instant::now() + latency, self.io.clone(), self.protocol, session, msg));
 //                    trace!(target:"network", "Add SEND_DELAYED_MESSAGES after {:?}", latency);
-                    self.io.register_timer(SEND_DELAYED_MESSAGES, latency)?;
                 }
                 None => {
                     session.lock().send_packet(

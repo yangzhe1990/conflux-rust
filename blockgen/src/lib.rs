@@ -177,6 +177,10 @@ impl BlockGenerator {
         for tx in transactions.iter() {
             tx_rlp.append(tx);
         }
+        let mut referee = self.consensus.terminal_block_hashes();
+        referee.retain(|r|{
+            *r != best_block_hash
+        });
         let block_header = BlockHeaderBuilder::new()
             .with_transactions_root(keccak(tx_rlp.out()))
             .with_parent_hash(best_block_hash)
@@ -184,7 +188,7 @@ impl BlockGenerator {
             .with_author(Address::default()) //TODO: get author
             .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
             .with_difficulty(rand::random::<u64>().into()) //TODO: adjust difficulty
-            .with_referee_hashes(Vec::new()) //TODO: get referee hashes
+            .with_referee_hashes(referee) //TODO: get referee hashes
             .with_nonce(0)
             .build();
 

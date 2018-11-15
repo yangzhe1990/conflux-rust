@@ -33,10 +33,10 @@ PACKET_PING = 0x02
 PACKET_PONG = 0x03
 PACKET_PROTOCOL = 0x10
 
-BLOCKS = 0x0d
-BLOCK_BODIES = 0x08
-BLOCK_HASHES = 0x04
-BLOCK_HEADERS = 0x06
+GET_BLOCKS_RESPONSE = 0x0d
+GET_BLOCK_BODIES_RESPONSE = 0x08
+GET_BLOCK_HASHES_RESPONSE = 0x04
+GET_BLOCK_HEADERS_RESPONSE = 0x06
 GET_BLOCKS = 0x0c
 GET_BLOCK_BODIES = 0x07
 GET_BLOCK_HASHES = 0x03
@@ -45,7 +45,7 @@ GET_TERMINAL_BLOCK_HASHES = 0x0b
 NEW_BLOCK = 0x09
 NEW_BLOCK_HASHES = 0x01
 STATUS = 0x00
-TERMINAL_BLOCK_HASHES = 0x0a
+GET_TERMINAL_BLOCK_HASHES_RESPONSE = 0x0a
 TRANSACTIONS = 0x02
 
 
@@ -210,6 +210,7 @@ class BlockHeaders(rlp.Serializable):
         ("headers", CountableList(BlockHeader)),
     ]
 
+
 class GetBlockBodies(rlp.Serializable):
     fields = [
         ("reqid", big_endian_int),
@@ -234,6 +235,10 @@ class Block(rlp.Serializable):
             block_header=block_header,
             transactions=(transactions or []),
         )
+
+    @property
+    def hash(self):
+        return self.block_header.hash
 
 
 class BlockBodies(rlp.Serializable):
@@ -301,16 +306,16 @@ msg_id = {
     NewBlockHashes: NEW_BLOCK_HASHES,
     Transactions: TRANSACTIONS,
     GetBlockHashes: GET_BLOCK_HASHES,
-    BlockHashes: BLOCK_HASHES,
+    BlockHashes: GET_BLOCK_HASHES_RESPONSE,
     GetBlockHeaders: GET_BLOCK_HEADERS,
-    BlockHeaders: BLOCK_HEADERS,
+    BlockHeaders: GET_BLOCK_HEADERS_RESPONSE,
     GetBlockBodies: GET_BLOCK_BODIES,
-    BlockBodies: BLOCK_BODIES,
+    BlockBodies: GET_BLOCK_BODIES_RESPONSE,
     NewBlock: NEW_BLOCK,
-    TerminalBlockHashes: TERMINAL_BLOCK_HASHES,
+    TerminalBlockHashes: GET_TERMINAL_BLOCK_HASHES_RESPONSE,
     GetTerminalBlockHashes: GET_TERMINAL_BLOCK_HASHES,
     GetBlocks: GET_BLOCKS,
-    Blocks: BLOCKS
+    Blocks: GET_BLOCKS_RESPONSE
 }
 
 msg_class = {}

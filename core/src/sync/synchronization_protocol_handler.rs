@@ -244,6 +244,8 @@ impl SynchronizationProtocolHandler {
                 hashes.push(hash);
             }
         }
+        let header_hashes:Vec<H256> = block_headers.headers.iter().map(|header| header.hash()).collect();
+        trace!(target:"sync", "get headers responce of hashes:{:?}, requesting block:{:?}", header_hashes, hashes);
 
         if parent_hash != H256::default() && !self.graph.contains_block_header(&parent_hash) {
             self.request_block_headers(io, syn, peer_id, &parent_hash, 256);
@@ -281,6 +283,8 @@ impl SynchronizationProtocolHandler {
             })
             .filter_map(|h| h)
             .collect();
+
+        trace!(target:"sync", "receive new blocks:{:?}", new_block_hashes);
 
         if !new_block_hashes.is_empty() {
             let new_block_hash_msg: Box<dyn Message> =

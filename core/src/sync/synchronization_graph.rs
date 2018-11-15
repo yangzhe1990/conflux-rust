@@ -60,9 +60,7 @@ impl SynchronizationGraphInner {
             parent: NULL,
             children: Vec::new(),
             referees: Vec::new(),
-            pending_referees: HashSet::from_iter(
-                header.referee_hashes().iter().cloned(),
-            ),
+            pending_referees: HashSet::new(),
             referrers: Vec::new(),
         });
         self.indices.insert(hash, me);
