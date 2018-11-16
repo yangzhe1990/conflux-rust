@@ -14,6 +14,7 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
+extern crate enum_map;
 extern crate ethcore_bytes;
 extern crate ethereum_types;
 extern crate ethkey;
@@ -22,7 +23,6 @@ extern crate keccak_hash as hash;
 extern crate libc;
 extern crate parity_path;
 extern crate rand;
-extern crate enum_map;
 #[macro_use]
 extern crate enum_map_derive;
 extern crate strum;
@@ -49,21 +49,24 @@ use ethkey::Secret;
 use ipnetwork::{IpNetwork, IpNetworkError};
 use node_table::NodeId;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use std::cmp::Ordering;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::str::{self, FromStr};
-use std::sync::Arc;
-use std::time::Duration;
-use service::{DEFAULT_HOUSEKEEPING_TIMEOUT,
-              DEFAULT_DISCOVERY_REFRESH_TIMEOUT,
-              DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT,
-              DEFAULT_DISCOVERY_ROUND_TIMEOUT,
-              DEFAULT_NODE_TABLE_TIMEOUT,
-              DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION};
+use service::{
+    DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION,
+    DEFAULT_DISCOVERY_REFRESH_TIMEOUT, DEFAULT_DISCOVERY_ROUND_TIMEOUT,
+    DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT, DEFAULT_HOUSEKEEPING_TIMEOUT,
+    DEFAULT_NODE_TABLE_TIMEOUT,
+};
+use std::{
+    cmp::Ordering,
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    str::{self, FromStr},
+    sync::Arc,
+    time::Duration,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfiguration {
-    /// Directory path to store general network configuration. None means nothing will be saved
+    /// Directory path to store general network configuration. None means
+    /// nothing will be saved
     pub config_path: Option<String>,
     pub listen_address: Option<SocketAddr>,
     /// IP address to advertise. Detected automatically if none.
@@ -125,10 +128,12 @@ impl NetworkConfiguration {
             ip_filter: IpFilter::default(),
             housekeeping_timeout: DEFAULT_HOUSEKEEPING_TIMEOUT,
             discovery_refresh_timeout: DEFAULT_DISCOVERY_REFRESH_TIMEOUT,
-            fast_discovery_refresh_timeout: DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT,
+            fast_discovery_refresh_timeout:
+                DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT,
             discovery_round_timeout: DEFAULT_DISCOVERY_ROUND_TIMEOUT,
             node_table_timeout: DEFAULT_NODE_TABLE_TIMEOUT,
-            connection_lifetime_for_promotion: DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION,
+            connection_lifetime_for_promotion:
+                DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION,
             test_mode: false,
         }
     }
@@ -160,6 +165,15 @@ pub enum NetworkIoMessage {
         protocol: ProtocolId,
         versions: Vec<u8>,
     },
+    /// Register a new protocol timer
+    AddTimer {
+        /// Protocol Id.
+        protocol: ProtocolId,
+        /// Timer token.
+        token: TimerToken,
+        /// Timer delay.
+        delay: Duration,
+    },
     /// Disconnect a peer.
     Disconnect(PeerId),
 }
@@ -180,6 +194,12 @@ pub trait NetworkContext {
     fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error>;
 
     fn disconnect_peer(&self, peer: PeerId);
+
+    /// Register a new IO timer. 'IoHandler::timeout' will be called with the
+    /// token.
+    fn register_timer(
+        &self, token: TimerToken, delay: Duration,
+    ) -> Result<(), Error>;
 }
 
 #[derive(Debug, Clone)]

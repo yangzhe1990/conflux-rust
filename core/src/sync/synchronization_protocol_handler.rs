@@ -18,12 +18,18 @@ use parking_lot::RwLock;
 use primitives::Block;
 use rlp::Rlp;
 use slab::Slab;
-use std::{cmp, collections::VecDeque, time::Instant};
+use std::{
+    cmp,
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
 
 pub const SYNCHRONIZATION_PROTOCOL_VERSION: u8 = 0x01;
 
 pub const MAX_HEADERS_TO_SEND: u64 = 512;
 pub const MAX_BLOCKS_TO_SEND: u64 = 256;
+
+const TX_TIMER: TimerToken = 0;
 
 pub struct SynchronizationProtocolHandler {
     graph: SynchronizationGraph,
@@ -244,10 +250,16 @@ impl SynchronizationProtocolHandler {
                 hashes.push(hash);
             }
         }
-        let header_hashes:Vec<H256> = block_headers.headers.iter().map(|header| header.hash()).collect();
+        let header_hashes: Vec<H256> = block_headers
+            .headers
+            .iter()
+            .map(|header| header.hash())
+            .collect();
         trace!(target:"sync", "get headers responce of hashes:{:?}, requesting block:{:?}", header_hashes, hashes);
 
-        if parent_hash != H256::default() && !self.graph.contains_block_header(&parent_hash) {
+        if parent_hash != H256::default()
+            && !self.graph.contains_block_header(&parent_hash)
+        {
             self.request_block_headers(io, syn, peer_id, &parent_hash, 256);
         }
         if !hashes.is_empty() {
@@ -497,10 +509,21 @@ impl SynchronizationProtocolHandler {
             }
         }
     }
+
+    pub fn propagate_new_transactions(&self, io: &NetworkContext) {
+        let syn = self.syn.write();
+
+        if syn.peers.is_empty() {
+            return;
+        }
+    }
 }
 
 impl NetworkProtocolHandler for SynchronizationProtocolHandler {
-    fn initialize(&self, _io: &NetworkContext) {}
+    fn initialize(&self, io: &NetworkContext) {
+        io.register_timer(TX_TIMER, Duration::from_millis(1300))
+            .expect("Error registering transactions timer");
+    }
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, raw: &[u8]) {
         let msg_id = raw[0];
@@ -525,7 +548,14 @@ impl NetworkProtocolHandler for SynchronizationProtocolHandler {
         trace!(target: "sync", "Peer disconnected: peer={:?}", peer);
     }
 
-    fn on_timeout(&self, _io: &NetworkContext, timer: TimerToken) {
+    fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {
         trace!(target: "sync", "Timeout: timer={:?}", timer);
+
+        match timer {
+            TX_TIMER => {
+                self.propagate_new_transactions(io);
+            }
+            _ => warn!("Unknown timer {} triggered.", timer),
+        }
     }
 }
