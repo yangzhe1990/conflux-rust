@@ -5,7 +5,7 @@ use parking_lot::RwLock;
 use primitives::SignedTransaction;
 use std::{
     cmp::{min, Ordering},
-    collections::{BTreeSet, BinaryHeap, HashSet},
+    collections::{BTreeSet, HashSet},
     sync::Arc,
 };
 

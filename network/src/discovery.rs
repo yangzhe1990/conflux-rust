@@ -2,17 +2,17 @@ use ethcore_bytes::Bytes;
 use ethereum_types::{H256, H520};
 use ethkey::{recover, sign, KeyPair, Secret};
 use hash::keccak;
-use node_table::NodeId;
-use node_table::*;
+use node_table::{NodeId, *};
 use rlp::{Rlp, RlpStream};
-use service::{
-    UdpIoContext, MAX_DATAGRAM_SIZE, UDP_PROTOCOL_DISCOVERY,
+use service::{UdpIoContext, MAX_DATAGRAM_SIZE, UDP_PROTOCOL_DISCOVERY};
+use std::{
+    collections::{hash_map::Entry, HashMap, HashSet},
+    net::SocketAddr,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use {Error, ErrorKind, IpFilter};
+use Error;
+use ErrorKind;
+use IpFilter;
 
 const DISCOVER_PROTOCOL_VERSION: u32 = 1;
 
@@ -98,25 +98,24 @@ impl Discovery {
 
     fn try_ping(&mut self, uio: &UdpIoContext, node: NodeEntry) {
         if !self.is_allowed(&node) {
-            trace!(target: "discovery", "Node {:?} not allowed", node);
+            trace!("Node {:?} not allowed", node);
             return;
         }
         if self.in_flight_pings.contains_key(&node.id)
             || self.in_flight_find_nodes.contains_key(&node.id)
         {
-            trace!(target: "discovery", "Node {:?} in flight requests", node);
+            trace!("Node {:?} in flight requests", node);
             return;
         }
         if self.adding_nodes.iter().any(|n| n.id == node.id) {
-            trace!(target: "discovery", "Node {:?} in adding nodes", node);
+            trace!("Node {:?} in adding nodes", node);
             return;
         }
 
         if self.in_flight_pings.len() < MAX_NODES_PING {
-            self.ping(uio, &node)
-                .unwrap_or_else(|e| {
-                    warn!(target: "discovery", "Error sending Ping packet: {:?}", e);
-                });
+            self.ping(uio, &node).unwrap_or_else(|e| {
+                warn!("Error sending Ping packet: {:?}", e);
+            });
         } else {
             self.adding_nodes.push(node);
         }
@@ -146,7 +145,7 @@ impl Discovery {
             },
         );
 
-        trace!(target: "discovery", "Sent Ping to {:?} ; node_id={:#x}", &node.endpoint, node.id);
+        trace!("Sent Ping to {:?} ; node_id={:#x}", &node.endpoint, node.id);
         Ok(())
     }
 
@@ -194,20 +193,21 @@ impl Discovery {
             PACKET_FIND_NODE => self.on_find_node(uio, &rlp, &node_id, &from),
             PACKET_NEIGHBOURS => self.on_neighbours(uio, &rlp, &node_id, &from),
             _ => {
-                debug!(target: "discovery", "Unknown UDP packet: {}", packet_id);
+                debug!("Unknown UDP packet: {}", packet_id);
                 Ok(())
             }
         }
     }
 
-    /// Validate that given timestamp is in within one second of now or in the future
+    /// Validate that given timestamp is in within one second of now or in the
+    /// future
     fn check_timestamp(&self, timestamp: u64) -> Result<(), Error> {
         let secs_since_epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
         if self.check_timestamps && timestamp < secs_since_epoch {
-            debug!(target: "discovery", "Expired packet");
+            debug!("Expired packet");
             return Err(ErrorKind::Expired.into());
         }
         Ok(())
@@ -218,7 +218,7 @@ impl Discovery {
         from: &SocketAddr, echo_hash: &[u8],
     ) -> Result<(), Error>
     {
-        trace!(target: "discovery", "Got Ping from {:?}", &from);
+        trace!("Got Ping from {:?}", &from);
         let ping_from = NodeEndpoint::from_rlp(&rlp.at(1)?)?;
         let ping_to = NodeEndpoint::from_rlp(&rlp.at(2)?)?;
         let timestamp: u64 = rlp.val_at(3)?;
@@ -233,7 +233,8 @@ impl Discovery {
         // sending the request to
         // WARNING: this field _should not be used_, but old Parity versions
         // use it in order to get the node's address.
-        // So this is a temporary fix so that older Parity versions don't brake completely.
+        // So this is a temporary fix so that older Parity versions don't brake
+        // completely.
         ping_to.to_rlp_list(&mut response);
         // pong_to.to_rlp_list(&mut response);
 
@@ -246,9 +247,9 @@ impl Discovery {
             endpoint: pong_to.clone(),
         };
         if !entry.endpoint.is_valid() {
-            debug!(target: "discovery", "Got bad address: {:?}", entry);
+            debug!("Got bad address: {:?}", entry);
         } else if !self.is_allowed(&entry) {
-            debug!(target: "discovery", "Address not allowed: {:?}", entry);
+            debug!("Address not allowed: {:?}", entry);
         } else {
             let mut trusted = uio.trusted_nodes.write();
             let mut untrusted = uio.untrusted_nodes.write();
@@ -270,7 +271,7 @@ impl Discovery {
         from: &SocketAddr,
     ) -> Result<(), Error>
     {
-        trace!(target: "discovery", "Got Pong from {:?} ; node_id={:#x}", &from, node_id);
+        trace!("Got Pong from {:?} ; node_id={:#x}", &from, node_id);
         let _pong_to = NodeEndpoint::from_rlp(&rlp.at(0)?)?;
         let echo_hash: H256 = rlp.val_at(1)?;
         let timestamp: u64 = rlp.val_at(2)?;
@@ -281,7 +282,7 @@ impl Discovery {
                 let expected_node = {
                     let request = entry.get();
                     if request.echo_hash != echo_hash {
-                        debug!(target: "discovery", "Got unexpected Pong from {:?} ; packet_hash={:#x} ; expected_hash={:#x}", &from, request.echo_hash, echo_hash);
+                        debug!("Got unexpected Pong from {:?} ; packet_hash={:#x} ; expected_hash={:#x}", &from, request.echo_hash, echo_hash);
                         None
                     } else {
                         Some(request.node.clone())
@@ -300,7 +301,7 @@ impl Discovery {
             uio.discover_trusted_node(&node);
             Ok(())
         } else {
-            debug!(target: "discovery", "Got unexpected Pong from {:?} ; request not found", &from);
+            debug!("Got unexpected Pong from {:?} ; request not found", &from);
             Ok(())
         }
     }
@@ -310,7 +311,7 @@ impl Discovery {
         from: &SocketAddr,
     ) -> Result<(), Error>
     {
-        trace!(target: "discovery", "Got FindNode from {:?}", &from);
+        trace!("Got FindNode from {:?}", &from);
         let timestamp: u64 = rlp.val_at(0)?;
         self.check_timestamp(timestamp)?;
 
@@ -338,7 +339,7 @@ impl Discovery {
         for p in packets.drain(..) {
             self.send_packet(uio, PACKET_NEIGHBOURS, from, &p)?;
         }
-        trace!(target: "discovery", "Sent {} Neighbours to {:?}", neighbors.len(), &from);
+        trace!("Sent {} Neighbours to {:?}", neighbors.len(), &from);
         Ok(())
     }
 
@@ -361,7 +362,7 @@ impl Discovery {
                         request.response_count += results_count;
                         true
                     } else {
-                        debug!(target: "discovery", "Got unexpected Neighbors from {:?} ; oversized packet ({} + {}) node_id={:#x}", &from, request.response_count, results_count, node_id);
+                        debug!("Got unexpected Neighbors from {:?} ; oversized packet ({} + {}) node_id={:#x}", &from, request.response_count, results_count, node_id);
                         false
                     }
                 };
@@ -371,7 +372,7 @@ impl Discovery {
                 expected
             }
             Entry::Vacant(_) => {
-                debug!(target: "discovery", "Got unexpected Neighbors from {:?} ; couldn't find node_id={:#x}", &from, node_id);
+                debug!("Got unexpected Neighbors from {:?} ; couldn't find node_id={:#x}", &from, node_id);
                 false
             }
         };
@@ -380,11 +381,11 @@ impl Discovery {
             return Ok(());
         }
 
-        trace!(target: "discovery", "Got {} Neighbours from {:?}", results_count, &from);
+        trace!("Got {} Neighbours from {:?}", results_count, &from);
         for r in rlp.at(0)?.iter() {
             let endpoint = NodeEndpoint::from_rlp(&r)?;
             if !endpoint.is_valid() {
-                debug!(target: "discovery", "Bad address: {:?}", endpoint);
+                debug!("Bad address: {:?}", endpoint);
                 continue;
             }
             let node_id: NodeId = r.val_at(3)?;
@@ -396,7 +397,7 @@ impl Discovery {
                 endpoint,
             };
             if !self.is_allowed(&entry) {
-                debug!(target: "discovery", "Address not allowed: {:?}", entry);
+                debug!("Address not allowed: {:?}", entry);
                 continue;
             }
             self.try_ping(uio, entry);
@@ -406,14 +407,14 @@ impl Discovery {
 
     /// Starts the discovery process at round 0
     fn start(&mut self) {
-        trace!(target: "discovery", "Starting discovery");
+        trace!("Starting discovery");
         self.discovery_round = Some(0);
         self.discovery_nodes.clear();
     }
 
     /// Complete the discovery process
     fn stop(&mut self) {
-        trace!(target: "discovery", "Completing discovery");
+        trace!("Completing discovery");
         self.discovery_round = None;
         self.discovery_nodes.clear();
     }
@@ -422,7 +423,10 @@ impl Discovery {
         let mut nodes_to_expire = Vec::new();
         self.in_flight_pings.retain(|node_id, ping_request| {
             if time.duration_since(ping_request.sent_at) > PING_TIMEOUT {
-                debug!(target: "discovery", "Removing expired PING request for node_id={:#x}", node_id);
+                debug!(
+                    "Removing expired PING request for node_id={:#x}",
+                    node_id
+                );
                 nodes_to_expire.push(*node_id);
                 false
             } else {
@@ -432,7 +436,7 @@ impl Discovery {
         self.in_flight_find_nodes.retain(|node_id, find_node_request| {
             if time.duration_since(find_node_request.sent_at) > FIND_NODE_TIMEOUT {
                 if !find_node_request.answered {
-                    debug!(target: "discovery", "Removing expired FIND NODE request for node_id={:#x}", node_id);
+                    debug!("Removing expired FIND NODE request for node_id={:#x}", node_id);
                     nodes_to_expire.push(*node_id);
                 }
                 false
@@ -467,7 +471,7 @@ impl Discovery {
             self.stop();
             return;
         }
-        trace!(target: "discovery", "Starting round {:?}", self.discovery_round);
+        trace!("Starting round {:?}", self.discovery_round);
         let mut tried_count = 0;
         {
             let discover_targets = uio
@@ -486,7 +490,7 @@ impl Discovery {
                         tried_count += 1;
                     }
                     Err(e) => {
-                        warn!(target: "discovery", "Error sending node discovery packet for {:?}: {:?}", &r.endpoint, e);
+                        warn!("Error sending node discovery packet for {:?}: {:?}", &r.endpoint, e);
                     }
                 };
             }
@@ -520,7 +524,7 @@ impl Discovery {
             },
         );
 
-        trace!(target: "discovery", "Sent FindNode to {:?}", &node.endpoint);
+        trace!("Sent FindNode to {:?}", &node.endpoint);
         Ok(())
     }
 
@@ -531,7 +535,8 @@ impl Discovery {
         if self.discovery_round.is_some() {
             self.discover(uio);
         } else if self.in_flight_pings.len() == 0 && !self.discovery_initiated {
-            // Start discovering if the first pings have been sent (or timed out)
+            // Start discovering if the first pings have been sent (or timed
+            // out)
             self.discovery_initiated = true;
             self.refresh();
         }
@@ -566,7 +571,7 @@ fn assemble_packet(
     let signature = match sign(secret, &hash) {
         Ok(s) => s,
         Err(e) => {
-            warn!(target: "discovery", "Error signing UDP packet");
+            warn!("Error signing UDP packet");
             return Err(Error::from(e));
         }
     };

@@ -5,7 +5,6 @@ use primitives::{Block, BlockHeader};
 use slab::Slab;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    iter::FromIterator,
 };
 
 const NULL: usize = !0;

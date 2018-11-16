@@ -10,7 +10,7 @@ extern crate secret_store;
 extern crate log;
 
 use core::{
-    get_account, SharedConsensusGraph, SharedTransactionPool, State,
+    get_account, SharedConsensusGraph, SharedTransactionPool,
     StateManager, StateManagerTrait,
 };
 use ethereum_types::{Address, H512, U256, U512};
@@ -192,7 +192,5 @@ impl TransactionGenerator {
 
             thread::sleep(interval);
         }
-
-        Ok(())
     }
 }

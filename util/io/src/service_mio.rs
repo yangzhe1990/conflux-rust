@@ -15,19 +15,25 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 use crossbeam::sync::chase_lev;
-use mio::deprecated::{EventLoop, EventLoopBuilder, Handler, Sender};
-use mio::timer::Timeout;
-use mio::*;
+use mio::{
+    deprecated::{EventLoop, EventLoopBuilder, Handler, Sender},
+    timer::Timeout,
+    *,
+};
 use parking_lot::{Mutex, RwLock};
 use slab::Slab;
-use std::collections::HashMap;
-use std::sync::mpsc::{self, Sender as AsyncSender};
-use std::sync::{Arc, Weak};
-use std::sync::{Condvar as SCondvar, Mutex as SMutex};
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    sync::{
+        mpsc::{self, Sender as AsyncSender},
+        Arc, Condvar as SCondvar, Mutex as SMutex, Weak,
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 use worker::{SocketWorker, Work, WorkType, Worker};
-use {IoError, IoHandler};
+use IoError;
+use IoHandler;
 
 /// Timer ID
 pub type TimerToken = usize;
@@ -59,6 +65,8 @@ where Message: Send + Sized
         token: TimerToken,
         delay: Duration,
         once: bool,
+        /// same as UserTimer.cancel_all
+        cancel_all: bool,
     },
     RemoveTimer {
         handler_id: HandlerId,
@@ -80,7 +88,8 @@ where Message: Send + Sized
     UserMessage(Arc<Message>),
 }
 
-/// IO access point. This is passed to all IO handlers and provides an interface to the IO subsystem.
+/// IO access point. This is passed to all IO handlers and provides an interface
+/// to the IO subsystem.
 #[derive(Clone)]
 pub struct IoContext<Message>
 where Message: Send + Sync + 'static
@@ -92,7 +101,8 @@ where Message: Send + Sync + 'static
 impl<Message> IoContext<Message>
 where Message: Send + Sync + 'static
 {
-    /// Create a new IO access point. Takes references to all the data that can be updated within the IO handler.
+    /// Create a new IO access point. Takes references to all the data that can
+    /// be updated within the IO handler.
     pub fn new(
         channel: IoChannel<Message>, handler: HandlerId,
     ) -> IoContext<Message> {
@@ -102,7 +112,8 @@ where Message: Send + Sync + 'static
         }
     }
 
-    /// Register a new recurring IO timer. 'IoHandler::timeout' will be called with the token.
+    /// Register a new recurring IO timer. 'IoHandler::timeout' will be called
+    /// with the token.
     pub fn register_timer(
         &self, token: TimerToken, delay: Duration,
     ) -> Result<(), IoError> {
@@ -111,11 +122,13 @@ where Message: Send + Sync + 'static
             delay,
             handler_id: self.handler,
             once: false,
+            cancel_all: false,
         })?;
         Ok(())
     }
 
-    /// Register a new IO timer once. 'IoHandler::timeout' will be called with the token.
+    /// Register a new IO timer once. 'IoHandler::timeout' will be called with
+    /// the token.
     pub fn register_timer_once(
         &self, token: TimerToken, delay: Duration,
     ) -> Result<(), IoError> {
@@ -124,6 +137,23 @@ where Message: Send + Sync + 'static
             delay,
             handler_id: self.handler,
             once: true,
+            cancel_all: true,
+        })?;
+        Ok(())
+    }
+
+    /// Register a new IO timer once. 'IoHandler::timeout' will be called with
+    /// the token. Do NOT cancel other timer on the same token after
+    /// timeout.
+    pub fn register_timer_once_nocancel(
+        &self, token: TimerToken, delay: Duration,
+    ) -> Result<(), IoError> {
+        self.channel.send_io(IoMessage::AddTimer {
+            token,
+            delay,
+            handler_id: self.handler,
+            once: true,
+            cancel_all: false,
         })?;
         Ok(())
     }
@@ -177,9 +207,10 @@ where Message: Send + Sync + 'static
 
     /// Unregister current IO handler.
     pub fn unregister_handler(&self) {
-        // `send_io` returns an error only if the channel is closed, which means that the
-        // background thread is no longer running. Therefore the handler is no longer active and
-        // can be considered as unregistered.
+        // `send_io` returns an error only if the channel is closed, which means
+        // that the background thread is no longer running. Therefore
+        // the handler is no longer active and can be considered as
+        // unregistered.
         let _ = self.channel.send_io(IoMessage::RemoveHandler {
             handler_id: self.handler,
         });
@@ -191,6 +222,10 @@ struct UserTimer {
     delay: Duration,
     timeout: Timeout,
     once: bool,
+
+    /// Only used when once is true. Do not remove timer after timeout, so
+    /// later other once timer can be triggered again
+    cancel_all: bool,
 }
 
 /// Root IO handler. Manages user handlers, messages and IO timers.
@@ -267,8 +302,8 @@ where Message: Send + Sync + 'static
 impl<Message> Handler for IoManager<Message>
 where Message: Send + Sync + 'static
 {
-    type Timeout = Token;
     type Message = IoMessage<Message>;
+    type Timeout = Token;
 
     fn ready(
         &mut self, _event_loop: &mut EventLoop<Self>, token: Token,
@@ -323,8 +358,10 @@ where Message: Send + Sync + 'static
             let maybe_timer = self.timers.read().get(&token.0).cloned();
             if let Some(timer) = maybe_timer {
                 if timer.once {
-                    self.timers.write().remove(&token_id);
-                    event_loop.clear_timeout(&timer.timeout);
+                    if timer.cancel_all {
+                        self.timers.write().remove(&token_id);
+                        event_loop.clear_timeout(&timer.timeout);
+                    }
                 } else {
                     event_loop
                         .timeout(token, timer.delay)
@@ -385,6 +422,7 @@ where Message: Send + Sync + 'static
                 token,
                 delay,
                 once,
+                cancel_all,
             } => {
                 let timer_id = token + handler_id * TOKENS_PER_HANDLER;
                 let timeout = event_loop
@@ -393,9 +431,10 @@ where Message: Send + Sync + 'static
                 self.timers.write().insert(
                     timer_id,
                     UserTimer {
-                        delay: delay,
-                        timeout: timeout,
-                        once: once,
+                        delay,
+                        timeout,
+                        once,
+                        cancel_all,
                     },
                 );
             }
@@ -470,8 +509,8 @@ impl<Message: Send> Clone for Handlers<Message> {
     }
 }
 
-/// Allows sending messages into the event loop. All the IO handlers will get the message
-/// in the `message` callback.
+/// Allows sending messages into the event loop. All the IO handlers will get
+/// the message in the `message` callback.
 pub struct IoChannel<Message>
 where Message: Send
 {
@@ -536,6 +575,7 @@ where Message: Send + Sync + 'static
         }
         Ok(())
     }
+
     /// Create a new channel disconnected from an event loop.
     pub fn disconnected() -> IoChannel<Message> {
         IoChannel {
@@ -551,6 +591,7 @@ where Message: Send + Sync + 'static
             handlers: Handlers::Single(handler),
         }
     }
+
     fn new(
         channel: Sender<IoMessage<Message>>,
         handlers: Weak<RwLock<Slab<Arc<IoHandler<Message>>>>>,
@@ -622,7 +663,8 @@ where Message: Send + Sync + 'static
         Ok(())
     }
 
-    /// Send a message over the network. Normaly `HostIo::send` should be used. This can be used from non-io threads.
+    /// Send a message over the network. Normaly `HostIo::send` should be used.
+    /// This can be used from non-io threads.
     pub fn send_message(&self, message: Message) -> Result<(), IoError> {
         self.host_channel
             .lock()

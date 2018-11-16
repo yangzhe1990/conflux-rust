@@ -335,32 +335,18 @@ impl DelayedQueue {
         let queue_lock = &self.queue;
         let mut queue = queue_lock.lock();
         trace!(target:"network", "Try to send delayed messages with queue length {}", queue.len());
-        loop {
-            if queue.is_empty() {
-                break;
-            }
-            let send_now =
-                queue.peek().map_or(false, |tuple: &DelayMessageContext| {
-                    (*tuple).ts <= Instant::now()
-                });
-            if send_now {
-                let context = queue.pop().unwrap();
-                context
-                    .session
-                    .lock()
-                    .send_packet(
-                        &context.io,
-                        Some(context.protocol),
-                        session::PACKET_USER,
-                        &context.msg,
-                    )
-                    .unwrap();
-                // TODO: Handle result from send_packet()
-                continue;
-            } else {
-                break;
-            }
-        }
+        let context = queue.pop().unwrap();
+        context
+            .session
+            .lock()
+            .send_packet(
+                &context.io,
+                Some(context.protocol),
+                session::PACKET_USER,
+                &context.msg,
+            )
+            .unwrap();
+        // TODO: Handle result from send_packet()
     }
 }
 
@@ -860,7 +846,6 @@ impl NetworkServiceInner {
         self.initialize_udp_protocols(io)?;
         io.register_stream(UDP_MESSAGE)?;
         io.register_stream(TCP_ACCEPT)?;
-        io.register_timer(SEND_DELAYED_MESSAGES, Duration::from_millis(100))?;
         Ok(())
     }
 
@@ -1486,12 +1471,12 @@ impl DelayMessageContext {
 }
 
 impl Ord for DelayMessageContext {
-    fn cmp(&self, other: &Self) -> Ordering { self.ts.cmp(&other.ts) }
+    fn cmp(&self, other: &Self) -> Ordering { other.ts.cmp(&self.ts) }
 }
 
 impl PartialOrd for DelayMessageContext {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+        other.ts.partial_cmp(&self.ts)
     }
 }
 
@@ -1544,15 +1529,19 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
                     let q =
                         self.network_service.delayed_queue.as_ref().unwrap();
                     let mut queue = q.queue.lock();
+                    let ts_to_send = Instant::now() + latency;
                     queue.push(DelayMessageContext::new(
-                        Instant::now() + latency,
+                        ts_to_send,
                         self.io.clone(),
                         self.protocol,
                         session,
                         msg,
                     ));
-                    //                    trace!(target:"network", "Add
-                    // SEND_DELAYED_MESSAGES after {:?}", latency);
+                    self.io.register_timer_once_nocancel(
+                        SEND_DELAYED_MESSAGES,
+                        latency,
+                    )?;
+                    trace!("register delayed timer delay:{:?} ts_to_send:{:?} length:{}", latency, ts_to_send, queue.len());
                 }
                 None => {
                     session.lock().send_packet(

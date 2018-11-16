@@ -15,7 +15,6 @@ use core::{
     SharedConsensusGraph, SharedSynchronizationService, SharedTransactionPool,
 };
 use ethereum_types::{Address, H256, U256, U512};
-use ethkey::Secret;
 use hash::{keccak, KECCAK_NULL_RLP};
 use parking_lot::RwLock;
 use primitives::*;
