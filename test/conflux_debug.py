@@ -55,8 +55,9 @@ class MessageTest(ConfluxTestFramework):
         # b = self.nodes[0].getblock(self.nodes[0].getbestblockhash())
         # block_time = int(b['timestamp'], 0) + 1
         block_time = int(1)
+        block_number = 10
 
-        for i in range(2, 10):
+        for i in range(1, block_number):
             # Use the mininode and blocktools functionality to manually build a block
             # Calling the generate() rpc is easier, but this allows us to exactly
             # control the blocks and transactions.
@@ -68,10 +69,9 @@ class MessageTest(ConfluxTestFramework):
             blocks.append(block)
             block_time += 1
 
-        # wait_for_block_count(self.nodes[0], self.block_number)
-        # sync_blocks(self.nodes)
-        # self.nodes[0].generate(1)
-        # wait_for_block_count(self.nodes[0], self.block_number+1)
+        wait_for_block_count(rpc, block_number)
+        rpc.generate(1, 10)
+        wait_for_block_count(rpc, block_number+1)
         print("pass")
         while True:
             pass

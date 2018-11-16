@@ -158,14 +158,14 @@ impl Session {
         host: &NetworkServiceInner,
     ) -> Result<SessionData, Error>
     {
-        let packet_id = data[2];
+        let packet_id = data[3];
         if packet_id != PACKET_HELLO
             && packet_id != PACKET_DISCONNECT
             && !self.had_hello
         {
             return Err(ErrorKind::BadProtocol.into());
         }
-        let data = &data[3..];
+        let data = &data[4..];
         match packet_id {
             PACKET_HELLO => {
                 debug!(target: "network", "{}: Hello", self.token());
@@ -337,8 +337,8 @@ impl Session {
         if packet_size > MAX_PAYLOAD_SIZE {
             bail!(ErrorKind::OversizedPacket);
         }
-        let mut packet = BytesMut::with_capacity(2 + packet_size);
-        packet.put_u16_le(packet_size as u16);
+        let mut packet = BytesMut::with_capacity(3 + packet_size);
+        packet.put_uint_le(packet_size as u64, 3);
         packet.put_u8(packet_id);
         if let Some(protocol) = protocol {
             packet.put_slice(&protocol);

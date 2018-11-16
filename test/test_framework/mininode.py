@@ -21,7 +21,7 @@ import threading
 
 from conflux.transactions import Transaction
 from conflux.utils import hash32, hash20, sha3, int_to_bytes, sha3_256, ecrecover_to_pub, ec_random_keys, ecsign, \
-    bytes_to_int, encode_int32, int_to_hex
+    bytes_to_int, encode_int32, int_to_hex, zpad, rzpad
 from test_framework.blocktools import make_genesis
 from test_framework.util import wait_until
 
@@ -117,16 +117,16 @@ class P2PConnection(asyncore.dispatcher):
         the on_message callback for processing."""
         try:
             while True:
-                if len(self.recvbuf) < 2:
+                if len(self.recvbuf) < 3:
                     return
-                packet_size = struct.unpack("<h", self.recvbuf[:2])[0]
-                if len(self.recvbuf) < 2 + packet_size:
+                packet_size = struct.unpack("<L", rzpad(self.recvbuf[:3], 4))[0]
+                if len(self.recvbuf) < 3 + packet_size:
                     return
-                packet_id = self.recvbuf[2]
+                packet_id = self.recvbuf[3]
                 if packet_id != PACKET_HELLO and packet_id != PACKET_DISCONNECT and (not self.had_hello):
                     raise ValueError("bad protocol")
-                payload = self.recvbuf[3:2 + packet_size]
-                self.recvbuf = self.recvbuf[2 + packet_size:]
+                payload = self.recvbuf[4:3 + packet_size]
+                self.recvbuf = self.recvbuf[3 + packet_size:]
                 self._log_message("receive", packet_id)
                 if packet_id == PACKET_HELLO:
                     self.on_hello(payload)
@@ -198,7 +198,7 @@ class P2PConnection(asyncore.dispatcher):
         if self.state != "connected" and not pushbuf:
             raise IOError('Not connected, no pushbuf')
         self._log_message("send", packet_id)
-        buf = struct.pack("<h", len(payload) + 1)
+        buf = struct.pack("<L", len(payload) + 1)[:3]
         buf += struct.pack("<B", packet_id)
         buf += payload
 

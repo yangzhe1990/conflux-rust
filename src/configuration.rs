@@ -11,6 +11,7 @@ pub struct Configuration {
     pub udp_port: Option<u16>,
     pub jsonrpc_tcp_port: Option<u16>,
     pub jsonrpc_http_port: Option<u16>,
+    pub log_conf: Option<String>,
     pub log_file: Option<String>,
     pub log_level: LevelFilter,
     pub bootnodes: Option<String>,
@@ -27,6 +28,7 @@ impl Default for Configuration {
             udp_port: None,
             jsonrpc_tcp_port: None,
             jsonrpc_http_port: None,
+            log_conf: None,
             log_file: None,
             log_level: LevelFilter::Info,
             bootnodes: None,
@@ -68,6 +70,9 @@ impl Configuration {
             }
             if let Some(port) = config_value.get("jsonrpc-http-port") {
                 config.jsonrpc_http_port = port.as_integer().map(|x| x as u16);
+            }
+            if let Some(log_conf) = config_value.get("log-conf") {
+                config.log_conf = log_conf.as_str().map(|x| x.to_owned());
             }
             if let Some(log_file) = config_value.get("log-file") {
                 config.log_file = log_file.as_str().map(|x| x.to_owned());
@@ -122,6 +127,9 @@ impl Configuration {
                 port.parse()
                     .map_err(|_| "Invalid jsonrpc-http-port".to_owned())?,
             );
+        }
+        if let Some(log_conf) = matches.value_of("log-conf") {
+            config.log_conf = Some(log_conf.to_owned());
         }
         if let Some(log_file) = matches.value_of("log-file") {
             config.log_file = Some(log_file.to_owned());

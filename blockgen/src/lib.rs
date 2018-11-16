@@ -234,7 +234,7 @@ impl BlockGenerator {
         }
         let block = self.assemble_new_block(num_txs);
         let hash = block.hash();
-        debug!(target:"sync", "generate_block with block header:{:?}, hash:{:?}", block.block_header, block.hash());
+        debug!("generate_block with block header:{:?}, hash:{:?}", block.block_header, block.hash());
         self.on_mined_block(block);
         hash
     }

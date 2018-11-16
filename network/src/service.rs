@@ -1266,13 +1266,8 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                 self.untrusted_nodes.write().clear_useless();
             }
             SEND_DELAYED_MESSAGES => {
-                match self.delayed_queue {
-                    Some(ref queue) => {
-                        queue.send_delayed_messages();
-                    }
-                    None => {
-                        error!(target:"network", "SEND_DELAYED_MESSAGES is triggered when delayed_queuq is None");
-                    }
+                if let Some(ref queue) = self.delayed_queue {
+                    queue.send_delayed_messages();
                 }
             }
             _ => {}

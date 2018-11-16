@@ -110,9 +110,9 @@ fn start(
         txgen.clone(),
     ));
 
-//    let txgen_handle = thread::spawn(move || {
-//        TransactionGenerator::generate_transactions(txgen).unwrap();
-//    });
+    //    let txgen_handle = thread::spawn(move || {
+    //        TransactionGenerator::generate_transactions(txgen).unwrap();
+    //    });
 
     let event_loop = EventLoop::spawn();
 
@@ -231,59 +231,48 @@ fn main() {
         .get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
-    let stdout = ConsoleAppender::builder().build();
-
-    let log_config = if conf.log_file.is_none() {
-        LogConfig::builder()
-            .appender(Appender::builder().build("stdout", Box::new(stdout)))
-            .logger(
-                Logger::builder()
-                    .appender("stdout")
-                    .additive(false)
-                    .build("network", conf.log_level),
-            )
-            .logger(
-                Logger::builder()
-                    .appender("stdout")
-                    .additive(false)
-                    .build("rpc", conf.log_level),
-            )
-            .build(Root::builder().appender("stdout").build(LevelFilter::Info))
-            .unwrap()
-    } else {
-        let log_file = FileAppender::builder()
-            .build(conf.log_file.as_ref().unwrap())
-            .unwrap();
-
-        LogConfig::builder()
-            .appender(Appender::builder().build("stdout", Box::new(stdout)))
-            .appender(Appender::builder().build("logfile", Box::new(log_file)))
-            .logger(
-                Logger::builder()
-                    .appender("logfile")
-                    .additive(false)
-                    .build("network", conf.log_level),
-            )
-            .logger(
-                Logger::builder()
-                    .appender("logfile")
-                    .additive(false)
-                    .build("rpc", conf.log_level),
-            )
-            .logger(
-                Logger::builder()
-                    .appender("logfile")
-                    .additive(false)
-                    .build("sync", conf.log_level),
-            )
-            .logger(
-                Logger::builder()
-                    .appender("logfile")
-                    .additive(false)
-                    .build("discovery", conf.log_level),
-            )
-            .build(Root::builder().appender("stdout").build(LevelFilter::Info))
-            .unwrap()
+    // If log_conf is provided, use it for log configuration and ignore log_file and log_level.
+    // Otherwise, set stdout to INFO and set all our crate log to log_level.
+    let log_config = match conf.log_conf {
+        Some(ref log_conf) => {
+            log4rs::load_config_file(log_conf, Default::default()).unwrap()
+        }
+        None => {
+            let mut conf_builder =
+                LogConfig::builder().appender(Appender::builder().build(
+                    "stdout",
+                    Box::new(ConsoleAppender::builder().build()),
+                ));
+            let mut root_builder = Root::builder().appender("stdout");
+            if let Some(ref log_file) = conf.log_file {
+                conf_builder =
+                    conf_builder.appender(Appender::builder().build(
+                        "logfile",
+                        Box::new(
+                            FileAppender::builder().build(log_file).unwrap(),
+                        ),
+                    ));
+                root_builder = root_builder.appender("logfile");
+            };
+            // Should add new crate names here
+            for crate_name in [
+                "core",
+                "sync",
+                "blockgen",
+                "network",
+                "rpc",
+                "transactiongen",
+            ]
+            .iter()
+            {
+                conf_builder = conf_builder.logger(
+                    Logger::builder().build(*crate_name, conf.log_level),
+                );
+            }
+            conf_builder
+                .build(root_builder.build(LevelFilter::Info))
+                .unwrap()
+        }
     };
     log4rs::init_config(log_config).unwrap();
 
