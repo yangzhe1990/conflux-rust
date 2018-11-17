@@ -1,8 +1,9 @@
 extern crate rand;
 
 use ethereum_types::{H256, H512, U512};
+use network::PeerId;
 use parking_lot::RwLock;
-use primitives::SignedTransaction;
+use primitives::{SignedTransaction, TransactionWithSignature};
 use std::{
     cmp::{min, Ordering},
     collections::{BTreeSet, HashSet},
@@ -73,6 +74,12 @@ impl TransactionPool {
             capacity,
             inner: RwLock::new(TransactionPoolInner::new()),
         }
+    }
+
+    pub fn insert_new_transactions(
+        &self, _transactions: Vec<TransactionWithSignature>, _peer_id: PeerId,
+    ) {
+
     }
 
     pub fn add(&self, transaction: SignedTransaction) -> bool {
@@ -146,5 +153,9 @@ impl TransactionPool {
             }
         }
         packed_transaction
+    }
+
+    pub fn transactions_to_propagate(&self) -> Vec<SignedTransaction> {
+        Vec::new()
     }
 }

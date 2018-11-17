@@ -19,3 +19,8 @@ pub use self::{
         MAX_INFLIGHT_REQUEST_COUNT,
     },
 };
+
+pub mod random {
+    use rand;
+    pub fn new() -> rand::ThreadRng { rand::thread_rng() }
+}

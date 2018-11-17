@@ -3,7 +3,7 @@ use message::{GetBlockHeaders, Message};
 use network::PeerId;
 use slab::Slab;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     time::{Instant, SystemTime},
 };
 
@@ -33,6 +33,9 @@ pub struct SynchronizationPeerState {
     pub genesis_hash: H256,
     pub inflight_requests: Slab<SynchronizationPeerRequest>,
     pub pending_requests: VecDeque<SynchronizationPeerRequest>,
+    /// Holds a set of transactions recently sent to this peer to avoid
+    /// spamming.
+    pub last_sent_transactions: HashSet<H256>,
 }
 
 impl SynchronizationPeerState {

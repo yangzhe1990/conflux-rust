@@ -210,4 +210,6 @@ impl SignedTransaction {
 
     /// Checks if signature is empty.
     pub fn is_unsigned(&self) -> bool { self.transaction.is_unsigned() }
+
+    pub fn hash(&self) -> H256 { self.transaction.hash() }
 }

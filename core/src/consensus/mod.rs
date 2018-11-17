@@ -271,7 +271,7 @@ pub struct ConsensusGraph {
     pub blocks: RwLock<HashMap<H256, Block>>,
     pub inner: RwLock<ConsensusGraphInner>,
     genesis_block_hash: H256,
-    txpool: SharedTransactionPool,
+    pub txpool: SharedTransactionPool,
 }
 
 pub type SharedConsensusGraph = Arc<ConsensusGraph>;

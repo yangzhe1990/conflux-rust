@@ -130,7 +130,7 @@ pub struct SynchronizationGraph {
     pub blocks: RwLock<HashMap<H256, Block>>,
     genesis_block_hash: H256,
 
-    consensus: SharedConsensusGraph,
+    pub consensus: SharedConsensusGraph,
 }
 
 impl SynchronizationGraph {

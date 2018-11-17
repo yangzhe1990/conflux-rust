@@ -1,6 +1,7 @@
 use super::{
-    Error, ErrorKind, SynchronizationGraph, SynchronizationPeerState,
-    SynchronizationState, MAX_INFLIGHT_REQUEST_COUNT,
+    super::transaction_pool::SharedTransactionPool, random, Error, ErrorKind,
+    SynchronizationGraph, SynchronizationPeerState, SynchronizationState,
+    MAX_INFLIGHT_REQUEST_COUNT,
 };
 use bytes::Bytes;
 use consensus::SharedConsensusGraph;
@@ -9,18 +10,19 @@ use io::TimerToken;
 use message::{
     GetBlockHeaders, GetBlockHeadersResponse, GetBlocks, GetBlocksResponse,
     GetTerminalBlockHashes, GetTerminalBlockHashesResponse, Message, MsgId,
-    NewBlock, NewBlockHashes, Status,
+    NewBlock, NewBlockHashes, Status, Transactions,
 };
 use network::{
     Error as NetworkError, NetworkContext, NetworkProtocolHandler, PeerId,
 };
 use parking_lot::RwLock;
-use primitives::Block;
+use primitives::{Block, SignedTransaction};
+use rand::RngCore;
 use rlp::Rlp;
 use slab::Slab;
 use std::{
     cmp,
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     time::{Duration, Instant},
 };
 
@@ -28,12 +30,13 @@ pub const SYNCHRONIZATION_PROTOCOL_VERSION: u8 = 0x01;
 
 pub const MAX_HEADERS_TO_SEND: u64 = 512;
 pub const MAX_BLOCKS_TO_SEND: u64 = 256;
+const MIN_PEERS_PROPAGATION: usize = 4;
+const MAX_PEERS_PROPAGATION: usize = 128;
 
 const TX_TIMER: TimerToken = 0;
 
 pub struct SynchronizationProtocolHandler {
     graph: SynchronizationGraph,
-    consensus_graph: SharedConsensusGraph,
     syn: RwLock<SynchronizationState>,
 }
 
@@ -41,7 +44,6 @@ impl SynchronizationProtocolHandler {
     pub fn new(consensus_graph: SharedConsensusGraph) -> Self {
         SynchronizationProtocolHandler {
             graph: SynchronizationGraph::new(consensus_graph.clone()),
-            consensus_graph,
             syn: RwLock::new(SynchronizationState::new()),
         }
     }
@@ -87,11 +89,30 @@ impl SynchronizationProtocolHandler {
             MsgId::GET_TERMINAL_BLOCK_HASHES => {
                 self.on_get_terminal_block_hashes(io, &mut *syn, peer, &rlp)
             }
+            MsgId::TRANSACTIONS => self.on_transactions(io, &mut *syn, peer, &rlp),
             _ => {
                 debug!(target: "sync", "Unknown message: peer={:?} msgid={:?}", peer, msg_id);
                 Ok(())
             }
         }.unwrap();
+    }
+
+    fn on_transactions(
+        &self, _io: &NetworkContext, syn: &mut SynchronizationState,
+        peer_id: PeerId, rlp: &Rlp,
+    ) -> Result<(), Error>
+    {
+        let transactions = rlp.as_val::<Transactions>()?;
+        let transactions = transactions.transactions;
+        trace!(target: "sync", "Received {:?} transactions from Peer {:?}", transactions.len(), peer_id);
+        if let Some(peer_info) = syn.peers.get_mut(&peer_id) {
+            peer_info
+                .last_sent_transactions
+                .extend(transactions.iter().map(|tx| tx.hash()));
+        }
+        self.get_transaction_pool()
+            .insert_new_transactions(transactions, peer_id);
+        Ok(())
     }
 
     fn on_get_block_headers(
@@ -156,7 +177,7 @@ impl SynchronizationProtocolHandler {
         let req = rlp.as_val::<GetTerminalBlockHashes>()?;
         let msg: Box<dyn Message> = Box::new(GetTerminalBlockHashesResponse {
             reqid: req.reqid,
-            hashes: self.consensus_graph.terminal_block_hashes(),
+            hashes: self.graph.consensus.terminal_block_hashes(),
         });
         self.send_message(io, peer_id, msg.as_ref())?;
         Ok(())
@@ -200,6 +221,7 @@ impl SynchronizationProtocolHandler {
                 MAX_INFLIGHT_REQUEST_COUNT as usize,
             ),
             pending_requests: VecDeque::new(),
+            last_sent_transactions: HashSet::new(),
         };
 
         trace!(target: "sync", "New peer (pv={:?}, gh={:?})",
@@ -510,12 +532,112 @@ impl SynchronizationProtocolHandler {
         }
     }
 
-    pub fn propagate_new_transactions(&self, _io: &NetworkContext) {
-        let syn = self.syn.write();
+    fn get_transaction_pool(&self) -> SharedTransactionPool {
+        self.graph.consensus.txpool.clone()
+    }
+
+    fn select_peers_for_transactions<F>(
+        &self, syn: &mut SynchronizationState, filter: F,
+    ) -> Vec<PeerId>
+    where F: Fn(&PeerId) -> bool {
+        // sqrt(x)/x scaled to max u32
+        let fraction = ((syn.peers.len() as f64).powf(-0.5)
+            * (u32::max_value() as f64).round()) as u32;
+        let small = syn.peers.len() < MIN_PEERS_PROPAGATION;
+
+        let mut random = random::new();
+        syn.peers
+            .keys()
+            .cloned()
+            .filter(filter)
+            .filter(|_| small || random.next_u32() < fraction)
+            .take(MAX_PEERS_PROPAGATION)
+            .collect()
+    }
+
+    fn propagate_transactions_to_peers(
+        &self, syn: &mut SynchronizationState, io: &NetworkContext,
+        peers: Vec<PeerId>, transactions: Vec<SignedTransaction>,
+    )
+    {
+        let all_transactions_hashes = transactions
+            .iter()
+            .map(|tx| tx.hash())
+            .collect::<HashSet<H256>>();
+
+        let lucky_peers = {
+            peers.into_iter()
+                .filter_map(|peer_id| {
+                    let peer_info = syn.peers.get_mut(&peer_id)
+                        .expect("peer_id is from peers; peers is result of select_peers_for_transactions; select_peers_for_transactions selects peers from syn.peers; qed");
+
+                    // Send all transactions
+                    if peer_info.last_sent_transactions.is_empty() {
+                        let mut tx_msg = Box::new(Transactions { transactions: Vec::new() });
+                        for tx in &transactions {
+                            tx_msg.transactions.push(tx.transaction.clone());
+                        }
+                        peer_info.last_sent_transactions = all_transactions_hashes.clone();
+                        return Some((peer_id, transactions.len(), tx_msg));
+                    }
+
+                    // Get hashes of all transactions to send to this peer
+                    let to_send = all_transactions_hashes.difference(&peer_info.last_sent_transactions)
+                        .cloned()
+                        .collect::<HashSet<_>>();
+                    if to_send.is_empty() {
+                        return None;
+                    }
+
+                    let mut tx_msg = Box::new(Transactions { transactions: Vec::new() });
+                    for tx in &transactions {
+                        if to_send.contains(&tx.hash()) {
+                            tx_msg.transactions.push(tx.transaction.clone());
+                        }
+                    }
+                    peer_info.last_sent_transactions = all_transactions_hashes
+                        .intersection(&peer_info.last_sent_transactions)
+                        .chain(&to_send)
+                        .cloned()
+                        .collect();
+                    Some((peer_id, tx_msg.transactions.len(), tx_msg))
+                })
+                .collect::<Vec<_>>()
+        };
+
+        if lucky_peers.len() > 0 {
+            let mut max_sent = 0;
+            let lucky_peers_len = lucky_peers.len();
+            for (peer_id, sent, msg) in lucky_peers {
+                self.send_message(io, peer_id, msg.as_ref())
+                    .expect("Error sending transactions!");
+                trace!(target: "sync", "{:02} <- Transactions ({} entries)", peer_id, sent);
+                max_sent = cmp::max(max_sent, sent);
+            }
+            debug!(target: "sync", "Sent up to {} transactions to {} peers.", max_sent, lucky_peers_len);
+        }
+    }
+
+    pub fn propagate_new_transactions(&self, io: &NetworkContext) {
+        let mut syn = self.syn.write();
 
         if syn.peers.is_empty() {
             return;
         }
+
+        let transactions =
+            self.get_transaction_pool().transactions_to_propagate();
+        if transactions.is_empty() {
+            return;
+        }
+
+        let peers = self.select_peers_for_transactions(&mut *syn, |_| true);
+        self.propagate_transactions_to_peers(
+            &mut *syn,
+            io,
+            peers,
+            transactions,
+        );
     }
 }
 

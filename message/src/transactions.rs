@@ -5,7 +5,7 @@ use MsgId;
 
 #[derive(Debug, PartialEq)]
 pub struct Transactions {
-    transactions: Vec<TransactionWithSignature>,
+    pub transactions: Vec<TransactionWithSignature>,
 }
 
 impl Message for Transactions {
