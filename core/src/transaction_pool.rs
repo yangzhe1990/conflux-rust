@@ -77,9 +77,17 @@ impl TransactionPool {
     }
 
     pub fn insert_new_transactions(
-        &self, _transactions: Vec<TransactionWithSignature>, _peer_id: PeerId,
-    ) {
-
+        &self, transactions: Vec<TransactionWithSignature>,
+    ) -> u32 {
+        let mut count: u32 = 0;
+        for tx in transactions {
+            if let Ok(public) = tx.recover_public() {
+                if self.add(SignedTransaction::new(public, tx)) {
+                    count += 1;
+                }
+            }
+        }
+        count
     }
 
     pub fn add(&self, transaction: SignedTransaction) -> bool {
@@ -156,6 +164,11 @@ impl TransactionPool {
     }
 
     pub fn transactions_to_propagate(&self) -> Vec<SignedTransaction> {
-        Vec::new()
+        let inner = self.inner.read();
+        inner
+            .transaction_set
+            .iter()
+            .map(|x| x.transaction.clone())
+            .collect()
     }
 }

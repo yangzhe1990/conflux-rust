@@ -111,7 +111,7 @@ impl SynchronizationProtocolHandler {
                 .extend(transactions.iter().map(|tx| tx.hash()));
         }
         self.get_transaction_pool()
-            .insert_new_transactions(transactions, peer_id);
+            .insert_new_transactions(transactions);
         Ok(())
     }
 
