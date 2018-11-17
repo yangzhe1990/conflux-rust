@@ -4,7 +4,7 @@ import time
 import eth_utils
 
 from conflux.messages import GetBlockHeaders
-from conflux.utils import int_to_hex
+from conflux.utils import int_to_hex, privtoaddr
 from test_framework.blocktools import make_genesis
 from test_framework.mininode import network_thread_start, P2PInterface
 from test_framework.test_framework import ConfluxTestFramework
@@ -20,16 +20,16 @@ class RpcTest(ConfluxTestFramework):
         self.setup_nodes()
 
     def run_test(self):
-        # blocks = self.nodes[0].generate(self.block_bumber, 0)
-        self.best_block_hash = make_genesis().block_header.hash
-        self.block_number = 1
+        self.block_number = 10
+        blocks = self.nodes[0].generate(self.block_number, 0)
+        self.best_block_hash = blocks[-1] #make_genesis().block_header.hash
 
-        # self._test_getblockcount()
-        # self._test_sayhello()
-        # self._test_getbalance()
-        # self._test_getbestblockhash()
+        self._test_getblockcount()
+        self._test_sayhello()
+        self._test_getbalance()
+        self._test_getbestblockhash()
         # self._test_getblock()
-        # self._test_getpeerinfo()
+        self._test_getpeerinfo()
         self._test_addlatency()
 
         # Test stop at last
@@ -44,11 +44,11 @@ class RpcTest(ConfluxTestFramework):
     def _test_getblockcount(self):
         self.log.info("Test getblockcount")
         res = self.nodes[0].getblockcount()
-        assert_equal(self.block_number, res)
+        assert_equal(self.block_number + 1, res)
 
     def _test_getbalance(self):
         self.log.info("Test getbalance")
-        addr = "0x" + "0" * 40
+        addr = eth_utils.encode_hex(privtoaddr(eth_utils.decode_hex("46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f")))
         res = self.nodes[0].getbalance(addr)
         balance = int(res, 0)
         assert_equal(10 ** 9, balance)
@@ -60,16 +60,16 @@ class RpcTest(ConfluxTestFramework):
 
     def _test_getblock(self):
         self.log.info("Test getbestblockhash")
-        res = self.nodes[0].getblock(eth_utils.encode_hex(self.best_block_hash))
+        res = self.nodes[0].getblock(self.best_block_hash)
         assert_equal(self.best_block_hash, res['hash'])
 
     def _test_getpeerinfo(self):
         self.log.info("Test getpeerinfo")
-        connect_nodes(self.nodes[0], 1, self.nodes[1].key)
+        connect_nodes(self.nodes, 0, 1)
         res = self.nodes[0].getpeerinfo()
         assert_equal(len(res), 1)
-        assert_equal(res[0]['addr'], get_peer_addr(1))
-        self.nodes[0].removenode(self.nodes[1].key, get_peer_addr(1))
+        assert_equal(res[0]['addr'], get_peer_addr(self.nodes[0], 1))
+        self.nodes[0].removenode(self.nodes[1].key, get_peer_addr(self.nodes[0], 1))
         try:
             wait_until(lambda: len(self.nodes[0].getpeerinfo()) == 0, timeout=10)
         except Exception:
@@ -78,7 +78,7 @@ class RpcTest(ConfluxTestFramework):
     def _test_addlatency(self):
         class DefaultNode(P2PInterface):
             def on_block_headers(self, headers):
-                assert (datetime.datetime.now() - self.start_time).total_seconds() * 1000 >= self.latency_ms
+                assert (datetime.datetime.now() - self.start_time).total_seconds() * 1000 >= self.latency_ms - 100
                 self.wait = False
 
         default_node = self.nodes[0].add_p2p_connection(DefaultNode())

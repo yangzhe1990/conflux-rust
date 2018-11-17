@@ -60,7 +60,8 @@ impl Configuration {
 
             let config_value = config_str.parse::<toml::Value>().unwrap();
             if let Some(port) = config_value.get("port") {
-                config.port = port.as_integer().map(|x| x as u16);
+                config.port = port.clone().try_into().ok();
+//                config.port = port.as_integer().map(|x| x as u16);
             }
             if let Some(port) = config_value.get("udp-port") {
                 config.udp_port = port.as_integer().map(|x| x as u16);
