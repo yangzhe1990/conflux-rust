@@ -35,7 +35,7 @@ blockgen = { path = "blockgen" }
 txgen = { path = "transactiongen" }
 secret-store = { path = "secret_store" }
 primitives = { path = "primitives" }
-log4rs = "0.8"
+log4rs = "0.8.1"
 rpc = { path = "rpc" }
 rlp = { git = "https://github.com/paritytech/parity-common" }
 keccak-hash = { git = "https://github.com/paritytech/parity-common" }

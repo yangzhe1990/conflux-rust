@@ -57,7 +57,7 @@ impl<'executor, 'state> Executor<'executor, 'state> {
 
     pub fn commit(&mut self, epoch_id: EpochId) {
         for (k, v) in self.cache.iter() {
-            self.state.set(k.as_ref(), encode(v).as_ref());
+            self.state.set(k.as_ref(), encode(v).as_ref()).ok();
         }
         self.state.commit(epoch_id);
     }

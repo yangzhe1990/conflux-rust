@@ -510,7 +510,7 @@ impl SynchronizationProtocolHandler {
         }
     }
 
-    pub fn propagate_new_transactions(&self, io: &NetworkContext) {
+    pub fn propagate_new_transactions(&self, _io: &NetworkContext) {
         let syn = self.syn.write();
 
         if syn.peers.is_empty() {
