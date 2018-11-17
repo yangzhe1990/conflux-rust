@@ -69,7 +69,8 @@ fn make_genesis() -> Block {
 
 // Start all key components of Conflux and pass out their handles
 fn start(
-    conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
+    conf: Configuration,
+    exit: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<Box<Any>, String> {
     let network_config = conf.net_config();
     let _cache_config = conf.cache_config();
@@ -263,7 +264,7 @@ fn main() {
                 "rpc",
                 "transactiongen",
             ]
-            .iter()
+                .iter()
             {
                 conf_builder = conf_builder.logger(
                     Logger::builder().build(*crate_name, conf.log_level),

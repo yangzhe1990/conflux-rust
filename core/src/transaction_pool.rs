@@ -1,7 +1,6 @@
 extern crate rand;
 
 use ethereum_types::{H256, H512, U512};
-use network::PeerId;
 use parking_lot::RwLock;
 use primitives::{SignedTransaction, TransactionWithSignature};
 use std::{

@@ -2,6 +2,9 @@ use serde::{Serialize, Serializer};
 
 use types::{H160, H256, U256, Transaction};
 
+use primitives::Block as PrimitiveBlock;
+use ethereum_types::U256 as Eth256;
+
 #[derive(Debug)]
 pub enum BlockTransactions {
     /// Only hashes
@@ -33,7 +36,7 @@ pub struct Block {
     /// Transactions root hash
     pub transactions_root: H256,
     /// Block number
-    pub number: Option<U256>,
+    pub number: Option<usize>,
     /// Gas used
     pub gas_used: U256,
     /// Gas limit
@@ -48,6 +51,31 @@ pub struct Block {
     pub transactions: BlockTransactions,
     /// Size in bytes
     pub size: Option<U256>,
+}
+
+impl Block {
+    pub fn new(b: &PrimitiveBlock, epoch_number: Option<usize>, tot_diff: Option<Eth256>) -> Self {
+        Block {
+            hash: H256::from(b.block_header.hash().clone()),
+            parent_hash: H256::from(b.block_header.parent_hash().clone()),
+            author: H160::from(b.block_header.author().clone()),
+            state_root: H256::from(b.block_header.deferred_state_root().clone()),
+            transactions_root: H256::from(b.block_header.transactions_root().clone()),
+            // PrimitiveBlock does not contain this information
+            number: epoch_number,
+            gas_used: U256::from(b.total_gas()),
+            // FIXME: Change the field after we figured out the gas limit and fee system
+            gas_limit: U256::from(100000),
+            timestamp: U256::from(b.block_header.timestamp()),
+            difficulty: U256::from(b.block_header.difficulty().clone()),
+            // PrimitiveBlock does not contain this information
+            total_difficulty: tot_diff.map(|x| U256::from(x)),
+            transactions: BlockTransactions::Hashes(b.transactions.iter().map(
+                |x| H256::from(x.hash())
+            ).collect()),
+            size: Some(U256::from(b.size())),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -240,7 +240,7 @@ impl ConsensusGraphInner {
                             candidates.insert(*referee);
                         }
                     }
-                }
+               }
             }
 
             // Third, apply transactions in the determined total order
@@ -303,6 +303,24 @@ impl ConsensusGraph {
 
     pub fn contains_block(&self, hash: &H256) -> bool {
         self.blocks.read().contains_key(hash)
+    }
+
+    pub fn get_block_total_difficulty(&self, hash: &H256) -> Option<U256> {
+        let r = self.inner.read();
+        if let Some(idx) = r.indices.get(hash) {
+            Some(r.arena[*idx].total_difficulty)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_block_epoch_number(&self, hash: &H256) -> Option<usize> {
+        let r = self.inner.read();
+        if let Some(idx) = r.indices.get(hash) {
+            Some(r.arena[*idx].data.epoch_number.borrow().clone())
+        } else {
+            None
+        }
     }
 
     pub fn on_new_block(&self, block: Block) {

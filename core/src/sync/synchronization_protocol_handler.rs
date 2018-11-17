@@ -48,6 +48,10 @@ impl SynchronizationProtocolHandler {
         }
     }
 
+    pub fn block_by_hash(&self, hash: &H256) -> Option<Block> {
+        self.graph.block_by_hash(hash)
+    }
+
     fn send_message(
         &self, io: &NetworkContext, peer: PeerId, msg: &Message,
     ) -> Result<(), NetworkError> {

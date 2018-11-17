@@ -1,4 +1,4 @@
-use ethereum_types::H256;
+use ethereum_types::{H256, U256};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use BlockHeader;
 use SignedTransaction;
@@ -15,6 +15,22 @@ pub struct Block {
 
 impl Block {
     pub fn hash(&self) -> H256 { self.block_header.hash() }
+
+    pub fn total_gas(&self) -> U256 {
+        let mut sum = U256::from(0);
+        for t in &self.transactions {
+            sum += t.gas;
+        }
+        sum
+    }
+
+    pub fn size(&self) -> usize {
+        let mut ret = self.block_header.size();
+        for t in &self.transactions {
+            ret += t.size();
+        }
+        ret
+    }
 }
 
 impl Encodable for Block {

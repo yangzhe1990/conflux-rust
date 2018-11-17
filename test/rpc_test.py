@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import datetime
 import time
 
@@ -28,7 +29,7 @@ class RpcTest(ConfluxTestFramework):
         self._test_sayhello()
         self._test_getbalance()
         self._test_getbestblockhash()
-        # self._test_getblock()
+        self._test_getblock()
         self._test_getpeerinfo()
         self._test_addlatency()
 
@@ -59,9 +60,11 @@ class RpcTest(ConfluxTestFramework):
         assert_equal(self.best_block_hash, res)
 
     def _test_getblock(self):
-        self.log.info("Test getbestblockhash")
+        self.log.info("Test getblock")
         res = self.nodes[0].getblock(self.best_block_hash)
+        self.log.info(res)
         assert_equal(self.best_block_hash, res['hash'])
+        assert_equal(self.block_number, res['number'])
 
     def _test_getpeerinfo(self):
         self.log.info("Test getpeerinfo")
@@ -77,11 +80,19 @@ class RpcTest(ConfluxTestFramework):
 
     def _test_addlatency(self):
         class DefaultNode(P2PInterface):
+            def __init__(self, test):
+                super().__init__()
+                self.test = test
             def on_block_headers(self, headers):
-                assert (datetime.datetime.now() - self.start_time).total_seconds() * 1000 >= self.latency_ms - 100
+                msec = (datetime.datetime.now() - self.start_time).total_seconds() * 1000
+                self.test.log.info("Message arrived after " + str(msec) + "ms")
+                # The EventLoop in rust may have a deviation of a maximum of
+                # 100ms. This is because the ticker is 100ms by default.
+                assert msec >= self.latency_ms - 100
                 self.wait = False
-
-        default_node = self.nodes[0].add_p2p_connection(DefaultNode())
+        
+        self.log.info("Test addlatency")
+        default_node = self.nodes[0].add_p2p_connection(DefaultNode(self))
         network_thread_start()
         self.nodes[0].p2p.wait_for_status()
         latency_ms = 1000

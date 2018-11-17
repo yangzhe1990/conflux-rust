@@ -78,6 +78,10 @@ impl SynchronizationService {
     ) -> Result<(), NetworkError> {
         self.network.add_latency(id, latency_ms)
     }
+
+    pub fn block_by_hash(&self, hash: &H256) -> Option<Block> {
+        self.protocol_handler.block_by_hash(hash)
+    }
 }
 
 pub type SharedSynchronizationService = Arc<SynchronizationService>;

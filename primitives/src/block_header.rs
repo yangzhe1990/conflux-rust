@@ -143,6 +143,11 @@ impl BlockHeader {
             .append_list(&self.referee_hashes)
             .append(&self.nonce);
     }
+
+    pub fn size(&self) -> usize {
+        // FIXME: We need to revisit the size of block header once we finished the persistent storage part
+        0
+    }
 }
 
 pub struct BlockHeaderBuilder {
