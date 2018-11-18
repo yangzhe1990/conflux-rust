@@ -222,17 +222,31 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("test-mode")
-                .long("test-mode")
-                .value_name("BOOL")
-                .help("Sets test mode for adding latency")
-                .takes_value(true),
-        )
-        .arg(
             Arg::with_name("enable-discovery")
                 .long("enable-discovery")
                 .value_name("BOOL")
                 .help("Enable discovery protocol")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("node-table-timeout")
+                .long("node-table-timeout")
+                .value_name("SEC")
+                .help("How often Conflux updates its peer table (default 300).")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("node-table-promotion-timeout")
+                .long("node-table-promotion-timeout")
+                .value_name("SEC")
+                .help("How long Conflux waits for promoting a peer to trustworthy (default 3 * 24 * 3600).")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("test-mode")
+                .long("test-mode")
+                .value_name("BOOL")
+                .help("Sets test mode for adding latency")
                 .takes_value(true),
         )
         .get_matches_from(std::env::args().collect::<Vec<_>>());

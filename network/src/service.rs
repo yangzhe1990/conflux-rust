@@ -61,14 +61,11 @@ pub const DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT: Duration =
 // for DISCOVERY_ROUND TimerToken
 pub const DEFAULT_DISCOVERY_ROUND_TIMEOUT: Duration =
     Duration::from_millis(500);
-// for NODE_TABLE TimerToken
+// The ticker interval for NODE_TABLE, i.e., how often the program will refresh the NODE_TABLE.
 pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(300);
-//pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(1);
-// The lifetime threshold of the connection for promoting a peer
+// The lifetime threshold of the connection for promoting a peer from untrusted to trusted.
 pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration =
     Duration::from_secs(3 * 24 * 3600);
-//pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration =
-// Duration::from_secs(1);
 
 pub const MAX_DATAGRAM_SIZE: usize = 1280;
 

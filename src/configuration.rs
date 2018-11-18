@@ -2,7 +2,7 @@ use cache_config::CacheConfig;
 use clap;
 use log::LevelFilter;
 use network::{node_table::validate_node_url, ErrorKind, NetworkConfiguration};
-use std::{fs::File, io::prelude::*, net::ToSocketAddrs};
+use std::{fs::File, io::prelude::*, net::ToSocketAddrs, time::Duration};
 use toml;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -19,6 +19,8 @@ pub struct Configuration {
     pub public_address: Option<String>,
     pub ledger_cache_size: Option<usize>,
     pub discovery_enabled: bool,
+    pub node_table_timeout: Option<u64>,
+    pub node_table_promotion_timeout: Option<u64>,
     pub test_mode: bool,
 }
 
@@ -37,6 +39,8 @@ impl Default for Configuration {
             public_address: None,
             ledger_cache_size: None,
             discovery_enabled: false,
+            node_table_timeout: None,
+            node_table_promotion_timeout: None,
             test_mode: false,
         }
     }
@@ -111,6 +115,16 @@ impl Configuration {
                 config.discovery_enabled =
                     enable_discovery.as_bool().map_or(false, |x| x as bool);
             }
+            if let Some(nt_timeout) = config_value.get("node-table-timeout") {
+                config.node_table_timeout =
+                    nt_timeout.as_integer().map(|x| x as u64);
+            }
+            if let Some(nt_promotion_timeout) =
+                config_value.get("node-table-promotion-timeout")
+            {
+                config.node_table_promotion_timeout =
+                    nt_promotion_timeout.as_integer().map(|x| x as u64);
+            }
             if let Some(test_mode) = config_value.get("test-mode") {
                 config.test_mode =
                     test_mode.as_bool().map_or(false, |x| x as bool);
@@ -171,6 +185,21 @@ impl Configuration {
                 .parse()
                 .map_err(|_| "enable_discovery not boolean".to_owned())?;
         }
+        if let Some(nt_timeout) = matches.value_of("node-table-timeout") {
+            config.node_table_timeout = Some(
+                nt_timeout
+                    .parse()
+                    .map_err(|_| "Invalid node table timeout".to_owned())?,
+            );
+        }
+        if let Some(nt_promotion_timeout) =
+            matches.value_of("node-table-promotion-timeout")
+        {
+            config.node_table_promotion_timeout =
+                Some(nt_promotion_timeout.parse().map_err(|_| {
+                    "Invalid node table promotion timeout".to_owned()
+                })?);
+        }
         if let Some(test_mode) = matches.value_of("test-mode") {
             config.test_mode = test_mode
                 .parse()
@@ -202,6 +231,13 @@ impl Configuration {
                     None
                 }
             };
+        }
+        if let Some(nt_timeout) = self.node_table_timeout {
+            network_config.node_table_timeout = Duration::from_secs(nt_timeout);
+        }
+        if let Some(nt_promotion_timeout) = self.node_table_promotion_timeout {
+            network_config.connection_lifetime_for_promotion =
+                Duration::from_secs(nt_promotion_timeout);
         }
         network_config.test_mode = self.test_mode;
         network_config
