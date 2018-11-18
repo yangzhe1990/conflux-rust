@@ -18,6 +18,7 @@ pub struct Configuration {
     pub netconf_dir: Option<String>,
     pub public_address: Option<String>,
     pub ledger_cache_size: Option<usize>,
+    pub discovery_enabled: bool,
     pub test_mode: bool,
 }
 
@@ -35,6 +36,7 @@ impl Default for Configuration {
             netconf_dir: None,
             public_address: None,
             ledger_cache_size: None,
+            discovery_enabled: false,
             test_mode: false,
         }
     }
@@ -61,7 +63,8 @@ impl Configuration {
             let config_value = config_str.parse::<toml::Value>().unwrap();
             if let Some(port) = config_value.get("port") {
                 config.port = port.clone().try_into().ok();
-                //                config.port = port.as_integer().map(|x| x as u16);
+                //                config.port = port.as_integer().map(|x| x as
+                // u16);
             }
             if let Some(port) = config_value.get("udp-port") {
                 config.udp_port = port.as_integer().map(|x| x as u16);
@@ -102,6 +105,11 @@ impl Configuration {
             if let Some(cache_size) = config_value.get("ledger-cache-size") {
                 config.ledger_cache_size =
                     cache_size.as_integer().map(|x| x as usize);
+            }
+            if let Some(enable_discovery) = config_value.get("enable-discovery")
+            {
+                config.discovery_enabled =
+                    enable_discovery.as_bool().map_or(false, |x| x as bool);
             }
             if let Some(test_mode) = config_value.get("test-mode") {
                 config.test_mode =
@@ -158,6 +166,11 @@ impl Configuration {
         if let Some(public_address) = matches.value_of("public-address") {
             config.public_address = Some(public_address.to_owned());
         }
+        if let Some(enable_discovery) = matches.value_of("enable-discovery") {
+            config.discovery_enabled = enable_discovery
+                .parse()
+                .map_err(|_| "enable_discovery not boolean".to_owned())?;
+        }
         if let Some(test_mode) = matches.value_of("test-mode") {
             config.test_mode = test_mode
                 .parse()
@@ -172,6 +185,7 @@ impl Configuration {
             None => NetworkConfiguration::default(),
         };
 
+        network_config.discovery_enabled = self.discovery_enabled;
         network_config.boot_nodes =
             to_bootnodes(&self.bootnodes).expect("Error parsing bootnodes!");
         if self.netconf_dir.is_some() {
@@ -218,7 +232,8 @@ pub fn to_bootnodes(bootnodes: &Option<String>) -> Result<Vec<String>, String> {
                     "Invalid node address format given for a boot node: {}",
                     s
                 )),
-            }).collect(),
+            })
+            .collect(),
         Some(_) => Ok(vec![]),
         None => Ok(vec![]),
     }

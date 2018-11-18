@@ -69,8 +69,7 @@ fn make_genesis() -> Block {
 
 // Start all key components of Conflux and pass out their handles
 fn start(
-    conf: Configuration,
-    exit: Arc<(Mutex<bool>, Condvar)>,
+    conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<Box<Any>, String> {
     let network_config = conf.net_config();
     let _cache_config = conf.cache_config();
@@ -229,11 +228,19 @@ fn main() {
                 .help("Sets test mode for adding latency")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("enable-discovery")
+                .long("enable-discovery")
+                .value_name("BOOL")
+                .help("Enable discovery protocol")
+                .takes_value(true),
+        )
         .get_matches_from(std::env::args().collect::<Vec<_>>());
     let conf = Configuration::parse(&matches).unwrap();
 
-    // If log_conf is provided, use it for log configuration and ignore log_file and log_level.
-    // Otherwise, set stdout to INFO and set all our crate log to log_level.
+    // If log_conf is provided, use it for log configuration and ignore log_file
+    // and log_level. Otherwise, set stdout to INFO and set all our crate
+    // log to log_level.
     let log_config = match conf.log_conf {
         Some(ref log_conf) => {
             log4rs::load_config_file(log_conf, Default::default()).unwrap()
@@ -264,7 +271,7 @@ fn main() {
                 "rpc",
                 "transactiongen",
             ]
-                .iter()
+            .iter()
             {
                 conf_builder = conf_builder.logger(
                     Logger::builder().build(*crate_name, conf.log_level),
