@@ -5,7 +5,7 @@ ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. && pwd )"
 function check_build {
     #rm -rf $ROOT_DIR/build && mkdir -p $ROOT_DIR/build
     pushd $ROOT_DIR > /dev/null
-    CARGO_TARGET_DIR=$ROOT_DIR/build cargo build
+    CARGO_TARGET_DIR=$ROOT_DIR/build cargo build -v
     if [ $? -ne 0 ]; then
         echo "build failed" >> $ROOT_DIR/.phabricator-comment
         exit 1
