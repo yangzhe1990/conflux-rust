@@ -13,7 +13,7 @@ from test_framework.test_framework import ConfluxTestFramework
 #     PACKET_HELLO)
 from test_framework.mininode import *
 from test_framework.util import *
-
+import time
 
 class MessageTest(ConfluxTestFramework):
     def set_test_params(self):
@@ -37,23 +37,43 @@ class MessageTest(ConfluxTestFramework):
         new_block = create_block(blocks[0], 1)
         new_transaction = create_transaction()
 
-        self.send_msg(GetBlockHashes(hash=blocks[0], max_blocks=1))
+        # This message is not used in current Conflux sync protocol
+        # self.log.info("Send GetBlockHashes message")
+        # self.send_msg(GetBlockHashes(hash=blocks[0], max_blocks=1))
+        # wait_until(lambda: default_node.msg_count >= 1)
+        def on_block_headers(node, msg):
+            self.log.info("Received %d headers", len(msg.headers))
+            for header in msg.headers:
+                self.log.info("Block header: %s", encode_hex(header.hash))
+        handler = WaitHandler(default_node, GET_BLOCK_HEADERS_RESPONSE, on_block_headers)
+        self.log.info("Send GetBlockHeaders message")
         self.send_msg(GetBlockHeaders(hash=blocks[0], max_blocks=1))
-        self.send_msg(GetBlockBodies(hashes=[blocks[0]]))
+        handler.wait()
+        # This message is not used in current Conflux sync protocol
+        # self.log.info("Send GetBlockBoies message")
+        # self.send_msg(GetBlockBodies(hashes=[blocks[0]]))
+        # wait_until(lambda: default_node.msg_count >= 3)
+        self.log.info("Send GetBlocks message")
+        handler = WaitHandler(default_node, GET_BLOCKS_RESPONSE)
         self.send_msg(GetBlocks(hashes=[blocks[0]]))
-        # self.send_msg(BlockHashes(reqid=0, hashes=[blocks[0]]))
-        # self.send_msg(BlockHeaders(reqid=0, headers=[default_node.genesis.block_header]))
-        # self.send_msg(BlockBodies(reqid=0, bodies=[default_node.genesis]))
-        # self.send_msg(Blocks(reqid=0, blocks=[default_node.genesis]))
+        handler.wait()
+        self.log.info("Received GetBlock response")
+
         self.send_msg(NewBlockHashes([new_block.block_header.hash]))
         self.send_msg(NewBlock(block=new_block))
+        self.log.info("Send GetTerminalBLockHashes message")
         self.send_msg(GetTerminalBlockHashes())
-        # self.send_msg(TerminalBlockHashes(reqid=0, hashes=[blocks[0]]))
-        self.send_msg(Transactions(transactions=[new_transaction]))
+        handler = WaitHandler(default_node, GET_TERMINAL_BLOCK_HASHES_RESPONSE)
+        handler.wait()
+        self.log.info("Received TerminalBlockHashes")
 
-        print("pass")
-        while True:
-            pass
+        self.send_msg(Transactions(transactions=[new_transaction]))
+        time.sleep(5)
+        res = self.nodes[0].getstatus()
+        assert_equal(1, res['pendingTxNumber'])
+        res = self.nodes[1].getstatus()
+        assert_equal(1, res['pendingTxNumber'])
+        self.log.info("Pass")
 
     def send_msg(self, msg):
         self.nodes[0].p2p.send_protocol_msg(msg)

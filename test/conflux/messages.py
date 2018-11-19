@@ -301,7 +301,7 @@ class Blocks(rlp.Serializable):
     ]
 
 
-msg_id = {
+msg_id_dict = {
     Status: STATUS,
     NewBlockHashes: NEW_BLOCK_HASHES,
     Transactions: TRANSACTIONS,
@@ -318,17 +318,24 @@ msg_id = {
     Blocks: GET_BLOCKS_RESPONSE
 }
 
-msg_class = {}
-for c in msg_id:
-    msg_class[msg_id[c]] = c
+msg_class_dict = {}
+for c in msg_id_dict:
+    msg_class_dict[msg_id_dict[c]] = c
 
 
 def get_msg_id(msg):
-    return msg_id[msg.__class__]
+    c = msg.__class__
+    if c in msg_id_dict:
+        return msg_id_dict[c]
+    else:
+        return None
 
 
 def get_msg_class(msg):
-    return msg_class[msg]
+    if msg in msg_class_dict:
+        return msg_class_dict[msg]
+    else:
+        return None
 
 
 def is_sequence(s):

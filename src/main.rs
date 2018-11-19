@@ -122,6 +122,7 @@ fn start(
         consensus: consensus.clone(),
         sync: sync.clone(),
         block_gen: blockgen.clone(),
+        tx_pool: txpool.clone(),
         exit: exit,
     };
     let rpc_tcp_server = rpc::new_tcp(
@@ -279,6 +280,7 @@ fn main() {
             // Should add new crate names here
             for crate_name in [
                 "core",
+                "conflux",
                 "sync",
                 "blockgen",
                 "network",

@@ -1,9 +1,11 @@
 use blockgen::BlockGenerator;
 use conflux_rpc::types::Block as RpcBlock;
+use conflux_rpc::types::Status as RpcStatus;
 use core::{
     self, PeerInfo, SharedConsensusGraph, SharedSynchronizationService,
-    StateManager, StateManagerTrait,
+    SharedTransactionPool, StateManager, StateManagerTrait,
 };
+use conflux_rpc::types::H256 as RpcH256;
 use ethereum_types::{Address, H256, U256};
 use http::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
@@ -22,6 +24,7 @@ pub struct Dependencies {
     pub consensus: SharedConsensusGraph,
     pub sync: SharedSynchronizationService,
     pub block_gen: Arc<BlockGenerator>,
+    pub tx_pool: SharedTransactionPool,
     pub exit: Arc<(Mutex<bool>, Condvar)>,
 }
 
@@ -97,9 +100,11 @@ build_rpc_trait! {
         #[rpc(name = "getnodeid")]
         fn get_nodeid(&self, Vec<u8>) -> RpcResult<Vec<u8>>;
 
+        #[rpc(name = "getstatus")]
+        fn get_status(&self) -> RpcResult<RpcStatus>;
+
         #[rpc(name = "addlatency")]
         fn add_latency(&self, NodeId, f64) -> RpcResult<()>;
-
     }
 }
 
@@ -108,6 +113,7 @@ struct RpcImpl {
     consensus: SharedConsensusGraph,
     sync: SharedSynchronizationService,
     block_gen: Arc<BlockGenerator>,
+    tx_pool: SharedTransactionPool,
     exit: Arc<(Mutex<bool>, Condvar)>,
 }
 
@@ -115,7 +121,7 @@ impl RpcImpl {
     fn new(
         state_manager: Arc<StateManager>, consensus: SharedConsensusGraph,
         sync: SharedSynchronizationService, block_gen: Arc<BlockGenerator>,
-        exit: Arc<(Mutex<bool>, Condvar)>,
+        tx_pool: SharedTransactionPool, exit: Arc<(Mutex<bool>, Condvar)>,
     ) -> Self
     {
         RpcImpl {
@@ -123,6 +129,7 @@ impl RpcImpl {
             consensus,
             sync,
             block_gen,
+            tx_pool,
             exit,
         }
     }
@@ -229,6 +236,22 @@ impl Rpc for RpcImpl {
         }
     }
 
+    fn get_status(&self) -> RpcResult<RpcStatus> {
+        let best_hash = self.consensus.best_block_hash();
+        let block_number = self.consensus.block_count();
+        let tx_count = self.tx_pool.len();
+        if let Some(epoch_number) = self.consensus.get_block_epoch_number(&best_hash) {
+            Ok(RpcStatus {
+                best_hash: RpcH256::from(best_hash),
+                epoch_number: epoch_number,
+                block_number: block_number,
+                pending_tx_number: tx_count,
+            })
+        } else {
+            Err(RpcError::internal_error())
+        }
+    }
+
     fn add_latency(&self, id: NodeId, latency_ms: f64) -> RpcResult<()> {
         match self.sync.add_latency(id, latency_ms) {
             Ok(_) => Ok(()),
@@ -247,6 +270,7 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
             dependencies.consensus.clone(),
             dependencies.sync.clone(),
             dependencies.block_gen.clone(),
+            dependencies.tx_pool.clone(),
             dependencies.exit.clone(),
         )
         .to_delegate(),

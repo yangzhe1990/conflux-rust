@@ -403,11 +403,11 @@ class WaitHandler:
         self.node = node
         self.msgid = msgid
 
-        def stop_wait(obj, msg):
+        def on_message(obj, msg):
             if func is not None:
                 func(obj, msg)
             self.keep_wait = False
-        node.set_callback(msgid, stop_wait)
+        node.set_callback(msgid, on_message)
 
     def wait(self, timeout=10):
         wait_until(lambda: not self.keep_wait, timeout=timeout)

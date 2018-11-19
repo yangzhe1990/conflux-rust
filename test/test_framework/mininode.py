@@ -302,53 +302,41 @@ class P2PInterface(P2PConnection):
                 payload = payload[4:]
                 self.protocol_message_count[packet_type] += 1
                 msg = None
+                msg_class = get_msg_class(packet_type)
+                if msg_class is not None:
+                    msg = rlp.decode(payload, msg_class)
                 if packet_type == STATUS:
-                    msg = rlp.decode(payload, Status)
                     self._log_message("receive", "STATUS, protocol_version:{}, best:{}"
                                       .format(msg.protocol_version,
                                               utils.encode_hex(msg.best_block_hash)))
                     self.had_status = True
                 elif packet_type == GET_BLOCK_HEADERS:
-                    msg = rlp.decode(payload, GetBlockHeaders)
                     self._log_message("receive", "GET_BLOCK_HEADERS of {} {}".format(msg.hash, msg.max_blocks))
                 elif packet_type == GET_BLOCK_BODIES:
-                    msg = rlp.decode(rlp, GetBlockBodies)
                     hashes = msg.hashes
                     self._log_message("receive", "GET_BLOCK_BODIES of {} blocks".format(len(hashes)))
                 elif packet_type == GET_BLOCK_HEADERS_RESPONSE:
-                    msg = rlp.decode(payload, BlockHeaders)
                     self._log_message("receive", "BLOCK_HEADERS of {} headers".format(len(msg.headers)))
-                    self.on_block_headers(msg)
                 elif packet_type == GET_BLOCK_BODIES_RESPONSE:
-                    msg = rlp.decode(payload, BlockBodies)
                     self._log_message("receive", "BLOCK_BODIES of {} blocks".format(len(msg)))
                 elif packet_type == NEW_BLOCK:
-                    msg = rlp.decode(payload, NewBlock)
                     self._log_message("receive", "NEW_BLOCK, hash:{}".format(msg.block.block_header.hash))
                 elif packet_type == GET_BLOCK_HASHES:
-                    msg = rlp.decode(payload, GetBlockHashes)
                     self._log_message("receive", "GET_BLOCK_HASHES, hash:{}, max_blocks:{}"
                                       .format(msg.hash, msg.max_blocks))
                 elif packet_type == GET_BLOCK_HASHES_RESPONSE:
-                    block_hashes = rlp.decode(payload, BlockHashes)
-                    self._log_message("receive", "BLOCK_HASHES, {} hashes".format(len(block_hashes.hashes)))
+                    self._log_message("receive", "BLOCK_HASHES, {} hashes".format(len(msg.hashes)))
                 elif packet_type == GET_TERMINAL_BLOCK_HASHES:
-                    msg = rlp.decode(payload, GetTerminalBlockHashes)
                     self._log_message("receive", "GET_TERMINAL_BLOCK_HASHES")
                 elif packet_type == TRANSACTIONS:
-                    msg = rlp.decode(payload, Transactions)
                     self._log_message("receive", "TRANSACTIONS, {} transactions".format(len(msg.transactions)))
                 elif packet_type == GET_TERMINAL_BLOCK_HASHES_RESPONSE:
-                    msg = rlp.decode(payload, TerminalBlockHashes)
                     self._log_message("receive", "TERMINAL_BLOCK_HASHES, {} hashes".format(len(msg.hashes)))
                 elif packet_type == NEW_BLOCK_HASHES:
-                    msg = rlp.decode(payload, NewBlockHashes)
                     self._log_message(("receive", "NEW_BLOCK_HASHES, {} hashes".format(len(msg.hashes))))
                 elif packet_type == GET_BLOCKS_RESPONSE:
-                    msg = rlp.decode(payload, Blocks)
                     self._log_message("receive", "BLOCKS, {} blocks".format(len(msg.blocks)))
                 elif packet_type == GET_BLOCKS:
-                    msg = rlp.decode(payload, GetBlocks)
                     self._log_message("receive", "GET_BLOCKS, {} hashes".format(len(msg.hashes)))
                 else:
                     self._log_message("receive", "Unknown packet {}".format(packet_type))
@@ -403,21 +391,6 @@ class P2PInterface(P2PConnection):
 
     def on_close(self): pass
 
-    """Function to override"""
-    def on_block_headers(self, headers):
-        pass
-
-    def on_block_bodies(self, bodies):
-        pass
-
-    def on_status(self, status):
-        pass
-
-    def on_get_block_headers(self, get_block_headers):
-        pass
-
-    def on_get_block_bodies(self, hashes):
-        pass
 
 # Keep our own socket map for asyncore, so that we can track disconnects
 # ourselves (to work around an issue with closing an asyncore socket when

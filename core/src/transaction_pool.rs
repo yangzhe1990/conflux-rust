@@ -21,14 +21,7 @@ impl OrderedTransaction {
 
 impl Ord for OrderedTransaction {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.transaction.hash() < other.transaction.hash() {
-            return Ordering::Less;
-        }
-        if self.transaction.hash() > other.transaction.hash() {
-            return Ordering::Greater;
-        } else {
-            return Ordering::Equal;
-        }
+        self.transaction.hash().cmp(&other.transaction.hash())
     }
 }
 
@@ -58,6 +51,10 @@ impl TransactionPoolInner {
             transaction_set: BTreeSet::new(),
         }
     }
+
+    pub fn len(&self) -> usize {
+        self.hashes.len()
+    }
 }
 
 pub struct TransactionPool {
@@ -75,6 +72,10 @@ impl TransactionPool {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.inner.read().len()
+    }
+
     pub fn insert_new_transactions(
         &self, transactions: Vec<TransactionWithSignature>,
     ) -> u32 {
@@ -84,6 +85,8 @@ impl TransactionPool {
                 if self.add(SignedTransaction::new(public, tx)) {
                     count += 1;
                 }
+            } else {
+                debug!("Unable to recover the public key of transaction {:?}", tx.hash());
             }
         }
         count
@@ -93,12 +96,14 @@ impl TransactionPool {
         let mut inner = self.inner.write();
 
         if self.capacity <= inner.hashes.len() {
+            debug!("Rejected a transaction {:?} because of insufficient transaction pool capacity!", transaction.hash());
             // pool is full
             return false;
         }
 
         let hash = transaction.hash();
         if inner.hashes.contains(&hash) {
+            debug!("Rejected a transaction {:?} because it already exists!", transaction.hash());
             // already exists
             return false;
         }
@@ -107,7 +112,7 @@ impl TransactionPool {
         inner
             .transaction_set
             .insert(OrderedTransaction::new(transaction.clone()));
-
+        debug!("Inserted a transaction {:?}, now txpool size {:?}", transaction.hash(), inner.len());
         true
     }
 

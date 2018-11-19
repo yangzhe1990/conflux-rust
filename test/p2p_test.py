@@ -51,7 +51,7 @@ class P2PTest(ConfluxTestFramework):
         for i in range(1, block_number):
             chosen_peer = random.randint(0, self.num_nodes - 1)
             block_hash = self.nodes[chosen_peer].generate(1, 10)
-            print("generate block ", block_hash)
+            self.log.info("generate block %s", block_hash)
             time.sleep(random.random())
         wait_for_block_count(self.nodes[0], block_number)
         sync_blocks(self.nodes, timeout=10)
@@ -70,16 +70,16 @@ class P2PTest(ConfluxTestFramework):
             block = create_block(tip, block_time)
             self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block))
             tip = block.block_header.hash
-            print("generate block ", encode_hex(tip))
+            self.log.info("generate block %s", encode_hex(tip))
             block_time += 1
         wait_for_block_count(self.nodes[0], block_number * 2)
         sync_blocks(self.nodes, timeout=10)
         balance = self.nodes[0].getbalance(eth_utils.encode_hex(privtoaddr(decode_hex("0x46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"))))
-        print(parse_as_int(balance))
+        self.log.info("Balance %s", parse_as_int(balance))
         # assert_equal(self.nodes[0].getbestblockhash()[2:], encode_hex(tip))
         # self.nodes[0].generate(1)
         # wait_for_block_count(self.nodes[0], self.block_number+1)
-        print("pass")
+        self.log.info("Pass")
 
 
 class DefaultNode(P2PInterface):

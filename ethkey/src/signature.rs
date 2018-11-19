@@ -221,10 +221,10 @@ pub fn recover(
         &signature[0..64],
         RecoveryId::from_i32(signature[64] as i32)?,
     )?;
-    let pubkey =
-        context.recover(&SecpMessage::from_slice(&message[..])?, &rsig)?;
+    let pubkey0 =
+        context.recover(&SecpMessage::from_slice(&message[..])?, &rsig);
+    let pubkey = pubkey0?;
     let serialized = pubkey.serialize_vec(context, false);
-
     let mut public = Public::default();
     public.copy_from_slice(&serialized[1..65]);
     Ok(public)

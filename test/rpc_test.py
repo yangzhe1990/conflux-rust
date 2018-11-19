@@ -32,6 +32,7 @@ class RpcTest(ConfluxTestFramework):
         self._test_getblock()
         self._test_getpeerinfo()
         self._test_addlatency()
+        self._test_getstatus()
 
         # Test stop at last
         self._test_stop()
@@ -102,6 +103,12 @@ class RpcTest(ConfluxTestFramework):
         default_node.wait = True
         self.nodes[0].p2p.send_protocol_msg(GetBlockHeaders(hash=default_node.genesis.block_header.hash, max_blocks=1))
         wait_until(lambda: not default_node.wait)
+
+    def _test_getstatus(self):
+        self.log.info("Test getstatus")
+        res = self.nodes[0].getstatus()
+        self.log.info("Status: %s", res)
+        assert_equal(self.block_number + 1, res['blockNumber'])
 
     def _test_stop(self):
         self.log.info("Test stop")

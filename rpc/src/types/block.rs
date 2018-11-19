@@ -35,7 +35,7 @@ pub struct Block {
     pub state_root: H256,
     /// Transactions root hash
     pub transactions_root: H256,
-    /// Block number
+    /// Epoch number
     pub number: Option<usize>,
     /// Gas used
     pub gas_used: U256,
