@@ -19,14 +19,15 @@ use std::env;
 
 /// Replaces `$HOME` str with home directory path.
 pub fn replace_home(base: &str, arg: &str) -> String {
-	// the $HOME directory on mac os should be `~/Library` or `~/Library/Application Support`
-	let r = arg.replace("$HOME", env::home_dir().unwrap().to_str().unwrap());
-	let r = r.replace("$BASE", base);
-	r.replace("/", &::std::path::MAIN_SEPARATOR.to_string())
+    // the $HOME directory on mac os should be `~/Library` or
+    // `~/Library/Application Support`
+    let r = arg.replace("$HOME", env::home_dir().unwrap().to_str().unwrap());
+    let r = r.replace("$BASE", base);
+    r.replace("/", &::std::path::MAIN_SEPARATOR.to_string())
 }
 
 /// Replaces `$HOME` str with home directory path and `$LOCAL` with local path.
 pub fn replace_home_and_local(base: &str, local: &str, arg: &str) -> String {
-	let r = replace_home(base, arg);
-	r.replace("$LOCAL", local)
+    let r = replace_home(base, arg);
+    r.replace("$LOCAL", local)
 }

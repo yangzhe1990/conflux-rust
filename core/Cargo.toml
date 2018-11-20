@@ -23,3 +23,5 @@ rand = "0.5"
 message = { path = "../message" }
 error-chain = { version = "0.12", default-features = false }
 slab = "0.4"
+kvdb = "0.1"
+db = { path = "../db" }

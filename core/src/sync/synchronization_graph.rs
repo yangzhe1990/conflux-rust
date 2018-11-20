@@ -3,9 +3,7 @@ use ethereum_types::H256;
 use parking_lot::RwLock;
 use primitives::{Block, BlockHeader};
 use slab::Slab;
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 const NULL: usize = !0;
 

@@ -15,10 +15,13 @@ extern crate rlp;
 extern crate secret_store;
 #[macro_use]
 extern crate error_chain;
+extern crate db as ext_db;
+extern crate kvdb;
 extern crate slab;
 
 mod cache_manager;
 mod consensus;
+pub mod db;
 mod executor;
 pub(crate) mod snapshot;
 pub(crate) mod storage;

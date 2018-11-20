@@ -1,4 +1,6 @@
-use super::{StateManager, transaction_pool::SharedTransactionPool};
+use super::{
+    ext_db::SystemDB, transaction_pool::SharedTransactionPool, StateManager,
+};
 use ethereum_types::{H256, U256};
 use executor::Executor;
 use parking_lot::RwLock;
@@ -10,7 +12,7 @@ use std::{
     iter::FromIterator,
     sync::Arc,
 };
-use storage::{state_manager::StateManagerTrait};
+use storage::state_manager::StateManagerTrait;
 
 const NULL: usize = !0;
 
@@ -240,7 +242,7 @@ impl ConsensusGraphInner {
                             candidates.insert(*referee);
                         }
                     }
-               }
+                }
             }
 
             // Third, apply transactions in the determined total order
@@ -272,14 +274,20 @@ pub struct ConsensusGraph {
     pub inner: RwLock<ConsensusGraphInner>,
     genesis_block_hash: H256,
     pub txpool: SharedTransactionPool,
+    // This db is used to persist information related to
+    // ledger structure, like block- or transaction-related
+    // stuffs.
+    pub ledger_db: Arc<SystemDB>,
 }
 
 pub type SharedConsensusGraph = Arc<ConsensusGraph>;
 
 impl ConsensusGraph {
     pub fn with_genesis_block(
-        genesis_block: Block, state_mananger: Arc<StateManager>, txpool: SharedTransactionPool,
-    ) -> Self {
+        genesis_block: Block, state_mananger: Arc<StateManager>,
+        txpool: SharedTransactionPool, ledger_db: Arc<SystemDB>,
+    ) -> Self
+    {
         let genesis_block_hash = genesis_block.hash();
 
         let mut blocks = HashMap::new();
@@ -293,6 +301,7 @@ impl ConsensusGraph {
             blocks: RwLock::new(blocks),
             genesis_block_hash,
             txpool,
+            ledger_db,
         }
     }
 

@@ -26,7 +26,9 @@ extern crate toml;
 
 extern crate blockgen;
 extern crate core;
+extern crate db;
 extern crate ethkey;
+extern crate kvdb_rocksdb;
 extern crate primitives;
 extern crate rand;
 extern crate rpc as conflux_rpc;
@@ -71,8 +73,15 @@ fn make_genesis() -> Block {
 fn start(
     conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<Box<Any>, String> {
+    info!("Working directory: {:?}", std::env::current_dir());
+
     let network_config = conf.net_config();
     let _cache_config = conf.cache_config();
+
+    let db_config = conf.db_config();
+    let ledger_db =
+        db::open_database(conf.db_dir.as_ref().unwrap(), &db_config)
+            .map_err(|e| format!("Failed to open database {:?}", e))?;
 
     let secret_store = Arc::new(SecretStore::new());
     let genesis_block = make_genesis();
@@ -86,6 +95,7 @@ fn start(
         genesis_block,
         state_manager.clone(),
         txpool.clone(),
+        ledger_db.clone(),
     ));
 
     let sync_config = core::SynchronizationConfiguration {
@@ -214,12 +224,21 @@ fn main() {
                 .value_name("ADDRESS")
                 .help("Sets a custom public address to be connected by others")
                 .takes_value(true),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("ledger-cache-size")
                 .short("lcs")
                 .long("ledger-cache-size")
                 .value_name("SIZE")
                 .help("Sets the ledger cache size")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("db-cache-size")
+                .short("dcs")
+                .long("db-cache-size")
+                .value_name("SIZE")
+                .help("Sets the db cache size")
                 .takes_value(true),
         )
         .arg(
@@ -248,6 +267,20 @@ fn main() {
                 .long("test-mode")
                 .value_name("BOOL")
                 .help("Sets test mode for adding latency")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("db-compact-profile")
+                .long("db-compact-profile")
+                .value_name("ENUM")
+                .help("Sets the compaction profile of RocksDB.")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("db-dir")
+                .long("db-dir")
+                .value_name("PATH")
+                .help("Sets the root path of db.")
                 .takes_value(true),
         )
         .get_matches_from(std::env::args().collect::<Vec<_>>());

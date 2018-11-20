@@ -1,8 +1,18 @@
 use cache_config::CacheConfig;
 use clap;
+use core::db::NUM_COLUMNS;
+use db;
+use kvdb_rocksdb::DatabaseConfig;
 use log::LevelFilter;
 use network::{node_table::validate_node_url, ErrorKind, NetworkConfiguration};
-use std::{fs::File, io::prelude::*, net::ToSocketAddrs, time::Duration};
+use std::{
+    fs::{self, File},
+    io::prelude::*,
+    net::ToSocketAddrs,
+    path::Path,
+    str::FromStr,
+    time::Duration,
+};
 use toml;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -17,7 +27,10 @@ pub struct Configuration {
     pub bootnodes: Option<String>,
     pub netconf_dir: Option<String>,
     pub public_address: Option<String>,
+    pub db_cache_size: Option<usize>,
     pub ledger_cache_size: Option<usize>,
+    pub db_compaction_profile: Option<String>,
+    pub db_dir: Option<String>,
     pub discovery_enabled: bool,
     pub node_table_timeout: Option<u64>,
     pub node_table_promotion_timeout: Option<u64>,
@@ -37,7 +50,10 @@ impl Default for Configuration {
             bootnodes: None,
             netconf_dir: None,
             public_address: None,
+            db_cache_size: None,
             ledger_cache_size: None,
+            db_compaction_profile: None,
+            db_dir: Some("./db".to_string()),
             discovery_enabled: false,
             node_table_timeout: None,
             node_table_promotion_timeout: None,
@@ -110,6 +126,10 @@ impl Configuration {
                 config.ledger_cache_size =
                     cache_size.as_integer().map(|x| x as usize);
             }
+            if let Some(db_cache_size) = config_value.get("db-cache-size") {
+                config.db_cache_size =
+                    db_cache_size.as_integer().map(|x| x as usize);
+            }
             if let Some(enable_discovery) = config_value.get("enable-discovery")
             {
                 config.discovery_enabled =
@@ -128,6 +148,13 @@ impl Configuration {
             if let Some(test_mode) = config_value.get("test-mode") {
                 config.test_mode =
                     test_mode.as_bool().map_or(false, |x| x as bool);
+            }
+            if let Some(profile) = config_value.get("db-compact-profile") {
+                config.db_compaction_profile =
+                    profile.as_str().map(|x| x.to_owned());
+            }
+            if let Some(path) = config_value.get("db-dir") {
+                config.db_dir = path.as_str().map(|x| x.to_owned());
             }
         }
 
@@ -163,6 +190,13 @@ impl Configuration {
         if let Some(cache_size) = matches.value_of("ledger-cache-size") {
             config.ledger_cache_size = Some(
                 cache_size.parse().map_err(|_| "Invalid port".to_owned())?,
+            );
+        }
+        if let Some(db_cache_size) = matches.value_of("db-cache-size") {
+            config.db_cache_size = Some(
+                db_cache_size
+                    .parse()
+                    .map_err(|_| "Invalid port".to_owned())?,
             );
         }
         config.log_level = match matches.value_of("log-level") {
@@ -205,6 +239,12 @@ impl Configuration {
                 .parse()
                 .map_err(|_| "test-mode not boolean".to_owned())?;
         }
+        if let Some(profile) = matches.value_of("db-compact-profile") {
+            config.db_compaction_profile = Some(profile.to_owned());
+        }
+        if let Some(path) = matches.value_of("db-dir") {
+            config.db_dir = Some(path.to_owned());
+        }
         Ok(config)
     }
 
@@ -244,12 +284,33 @@ impl Configuration {
     }
 
     pub fn cache_config(&self) -> CacheConfig {
-        let cache_config = match self.ledger_cache_size {
-            Some(cache_size) => CacheConfig::new(cache_size),
-            None => CacheConfig::default(),
-        };
+        let mut cache_config = CacheConfig::default();
 
+        if let Some(db_cache_size) = self.db_cache_size {
+            cache_config.db = db_cache_size;
+        }
+        if let Some(ledger_cache_size) = self.ledger_cache_size {
+            cache_config.ledger = ledger_cache_size;
+        }
         cache_config
+    }
+
+    pub fn db_config(&self) -> DatabaseConfig {
+        let db_dir = self.db_dir.as_ref().unwrap();
+        if let Err(e) = fs::create_dir_all(&db_dir) {
+            panic!("Error creating database directory: {:?}", e);
+        }
+
+        let compact_profile = match self.db_compaction_profile.as_ref() {
+            Some(p) => db::DatabaseCompactionProfile::from_str(p).unwrap(),
+            None => db::DatabaseCompactionProfile::default(),
+        };
+        db::db_config(
+            Path::new(db_dir),
+            self.db_cache_size.clone(),
+            compact_profile,
+            NUM_COLUMNS.clone(),
+        )
     }
 }
 
