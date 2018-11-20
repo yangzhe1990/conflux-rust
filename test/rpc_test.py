@@ -4,12 +4,12 @@ import time
 
 import eth_utils
 
-from conflux.messages import GetBlockHeaders
+from conflux.messages import GetBlockHeaders, GET_BLOCK_HEADERS_RESPONSE
 from conflux.utils import int_to_hex, privtoaddr
 from test_framework.blocktools import make_genesis
 from test_framework.mininode import network_thread_start, P2PInterface
 from test_framework.test_framework import ConfluxTestFramework
-from test_framework.util import assert_equal, connect_nodes, get_peer_addr, wait_until
+from test_framework.util import assert_equal, connect_nodes, get_peer_addr, wait_until, WaitHandler
 
 
 class RpcTest(ConfluxTestFramework):
@@ -83,15 +83,14 @@ class RpcTest(ConfluxTestFramework):
         class DefaultNode(P2PInterface):
             def __init__(self, test):
                 super().__init__()
-                self.test = test
-            def on_block_headers(self, headers):
-                msec = (datetime.datetime.now() - self.start_time).total_seconds() * 1000
-                self.test.log.info("Message arrived after " + str(msec) + "ms")
-                # The EventLoop in rust may have a deviation of a maximum of
-                # 100ms. This is because the ticker is 100ms by default.
-                assert msec >= self.latency_ms - 100
-                self.wait = False
         
+        def on_block_headers(node, msg):
+            msec = (datetime.datetime.now() - node.start_time).total_seconds() * 1000
+            self.log.info("Message arrived after " + str(msec) + "ms")
+            # The EventLoop in rust may have a deviation of a maximum of
+            # 100ms. This is because the ticker is 100ms by default.
+            assert msec >= node.latency_ms - 100
+    
         self.log.info("Test addlatency")
         default_node = self.nodes[0].add_p2p_connection(DefaultNode(self))
         network_thread_start()
@@ -100,9 +99,9 @@ class RpcTest(ConfluxTestFramework):
         self.nodes[0].addlatency(default_node.key, latency_ms)
         default_node.start_time = datetime.datetime.now()
         default_node.latency_ms = latency_ms
-        default_node.wait = True
+        handler = WaitHandler(default_node, GET_BLOCK_HEADERS_RESPONSE, on_block_headers)
         self.nodes[0].p2p.send_protocol_msg(GetBlockHeaders(hash=default_node.genesis.block_header.hash, max_blocks=1))
-        wait_until(lambda: not default_node.wait)
+        handler.wait()
 
     def _test_getstatus(self):
         self.log.info("Test getstatus")
