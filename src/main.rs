@@ -35,6 +35,8 @@ extern crate rpc as conflux_rpc;
 extern crate secret_store;
 extern crate txgen;
 
+#[macro_use]
+mod config_macro;
 mod cache_config;
 mod configuration;
 mod rpc;
@@ -80,7 +82,7 @@ fn start(
 
     let db_config = conf.db_config();
     let ledger_db =
-        db::open_database(conf.db_dir.as_ref().unwrap(), &db_config)
+        db::open_database(conf.raw_conf.db_dir.as_ref().unwrap(), &db_config)
             .map_err(|e| format!("Failed to open database {:?}", e))?;
 
     let secret_store = Arc::new(SecretStore::new());
@@ -136,11 +138,11 @@ fn start(
         exit: exit,
     };
     let rpc_tcp_server = rpc::new_tcp(
-        rpc::TcpConfiguration::new(conf.jsonrpc_tcp_port),
+        rpc::TcpConfiguration::new(conf.raw_conf.jsonrpc_tcp_port),
         &rpc_deps,
     )?;
     let rpc_http_server = rpc::new_http(
-        rpc::HttpConfiguration::new(conf.jsonrpc_http_port),
+        rpc::HttpConfiguration::new(conf.raw_conf.jsonrpc_http_port),
         &rpc_deps,
     )?;
 
@@ -289,7 +291,7 @@ fn main() {
     // If log_conf is provided, use it for log configuration and ignore log_file
     // and log_level. Otherwise, set stdout to INFO and set all our crate
     // log to log_level.
-    let log_config = match conf.log_conf {
+    let log_config = match conf.raw_conf.log_conf {
         Some(ref log_conf) => {
             log4rs::load_config_file(log_conf, Default::default()).unwrap()
         }
@@ -300,7 +302,7 @@ fn main() {
                     Box::new(ConsoleAppender::builder().build()),
                 ));
             let mut root_builder = Root::builder().appender("stdout");
-            if let Some(ref log_file) = conf.log_file {
+            if let Some(ref log_file) = conf.raw_conf.log_file {
                 conf_builder =
                     conf_builder.appender(Appender::builder().build(
                         "logfile",
@@ -323,7 +325,7 @@ fn main() {
             .iter()
             {
                 conf_builder = conf_builder.logger(
-                    Logger::builder().build(*crate_name, conf.log_level),
+                    Logger::builder().build(*crate_name, conf.raw_conf.log_level),
                 );
             }
             conf_builder

@@ -131,10 +131,10 @@ class TestNode:
                 self.user, self.ip, " ".join(self.args))
             print(cli_mkdir + cli_conf + cli_exe)
             self.process = subprocess.Popen(cli_mkdir + cli_conf + cli_exe,
-                                            stdout=stdout, stderr=stderr, shell=True, **kwargs)
+                                            stdout=stdout, stderr=stderr, cwd=self.datadir, shell=True, **kwargs)
         else:
             self.process = subprocess.Popen(
-                self.args, stdout=stdout, stderr=stderr, env=my_env, **kwargs)
+                self.args, stdout=stdout, stderr=stderr, cwd=self.datadir, env=my_env, **kwargs)
 
         self.running = True
         self.log.debug("conflux started, waiting for RPC to come up")

@@ -253,7 +253,6 @@ def initialize_datadir(dirname, n, ip="127.0.0.1"):
         f.write("jsonrpc-http-port=" + str(rpc_port(n)) + "\n")
         f.write("log-file=\"" + os.path.join(datadir, "conflux.log") + "\"\n")
         f.write("log-level=\"trace\"\n")
-        f.write("netconf-dir=\"" + os.path.join(datadir, "config") + "\"\n")
         f.write("test-mode=true")
         os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)
         os.makedirs(os.path.join(datadir, 'stdout'), exist_ok=True)
