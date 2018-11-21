@@ -25,3 +25,10 @@ error-chain = { version = "0.12", default-features = false }
 slab = "0.4"
 kvdb = "0.1"
 db = { path = "../db" }
+bit-set = "0.4"
+heapsize = "0.4"
+memory-cache = { path = "../util/memory_cache" }
+
+[dev-dependencies]
+rustc-hex = "1.0"
+criterion = "0.2"

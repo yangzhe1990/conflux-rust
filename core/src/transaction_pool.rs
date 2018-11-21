@@ -52,9 +52,7 @@ impl TransactionPoolInner {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.hashes.len()
-    }
+    pub fn len(&self) -> usize { self.hashes.len() }
 }
 
 pub struct TransactionPool {
@@ -72,9 +70,7 @@ impl TransactionPool {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.inner.read().len()
-    }
+    pub fn len(&self) -> usize { self.inner.read().len() }
 
     pub fn insert_new_transactions(
         &self, transactions: Vec<TransactionWithSignature>,
@@ -86,7 +82,10 @@ impl TransactionPool {
                     count += 1;
                 }
             } else {
-                debug!("Unable to recover the public key of transaction {:?}", tx.hash());
+                debug!(
+                    "Unable to recover the public key of transaction {:?}",
+                    tx.hash()
+                );
             }
         }
         count
@@ -103,7 +102,10 @@ impl TransactionPool {
 
         let hash = transaction.hash();
         if inner.hashes.contains(&hash) {
-            debug!("Rejected a transaction {:?} because it already exists!", transaction.hash());
+            debug!(
+                "Rejected a transaction {:?} because it already exists!",
+                transaction.hash()
+            );
             // already exists
             return false;
         }
@@ -112,7 +114,11 @@ impl TransactionPool {
         inner
             .transaction_set
             .insert(OrderedTransaction::new(transaction.clone()));
-        debug!("Inserted a transaction {:?}, now txpool size {:?}", transaction.hash(), inner.len());
+        debug!(
+            "Inserted a transaction {:?}, now txpool size {:?}",
+            transaction.hash(),
+            inner.len()
+        );
         true
     }
 

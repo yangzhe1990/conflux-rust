@@ -18,15 +18,25 @@ extern crate error_chain;
 extern crate db as ext_db;
 extern crate kvdb;
 extern crate slab;
+#[macro_use]
+extern crate lazy_static;
+extern crate bit_set;
+extern crate heapsize;
+extern crate memory_cache;
+
+#[cfg(test)]
+extern crate rustc_hex;
 
 mod cache_manager;
 mod consensus;
 pub mod db;
+mod evm;
 mod executor;
 pub(crate) mod snapshot;
 pub(crate) mod storage;
 mod sync;
 pub mod transaction_pool;
+mod vm;
 
 pub use consensus::{ConsensusGraph, SharedConsensusGraph};
 pub use executor::get_account;
