@@ -205,7 +205,7 @@ impl SynchronizationProtocolHandler {
     }
 
     fn on_status(
-        &self, _io: &NetworkContext, syn: &mut SynchronizationState,
+        &self, io: &NetworkContext, syn: &mut SynchronizationState,
         peer_id: PeerId, rlp: &Rlp,
     ) -> Result<(), Error>
     {
@@ -239,6 +239,20 @@ impl SynchronizationProtocolHandler {
 
         trace!(target: "sync", "Peer {:?} connected", peer_id);
         syn.peers.insert(peer_id.clone(), peer);
+
+        // FIXME Need better design.
+        // Should be refactored with on_new_block_hashes.
+        for terminal_block_hash in status.terminal_block_hashes {
+            if !self.graph.contains_block_header(terminal_block_hash) {
+                self.request_block_headers(
+                    io,
+                    syn,
+                    peer_id,
+                    &terminal_block_hash,
+                    256,
+                );
+            }
+        }
 
         Ok(())
     }
@@ -442,7 +456,7 @@ impl SynchronizationProtocolHandler {
             protocol_version: SYNCHRONIZATION_PROTOCOL_VERSION,
             network_id: 0x0,
             genesis_hash: *self.graph.genesis_hash(),
-            best_epoch_hash: H256::default(),
+            terminal_block_hashes: self.graph.consensus.terminal_block_hashes(),
         });
         self.send_message(io, peer, msg.as_ref())
     }

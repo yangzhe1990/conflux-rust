@@ -81,10 +81,10 @@ class RpcTest(ConfluxTestFramework):
 
     def _test_addlatency(self):
         class DefaultNode(P2PInterface):
-            def __init__(self, test):
+            def __init__(self, _):
                 super().__init__()
         
-        def on_block_headers(node, msg):
+        def on_block_headers(node, _):
             msec = (datetime.datetime.now() - node.start_time).total_seconds() * 1000
             self.log.info("Message arrived after " + str(msec) + "ms")
             # The EventLoop in rust may have a deviation of a maximum of
