@@ -109,7 +109,6 @@ impl Configuration {
     }
 
     pub fn cache_config(&self) -> CacheConfig {
-
         let mut cache_config = CacheConfig::default();
 
         if let Some(db_cache_size) = self.raw_conf.db_cache_size {
@@ -127,7 +126,8 @@ impl Configuration {
             panic!("Error creating database directory: {:?}", e);
         }
 
-        let compact_profile = match self.raw_conf.db_compaction_profile.as_ref() {
+        let compact_profile = match self.raw_conf.db_compaction_profile.as_ref()
+        {
             Some(p) => db::DatabaseCompactionProfile::from_str(p).unwrap(),
             None => db::DatabaseCompactionProfile::default(),
         };

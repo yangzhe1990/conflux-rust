@@ -1,11 +1,11 @@
 use blockgen::BlockGenerator;
-use conflux_rpc::types::Block as RpcBlock;
-use conflux_rpc::types::Status as RpcStatus;
+use conflux_rpc::types::{
+    Block as RpcBlock, Status as RpcStatus, H256 as RpcH256,
+};
 use core::{
     self, PeerInfo, SharedConsensusGraph, SharedSynchronizationService,
     SharedTransactionPool, StateManager, StateManagerTrait,
 };
-use conflux_rpc::types::H256 as RpcH256;
 use ethereum_types::{Address, H256, U256};
 use http::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
@@ -240,7 +240,9 @@ impl Rpc for RpcImpl {
         let best_hash = self.consensus.best_block_hash();
         let block_number = self.consensus.block_count();
         let tx_count = self.tx_pool.len();
-        if let Some(epoch_number) = self.consensus.get_block_epoch_number(&best_hash) {
+        if let Some(epoch_number) =
+            self.consensus.get_block_epoch_number(&best_hash)
+        {
             Ok(RpcStatus {
                 best_hash: RpcH256::from(best_hash),
                 epoch_number: epoch_number,

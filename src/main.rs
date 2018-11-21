@@ -51,6 +51,7 @@ use log::LevelFilter;
 use log4rs::{
     append::{console::ConsoleAppender, file::FileAppender},
     config::{Appender, Config as LogConfig, Logger, Root},
+    encode::pattern::PatternEncoder,
 };
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
@@ -307,17 +308,18 @@ fn main() {
                     conf_builder.appender(Appender::builder().build(
                         "logfile",
                         Box::new(
-                            FileAppender::builder().build(log_file).unwrap(),
+                            FileAppender::builder().encoder(Box::new(PatternEncoder::new("{d:23.23} {h({l}):5.5} {T:12.12} {t:12.12} - {m}{n}"))).build(log_file).unwrap(),
                         ),
                     ));
                 root_builder = root_builder.appender("logfile");
             };
             // Should add new crate names here
             for crate_name in [
+                "blockgen",
                 "core",
                 "conflux",
-                "sync",
-                "blockgen",
+                "db",
+                "eth_key",
                 "network",
                 "rpc",
                 "transactiongen",
@@ -325,7 +327,8 @@ fn main() {
             .iter()
             {
                 conf_builder = conf_builder.logger(
-                    Logger::builder().build(*crate_name, conf.raw_conf.log_level),
+                    Logger::builder()
+                        .build(*crate_name, conf.raw_conf.log_level),
                 );
             }
             conf_builder
