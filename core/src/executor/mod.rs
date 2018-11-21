@@ -1,5 +1,5 @@
 use super::{State, StateTrait};
-use ethereum_types::Address;
+use ethereum_types::{Address, U256};
 use primitives::{Account, EpochId, SignedTransaction};
 use rlp::{decode, encode};
 use std::collections::HashMap;
@@ -45,6 +45,11 @@ impl<'executor, 'state> Executor<'executor, 'state> {
             );
         }
 
+        // check nonce
+        if !self.check_increment_nonce_in_cache(transaction) {
+            return;
+        }
+
         if transaction.value <= self.cache[&transaction.sender].balance {
             self.cache
                 .entry(transaction.sender.clone())
@@ -53,6 +58,19 @@ impl<'executor, 'state> Executor<'executor, 'state> {
                 .entry(transaction.receiver.clone())
                 .and_modify(|account| account.balance += transaction.value);
         }
+    }
+
+    pub fn check_increment_nonce_in_cache(
+        &mut self, transaction: &SignedTransaction,
+    ) -> bool {
+        let sender_account = self.cache.get_mut(&transaction.sender).unwrap();
+        if transaction.nonce != sender_account.nonce {
+            warn!("Transaction aborted due to outdated nonce. (tx nonce: {:?}, account nonce: {:?})", transaction.nonce, sender_account.nonce);
+            return false;
+        }
+        let adder = U256::from(1);
+        sender_account.nonce = sender_account.nonce + adder;
+        true
     }
 
     pub fn commit(&mut self, epoch_id: EpochId) {
