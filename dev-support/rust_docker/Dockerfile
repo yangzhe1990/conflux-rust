@@ -20,6 +20,12 @@ RUN apt-get update && \
     sudo \
     xutils-dev
 
+RUN apt-get install -y \
+    cmake \
+    python3-pip
+
+RUN pip3 install eth-utils rlp py_ecc coincurve pysha3
+
 RUN useradd rust --user-group --create-home --shell /bin/bash --groups sudo
 
 # Allow sudo without a password.
