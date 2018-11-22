@@ -177,9 +177,7 @@ impl BlockGenerator {
             tx_rlp.append(tx);
         }
         let mut referee = self.consensus.terminal_block_hashes();
-        referee.retain(|r|{
-            *r != best_block_hash
-        });
+        referee.retain(|r| *r != best_block_hash);
         let block_header = BlockHeaderBuilder::new()
             .with_transactions_root(keccak(tx_rlp.out()))
             .with_parent_hash(best_block_hash)
@@ -229,11 +227,15 @@ impl BlockGenerator {
             // "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f".
             // parse().unwrap();            let tx =
             // tx.sign(&secret);
-            self.txpool.add(tx);
+            self.txpool.add_pending(tx);
         }
         let block = self.assemble_new_block(num_txs);
         let hash = block.hash();
-        debug!("generate_block with block header:{:?}, hash:{:?}", block.block_header, block.hash());
+        debug!(
+            "generate_block with block header:{:?}, hash:{:?}",
+            block.block_header,
+            block.hash()
+        );
         self.on_mined_block(block);
         hash
     }

@@ -208,13 +208,16 @@ impl SignedTransaction {
     /// Returns transaction sender.
     pub fn sender(&self) -> Address { self.sender }
 
+    pub fn nonce(&self) -> U256 { self.transaction.nonce }
+
     /// Checks if signature is empty.
     pub fn is_unsigned(&self) -> bool { self.transaction.is_unsigned() }
 
     pub fn hash(&self) -> H256 { self.transaction.hash() }
 
     pub fn size(&self) -> usize {
-        // FIXME: We should revisit the size of transaction after we finished the persistent storage part
+        // FIXME: We should revisit the size of transaction after we finished
+        // the persistent storage part
         0
     }
 }

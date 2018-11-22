@@ -1,13 +1,15 @@
 mod impls;
+mod ready;
 
 extern crate rand;
 
-use ethereum_types::{H256, H512, U512};
-use parking_lot::RwLock;
+use ethereum_types::{Address, H256, H512, U256, U512};
+use parking_lot::{Mutex, RwLock};
 use primitives::{SignedTransaction, TransactionWithSignature};
 use std::{
     cmp::{min, Ordering},
     collections::HashMap,
+    ops::DerefMut,
     sync::Arc,
 };
 
@@ -57,6 +59,10 @@ impl TransactionPoolInner {
 
 pub struct TransactionPool {
     capacity: usize,
+    // Locking order:
+    // waiters.lock()
+    // inner.write()
+    pub waiters: Mutex<HashMap<Address, HashMap<U256, Vec<H256>>>>,
     inner: RwLock<TransactionPoolInner>,
 }
 
@@ -66,6 +72,7 @@ impl TransactionPool {
     pub fn with_capacity(capacity: usize) -> Self {
         TransactionPool {
             capacity,
+            waiters: Mutex::new(HashMap::new()),
             inner: RwLock::new(TransactionPoolInner::new()),
         }
     }
@@ -74,13 +81,17 @@ impl TransactionPool {
 
     pub fn insert_new_transactions(
         &self, transactions: Vec<TransactionWithSignature>,
-    ) -> u32 {
-        let mut count: u32 = 0;
+    ) {
         for tx in transactions {
             if let Ok(public) = tx.recover_public() {
-                if self.add(SignedTransaction::new(public, tx)) {
-                    count += 1;
+                let signed_tx = SignedTransaction::new(public, tx);
+                // verify transaction
+                if !self.verify_transaction(&signed_tx) {
+                    warn!("Transaction discarded due to failure of passing verification {:?}", signed_tx.hash());
+                    continue;
                 }
+
+                self.add_with_readiness(signed_tx);
             } else {
                 debug!(
                     "Unable to recover the public key of transaction {:?}",
@@ -88,12 +99,53 @@ impl TransactionPool {
                 );
             }
         }
-        count
     }
 
-    pub fn add(&self, transaction: SignedTransaction) -> bool {
-        let mut inner = self.inner.write();
+    pub fn verify_transaction(&self, transaction: &SignedTransaction) -> bool {
+        true
+    }
 
+    pub fn add_with_readiness(&self, transaction: SignedTransaction) {
+        let mut waiters = self.waiters.lock();
+        let mut inner = self.inner.write();
+        let inner = inner.deref_mut();
+
+        if self.check_readiness(&transaction) {
+            self.add_ready_without_lock(inner, transaction);
+        } else {
+            let sender = transaction.sender();
+            let nonce = transaction.nonce();
+            let hash = transaction.hash();
+            if self.add_pending_without_lock(inner, transaction) {
+                // subscribe to waiter queue
+                let entry = waiters.entry(sender).or_insert(HashMap::new());
+                let entry = entry.entry(nonce).or_insert(Vec::new());
+                entry.push(hash);
+            }
+        }
+    }
+
+    pub fn check_readiness(&self, transaction: &SignedTransaction) -> bool {
+        false
+    }
+
+    pub fn add_ready(&self, transaction: SignedTransaction) -> bool { true }
+
+    pub fn add_ready_without_lock(
+        &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
+    ) -> bool {
+        true
+    }
+
+    pub fn add_pending(&self, transaction: SignedTransaction) -> bool {
+        let mut inner = self.inner.write();
+        let inner = inner.deref_mut();
+        self.add_pending_without_lock(inner, transaction)
+    }
+
+    pub fn add_pending_without_lock(
+        &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
+    ) -> bool {
         if self.capacity <= inner.pending_transations.len() {
             debug!("Rejected a transaction {:?} because of insufficient transaction pool capacity!", transaction.hash());
             // pool is full
@@ -121,8 +173,15 @@ impl TransactionPool {
         true
     }
 
-    pub fn remove(&self, transaction: SignedTransaction) -> bool {
+    pub fn remove_pending(&self, transaction: SignedTransaction) -> bool {
         let mut inner = self.inner.write();
+        let inner = inner.deref_mut();
+        self.remove_pending_without_lock(inner, transaction)
+    }
+
+    pub fn remove_pending_without_lock(
+        &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
+    ) -> bool {
         let hash = transaction.hash();
         if !inner.pending_transations.contains_key(&hash) {
             return false;
@@ -176,5 +235,24 @@ impl TransactionPool {
             .iter()
             .map(|x| x.1.transaction.clone())
             .collect()
+    }
+
+    pub fn notify_ready(&mut self, address: &Address, nonce: &U256) {
+        let mut waiters = self.waiters.lock();
+        let mut inner = self.inner.write();
+        let inner = inner.deref_mut();
+
+        let clear_waiter = if let Some(m) = waiters.get_mut(address) {
+            if let Some(h) = m.get_mut(nonce) {
+                // on_notify
+            }
+            m.remove(nonce);
+            m.is_empty()
+        } else {
+            false
+        };
+        if clear_waiter {
+            waiters.remove(address);
+        }
     }
 }

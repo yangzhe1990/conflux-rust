@@ -338,7 +338,7 @@ impl ConsensusGraph {
         blocks.insert(block.hash(), block.clone());
 
         for tx in block.transactions.iter() {
-            self.txpool.remove(tx.clone());
+            self.txpool.remove_pending(tx.clone());
         }
 
         self.inner.write().on_new_block(&block, &*blocks);

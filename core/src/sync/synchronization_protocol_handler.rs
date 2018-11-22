@@ -129,13 +129,9 @@ impl SynchronizationProtocolHandler {
                 .last_sent_transactions
                 .extend(transactions.iter().map(|tx| tx.hash()));
         }
-        let count = self
-            .get_transaction_pool()
+        self.get_transaction_pool()
             .insert_new_transactions(transactions);
-        trace!(
-            "{} transactions successfully inserted to transaction pool",
-            count
-        );
+        trace!("Transactions successfully inserted to transaction pool");
         Ok(())
     }
 

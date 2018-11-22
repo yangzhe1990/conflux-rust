@@ -10,8 +10,8 @@ extern crate secret_store;
 extern crate log;
 
 use core::{
-    get_account, SharedConsensusGraph, SharedTransactionPool,
-    StateManager, StateManagerTrait,
+    get_account, SharedConsensusGraph, SharedTransactionPool, StateManager,
+    StateManagerTrait,
 };
 use ethereum_types::{Address, H512, U256, U512};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
@@ -189,7 +189,7 @@ impl TransactionGenerator {
             };
 
             let signed_tx = tx.sign(sender_kp.secret());
-            txgen.txpool.add(signed_tx);
+            txgen.txpool.add_pending(signed_tx);
 
             thread::sleep(interval);
         }
