@@ -1,3 +1,5 @@
+mod impls;
+
 extern crate rand;
 
 use ethereum_types::{H256, H512, U512};
@@ -5,7 +7,7 @@ use parking_lot::RwLock;
 use primitives::{SignedTransaction, TransactionWithSignature};
 use std::{
     cmp::{min, Ordering},
-    collections::{BTreeSet, HashSet},
+    collections::HashMap,
     sync::Arc,
 };
 
@@ -40,19 +42,17 @@ impl PartialEq for OrderedTransaction {
 impl Eq for OrderedTransaction {}
 
 pub struct TransactionPoolInner {
-    hashes: HashSet<H256>,
-    transaction_set: BTreeSet<OrderedTransaction>,
+    pending_transations: HashMap<H256, OrderedTransaction>,
 }
 
 impl TransactionPoolInner {
     pub fn new() -> Self {
         TransactionPoolInner {
-            hashes: HashSet::new(),
-            transaction_set: BTreeSet::new(),
+            pending_transations: HashMap::new(),
         }
     }
 
-    pub fn len(&self) -> usize { self.hashes.len() }
+    pub fn len(&self) -> usize { self.pending_transations.len() }
 }
 
 pub struct TransactionPool {
@@ -94,14 +94,14 @@ impl TransactionPool {
     pub fn add(&self, transaction: SignedTransaction) -> bool {
         let mut inner = self.inner.write();
 
-        if self.capacity <= inner.hashes.len() {
+        if self.capacity <= inner.pending_transations.len() {
             debug!("Rejected a transaction {:?} because of insufficient transaction pool capacity!", transaction.hash());
             // pool is full
             return false;
         }
 
         let hash = transaction.hash();
-        if inner.hashes.contains(&hash) {
+        if inner.pending_transations.contains_key(&hash) {
             debug!(
                 "Rejected a transaction {:?} because it already exists!",
                 transaction.hash()
@@ -110,10 +110,9 @@ impl TransactionPool {
             return false;
         }
 
-        inner.hashes.insert(hash);
         inner
-            .transaction_set
-            .insert(OrderedTransaction::new(transaction.clone()));
+            .pending_transations
+            .insert(hash, OrderedTransaction::new(transaction.clone()));
         debug!(
             "Inserted a transaction {:?}, now txpool size {:?}",
             transaction.hash(),
@@ -125,13 +124,10 @@ impl TransactionPool {
     pub fn remove(&self, transaction: SignedTransaction) -> bool {
         let mut inner = self.inner.write();
         let hash = transaction.hash();
-        if !inner.hashes.contains(&hash) {
+        if !inner.pending_transations.contains_key(&hash) {
             return false;
         }
-        inner.hashes.remove(&hash);
-        inner
-            .transaction_set
-            .remove(&OrderedTransaction::new(transaction.clone()));
+        inner.pending_transations.remove(&hash);
         true
     }
 
@@ -144,7 +140,7 @@ impl TransactionPool {
         let mut sum_gas_price: U512 = 0.into();
 
         let inner = self.inner.read();
-        for tx in inner.transaction_set.iter() {
+        for (hash, tx) in inner.pending_transations.iter() {
             let transaction = tx.transaction.clone();
             if transaction.gas_price == 0.into() {
                 continue;
@@ -176,9 +172,9 @@ impl TransactionPool {
     pub fn transactions_to_propagate(&self) -> Vec<SignedTransaction> {
         let inner = self.inner.read();
         inner
-            .transaction_set
+            .pending_transations
             .iter()
-            .map(|x| x.transaction.clone())
+            .map(|x| x.1.transaction.clone())
             .collect()
     }
 }
