@@ -67,38 +67,8 @@ impl<'cache, 'state> AccountCache<'cache, 'state> {
     }
 }
 
-pub struct OrderedTransaction {
-    transaction: SignedTransaction,
-}
-
-impl OrderedTransaction {
-    pub fn new(transaction: SignedTransaction) -> Self {
-        OrderedTransaction { transaction }
-    }
-}
-
-impl Ord for OrderedTransaction {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.transaction.hash().cmp(&other.transaction.hash())
-    }
-}
-
-impl PartialOrd for OrderedTransaction {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for OrderedTransaction {
-    fn eq(&self, other: &Self) -> bool {
-        self.transaction.hash() == other.transaction.hash()
-    }
-}
-
-impl Eq for OrderedTransaction {}
-
 pub struct TransactionPoolInner {
-    pending_transactions: HashMap<H256, OrderedTransaction>,
+    pending_transactions: HashMap<H256, SignedTransaction>,
 }
 
 impl TransactionPoolInner {
@@ -278,10 +248,10 @@ impl TransactionPool {
 
         inner
             .pending_transactions
-            .insert(hash, OrderedTransaction::new(transaction.clone()));
+            .insert(hash, transaction);
         debug!(
             "Inserted a transaction {:?}, now txpool size {:?}",
-            transaction.hash(),
+            hash,
             inner.len()
         );
         true
@@ -302,7 +272,7 @@ impl TransactionPool {
 
     pub fn remove_pending_without_lock(
         &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
-    ) -> Option<OrderedTransaction> {
+    ) -> Option<SignedTransaction> {
         let hash = transaction.hash();
         inner.pending_transactions.remove(&hash)
     }
@@ -317,7 +287,7 @@ impl TransactionPool {
 
         let inner = self.inner.read();
         for (_, tx) in inner.pending_transactions.iter() {
-            let transaction = tx.transaction.clone();
+            let transaction = tx.clone();
             if transaction.gas_price == 0.into() {
                 continue;
             }
@@ -350,7 +320,7 @@ impl TransactionPool {
         inner
             .pending_transactions
             .iter()
-            .map(|x| x.1.transaction.clone())
+            .map(|x| x.1.clone())
             .collect()
     }
 
@@ -365,9 +335,9 @@ impl TransactionPool {
                 for h in hvec.iter() {
                     if let Some(tx) = inner.pending_transactions.remove(h) {
                         if self
-                            .verify_ready_transaction(account, &tx.transaction)
+                            .verify_ready_transaction(account, &tx)
                         {
-                            self.add_ready_without_lock(inner, tx.transaction);
+                            self.add_ready_without_lock(inner, tx);
                         }
                     }
                 }
