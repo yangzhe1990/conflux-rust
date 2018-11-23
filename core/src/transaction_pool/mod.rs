@@ -98,17 +98,17 @@ impl PartialEq for OrderedTransaction {
 impl Eq for OrderedTransaction {}
 
 pub struct TransactionPoolInner {
-    pending_transations: HashMap<H256, OrderedTransaction>,
+    pending_transactions: HashMap<H256, OrderedTransaction>,
 }
 
 impl TransactionPoolInner {
     pub fn new() -> Self {
         TransactionPoolInner {
-            pending_transations: HashMap::new(),
+            pending_transactions: HashMap::new(),
         }
     }
 
-    pub fn len(&self) -> usize { self.pending_transations.len() }
+    pub fn len(&self) -> usize { self.pending_transactions.len() }
 }
 
 pub struct TransactionPool {
@@ -260,14 +260,14 @@ impl TransactionPool {
     pub fn add_pending_without_lock(
         &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
     ) -> bool {
-        if self.capacity <= inner.pending_transations.len() {
+        if self.capacity <= inner.pending_transactions.len() {
             debug!("Rejected a transaction {:?} because of insufficient transaction pool capacity!", transaction.hash());
             // pool is full
             return false;
         }
 
         let hash = transaction.hash();
-        if inner.pending_transations.contains_key(&hash) {
+        if inner.pending_transactions.contains_key(&hash) {
             debug!(
                 "Rejected a transaction {:?} because it already exists!",
                 transaction.hash()
@@ -277,7 +277,7 @@ impl TransactionPool {
         }
 
         inner
-            .pending_transations
+            .pending_transactions
             .insert(hash, OrderedTransaction::new(transaction.clone()));
         debug!(
             "Inserted a transaction {:?}, now txpool size {:?}",
@@ -304,7 +304,7 @@ impl TransactionPool {
         &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
     ) -> Option<OrderedTransaction> {
         let hash = transaction.hash();
-        inner.pending_transations.remove(&hash)
+        inner.pending_transactions.remove(&hash)
     }
 
     /// pack at most num_txs transactions randomly
@@ -316,7 +316,7 @@ impl TransactionPool {
         let mut sum_gas_price: U512 = 0.into();
 
         let inner = self.inner.read();
-        for (_, tx) in inner.pending_transations.iter() {
+        for (_, tx) in inner.pending_transactions.iter() {
             let transaction = tx.transaction.clone();
             if transaction.gas_price == 0.into() {
                 continue;
@@ -348,7 +348,7 @@ impl TransactionPool {
     pub fn transactions_to_propagate(&self) -> Vec<SignedTransaction> {
         let inner = self.inner.read();
         inner
-            .pending_transations
+            .pending_transactions
             .iter()
             .map(|x| x.1.transaction.clone())
             .collect()
@@ -363,7 +363,7 @@ impl TransactionPool {
         let clear_waiter = if let Some(m) = waiters.get_mut(address) {
             if let Some(hvec) = m.get_mut(nonce) {
                 for h in hvec.iter() {
-                    if let Some(tx) = inner.pending_transations.remove(h) {
+                    if let Some(tx) = inner.pending_transactions.remove(h) {
                         if self
                             .verify_ready_transaction(account, &tx.transaction)
                         {
