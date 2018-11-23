@@ -10,8 +10,8 @@ extern crate secret_store;
 extern crate log;
 
 use core::{
-    get_account, SharedConsensusGraph, SharedTransactionPool, StateManager,
-    StateManagerTrait,
+    get_account, SharedConsensusGraph, SharedStateManager,
+    SharedTransactionPool, StateManagerTrait,
 };
 use ethereum_types::{Address, H512, U256, U512};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
@@ -30,7 +30,7 @@ enum TransGenState {
 
 pub struct TransactionGenerator {
     consensus: SharedConsensusGraph,
-    state_manager: Arc<StateManager>,
+    state_manager: SharedStateManager,
     txpool: SharedTransactionPool,
     secret_store: SharedSecretStore,
     state: RwLock<TransGenState>,
@@ -40,7 +40,7 @@ pub type SharedTransactionGenerator = Arc<TransactionGenerator>;
 
 impl TransactionGenerator {
     pub fn new(
-        consensus: SharedConsensusGraph, state_manager: Arc<StateManager>,
+        consensus: SharedConsensusGraph, state_manager: SharedStateManager,
         txpool: SharedTransactionPool, secret_store: SharedSecretStore,
     ) -> Self
     {

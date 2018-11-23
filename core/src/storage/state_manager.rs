@@ -1,10 +1,13 @@
 use super::state::State;
 use primitives::EpochId;
 use snapshot::snapshot::Snapshot;
+use std::sync::Arc;
 
 // StateManager is the single entry-point to access State for any epoch.
 // StateManager has Internal mutability and is thread-safe.
 pub use super::impls::state_manager::StateManager;
+
+pub type SharedStateManager = Arc<StateManager>;
 
 // The trait is created to separate the implementation to another file, and the
 // concrete struct is put into inner mod, because the implementation is

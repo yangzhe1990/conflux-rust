@@ -129,8 +129,10 @@ impl SynchronizationProtocolHandler {
                 .last_sent_transactions
                 .extend(transactions.iter().map(|tx| tx.hash()));
         }
-        self.get_transaction_pool()
-            .insert_new_transactions(transactions);
+        self.get_transaction_pool().insert_new_transactions(
+            self.graph.consensus.best_block_hash(),
+            transactions,
+        );
         trace!("Transactions successfully inserted to transaction pool");
         Ok(())
     }

@@ -92,7 +92,8 @@ fn start(
     let state_manager = Arc::new(StateManager::default());
     state_manager.initialize(genesis_block.hash(), secret_store.as_ref());
 
-    let txpool = Arc::new(TransactionPool::with_capacity(10000));
+    let txpool =
+        Arc::new(TransactionPool::with_capacity(10000, state_manager.clone()));
 
     let consensus = Arc::new(ConsensusGraph::with_genesis_block(
         genesis_block,

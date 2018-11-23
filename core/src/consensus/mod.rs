@@ -109,8 +109,10 @@ impl ConsensusGraphInner {
     }
 
     pub fn on_new_block(
-        &mut self, block: &Block, block_by_hash: &HashMap<H256, Block>,
-    ) {
+        &mut self, txpool: &SharedTransactionPool, block: &Block,
+        block_by_hash: &HashMap<H256, Block>,
+    )
+    {
         let mut me = self.insert(block);
         loop {
             me = self.arena[me].parent;
@@ -257,7 +259,7 @@ impl ConsensusGraphInner {
                     executor.apply(transaction);
                 }
             });
-            executor.commit(self.arena[new_pivot_chain[fork_at]].hash);
+            executor.commit(self.arena[new_pivot_chain[fork_at]].hash, txpool);
             fork_at += 1;
         }
 
@@ -341,7 +343,9 @@ impl ConsensusGraph {
             self.txpool.remove_pending(tx.clone());
         }
 
-        self.inner.write().on_new_block(&block, &*blocks);
+        self.inner
+            .write()
+            .on_new_block(&self.txpool, &block, &*blocks);
     }
 
     pub fn best_block_hash(&self) -> H256 {

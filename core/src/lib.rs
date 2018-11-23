@@ -43,7 +43,7 @@ pub use executor::get_account;
 pub use network::PeerInfo;
 pub use storage::{
     state::{State, StateTrait},
-    state_manager::{StateManager, StateManagerTrait},
+    state_manager::{SharedStateManager, StateManager, StateManagerTrait},
 };
 pub use sync::{
     SharedSynchronizationService, SynchronizationConfiguration,

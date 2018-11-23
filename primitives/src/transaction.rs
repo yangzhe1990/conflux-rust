@@ -215,6 +215,10 @@ impl SignedTransaction {
 
     pub fn hash(&self) -> H256 { self.transaction.hash() }
 
+    pub fn gas(&self) -> &U256 { &self.transaction.gas }
+
+    pub fn gas_price(&self) -> &U256 { &self.transaction.gas_price }
+
     pub fn size(&self) -> usize {
         // FIXME: We should revisit the size of transaction after we finished
         // the persistent storage part

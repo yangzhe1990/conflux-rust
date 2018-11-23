@@ -1,4 +1,4 @@
-use super::{State, StateTrait};
+use super::{transaction_pool::SharedTransactionPool, State, StateTrait};
 use ethereum_types::{Address, U256};
 use primitives::{Account, EpochId, SignedTransaction};
 use rlp::{decode, encode};
@@ -73,10 +73,16 @@ impl<'executor, 'state> Executor<'executor, 'state> {
         true
     }
 
-    pub fn commit(&mut self, epoch_id: EpochId) {
+    pub fn commit(
+        &mut self, epoch_id: EpochId, txpool: &SharedTransactionPool,
+    ) {
         for (k, v) in self.cache.iter() {
             self.state.set(k.as_ref(), encode(v).as_ref()).ok();
         }
         self.state.commit(epoch_id);
+
+        for (k, v) in self.cache.iter() {
+            txpool.notify_ready(k, v);
+        }
     }
 }
