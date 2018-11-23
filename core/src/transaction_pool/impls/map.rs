@@ -1,6 +1,7 @@
 use super::node::Node;
 use core::ops::{Add, Sub};
 use rand::{prng::XorShiftRng, FromEntropy, RngCore};
+use std::convert::From;
 
 pub struct TreapMap<K, V, W> {
     root: Option<Box<Node<K, V, W>>>,
@@ -8,8 +9,11 @@ pub struct TreapMap<K, V, W> {
     rng: XorShiftRng,
 }
 
-impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
-    TreapMap<K, V, W>
+impl<
+        K: Ord,
+        V,
+        W: Add<Output = W> + Sub<Output = W> + Ord + Clone + From<u32>,
+    > TreapMap<K, V, W>
 {
     pub fn new() -> TreapMap<K, V, W> {
         TreapMap {
@@ -26,6 +30,7 @@ impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
     pub fn contains_key(&self, key: &K) -> bool { self.get(key).is_some() }
 
     pub fn insert(&mut self, key: K, value: V, weight: W) -> Option<V> {
+        self.size += 1;
         Node::insert(
             &mut self.root,
             Node::new(key, value, weight, self.rng.next_u64()),
@@ -33,7 +38,15 @@ impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
+        self.size -= 1;
         Node::remove(&mut self.root, key)
+    }
+
+    pub fn sum_weight(&self) -> W {
+        match &self.root {
+            Some(node) => node.sum_weight(),
+            None => 0.into(),
+        }
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {

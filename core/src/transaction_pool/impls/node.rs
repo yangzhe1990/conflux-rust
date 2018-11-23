@@ -53,6 +53,7 @@ impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
                 {
                     Node::right_rotate(node);
                 }
+                node.as_mut().unwrap().update_weight();
                 result
             }
             Ordering::Greater => {
@@ -63,6 +64,7 @@ impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
                 {
                     Node::left_rotate(node);
                 }
+                node.as_mut().unwrap().update_weight();
                 result
             }
         }
@@ -72,7 +74,7 @@ impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
         if node.is_none() {
             return None;
         }
-        match key.cmp(&node.as_ref().unwrap().key) {
+        let result = match key.cmp(&node.as_ref().unwrap().key) {
             Ordering::Equal => {
                 if node.as_ref().unwrap().left.is_none()
                     && node.as_ref().unwrap().right.is_none()
@@ -115,7 +117,9 @@ impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
             Ordering::Greater => {
                 Node::remove(&mut node.as_mut().unwrap().right, key)
             }
-        }
+        };
+        node.as_mut().unwrap().update_weight();
+        result
     }
 
     pub fn get_by_weight(&self, weight: W) -> Option<&V> {
@@ -175,4 +179,6 @@ impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
                 + self.right.as_ref().unwrap().sum_weight.clone();
         }
     }
+
+    pub fn sum_weight(&self) -> W { self.sum_weight.clone() }
 }

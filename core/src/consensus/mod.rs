@@ -341,6 +341,7 @@ impl ConsensusGraph {
 
         for tx in block.transactions.iter() {
             self.txpool.remove_pending(tx.clone());
+            self.txpool.remove_ready(tx.clone());
         }
 
         self.inner

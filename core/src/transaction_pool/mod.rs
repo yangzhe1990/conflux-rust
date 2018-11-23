@@ -3,7 +3,7 @@ mod ready;
 
 extern crate rand;
 
-use self::ready::Readiness;
+use self::{impls::TreapMap, ready::Readiness};
 use super::{SharedStateManager, State, StateManagerTrait, StateTrait};
 use ethereum_types::{Address, H256, H512, U256, U512};
 use parking_lot::{Mutex, RwLock};
@@ -69,12 +69,14 @@ impl<'cache, 'state> AccountCache<'cache, 'state> {
 
 pub struct TransactionPoolInner {
     pending_transactions: HashMap<H256, SignedTransaction>,
+    ready_transactions: TreapMap<H256, SignedTransaction, U512>,
 }
 
 impl TransactionPoolInner {
     pub fn new() -> Self {
         TransactionPoolInner {
             pending_transactions: HashMap::new(),
+            ready_transactions: TreapMap::new(),
         }
     }
 
@@ -218,7 +220,14 @@ impl TransactionPool {
     pub fn add_ready_without_lock(
         &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
     ) -> bool {
-        true
+        inner
+            .ready_transactions
+            .insert(
+                transaction.hash(),
+                transaction.clone(),
+                U512::from(transaction.gas_price),
+            )
+            .is_none()
     }
 
     pub fn add_pending(&self, transaction: SignedTransaction) -> bool {
@@ -246,9 +255,7 @@ impl TransactionPool {
             return false;
         }
 
-        inner
-            .pending_transactions
-            .insert(hash, transaction);
+        inner.pending_transactions.insert(hash, transaction);
         debug!(
             "Inserted a transaction {:?}, now txpool size {:?}",
             hash,
@@ -257,7 +264,26 @@ impl TransactionPool {
         true
     }
 
+    pub fn remove_ready(&self, transaction: SignedTransaction) -> bool {
+        // TODO: handle duplicated (address, nonce) pair
+        let mut inner = self.inner.write();
+        let inner = inner.deref_mut();
+        if self.remove_ready_without_lock(inner, transaction).is_some() {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn remove_ready_without_lock(
+        &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
+    ) -> Option<SignedTransaction> {
+        let hash = transaction.hash();
+        inner.ready_transactions.remove(&hash)
+    }
+
     pub fn remove_pending(&self, transaction: SignedTransaction) -> bool {
+        // TODO: handle duplicated (address, nonce) pair
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
         if self
@@ -279,39 +305,34 @@ impl TransactionPool {
 
     /// pack at most num_txs transactions randomly
     pub fn pack_transactions(&self, num_txs: usize) -> Vec<SignedTransaction> {
-        //TODO: should be done by O(num_txs * log)
-        let mut transaction_sequence: Vec<SignedTransaction> = Vec::new();
+        // TODO: handle duplicated (address, nonce) pair
+        let mut inner = self.inner.write();
         let mut packed_transaction: Vec<SignedTransaction> = Vec::new();
-        let mut gas_price_sequence: Vec<U512> = Vec::new();
-        let mut sum_gas_price: U512 = 0.into();
-
-        let inner = self.inner.read();
-        for (_, tx) in inner.pending_transactions.iter() {
-            let transaction = tx.clone();
-            if transaction.gas_price == 0.into() {
-                continue;
-            }
-            sum_gas_price += U512::from(transaction.gas_price);
-            gas_price_sequence.push(U512::from(transaction.gas_price));
-            transaction_sequence.push(transaction);
-        }
-
-        let len = transaction_sequence.len();
+        let len = inner.ready_transactions.len();
         let num_txs = min(num_txs, len);
+
         for _ in 0..num_txs {
+            let mut sum_gas_price = inner.ready_transactions.sum_weight();
             let mut rand_value: U512 = U512::from(H512::random());
             rand_value = rand_value % sum_gas_price;
 
-            for id in 0..len {
-                if gas_price_sequence[id] > rand_value {
-                    sum_gas_price -= gas_price_sequence[id];
-                    gas_price_sequence[id] = 0.into();
-                    packed_transaction.push(transaction_sequence[id].clone());
-                    break;
-                }
-                rand_value -= gas_price_sequence[id];
-            }
+            let tx = inner
+                .ready_transactions
+                .get_by_weight(rand_value)
+                .expect("Failed to pick transaction by weight")
+                .clone();
+            inner.ready_transactions.remove(&tx.hash());
+            packed_transaction.push(tx);
         }
+
+        for tx in packed_transaction.iter() {
+            inner.ready_transactions.insert(
+                tx.hash(),
+                tx.clone(),
+                U512::from(tx.gas_price),
+            );
+        }
+
         packed_transaction
     }
 
@@ -334,9 +355,7 @@ impl TransactionPool {
             if let Some(hvec) = m.get_mut(nonce) {
                 for h in hvec.iter() {
                     if let Some(tx) = inner.pending_transactions.remove(h) {
-                        if self
-                            .verify_ready_transaction(account, &tx)
-                        {
+                        if self.verify_ready_transaction(account, &tx) {
                             self.add_ready_without_lock(inner, tx);
                         }
                     }
