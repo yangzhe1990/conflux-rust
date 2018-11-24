@@ -625,10 +625,12 @@ where Message: Send + Sync + 'static
         let channel = event_loop.channel();
         let handlers = Arc::new(RwLock::new(Slab::with_capacity(MAX_HANDLERS)));
         let h = handlers.clone();
-        let thread = thread::spawn(move || {
+        let thread = thread::Builder::new()
+            .name("io_service".into())
+            .spawn(move || {
             IoManager::<Message>::start(&mut event_loop, h)
                 .expect("Error starting IO service");
-        });
+        }).expect("only one io_service thread, so it should not fail");
         Ok(IoService {
             thread: Mutex::new(Some(thread)),
             host_channel: Mutex::new(channel),

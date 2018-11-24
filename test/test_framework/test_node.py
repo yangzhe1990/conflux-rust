@@ -83,7 +83,7 @@ class TestNode:
             # Avoid using logger, as that may have already been shutdown when
             # this destructor is called.
             print(self._node_msg("Cleaning up leftover process"))
-            self.process.kill()
+            self.process.terminate()
             if self.remote == True:
                 cli_kill = "ssh {}@{} killall conflux".format(
                     self.user, self.ip)
@@ -183,7 +183,7 @@ class TestNode:
             return
         self.log.debug("Stopping node")
         try:
-            self.process.kill()
+            self.process.terminate()
         except http.client.CannotSendRequest:
             self.log.exception("Unable to stop node.")
 

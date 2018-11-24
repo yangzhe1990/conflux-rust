@@ -47,6 +47,7 @@ use configuration::Configuration;
 use core::{ConsensusGraph, StateManager, TransactionPool};
 
 use ctrlc::CtrlC;
+use db::SystemDB;
 use log::LevelFilter;
 use log4rs::{
     append::{console::ConsoleAppender, file::FileAppender},
@@ -61,7 +62,9 @@ use std::{
     any::Any,
     io::{self as stdio, Write},
     process,
-    sync::Arc,
+    sync::{Arc, Weak},
+    thread,
+    time::{Duration, Instant},
 };
 use txgen::TransactionGenerator;
 
@@ -75,7 +78,7 @@ fn make_genesis() -> Block {
 // Start all key components of Conflux and pass out their handles
 fn start(
     conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
-) -> Result<Box<Any>, String> {
+) -> Result<(Weak<SystemDB>, Box<Any>), String> {
     info!("Working directory: {:?}", std::env::current_dir());
 
     let network_config = conf.net_config();
@@ -148,14 +151,37 @@ fn start(
         &rpc_deps,
     )?;
 
-    Ok(Box::new((
-        event_loop,
-        rpc_tcp_server,
-        rpc_http_server,
-        sync,
-        blockgen,
-        secret_store.clone(),
-    )))
+    Ok((
+        Arc::downgrade(&ledger_db),
+        Box::new((
+            event_loop,
+            rpc_tcp_server,
+            rpc_http_server,
+            sync,
+            blockgen,
+            secret_store.clone(),
+        )),
+    ))
+}
+
+/// Use a Weak pointer to ensure that other Arc pointers are released
+fn wait_for_drop<T>(w: Weak<T>) {
+    let sleep_duration = Duration::from_secs(1);
+    let warn_timeout = Duration::from_secs(60);
+    let max_timeout = Duration::from_secs(300);
+    let instant = Instant::now();
+    let mut warned = false;
+    while instant.elapsed() < max_timeout {
+        if w.upgrade().is_none() {
+            return;
+        }
+        if !warned && instant.elapsed() > warn_timeout {
+            warned = true;
+            warn!("Shutdown is taking longer than expected.");
+        }
+        thread::sleep(sleep_duration);
+    }
+    warn!("Shutdown timeout reached, exiting uncleanly.");
 }
 
 fn main() {
@@ -356,7 +382,12 @@ fn main() {
                 let _ = exit.1.wait(&mut lock);
             }
 
-            drop(keep_alive);
+            let (ledger_db, to_drop) = keep_alive;
+            drop(to_drop);
+
+            // Make sure ledger_db is properly dropped, so rocksdb can be closed
+            // cleanly
+            wait_for_drop(ledger_db);
 
             0
         }

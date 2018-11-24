@@ -38,11 +38,13 @@ impl EventLoop {
 	pub fn spawn() -> Self {
 		let (stop, stopped) = futures::oneshot();
 		let (tx, rx) = mpsc::channel();
-		let handle = thread::spawn(move || {
+		let handle = thread::Builder::new()
+			.name("jsonrpc-eventloop".into())
+			.spawn(move || {
 			let mut el = tokio_core::reactor::Core::new().expect("Creating an event loop should not fail.");
 			tx.send(el.remote()).expect("Rx is blocking upper thread.");
 			let _ = el.run(futures::empty().select(stopped));
-		});
+		}).expect("only one jsonrpc-eventloop, so it should not fail");
 		let remote = rx.recv().expect("tx is transfered to a newly spawned thread.");
 
 		EventLoop {

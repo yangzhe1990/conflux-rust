@@ -94,7 +94,9 @@ impl Worker {
     {
         let bg_handle = bg.clone();
 
-        let thread = thread::spawn(move || {
+        let thread = thread::Builder::new()
+            .name("blockgen".into())
+            .spawn(move || {
             let sleep_duration = time::Duration::from_millis(100);
             let mut problem: Option<ProofOfWorkProblem> = None;
 
@@ -131,7 +133,7 @@ impl Worker {
                     thread::sleep(sleep_duration);
                 }
             }
-        });
+        }).expect("only one blockgen thread, so it should not fail");
         Worker { thread }
     }
 }
