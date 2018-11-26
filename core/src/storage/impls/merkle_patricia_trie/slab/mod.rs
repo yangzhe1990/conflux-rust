@@ -19,6 +19,7 @@
 //! Basic storing and retrieval.
 //!
 //! ```
+//! # extern crate slab;
 //! # use slab::*;
 //! let mut slab = Slab::new();
 //!
@@ -36,6 +37,7 @@
 //! inserted in the slab. This can be done with the `vacant_entry` API as such:
 //!
 //! ```
+//! # extern crate slab;
 //! # use slab::*;
 //! let mut slab = Slab::new();
 //!
@@ -57,6 +59,7 @@
 //! reached. To avoid this, add a check.
 //!
 //! ```
+//! # extern crate slab;
 //! # use slab::*;
 //! let mut slab = Slab::with_capacity(1024);
 //!
@@ -237,6 +240,7 @@ impl<T> FromInto<T> for Entry<T> {
 /// # Examples
 ///
 /// ```
+/// # extern crate slab;
 /// # use slab::*;
 /// let mut slab = Slab::new();
 ///
@@ -312,6 +316,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::with_capacity(10);
     ///
@@ -337,6 +342,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let slab: Slab<i32> = Slab::with_capacity(10);
     /// assert_eq!(slab.capacity(), 10);
@@ -363,6 +369,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     /// slab.insert("hello");
@@ -404,6 +411,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     /// slab.insert("hello");
@@ -448,6 +456,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::with_capacity(10);
     ///
@@ -464,6 +473,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// past the last value.
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::with_capacity(10);
     ///
@@ -492,6 +502,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///
@@ -509,6 +520,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///
@@ -525,6 +537,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     /// assert!(slab.is_empty());
@@ -544,6 +557,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///
@@ -577,6 +591,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///
@@ -609,6 +624,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     /// let key = slab.insert("hello");
@@ -630,6 +646,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     /// let key = slab.insert("hello");
@@ -655,6 +672,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     /// let key = slab.insert(2);
@@ -675,6 +693,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     /// let key = slab.insert(2);
@@ -712,6 +731,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     /// let key = slab.insert("hello");
@@ -753,6 +773,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///
@@ -787,6 +808,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///
@@ -819,6 +841,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///
@@ -840,6 +863,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///
@@ -933,6 +957,7 @@ impl<'a, T, E: EntryTrait<T>> VacantEntry<'a, T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///
@@ -961,6 +986,7 @@ impl<'a, T, E: EntryTrait<T>> VacantEntry<'a, T, E> {
     /// # Examples
     ///
     /// ```
+    /// # extern crate slab;
     /// # use slab::*;
     /// let mut slab = Slab::new();
     ///

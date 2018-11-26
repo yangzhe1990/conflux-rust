@@ -27,7 +27,7 @@ function check_tests {
 
     pushd $ROOT_DIR/core > /dev/null
     local result
-    result=`CARGO_TARGET_DIR=$ROOT_DIR/build cargo test --tests`
+    result=`CARGO_TARGET_DIR=$ROOT_DIR/build cargo test`
     local exit_code=$?
     popd > /dev/null
 

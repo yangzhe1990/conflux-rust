@@ -2,7 +2,7 @@ use self::access_mode::*;
 use super::{
     super::errors::*, merkle::*, return_after_use::ReturnAfterUse, slab::Slab,
 };
-use core::slice;
+use std::slice;
 use std::{
     cmp::min,
     collections::BTreeSet,
