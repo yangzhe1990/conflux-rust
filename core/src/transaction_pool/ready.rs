@@ -4,8 +4,10 @@ pub enum Readiness {
     Stale,
     /// The transaction is ready to be included in ready set.
     Ready,
-    /// The transaction is not yet ready, should be add in pending set.
+    /// The transaction is not yet ready, should be added in pending set.
     Future,
+    /// The transaction is in too distant future.
+    TooDistantFuture,
 }
 
 /// A readiness indicator.

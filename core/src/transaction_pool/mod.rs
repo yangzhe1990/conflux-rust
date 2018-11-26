@@ -13,7 +13,7 @@ use primitives::{
 use rlp::decode;
 use std::{
     cmp::{min, Ordering},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ops::DerefMut,
     sync::Arc,
 };
@@ -21,6 +21,8 @@ use std::{
 pub const DEFAULT_MIN_TRANSACTION_GAS_PRICE: u64 = 100;
 pub const DEFAULT_MAX_TRANSACTION_GAS_LIMIT: u64 = 100_000;
 pub const DEFAULT_MAX_BLOCK_GAS_LIMIT: u64 = 30_000 * 100_000;
+
+pub const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 32;
 
 pub struct AccountCache<'cache, 'state: 'cache> {
     pub accounts: HashMap<Address, Account>,
@@ -54,7 +56,15 @@ impl<'cache, 'state> AccountCache<'cache, 'state> {
         let account = self.accounts.get_mut(&sender);
         if let Some(account) = account {
             match tx.nonce().cmp(&account.nonce) {
-                Ordering::Greater => Readiness::Future,
+                Ordering::Greater => {
+                    if (tx.nonce() - account.nonce)
+                        > FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET.into()
+                    {
+                        Readiness::TooDistantFuture
+                    } else {
+                        Readiness::Future
+                    }
+                }
                 Ordering::Less => Readiness::Stale,
                 Ordering::Equal => {
                     account.nonce = account.nonce + 1;
@@ -62,25 +72,102 @@ impl<'cache, 'state> AccountCache<'cache, 'state> {
                 }
             }
         } else {
-            Readiness::Future
+            Readiness::TooDistantFuture
         }
     }
 }
 
+pub struct PendingTransactionBucket {
+    pub bucket: HashMap<U256, SignedTransaction>,
+}
+
+impl PendingTransactionBucket {
+    pub fn new() -> Self {
+        PendingTransactionBucket {
+            bucket: HashMap::new(),
+        }
+    }
+}
+
+pub struct PendingTransactionPool {
+    pub pool: HashMap<Address, PendingTransactionBucket>,
+    pub len: usize,
+}
+
+impl PendingTransactionPool {
+    pub fn new() -> Self {
+        PendingTransactionPool {
+            pool: HashMap::new(),
+            len: 0,
+        }
+    }
+
+    pub fn len(&self) -> usize { self.len }
+
+    pub fn insert(&mut self, tx: SignedTransaction) -> bool {
+        let entry = self
+            .pool
+            .entry(tx.sender.clone())
+            .or_insert(PendingTransactionBucket::new());
+
+        let mut res = false;
+        let old_len = entry.bucket.len();
+        {
+            let tx_in_bucket =
+                entry.bucket.entry(tx.nonce.clone()).or_insert(tx.clone());
+            if tx_in_bucket.gas_price < tx.gas_price {
+                *tx_in_bucket = tx;
+                res = true;
+            }
+        }
+        let new_len = entry.bucket.len();
+
+        if new_len > old_len {
+            debug_assert!(new_len - old_len == 1);
+            self.len = self.len + 1;
+            res = true;
+        }
+
+        res
+    }
+
+    pub fn remove(
+        &mut self, address: &Address, nonce: &U256,
+    ) -> Option<SignedTransaction> {
+        let (res, clear_bucket) =
+            if let Some(entry) = self.pool.get_mut(address) {
+                if let Some(tx) = entry.bucket.remove(nonce) {
+                    self.len = self.len - 1;
+                    (Some(tx), entry.bucket.is_empty())
+                } else {
+                    (None, false)
+                }
+            } else {
+                (None, false)
+            };
+        if clear_bucket {
+            self.pool.remove(address);
+        }
+        res
+    }
+}
+
 pub struct TransactionPoolInner {
-    pending_transactions: HashMap<H256, SignedTransaction>,
+    pending_transactions: PendingTransactionPool,
     ready_transactions: TreapMap<H256, SignedTransaction, U512>,
 }
 
 impl TransactionPoolInner {
     pub fn new() -> Self {
         TransactionPoolInner {
-            pending_transactions: HashMap::new(),
+            pending_transactions: PendingTransactionPool::new(),
             ready_transactions: TreapMap::new(),
         }
     }
 
-    pub fn len(&self) -> usize { self.pending_transactions.len() }
+    pub fn len(&self) -> usize {
+        self.pending_transactions.len() + self.ready_transactions.len()
+    }
 }
 
 pub struct TransactionPool {
@@ -88,7 +175,7 @@ pub struct TransactionPool {
     // Locking order:
     // waiters.lock()
     // inner.write()
-    pub waiters: Mutex<HashMap<Address, HashMap<U256, Vec<H256>>>>,
+    pub waiters: Mutex<HashMap<Address, HashSet<U256>>>,
     inner: RwLock<TransactionPoolInner>,
     state_manager: SharedStateManager,
 }
@@ -183,6 +270,11 @@ impl TransactionPool {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
 
+        if self.capacity <= inner.len() {
+            warn!("Transaction discarded due to insufficient txpool capacity: {:?}", transaction.hash());
+            return;
+        }
+
         match account_cache.is_ready(&transaction) {
             Readiness::Ready => {
                 let account =
@@ -198,13 +290,14 @@ impl TransactionPool {
             Readiness::Future => {
                 let sender = transaction.sender();
                 let nonce = transaction.nonce();
-                let hash = transaction.hash();
                 if self.add_pending_without_lock(inner, transaction) {
                     // subscribe to waiter queue
-                    let entry = waiters.entry(sender).or_insert(HashMap::new());
-                    let entry = entry.entry(nonce).or_insert(Vec::new());
-                    entry.push(hash);
+                    let entry = waiters.entry(sender).or_insert(HashSet::new());
+                    entry.insert(nonce);
                 }
+            }
+            Readiness::TooDistantFuture => {
+                warn!("Transaction {:?} is discarded due to in too distant future", transaction.hash());
             }
             Readiness::Stale => {
                 warn!(
@@ -239,29 +332,7 @@ impl TransactionPool {
     pub fn add_pending_without_lock(
         &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
     ) -> bool {
-        if self.capacity <= inner.pending_transactions.len() {
-            debug!("Rejected a transaction {:?} because of insufficient transaction pool capacity!", transaction.hash());
-            // pool is full
-            return false;
-        }
-
-        let hash = transaction.hash();
-        if inner.pending_transactions.contains_key(&hash) {
-            debug!(
-                "Rejected a transaction {:?} because it already exists!",
-                transaction.hash()
-            );
-            // already exists
-            return false;
-        }
-
-        inner.pending_transactions.insert(hash, transaction);
-        debug!(
-            "Inserted a transaction {:?}, now txpool size {:?}",
-            hash,
-            inner.len()
-        );
-        true
+        inner.pending_transactions.insert(transaction)
     }
 
     pub fn remove_ready(&self, transaction: SignedTransaction) -> bool {
@@ -282,7 +353,7 @@ impl TransactionPool {
         inner.ready_transactions.remove(&hash)
     }
 
-    pub fn remove_pending(&self, transaction: SignedTransaction) -> bool {
+    pub fn remove_pending(&self, transaction: &SignedTransaction) -> bool {
         // TODO: handle duplicated (address, nonce) pair
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
@@ -297,10 +368,13 @@ impl TransactionPool {
     }
 
     pub fn remove_pending_without_lock(
-        &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
-    ) -> Option<SignedTransaction> {
-        let hash = transaction.hash();
-        inner.pending_transactions.remove(&hash)
+        &self, inner: &mut TransactionPoolInner,
+        transaction: &SignedTransaction,
+    ) -> Option<SignedTransaction>
+    {
+        inner
+            .pending_transactions
+            .remove(&transaction.sender, &transaction.nonce)
     }
 
     /// pack at most num_txs transactions randomly
@@ -338,11 +412,8 @@ impl TransactionPool {
 
     pub fn transactions_to_propagate(&self) -> Vec<SignedTransaction> {
         let inner = self.inner.read();
-        inner
-            .pending_transactions
-            .iter()
-            .map(|x| x.1.clone())
-            .collect()
+        // FIXME
+        Vec::new()
     }
 
     pub fn notify_ready(&self, address: &Address, account: &Account) {
@@ -352,16 +423,15 @@ impl TransactionPool {
 
         let nonce = &account.nonce;
         let clear_waiter = if let Some(m) = waiters.get_mut(address) {
-            if let Some(hvec) = m.get_mut(nonce) {
-                for h in hvec.iter() {
-                    if let Some(tx) = inner.pending_transactions.remove(h) {
-                        if self.verify_ready_transaction(account, &tx) {
-                            self.add_ready_without_lock(inner, tx);
-                        }
+            if m.remove(nonce) {
+                if let Some(tx) =
+                    inner.pending_transactions.remove(address, nonce)
+                {
+                    if self.verify_ready_transaction(account, &tx) {
+                        self.add_ready_without_lock(inner, tx);
                     }
                 }
             }
-            m.remove(nonce);
             m.is_empty()
         } else {
             false
