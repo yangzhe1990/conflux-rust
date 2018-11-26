@@ -1,6 +1,7 @@
+use ethkey;
 use io::IoError;
+use rlp;
 use std::{fmt, io, net};
-use {ethkey, rlp};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DisconnectReason {

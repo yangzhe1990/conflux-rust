@@ -1,22 +1,29 @@
+use enum_map::EnumMap;
 use ethereum_types::H512;
 use io::*;
 use ip_utils::*;
 use rand::{self, Rng};
 use rlp::{DecoderError, Rlp, RlpStream};
 use serde_json;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{self, Display, Formatter};
-use std::hash::{Hash, Hasher};
-use std::net::{
-    Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs,
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{self, Display, Formatter},
+    fs,
+    hash::{Hash, Hasher},
+    net::{
+        Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6,
+        ToSocketAddrs,
+    },
+    path::PathBuf,
+    slice,
+    str::FromStr,
+    time::{self, Duration, SystemTime},
 };
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::{self, Duration, SystemTime};
-use std::{fs, slice};
-use {AllowIP, Error, ErrorKind, IpFilter};
-use enum_map::EnumMap;
 use strum::IntoEnumIterator;
+use AllowIP;
+use Error;
+use ErrorKind;
+use IpFilter;
 
 /// Node public key
 pub type NodeId = H512;
@@ -46,10 +53,11 @@ impl NodeEndpoint {
     }
 
     pub fn is_allowed(&self, filter: &IpFilter) -> bool {
-        (self.is_allowed_by_predefined(&filter.predefined) || filter
-            .custom_allow
-            .iter()
-            .any(|ipnet| self.address.ip().is_within(ipnet)))
+        (self.is_allowed_by_predefined(&filter.predefined)
+            || filter
+                .custom_allow
+                .iter()
+                .any(|ipnet| self.address.ip().is_within(ipnet)))
             && !filter
                 .custom_block
                 .iter()
@@ -117,17 +125,20 @@ impl NodeEndpoint {
 
     /// Validates that the port is not 0 and address IP is specified
     pub fn is_valid(&self) -> bool {
-        self.udp_port != 0 && self.address.port() != 0 && match self.address {
-            SocketAddr::V4(a) => !a.ip().is_unspecified(),
-            SocketAddr::V6(a) => !a.ip().is_unspecified(),
-        }
+        self.udp_port != 0
+            && self.address.port() != 0
+            && match self.address {
+                SocketAddr::V4(a) => !a.ip().is_unspecified(),
+                SocketAddr::V6(a) => !a.ip().is_unspecified(),
+            }
     }
 }
 
 impl FromStr for NodeEndpoint {
     type Err = Error;
 
-    /// Create endpoint from string. Performs name resolution if given a host name.
+    /// Create endpoint from string. Performs name resolution if given a host
+    /// name.
     fn from_str(s: &str) -> Result<NodeEndpoint, Error> {
         let address = s.to_socket_addrs().map(|mut i| i.next());
         match address {
@@ -136,7 +147,7 @@ impl FromStr for NodeEndpoint {
                 udp_port: a.port(),
             }),
             Ok(None) => bail!(ErrorKind::AddressResolve(None)),
-            Err(_) => Err(ErrorKind::AddressParse.into()), // always an io::Error of InvalidInput kind
+            Err(_) => Err(ErrorKind::AddressParse.into()), /* always an io::Error of InvalidInput kind */
         }
     }
 }
@@ -181,7 +192,7 @@ impl NodeContact {
                         res = true;
                     }
                 }
-            },
+            }
             _ => {}
         };
 
@@ -252,16 +263,19 @@ impl Display for Node {
 
 impl FromStr for Node {
     type Err = Error;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (id, endpoint) =
-            if s.len() > 138 && &s[0..10] == "cfxnode://" && &s[138..139] == "@" {
-                (
-                    s[10..138].parse().map_err(|_| ErrorKind::InvalidNodeId)?,
-                    NodeEndpoint::from_str(&s[139..])?,
-                )
-            } else {
-                (NodeId::new(), NodeEndpoint::from_str(s)?)
-            };
+        let (id, endpoint) = if s.len() > 138
+            && &s[0..10] == "cfxnode://"
+            && &s[138..139] == "@"
+        {
+            (
+                s[10..138].parse().map_err(|_| ErrorKind::InvalidNodeId)?,
+                NodeEndpoint::from_str(&s[139..])?,
+            )
+        } else {
+            (NodeId::new(), NodeEndpoint::from_str(s)?)
+        };
 
         Ok(Node {
             id,
@@ -299,9 +313,7 @@ enum NodeReputation {
 const NODE_REPUTATION_LEVEL_COUNT: usize = 3;
 
 impl Default for NodeReputation {
-    fn default() -> Self {
-        NodeReputation::Unknown
-    }
+    fn default() -> Self { NodeReputation::Unknown }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -371,7 +383,8 @@ impl NodeTable {
                     let node = n.into_node();
                     if let Some(mut node) = node {
                         if !self.node_index.contains_key(&node.id) {
-                            let node_rep = Self::node_reputation(&node.last_contact);
+                            let node_rep =
+                                Self::node_reputation(&node.last_contact);
                             self.add_to_reputation_level(node_rep, node);
                         } else {
                             warn!(target: "network", "There exist multiple entries for same node id: {:?}", node.id);
@@ -459,9 +472,11 @@ impl NodeTable {
 
         // check whether the node position will change
         if target_node_rep == _index.0 {
-            self.node_reputation_table[_index.0][_index.1].last_contact = node.last_contact;
+            self.node_reputation_table[_index.0][_index.1].last_contact =
+                node.last_contact;
         } else {
-            let mut removed_node = self.remove_from_reputation_level(&_index).unwrap();
+            let mut removed_node =
+                self.remove_from_reputation_level(&_index).unwrap();
             removed_node.last_contact = node.last_contact;
             self.add_to_reputation_level(target_node_rep, removed_node);
         }
@@ -498,7 +513,9 @@ impl NodeTable {
         }
     }
 
-    fn remove_from_reputation_level(&mut self, index: &NodeReputationIndex) -> Option<Node> {
+    fn remove_from_reputation_level(
+        &mut self, index: &NodeReputationIndex,
+    ) -> Option<Node> {
         let node_rep_vec = &mut self.node_reputation_table[index.0];
 
         if node_rep_vec.is_empty() || index.1 >= node_rep_vec.len() {
@@ -528,7 +545,9 @@ impl NodeTable {
         }
     }
 
-    fn add_to_reputation_level(&mut self, node_rep: NodeReputation, node: Node) {
+    fn add_to_reputation_level(
+        &mut self, node_rep: NodeReputation, node: Node,
+    ) {
         let node_idx = self.node_reputation_table[node_rep].len();
         let node_table_idx = NodeReputationIndex(node_rep, node_idx);
         self.node_index.insert(node.id, node_table_idx);
@@ -539,8 +558,10 @@ impl NodeTable {
     /// and filtering useless nodes. The algorithm for creating the sorted nodes
     /// is:
     /// - Contacts that aren't recent (older than 1 week) are discarded
-    /// - (1) Nodes with a successful contact are ordered (most recent success first)
-    /// - (2) Nodes with unknown contact (older than 1 week or new nodes) are randomly shuffled
+    /// - (1) Nodes with a successful contact are ordered (most recent success
+    ///   first)
+    /// - (2) Nodes with unknown contact (older than 1 week or new nodes) are
+    ///   randomly shuffled
     /// - (3) Nodes with a failed contact are ordered (oldest failure first)
     /// - The final result is the concatenation of (1), (2) and (3)
     fn ordered_entries(&self) -> Vec<&Node> {
@@ -595,8 +616,8 @@ impl NodeTable {
         success
     }
 
-    /// Returns node ids sorted by failure percentage, for nodes with the same failure percentage the absolute number of
-    /// failures is considered.
+    /// Returns node ids sorted by failure percentage, for nodes with the same
+    /// failure percentage the absolute number of failures is considered.
     pub fn nodes(&self, filter: &IpFilter) -> Vec<NodeId> {
         self.ordered_entries()
             .iter()
@@ -612,18 +633,21 @@ impl NodeTable {
             .map(|n| NodeEntry {
                 endpoint: n.endpoint.clone(),
                 id: n.id,
-            }).collect()
+            })
+            .collect()
     }
 
-    /// Ordered list of all entries by failure percentage, for nodes with the same failure percentage the absolute
-    /// number of failures is considered.
+    /// Ordered list of all entries by failure percentage, for nodes with the
+    /// same failure percentage the absolute number of failures is
+    /// considered.
     pub fn entries(&self) -> Vec<NodeEntry> {
         self.ordered_entries()
             .iter()
             .map(|n| NodeEntry {
                 endpoint: n.endpoint.clone(),
                 id: n.id,
-            }).collect()
+            })
+            .collect()
     }
 
     /// Get particular node
@@ -692,7 +716,9 @@ impl NodeTable {
     }
 
     /// Set last contact as success for a node
-    pub fn note_success(&mut self, id: &NodeId, by_connection: bool, token: Option<StreamToken>) {
+    pub fn note_success(
+        &mut self, id: &NodeId, by_connection: bool, token: Option<StreamToken>,
+    ) {
         let mut _index;
         if let Some(index) = self.node_index.get(id) {
             _index = *index;
@@ -726,7 +752,8 @@ impl NodeTable {
         }
     }
 
-    /// Mark as useless, no further attempts to connect until next call to `clear_useless`.
+    /// Mark as useless, no further attempts to connect until next call to
+    /// `clear_useless`.
     pub fn mark_as_useless(&mut self, id: &NodeId) {
         self.useless_nodes.insert(id.clone());
     }
@@ -755,7 +782,8 @@ impl NodeTable {
             .map(|id| {
                 let index = self.node_index.get(&id).unwrap();
                 &self.node_reputation_table[index.0][index.1]
-            }).take(MAX_NODES)
+            })
+            .take(MAX_NODES)
             .map(Into::into)
             .collect();
         let table = json::NodeTable { nodes };

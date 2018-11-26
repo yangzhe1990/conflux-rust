@@ -10,13 +10,14 @@ from conflux.transactions import Transaction
 from conflux.utils import privtoaddr, int_to_bytes, zpad, encode_hex
 
 
-def create_block(parent_hash=default_config["GENESIS_PREVHASH"], timestamp=0, difficulty=0, transactions=[]):
+def create_block(parent_hash=default_config["GENESIS_PREVHASH"], timestamp=0, difficulty=0, transactions=[],
+                 referee_hashes=[]):
     if len(transactions) != 0:
         tx_root = utils.sha3(rlp.encode(transactions))
     else:
         tx_root = trie.BLANK_ROOT
     block = Block(BlockHeader(parent_hash=parent_hash, difficulty=difficulty, timestamp=timestamp,
-                              transactions_root=tx_root), transactions=transactions)
+                              transactions_root=tx_root, referee_hashes=referee_hashes), transactions=transactions)
     return block
 
 

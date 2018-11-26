@@ -61,9 +61,11 @@ pub const DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT: Duration =
 // for DISCOVERY_ROUND TimerToken
 pub const DEFAULT_DISCOVERY_ROUND_TIMEOUT: Duration =
     Duration::from_millis(500);
-// The ticker interval for NODE_TABLE, i.e., how often the program will refresh the NODE_TABLE.
+// The ticker interval for NODE_TABLE, i.e., how often the program will refresh
+// the NODE_TABLE.
 pub const DEFAULT_NODE_TABLE_TIMEOUT: Duration = Duration::from_secs(300);
-// The lifetime threshold of the connection for promoting a peer from untrusted to trusted.
+// The lifetime threshold of the connection for promoting a peer from untrusted
+// to trusted.
 pub const DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION: Duration =
     Duration::from_secs(3 * 24 * 3600);
 
@@ -817,6 +819,7 @@ impl NetworkServiceInner {
                 let sess = session.unwrap().lock();
                 peers.push(PeerInfo {
                     id: i,
+                    nodeid: sess.id().unwrap_or(&NodeId::default()).clone(),
                     addr: sess.address(),
                     caps: sess.metadata.peer_capabilities.clone(),
                 })
@@ -987,9 +990,8 @@ impl NetworkServiceInner {
         // We check dropped_nodes first to make sure we stop processing
         // communications from any dropped peers
         let to_drop = { self.dropped_nodes.read().contains(&stream) };
-        self.drop_peers(io);
         if to_drop {
-            return;
+            self.drop_peers(io);
         }
 
         let session = self.sessions.read().get(stream).cloned();
@@ -1046,6 +1048,7 @@ impl NetworkServiceInner {
                     sess.set_expired();
                 }
                 deregister = sess.done();
+                trace!("deregister stream {}? {}", token, deregister);
             }
         }
         for p in to_disconnect {

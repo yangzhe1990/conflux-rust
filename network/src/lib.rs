@@ -257,6 +257,7 @@ impl Ord for Capability {
 pub struct PeerInfo {
     pub id: PeerId,
     pub addr: SocketAddr,
+    pub nodeid: NodeId,
     pub caps: Vec<Capability>,
 }
 

@@ -82,13 +82,16 @@ impl ConsensusGraphInner {
         } else {
             NULL
         };
-        let referees = block
+        let referees: Vec<usize> = block
             .block_header
             .referee_hashes()
             .iter()
             .map(|hash| self.indices.get(hash).cloned().unwrap())
             .collect();
-
+        for referee in &referees {
+            self.terminal_block_hashes
+                .remove(&self.arena[*referee].hash);
+        }
         let index = self.arena.insert(ConsensusGraphNode {
             hash,
             total_difficulty: block.block_header.difficulty().clone(),

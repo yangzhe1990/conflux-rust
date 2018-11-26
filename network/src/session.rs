@@ -169,7 +169,7 @@ impl Session {
         match packet_id {
             PACKET_HELLO => {
                 debug!(target: "network", "{}: Hello", self.token());
-                if data.len() <= 32+65 {
+                if data.len() <= 32 + 65 {
                     return Err(ErrorKind::BadProtocol.into());
                 }
                 let hash_signed = keccak(&data[32..]);

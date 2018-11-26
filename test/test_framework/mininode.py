@@ -333,7 +333,7 @@ class P2PInterface(P2PConnection):
                 elif packet_type == GET_TERMINAL_BLOCK_HASHES_RESPONSE:
                     self._log_message("receive", "TERMINAL_BLOCK_HASHES, {} hashes".format(len(msg.hashes)))
                 elif packet_type == NEW_BLOCK_HASHES:
-                    self._log_message(("receive", "NEW_BLOCK_HASHES, {} hashes".format(len(msg.hashes))))
+                    self._log_message("receive", "NEW_BLOCK_HASHES, {} hashes".format(len(msg.block_hashes)))
                 elif packet_type == GET_BLOCKS_RESPONSE:
                     self._log_message("receive", "BLOCKS, {} blocks".format(len(msg.blocks)))
                 elif packet_type == GET_BLOCKS:

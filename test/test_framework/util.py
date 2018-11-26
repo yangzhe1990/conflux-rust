@@ -314,22 +314,20 @@ def set_node_times(nodes, t):
         node.setmocktime(t)
 
 
-def disconnect_nodes(from_connection, node_num):
-    for peer_id in [
-            peer['id'] for peer in from_connection.getpeerinfo()
-            if "testnode%d" % node_num in peer['subver']
-    ]:
-        try:
-            from_connection.disconnectnode(nodeid=peer_id)
-        except JSONRPCException as e:
-            # If this node is disconnected between calculating the peer id
-            # and issuing the disconnect, don't worry about it.
-            # This avoids a race condition if we're mass-disconnecting peers.
-            if e.error['code'] != -29:  # RPC_CLIENT_NODE_NOT_CONNECTED
-                raise
+def disconnect_nodes(nodes, from_connection, node_num):
+    try:
+        nodes[from_connection].removenode(nodes[node_num].key, get_peer_addr(nodes[node_num], node_num))
+        nodes[node_num].removenode(nodes[from_connection].key, get_peer_addr(nodes[from_connection], from_connection))
+    except JSONRPCException as e:
+        # If this node is disconnected between calculating the peer id
+        # and issuing the disconnect, don't worry about it.
+        # This avoids a race condition if we're mass-disconnecting peers.
+        if e.error['code'] != -29:  # RPC_CLIENT_NODE_NOT_CONNECTED
+            raise
 
     # wait to disconnect
-    wait_until(lambda: [peer['id'] for peer in from_connection.getpeerinfo() if "testnode%d" % node_num in peer['subver']] == [], timeout=5)
+    wait_until(lambda: [peer for peer in nodes[from_connection].getpeerinfo() if peer["nodeid"] == nodes[node_num].key] == [], timeout=5)
+    wait_until(lambda: [peer for peer in nodes[node_num].getpeerinfo() if peer["nodeid"] == nodes[from_connection].key] == [], timeout=5)
 
 
 def check_handshake(from_connection, target_addr):

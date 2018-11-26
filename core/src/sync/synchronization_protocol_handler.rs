@@ -62,7 +62,9 @@ impl SynchronizationProtocolHandler {
             debug!("Error sending message: {:?}", e);
             io.disconnect_peer(peer);
             e
-        })
+        });
+        // FIXME return error after we implement error handling
+        Ok(())
     }
 
     fn dispatch_message(
@@ -245,6 +247,7 @@ impl SynchronizationProtocolHandler {
         syn.handshaking_peers.remove(&peer_id);
 
         let status = rlp.as_val::<Status>()?;
+        trace!("on_status, msg=:{:?}", status);
         let peer = SynchronizationPeerState {
             id: peer_id,
             protocol_version: status.protocol_version,
@@ -315,6 +318,8 @@ impl SynchronizationProtocolHandler {
         }
 
         let mut hashes = Vec::default();
+        let mut dependent_hashes = Vec::new();
+        dependent_hashes.push(parent_hash);
 
         for header in &block_headers.headers {
             let hash = header.hash();
@@ -323,6 +328,9 @@ impl SynchronizationProtocolHandler {
                 hashes.push(hash);
             } else if !self.graph.contains_block(&hash) {
                 hashes.push(hash);
+            }
+            for referee in header.referee_hashes() {
+                dependent_hashes.push(*referee);
             }
         }
         let header_hashes: Vec<H256> = block_headers
@@ -336,10 +344,12 @@ impl SynchronizationProtocolHandler {
             hashes
         );
 
-        if parent_hash != H256::default()
-            && !self.graph.contains_block_header(&parent_hash)
-        {
-            self.request_block_headers(io, syn, peer_id, &parent_hash, 256);
+        for past_hash in &dependent_hashes {
+            if *past_hash != H256::default()
+                && !self.graph.contains_block_header(past_hash)
+            {
+                self.request_block_headers(io, syn, peer_id, past_hash, 256);
+            }
         }
         if !hashes.is_empty() {
             self.request_blocks(io, syn, peer_id, hashes);

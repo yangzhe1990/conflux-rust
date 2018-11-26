@@ -60,7 +60,7 @@ class TestNode:
 
         self.running = False
         self.process = None
-        self.rpc_cnonected = False
+        self.rpc_connected = False
         self.rpc = None
         self.log = logging.getLogger('TestFramework.node%d' % index)
         self.cleanup_on_exit = True

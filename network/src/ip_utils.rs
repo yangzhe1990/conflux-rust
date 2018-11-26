@@ -19,13 +19,14 @@
 use igd::{search_gateway_from_timeout, PortMappingProtocol};
 use ipnetwork::IpNetwork;
 use node_table::NodeEndpoint;
-use std::io;
-use std::net::{
-    IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6,
+use std::{
+    io,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    time::Duration,
 };
-use std::time::Duration;
 
-/// Socket address extension for rustc beta. To be replaces with now unstable API
+/// Socket address extension for rustc beta. To be replaces with now unstable
+/// API
 pub trait SocketAddrExt {
     /// Returns true if the address appears to be globally routable.
     fn is_global_s(&self) -> bool;
@@ -59,8 +60,8 @@ impl SocketAddrExt for Ipv4Addr {
             && !self.is_documentation()
     }
 
-    // Used for communications between a service provider and its subscribers when using a carrier-grade NAT
-    // see: https://en.wikipedia.org/wiki/Reserved_IP_addresses
+    // Used for communications between a service provider and its subscribers
+    // when using a carrier-grade NAT see: https://en.wikipedia.org/wiki/Reserved_IP_addresses
     fn is_shared_space(&self) -> bool {
         *self >= Ipv4Addr::new(100, 64, 0, 0)
             && *self <= Ipv4Addr::new(100, 127, 255, 255)
@@ -73,8 +74,8 @@ impl SocketAddrExt for Ipv4Addr {
             && *self <= Ipv4Addr::new(192, 0, 0, 255)
     }
 
-    // Used for testing of inter-network communications between two separate subnets
-    // see: https://en.wikipedia.org/wiki/Reserved_IP_addresses
+    // Used for testing of inter-network communications between two separate
+    // subnets see: https://en.wikipedia.org/wiki/Reserved_IP_addresses
     fn is_benchmarking(&self) -> bool {
         *self >= Ipv4Addr::new(198, 18, 0, 0)
             && *self <= Ipv4Addr::new(198, 19, 255, 255)
@@ -208,10 +209,12 @@ impl SocketAddrExt for IpAddr {
 mod getinterfaces {
     use libc::{
         freeifaddrs, getifaddrs, ifaddrs, sockaddr, sockaddr_in, sockaddr_in6,
+        AF_INET, AF_INET6,
     };
-    use libc::{AF_INET, AF_INET6};
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-    use std::{io, mem};
+    use std::{
+        io, mem,
+        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    };
 
     fn convert_sockaddr(sa: *mut sockaddr) -> Option<IpAddr> {
         if sa.is_null() {
@@ -223,8 +226,9 @@ mod getinterfaces {
                 let sa: *const sockaddr_in = sa as *const sockaddr_in;
                 let sa = unsafe { &*sa };
                 let (addr, port) = (sa.sin_addr.s_addr, sa.sin_port);
-                // convert u32 to an `Ipv4 address`, but the u32 must be converted to `host-order`
-                // that's why `from_be` is used!
+                // convert u32 to an `Ipv4 address`, but the u32 must be
+                // converted to `host-order` that's why
+                // `from_be` is used!
                 (IpAddr::V4(Ipv4Addr::from(<u32>::from_be(addr))), port)
             }
             AF_INET6 => {
@@ -384,7 +388,8 @@ fn ipv4_properties() {
         assert_eq!(ip.is_documentation(), documentation);
     }
 
-    //    address                unspec loopbk privt  linloc global multicast brdcast doc
+    //    address                unspec loopbk privt  linloc global multicast
+    // brdcast doc
     check(
         &[0, 0, 0, 0],
         true,
