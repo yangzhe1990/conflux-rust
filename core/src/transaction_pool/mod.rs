@@ -241,6 +241,11 @@ impl TransactionPool {
             return false;
         }
 
+        if transaction.transaction.verify_basic().is_err() {
+            warn!("Transaction {:?} discarded due to not pass basic verification.", transaction.hash());
+            return false;
+        }
+
         true
     }
 

@@ -154,11 +154,32 @@ impl TransactionWithSignature {
         Signature::from_rsv(&self.r.into(), &self.s.into(), self.v)
     }
 
+    /// Checks whether the signature has a low 's' value.
+    pub fn check_low_s(&self) -> Result<(), ethkey::Error> {
+        if !self.signature().is_low_s() {
+            Err(ethkey::Error::InvalidSignature.into())
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn hash(&self) -> H256 { self.hash }
 
     /// Recovers the public key of the sender.
     pub fn recover_public(&self) -> Result<Public, ethkey::Error> {
         Ok(recover(&self.signature(), &self.unsigned.hash())?)
+    }
+
+    /// Verify basic signature params. Does not attempt sender recovery.
+    pub fn verify_basic(&self) -> Result<(), ethkey::Error> {
+        self.check_low_s()?;
+
+        // Disallow unsigned transactions
+        if self.is_unsigned() {
+            return Err(ethkey::Error::InvalidSignature.into());
+        }
+
+        Ok(())
     }
 }
 
