@@ -1,9 +1,13 @@
 mod impls;
 mod ready;
 
+#[cfg(test)]
+mod tests;
+
 extern crate rand;
 
-use self::{impls::TreapMap, ready::Readiness};
+pub use self::impls::TreapMap;
+use self::ready::Readiness;
 use super::{SharedStateManager, State, StateManagerTrait, StateTrait};
 use ethereum_types::{Address, H256, H512, U256, U512};
 use parking_lot::{Mutex, RwLock};

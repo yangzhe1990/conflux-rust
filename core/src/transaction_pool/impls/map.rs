@@ -1,7 +1,9 @@
 use super::node::Node;
-use std::ops::{Add, Sub};
 use rand::{prng::XorShiftRng, FromEntropy, RngCore};
-use std::convert::From;
+use std::{
+    convert::From,
+    ops::{Add, Sub},
+};
 
 pub struct TreapMap<K, V, W> {
     root: Option<Box<Node<K, V, W>>>,
@@ -23,6 +25,14 @@ impl<
         }
     }
 
+    pub fn new_with_rng(rng: XorShiftRng) -> TreapMap<K, V, W> {
+        TreapMap {
+            root: None,
+            size: 0,
+            rng,
+        }
+    }
+
     pub fn len(&self) -> usize { self.size }
 
     pub fn is_empty(&self) -> bool { self.size == 0 }
@@ -30,16 +40,22 @@ impl<
     pub fn contains_key(&self, key: &K) -> bool { self.get(key).is_some() }
 
     pub fn insert(&mut self, key: K, value: V, weight: W) -> Option<V> {
-        self.size += 1;
-        Node::insert(
+        let result = Node::insert(
             &mut self.root,
             Node::new(key, value, weight, self.rng.next_u64()),
-        )
+        );
+        if result.is_none() {
+            self.size += 1;
+        }
+        result
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        self.size -= 1;
-        Node::remove(&mut self.root, key)
+        let result = Node::remove(&mut self.root, key);
+        if result.is_some() {
+            self.size -= 1;
+        }
+        result
     }
 
     pub fn sum_weight(&self) -> W {

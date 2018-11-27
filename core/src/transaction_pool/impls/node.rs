@@ -1,5 +1,8 @@
-use std::ops::{Add, Sub};
-use std::{cmp::Ordering, mem};
+use std::{
+    cmp::Ordering,
+    mem,
+    ops::{Add, Sub},
+};
 
 pub struct Node<K, V, W> {
     key: K,
