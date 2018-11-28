@@ -26,16 +26,19 @@ extern crate memory_cache;
 
 #[cfg(test)]
 extern crate rustc_hex;
+extern crate unexpected;
 
 mod cache_manager;
 mod consensus;
 pub mod db;
+pub mod error;
 mod evm;
 mod executor;
 pub(crate) mod snapshot;
 pub(crate) mod storage;
 mod sync;
 pub mod transaction_pool;
+pub mod verification;
 mod vm;
 
 pub use consensus::{ConsensusGraph, SharedConsensusGraph};

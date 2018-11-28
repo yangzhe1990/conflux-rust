@@ -28,6 +28,7 @@ db = { path = "../db" }
 bit-set = "0.4"
 heapsize = "0.4"
 memory-cache = { path = "../util/memory_cache" }
+unexpected = { path = "../util/unexpected" }
 
 [dev-dependencies]
 rustc-hex = "1.0"
