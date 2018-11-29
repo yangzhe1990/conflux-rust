@@ -12,9 +12,10 @@ extern crate txgen;
 extern crate log;
 
 use core::{
-    SharedConsensusGraph, SharedSynchronizationService, SharedTransactionPool,
+    pow::*, SharedConsensusGraph, SharedSynchronizationService,
+    SharedTransactionPool,
 };
-use ethereum_types::{Address, H256, U256, U512};
+use ethereum_types::{Address, H256};
 use hash::{keccak, KECCAK_NULL_RLP};
 use parking_lot::RwLock;
 use primitives::*;
@@ -28,18 +29,6 @@ use txgen::SharedTransactionGenerator;
 enum MiningState {
     Start,
     Stop,
-}
-
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
-pub struct ProofOfWorkProblem {
-    block_hash: H256,
-    difficulty: U256,
-    boundary: H256,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct ProofOfWorkSolution {
-    nonce: u64,
 }
 
 /// The interface for a conflux block generator
@@ -57,35 +46,6 @@ pub struct Worker {
     thread: thread::JoinHandle<()>,
 }
 
-fn difficulty_to_boundary(difficulty: &U256) -> H256 {
-    difficulty_to_boundary_aux(difficulty).into()
-}
-
-fn difficulty_to_boundary_aux<T: Into<U512>>(difficulty: T) -> U256 {
-    let difficulty = difficulty.into();
-    assert!(!difficulty.is_zero());
-    if difficulty == U512::one() {
-        U256::max_value()
-    } else {
-        // difficulty > 1, so result should never overflow 256 bits
-        U256::from((U512::one() << 256) / difficulty)
-    }
-}
-
-pub fn compute(nonce: &u64, block_hash: &H256) -> H256 {
-    let mut rlp = RlpStream::new_list(2);
-    rlp.append(block_hash).append(nonce);
-    keccak(rlp.out())
-}
-
-pub fn validate(
-    problem: &ProofOfWorkProblem, solution: &ProofOfWorkSolution,
-) -> bool {
-    let nonce = solution.nonce;
-    let hash = compute(&nonce, &problem.block_hash);
-    hash < problem.boundary
-}
-
 impl Worker {
     pub fn new(
         bg: Arc<BlockGenerator>, sender: mpsc::Sender<ProofOfWorkSolution>,
@@ -97,43 +57,44 @@ impl Worker {
         let thread = thread::Builder::new()
             .name("blockgen".into())
             .spawn(move || {
-            let sleep_duration = time::Duration::from_millis(100);
-            let mut problem: Option<ProofOfWorkProblem> = None;
+                let sleep_duration = time::Duration::from_millis(100);
+                let mut problem: Option<ProofOfWorkProblem> = None;
 
-            loop {
-                match *bg_handle.state.read() {
-                    MiningState::Stop => return,
-                    _ => {}
-                }
-
-                // check if there is a new problem
-                let new_problem = receiver.try_recv();
-                if new_problem.is_ok() {
-                    problem = Some(new_problem.unwrap());
-                }
-                // check if there is a problem to be solved
-                if problem.is_some() {
-                    let boundary = problem.unwrap().boundary;
-                    let block_hash = problem.unwrap().block_hash;
-
-                    for _i in 0..10000000 {
-                        //TODO: adjust the number of times
-                        let nonce = rand::random();
-                        let hash = compute(&nonce, &block_hash);
-                        if hash < boundary {
-                            // problem solved
-                            sender
-                                .send(ProofOfWorkSolution { nonce })
-                                .expect("Failed to send the PoW solution.");
-                            problem = None;
-                            break;
-                        }
+                loop {
+                    match *bg_handle.state.read() {
+                        MiningState::Stop => return,
+                        _ => {}
                     }
-                } else {
-                    thread::sleep(sleep_duration);
+
+                    // check if there is a new problem
+                    let new_problem = receiver.try_recv();
+                    if new_problem.is_ok() {
+                        problem = Some(new_problem.unwrap());
+                    }
+                    // check if there is a problem to be solved
+                    if problem.is_some() {
+                        let boundary = problem.unwrap().boundary;
+                        let block_hash = problem.unwrap().block_hash;
+
+                        for _i in 0..10000000 {
+                            //TODO: adjust the number of times
+                            let nonce = rand::random();
+                            let hash = compute(nonce, &block_hash);
+                            if hash < boundary {
+                                // problem solved
+                                sender
+                                    .send(ProofOfWorkSolution { nonce })
+                                    .expect("Failed to send the PoW solution.");
+                                problem = None;
+                                break;
+                            }
+                        }
+                    } else {
+                        thread::sleep(sleep_duration);
+                    }
                 }
-            }
-        }).expect("only one blockgen thread, so it should not fail");
+            })
+            .expect("only one blockgen thread, so it should not fail");
         Worker { thread }
     }
 }

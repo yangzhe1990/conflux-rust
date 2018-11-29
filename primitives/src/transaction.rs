@@ -1,11 +1,116 @@
 use ethereum_types::{Address, H160, H256, U256};
 use ethkey::{self, public_to_address, recover, Public, Secret, Signature};
 use hash::keccak;
-use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use std::ops::Deref;
+use rlp::{self, Decodable, DecoderError, Encodable, Rlp, RlpStream};
+use std::{error, fmt, ops::Deref};
+use unexpected::OutOfBounds;
 
 /// Fake address for unsigned transactions.
 pub const UNSIGNED_SENDER: Address = H160([0xff; 20]);
+
+#[derive(Debug, PartialEq, Clone)]
+/// Errors concerning transaction processing.
+pub enum TransactionError {
+    /// Transaction is already imported to the queue
+    AlreadyImported,
+    /// Transaction is not valid anymore (state already has higher nonce)
+    Stale,
+    /// Transaction has too low fee
+    /// (there is already a transaction with the same sender-nonce but higher
+    /// gas price)
+    TooCheapToReplace,
+    /// Transaction was not imported to the queue because limit has been
+    /// reached.
+    LimitReached,
+    /// Transaction's gas price is below threshold.
+    InsufficientGasPrice {
+        /// Minimal expected gas price
+        minimal: U256,
+        /// Transaction gas price
+        got: U256,
+    },
+    /// Transaction's gas is below currently set minimal gas requirement.
+    InsufficientGas {
+        /// Minimal expected gas
+        minimal: U256,
+        /// Transaction gas
+        got: U256,
+    },
+    /// Sender doesn't have enough funds to pay for this transaction
+    InsufficientBalance {
+        /// Senders balance
+        balance: U256,
+        /// Transaction cost
+        cost: U256,
+    },
+    /// Transactions gas is higher then current gas limit
+    GasLimitExceeded {
+        /// Current gas limit
+        limit: U256,
+        /// Declared transaction gas
+        got: U256,
+    },
+    /// Transaction's gas limit (aka gas) is invalid.
+    InvalidGasLimit(OutOfBounds<U256>),
+    /// Signature error
+    InvalidSignature(String),
+    /// Transaction too big
+    TooBig,
+    /// Invalid RLP encoding
+    InvalidRlp(String),
+}
+
+impl From<ethkey::Error> for TransactionError {
+    fn from(err: ethkey::Error) -> Self {
+        TransactionError::InvalidSignature(format!("{}", err))
+    }
+}
+
+impl From<rlp::DecoderError> for TransactionError {
+    fn from(err: rlp::DecoderError) -> Self {
+        TransactionError::InvalidRlp(format!("{}", err))
+    }
+}
+
+impl fmt::Display for TransactionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::TransactionError::*;
+        let msg = match *self {
+            AlreadyImported => "Already imported".into(),
+            Stale => "No longer valid".into(),
+            TooCheapToReplace => "Gas price too low to replace".into(),
+            LimitReached => "Transaction limit reached".into(),
+            InsufficientGasPrice { minimal, got } => format!(
+                "Insufficient gas price. Min={}, Given={}",
+                minimal, got
+            ),
+            InsufficientGas { minimal, got } => {
+                format!("Insufficient gas. Min={}, Given={}", minimal, got)
+            }
+            InsufficientBalance { balance, cost } => format!(
+                "Insufficient balance for transaction. Balance={}, Cost={}",
+                balance, cost
+            ),
+            GasLimitExceeded { limit, got } => {
+                format!("Gas limit exceeded. Limit={}, Given={}", limit, got)
+            }
+            InvalidGasLimit(ref err) => format!("Invalid gas limit. {}", err),
+            InvalidSignature(ref err) => {
+                format!("Transaction has invalid signature: {}.", err)
+            }
+            TooBig => "Transaction too big".into(),
+            InvalidRlp(ref err) => {
+                format!("Transaction has invalid RLP structure: {}.", err)
+            }
+        };
+
+        f.write_fmt(format_args!("Transaction error ({})", msg))
+    }
+}
+
+impl error::Error for TransactionError {
+    fn description(&self) -> &str { "Transaction error" }
+}
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Transaction {
@@ -171,7 +276,7 @@ impl TransactionWithSignature {
     }
 
     /// Verify basic signature params. Does not attempt sender recovery.
-    pub fn verify_basic(&self) -> Result<(), ethkey::Error> {
+    pub fn verify_basic(&self) -> Result<(), TransactionError> {
         self.check_low_s()?;
 
         // Disallow unsigned transactions

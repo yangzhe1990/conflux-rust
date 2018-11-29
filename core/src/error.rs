@@ -1,12 +1,11 @@
 use ethereum_types::{Address, H256, U256};
+use primitives::transaction::TransactionError;
 use std::{error, fmt, time::SystemTime};
 use unexpected::{Mismatch, OutOfBounds};
 
 #[derive(Debug, PartialEq, Clone, Copy, Eq)]
 /// Errors concerning block processing.
 pub enum BlockError {
-    /// Seal is incorrect format.
-    InvalidSealArity(Mismatch<usize>),
     /// Block has too much gas used.
     TooMuchGasUsed(OutOfBounds<U256>),
     /// State root header field is invalid.
@@ -25,8 +24,6 @@ pub enum BlockError {
     /// Proof-of-work aspect of seal, which we assume is a 256-bit value, is
     /// invalid.
     InvalidProofOfWork(OutOfBounds<U256>),
-    /// Some low-level aspect of the seal is incorrect.
-    InvalidSeal,
     /// Gas limit header field is invalid.
     InvalidGasLimit(OutOfBounds<U256>),
     /// Timestamp header field is invalid.
@@ -44,9 +41,6 @@ impl fmt::Display for BlockError {
         use self::BlockError::*;
 
         let msg = match *self {
-            InvalidSealArity(ref mis) => {
-                format!("Block seal in incorrect format: {}", mis)
-            }
             TooMuchGasUsed(ref oob) => {
                 format!("Block has too much gas used. {}", oob)
             }
@@ -68,7 +62,6 @@ impl fmt::Display for BlockError {
             InvalidProofOfWork(ref oob) => {
                 format!("Block has invalid PoW: {}", oob)
             }
-            InvalidSeal => "Block has invalid seal.".into(),
             InvalidGasLimit(ref oob) => format!("Invalid gas limit: {}", oob),
             InvalidTimestamp(ref oob) => {
                 let oob =
@@ -101,6 +94,7 @@ error_chain! {
 
     foreign_links {
         Block(BlockError) #[doc = "Error concerning block processing."];
+        Transaction(TransactionError) #[doc = "Error concerning transaction processing."];
     }
 
     errors {

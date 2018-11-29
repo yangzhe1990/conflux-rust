@@ -26,6 +26,7 @@ extern crate memory_cache;
 
 #[cfg(test)]
 extern crate rustc_hex;
+extern crate triehash_ethereum as triehash;
 extern crate unexpected;
 
 mod cache_manager;
@@ -34,6 +35,7 @@ pub mod db;
 pub mod error;
 mod evm;
 mod executor;
+pub mod pow;
 pub(crate) mod snapshot;
 pub(crate) mod storage;
 mod sync;

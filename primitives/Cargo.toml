@@ -9,3 +9,4 @@ keccak-hash = { git = "https://github.com/paritytech/parity-common" }
 ethkey = { path = "../ethkey" }
 rlp = { git = "https://github.com/paritytech/parity-common" }
 ethcore-bytes = { path = "../util/bytes" }
+unexpected = { path = "../util/unexpected" }

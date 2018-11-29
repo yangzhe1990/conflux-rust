@@ -29,6 +29,7 @@ bit-set = "0.4"
 heapsize = "0.4"
 memory-cache = { path = "../util/memory_cache" }
 unexpected = { path = "../util/unexpected" }
+triehash-ethereum = { version = "0.2",  path = "../util/triehash-ethereum" }
 
 [dev-dependencies]
 rustc-hex = "1.0"
