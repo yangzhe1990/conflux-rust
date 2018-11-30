@@ -5,13 +5,13 @@ use std::{
 };
 
 pub struct Node<K, V, W> {
-    key: K,
-    value: V,
+    pub key: K,
+    pub value: V,
     weight: W,
     sum_weight: W,
     priority: u64,
-    left: Option<Box<Node<K, V, W>>>,
-    right: Option<Box<Node<K, V, W>>>,
+    pub left: Option<Box<Node<K, V, W>>>,
+    pub right: Option<Box<Node<K, V, W>>>,
 }
 
 impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>

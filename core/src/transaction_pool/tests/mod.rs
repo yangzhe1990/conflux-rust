@@ -261,3 +261,16 @@ fn test_insert_remove_query_random() {
         }
     }
 }
+
+#[test]
+fn test_iterator() {
+    let mut treap_map: TreapMap<u32, u32, u32> = TreapMap::new();
+    assert_eq!(treap_map.insert(5, 0, 1), None);
+    assert_eq!(treap_map.insert(4, 0, 1), None);
+    assert_eq!(treap_map.insert(1, 0, 1), None);
+    assert_eq!(treap_map.insert(3, 0, 1), None);
+    assert_eq!(treap_map.insert(2, 0, 1), None);
+
+    let vec: Vec<(&u32, &u32)> = treap_map.iter().collect();
+    assert_eq!(vec, vec![(&1, &0), (&2, &0), (&3, &0), (&4, &0), (&5, &0)]);
+}

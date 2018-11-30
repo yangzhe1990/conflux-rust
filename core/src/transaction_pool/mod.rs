@@ -421,8 +421,14 @@ impl TransactionPool {
 
     pub fn transactions_to_propagate(&self) -> Vec<SignedTransaction> {
         let inner = self.inner.read();
-        // FIXME
-        Vec::new()
+        inner
+            .pending_transactions
+            .pool
+            .iter()
+            .flat_map(|(_, bucket)| bucket.bucket.iter())
+            .map(|(_, x)| x.clone())
+            .chain(inner.ready_transactions.iter().map(|x| x.1.clone()))
+            .collect()
     }
 
     pub fn notify_ready(&self, address: &Address, account: &Account) {

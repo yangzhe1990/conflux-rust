@@ -72,4 +72,46 @@ impl<
     pub fn get_by_weight(&self, weight: W) -> Option<&V> {
         self.root.as_ref().and_then(|x| x.get_by_weight(weight))
     }
+
+    pub fn iter(&self) -> Iter<K, V, W> {
+        let mut iter = Iter { nodes: vec![] };
+        if let Some(ref n) = self.root {
+            iter.nodes.push(&**n);
+            iter.extend_path();
+        }
+        iter
+    }
+}
+
+pub struct Iter<'a, K: 'a, V: 'a, W: 'a> {
+    nodes: Vec<&'a Node<K, V, W>>,
+}
+
+impl<'a, K, V, W> Iter<'a, K, V, W> {
+    pub fn extend_path(&mut self) {
+        loop {
+            let node = *self.nodes.last().unwrap();
+            match node.left {
+                None => return,
+                Some(ref n) => self.nodes.push(&**n),
+            }
+        }
+    }
+}
+
+impl<'a, K, V, W> Iterator for Iter<'a, K, V, W> {
+    type Item = (&'a K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.nodes.pop() {
+            None => None,
+            Some(node) => {
+                if let Some(ref n) = node.right {
+                    self.nodes.push(&**n);
+                    self.extend_path();
+                }
+                Some((&node.key, &node.value))
+            }
+        }
+    }
 }
