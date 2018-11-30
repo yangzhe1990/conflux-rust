@@ -20,7 +20,7 @@ class P2PTest(ConfluxTestFramework):
             connect_nodes(self.nodes, i, i+1)
 
     def run_test(self):
-        block_number = 50
+        block_number = 100
 
         self.nodes[0].add_p2p_connection(DefaultNode())
         network_thread_start()
@@ -43,7 +43,7 @@ class P2PTest(ConfluxTestFramework):
             block_hash = self.nodes[chosen_peer].generate(1, 10)
             self.log.info("generate block %s", block_hash)
         wait_for_block_count(self.nodes[0], block_number)
-        sync_blocks(self.nodes[:2], timeout=10)
+        sync_blocks(self.nodes[:self.num_nodes-1], timeout=10)
         self.log.info("blocks sync successfully between old nodes")
         connect_nodes(self.nodes, self.num_nodes - 1, 0)
         sync_blocks(self.nodes, timeout=30)

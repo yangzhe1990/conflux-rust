@@ -195,7 +195,9 @@ impl SynchronizationGraph {
         queue.push_back(me);
 
         while let Some(index) = queue.pop_front() {
-            if inner.is_graph_ready(index) {
+            if inner.is_graph_ready(index)
+                && inner.arena[index].status != BLOCK_GRAPH_READY
+            {
                 inner.arena[index].status = BLOCK_GRAPH_READY;
                 self.consensus.on_new_block(
                     self.block_by_hash(&inner.arena[index].hash).unwrap(),

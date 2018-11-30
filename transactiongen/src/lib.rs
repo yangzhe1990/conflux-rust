@@ -78,7 +78,7 @@ impl TransactionGenerator {
             .state_manager
             .get_state_at(self.consensus.best_block_hash());
 
-        debug!(target:"sync", "account_count:{} sender_addr:{:?} epoch_id:{:?}", account_count,
+        debug!("account_count:{} sender_addr:{:?} epoch_id:{:?}", account_count,
                sender_address, self.consensus.best_block_hash());
         let sender_balance = get_account(&state, &sender_address)
             .map(|account| account.balance)

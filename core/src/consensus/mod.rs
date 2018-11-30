@@ -338,7 +338,11 @@ impl ConsensusGraph {
     }
 
     pub fn on_new_block(&self, block: Block) {
-        debug!(target:"sync", "insert new block into consensus hash:{:?}, block_header:{:?}", block.hash(), block.block_header);
+        debug!(
+            "insert new block into consensus hash:{:?}, block_header:{:?}",
+            block.hash(),
+            block.block_header
+        );
         let mut blocks = self.blocks.write();
         blocks.insert(block.hash(), block.clone());
 

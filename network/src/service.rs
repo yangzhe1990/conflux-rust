@@ -665,9 +665,9 @@ impl NetworkServiceInner {
         let mut tn = self.trusted_nodes.write();
         let mut utn = self.untrusted_nodes.write();
         let stream_token = {
-            if let Some(node) = tn.get_mut(&local_id) {
+            if let Some(node) = tn.remove_with_id(&local_id) {
                 node.stream_token.clone()
-            } else if let Some(node) = utn.get_mut(&local_id) {
+            } else if let Some(node) = utn.remove_with_id(&local_id) {
                 node.stream_token.clone()
             } else {
                 None

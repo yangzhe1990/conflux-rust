@@ -167,8 +167,8 @@ fn start(
 /// Use a Weak pointer to ensure that other Arc pointers are released
 fn wait_for_drop<T>(w: Weak<T>) {
     let sleep_duration = Duration::from_secs(1);
-    let warn_timeout = Duration::from_secs(60);
-    let max_timeout = Duration::from_secs(300);
+    let warn_timeout = Duration::from_secs(10);
+    let max_timeout = Duration::from_secs(60);
     let instant = Instant::now();
     let mut warned = false;
     while instant.elapsed() < max_timeout {
@@ -335,7 +335,7 @@ fn main() {
                     conf_builder.appender(Appender::builder().build(
                         "logfile",
                         Box::new(
-                            FileAppender::builder().encoder(Box::new(PatternEncoder::new("{d:23.23} {h({l}):5.5} {T:12.12} {t:12.12} - {m}{n}"))).build(log_file).unwrap(),
+                            FileAppender::builder().encoder(Box::new(PatternEncoder::new("{d:23.23} {h({l}):5.5} {T:<12.12} {t:12.12} - {m}{n}"))).build(log_file).unwrap(),
                         ),
                     ));
                 root_builder = root_builder.appender("logfile");

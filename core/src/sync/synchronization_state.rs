@@ -1,28 +1,54 @@
 use ethereum_types::H256;
-use message::{GetBlockHeaders, Message};
+use message::{GetBlockHeaders, GetBlocks, GetTerminalBlockHashes, Message};
 use network::PeerId;
 use slab::Slab;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    time::{Instant, SystemTime},
+    sync::Arc,
+    time::Instant,
 };
+use sync::synchronization_protocol_handler::TimedSyncRequests;
 
 pub const MAX_INFLIGHT_REQUEST_COUNT: usize = 64;
 
+pub enum RequestMessage {
+    Headers(GetBlockHeaders),
+    Blocks(GetBlocks),
+    Terminals(GetTerminalBlockHashes),
+}
+
+impl RequestMessage {
+    pub fn set_request_id(&mut self, reqid: u16) {
+        match self {
+            RequestMessage::Headers(ref mut msg) => msg.set_request_id(reqid),
+            RequestMessage::Blocks(ref mut msg) => msg.set_request_id(reqid),
+            RequestMessage::Terminals(ref mut msg) => msg.set_request_id(reqid),
+        }
+    }
+
+    pub fn get_msg(&self) -> &Message {
+        match self {
+            RequestMessage::Headers(ref msg) => msg,
+            RequestMessage::Blocks(ref msg) => msg,
+            RequestMessage::Terminals(ref msg) => msg,
+        }
+    }
+}
+
 pub struct SynchronizationPeerRequest {
-    pub timestamp: SystemTime,
-    pub message: Box<dyn Message>,
+    pub message: Box<RequestMessage>,
+    pub timed_req: Option<Arc<TimedSyncRequests>>,
 }
 
 impl SynchronizationPeerRequest {
     pub fn default() -> Self {
         SynchronizationPeerRequest {
-            timestamp: SystemTime::now(),
-            message: Box::new(GetBlockHeaders {
+            message: Box::new(RequestMessage::Headers(GetBlockHeaders {
                 reqid: 0,
                 hash: H256::default(),
                 max_blocks: 0,
-            }),
+            })),
+            timed_req: None,
         }
     }
 }
@@ -54,17 +80,19 @@ impl SynchronizationPeerState {
     }
 
     pub fn append_inflight_request(
-        &mut self, reqid: usize, msg: Box<dyn Message>,
-    ) {
+        &mut self, reqid: usize, msg: Box<RequestMessage>,
+        timed_req: Arc<TimedSyncRequests>,
+    )
+    {
         let slot = self.inflight_requests.get_mut(reqid).unwrap();
-        slot.timestamp = SystemTime::now();
         slot.message = msg;
+        slot.timed_req = Some(timed_req);
     }
 
-    pub fn append_pending_request(&mut self, msg: Box<dyn Message>) {
+    pub fn append_pending_request(&mut self, msg: Box<RequestMessage>) {
         self.pending_requests.push_back(SynchronizationPeerRequest {
-            timestamp: SystemTime::now(),
             message: msg,
+            timed_req: None,
         });
     }
 
