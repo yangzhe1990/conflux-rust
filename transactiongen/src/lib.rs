@@ -1,4 +1,5 @@
 extern crate core;
+extern crate ethcore_bytes as bytes;
 extern crate ethereum_types;
 extern crate ethkey;
 extern crate network;
@@ -9,6 +10,7 @@ extern crate secret_store;
 #[macro_use]
 extern crate log;
 
+use bytes::Bytes;
 use core::{
     get_account, SharedConsensusGraph, SharedStateManager,
     SharedTransactionPool, StateManagerTrait,
@@ -17,7 +19,7 @@ use ethereum_types::{Address, H512, U256, U512};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
 use network::Error;
 use parking_lot::RwLock;
-use primitives::{SignedTransaction, Transaction};
+use primitives::{transaction::Action, SignedTransaction, Transaction};
 use rand::prelude::*;
 use secret_store::SharedSecretStore;
 use std::{collections::HashMap, sync::Arc, thread, time};
@@ -100,7 +102,8 @@ impl TransactionGenerator {
             gas_price: U256::from(1_000_000_000_000_000u64),
             gas: U256::from(200u64),
             value: balance_to_transfer,
-            receiver: receiver_address,
+            action: Action::Call(receiver_address),
+            data: Bytes::new(),
         };
         tx.sign(sender_kp.secret())
     }
@@ -185,7 +188,8 @@ impl TransactionGenerator {
                 gas_price: U256::from(1_000_000_000_000_000u64),
                 gas: U256::from(200u64),
                 value: balance_to_transfer,
-                receiver: receiver_address,
+                action: Action::Call(receiver_address),
+                data: Bytes::new(),
             };
 
             let signed_tx = tx.sign(sender_kp.secret());

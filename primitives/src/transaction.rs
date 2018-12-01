@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use ethereum_types::{Address, H160, H256, U256};
 use ethkey::{self, public_to_address, recover, Public, Secret, Signature};
 use hash::keccak;
@@ -112,6 +113,38 @@ impl error::Error for TransactionError {
     fn description(&self) -> &str { "Transaction error" }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    /// Create creates new contract.
+    Create,
+    /// Calls contract at given address.
+    /// In the case of a transfer, this is the receiver's address.'
+    Call(Address),
+}
+
+impl Default for Action {
+    fn default() -> Action { Action::Create }
+}
+
+impl Decodable for Action {
+    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        if rlp.is_empty() {
+            Ok(Action::Create)
+        } else {
+            Ok(Action::Call(rlp.as_val()?))
+        }
+    }
+}
+
+impl Encodable for Action {
+    fn rlp_append(&self, stream: &mut RlpStream) {
+        match *self {
+            Action::Create => stream.append_internal(&""),
+            Action::Call(ref address) => stream.append_internal(address),
+        };
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Transaction {
     /// Nonce.
@@ -120,10 +153,12 @@ pub struct Transaction {
     pub gas_price: U256,
     /// Gas paid up front for transaction execution.
     pub gas: U256,
+    /// Action, can be either call or contract create.
+    pub action: Action,
     /// Transferred value.
     pub value: U256,
-    /// Receiver's address.
-    pub receiver: Address,
+    /// Transaction data.
+    pub data: Bytes,
 }
 
 impl Transaction {
@@ -162,20 +197,22 @@ impl Decodable for Transaction {
             nonce: r.val_at(0)?,
             gas_price: r.val_at(1)?,
             gas: r.val_at(2)?,
-            value: r.val_at(3)?,
-            receiver: r.val_at(4)?,
+            action: r.val_at(3)?,
+            value: r.val_at(4)?,
+            data: r.val_at(5)?,
         })
     }
 }
 
 impl Encodable for Transaction {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(5);
+        s.begin_list(6);
         s.append(&self.nonce);
         s.append(&self.gas_price);
         s.append(&self.gas);
+        s.append(&self.action);
         s.append(&self.value);
-        s.append(&self.receiver);
+        s.append(&self.data);
     }
 }
 
@@ -213,12 +250,13 @@ impl Decodable for TransactionWithSignature {
                 nonce: d.val_at(0)?,
                 gas_price: d.val_at(1)?,
                 gas: d.val_at(2)?,
-                value: d.val_at(3)?,
-                receiver: d.val_at(4)?,
+                action: d.val_at(3)?,
+                value: d.val_at(4)?,
+                data: d.val_at(5)?,
             },
-            v: d.val_at(5)?,
-            r: d.val_at(6)?,
-            s: d.val_at(7)?,
+            v: d.val_at(6)?,
+            r: d.val_at(7)?,
+            s: d.val_at(8)?,
             hash,
         })
     }
@@ -243,12 +281,13 @@ impl TransactionWithSignature {
 
     /// Append object with a signature into RLP stream
     fn rlp_append_sealed_transaction(&self, s: &mut RlpStream) {
-        s.begin_list(8);
+        s.begin_list(9);
         s.append(&self.nonce);
         s.append(&self.gas_price);
         s.append(&self.gas);
+        s.append(&self.action);
         s.append(&self.value);
-        s.append(&self.receiver);
+        s.append(&self.data);
         s.append(&self.v);
         s.append(&self.r);
         s.append(&self.s);

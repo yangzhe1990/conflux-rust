@@ -1,6 +1,6 @@
 use super::{transaction_pool::SharedTransactionPool, State, StateTrait};
 use ethereum_types::{Address, U256};
-use primitives::{Account, EpochId, SignedTransaction};
+use primitives::{transaction::Action, Account, EpochId, SignedTransaction};
 use rlp::{decode, encode};
 use std::collections::HashMap;
 
@@ -37,27 +37,32 @@ impl<'executor, 'state> Executor<'executor, 'state> {
                     .unwrap_or_default(),
             );
         }
-        if !self.cache.contains_key(&transaction.receiver) {
-            self.cache.insert(
-                transaction.receiver.clone(),
-                get_account(self.state, &transaction.receiver)
-                    .unwrap_or_default(),
-            );
-        }
-
         // check nonce
         if !self.check_increment_nonce_in_cache(transaction) {
             return;
         }
 
-        if transaction.value <= self.cache[&transaction.sender].balance {
-            self.cache
-                .entry(transaction.sender.clone())
-                .and_modify(|account| account.balance -= transaction.value);
-            self.cache
-                .entry(transaction.receiver.clone())
-                .and_modify(|account| account.balance += transaction.value);
-        }
+        match transaction.action {
+            Action::Create => {}
+            Action::Call(ref address) => {
+                if !self.cache.contains_key(&address) {
+                    self.cache.insert(
+                        address.clone(),
+                        get_account(self.state, &address)
+                            .unwrap_or_default(),
+                    );
+                }
+                if transaction.value <= self.cache[&transaction.sender].balance
+                {
+                    self.cache.entry(transaction.sender.clone()).and_modify(
+                        |account| account.balance -= transaction.value,
+                    );
+                    self.cache.entry(address.clone()).and_modify(|account| {
+                        account.balance += transaction.value
+                    });
+                }
+            }
+        };
     }
 
     pub fn check_increment_nonce_in_cache(

@@ -18,3 +18,4 @@ secret-store = { path = "../secret_store" }
 network = { path = "../network" }
 ethkey = { path = "../ethkey" }
 log = "0.4"
+ethcore-bytes = { path = "../util/bytes" }

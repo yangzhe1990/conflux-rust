@@ -1,4 +1,4 @@
-use primitives::SignedTransaction;
+use primitives::{transaction::Action, SignedTransaction};
 
 use types::{H160, H256, U256};
 
@@ -29,7 +29,10 @@ impl Transaction {
             block_number: None,
             transaction_index: None,
             from: t.sender().into(),
-            to: Some(t.receiver.into()),
+            to: match t.action {
+                Action::Create => None,
+                Action::Call(ref address) => Some(address.clone().into()),
+            },
             value: U256::from(t.value),
             gas_price: U256::from(t.gas_price),
             gas: U256::from(t.gas),
