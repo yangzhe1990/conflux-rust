@@ -18,12 +18,16 @@ pub struct BlockHeader {
     deferred_state_root: H256,
     /// Block difficulty.
     difficulty: U256,
+    /// Gas limit.
+    gas_limit: u64,
+    /// Gas used.
+    gas_used: u64,
     /// Referee hashes
     referee_hashes: Vec<H256>,
-    /// Hash of the block
-    hash: Option<H256>,
     /// Nonce of the block
     nonce: u64,
+    /// Hash of the block
+    hash: Option<H256>,
 }
 
 impl PartialEq for BlockHeader {
@@ -34,6 +38,8 @@ impl PartialEq for BlockHeader {
             && self.transactions_root == o.transactions_root
             && self.deferred_state_root == o.deferred_state_root
             && self.difficulty == o.difficulty
+            && self.gas_limit == o.gas_limit
+            && self.gas_used == o.gas_used
             && self.referee_hashes == o.referee_hashes
     }
 }
@@ -47,9 +53,11 @@ impl Default for BlockHeader {
             transactions_root: KECCAK_NULL_RLP,
             deferred_state_root: KECCAK_NULL_RLP,
             difficulty: U256::default(),
+            gas_limit: 0,
+            gas_used: 0,
             referee_hashes: Vec::new(),
-            hash: None,
             nonce: 0,
+            hash: None,
         }
     }
 }
@@ -120,32 +128,37 @@ impl BlockHeader {
     /// Place this header(except nonce) into an RLP stream `stream`.
     fn stream_rlp_without_nonce(&self, stream: &mut RlpStream) {
         stream
-            .begin_list(7)
+            .begin_list(9)
             .append(&self.parent_hash)
             .append(&self.timestamp)
             .append(&self.author)
             .append(&self.transactions_root)
             .append(&self.deferred_state_root)
             .append(&self.difficulty)
+            .append(&self.gas_limit)
+            .append(&self.gas_used)
             .append_list(&self.referee_hashes);
     }
 
     /// Place this header into an RLP stream `stream`.
     fn stream_rlp(&self, stream: &mut RlpStream) {
         stream
-            .begin_list(8)
+            .begin_list(10)
             .append(&self.parent_hash)
             .append(&self.timestamp)
             .append(&self.author)
             .append(&self.transactions_root)
             .append(&self.deferred_state_root)
             .append(&self.difficulty)
+            .append(&self.gas_limit)
+            .append(&self.gas_used)
             .append_list(&self.referee_hashes)
             .append(&self.nonce);
     }
 
     pub fn size(&self) -> usize {
-        // FIXME: We need to revisit the size of block header once we finished the persistent storage part
+        // FIXME: We need to revisit the size of block header once we finished
+        // the persistent storage part
         0
     }
 }
@@ -157,6 +170,8 @@ pub struct BlockHeaderBuilder {
     transactions_root: H256,
     deferred_state_root: H256,
     difficulty: U256,
+    gas_limit: u64,
+    gas_used: u64,
     referee_hashes: Vec<H256>,
     nonce: u64,
 }
@@ -170,6 +185,8 @@ impl BlockHeaderBuilder {
             transactions_root: KECCAK_NULL_RLP,
             deferred_state_root: KECCAK_NULL_RLP,
             difficulty: U256::default(),
+            gas_limit: 0,
+            gas_used: 0,
             referee_hashes: Vec::new(),
             nonce: 0,
         }
@@ -209,6 +226,16 @@ impl BlockHeaderBuilder {
         self
     }
 
+    pub fn with_gas_limit(&mut self, gas_limit: u64) -> &mut Self {
+        self.gas_limit = gas_limit;
+        self
+    }
+
+    pub fn with_gas_used(&mut self, gas_used: u64) -> &mut Self {
+        self.gas_used = gas_used;
+        self
+    }
+
     pub fn with_referee_hashes(
         &mut self, referee_hashes: Vec<H256>,
     ) -> &mut Self {
@@ -229,9 +256,11 @@ impl BlockHeaderBuilder {
             transactions_root: self.transactions_root,
             deferred_state_root: self.deferred_state_root,
             difficulty: self.difficulty,
+            gas_limit: self.gas_limit,
+            gas_used: self.gas_used,
             referee_hashes: self.referee_hashes.clone(),
-            hash: None,
             nonce: self.nonce,
+            hash: None,
         }
     }
 }
@@ -249,8 +278,10 @@ impl Decodable for BlockHeader {
             transactions_root: r.val_at(3)?,
             deferred_state_root: r.val_at(4)?,
             difficulty: r.val_at(5)?,
-            referee_hashes: r.list_at(6)?,
-            nonce: r.val_at(7)?,
+            gas_limit: r.val_at(6)?,
+            gas_used: r.val_at(7)?,
+            referee_hashes: r.list_at(8)?,
+            nonce: r.val_at(9)?,
             hash: keccak(r.as_raw()).into(),
         })
     }
