@@ -7,6 +7,7 @@ version = "0.1.0"
 authors = ["ming wu <ming@alt-chain.io>"]
 
 [dependencies]
+clap = "2"
 core = { path = "../core" }
 ethereum-types = "0.4"
 keccak-hash = { git = "https://github.com/paritytech/parity-common" }
@@ -17,4 +18,8 @@ rand = "0.5"
 ethkey = { path = "../ethkey" }
 txgen = { path = "../transactiongen"}
 log = "0.4"
-
+db = { path = "../db" }
+network = { path = "../network" }
+kvdb-rocksdb = "0.1.3"
+secret-store = { path = "../secret_store" }
+toml = "0.4"

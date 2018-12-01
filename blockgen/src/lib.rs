@@ -11,6 +11,9 @@ extern crate txgen;
 #[macro_use]
 extern crate log;
 
+#[cfg(test)]
+mod tests;
+
 use core::{
     pow::*, SharedConsensusGraph, SharedSynchronizationService,
     SharedTransactionPool,
@@ -57,6 +60,10 @@ impl Worker {
         let thread = thread::Builder::new()
             .name("blockgen".into())
             .spawn(move || {
+                #[cfg(test)]
+                {
+                    println!("A new worker start mining!");
+                }
                 let sleep_duration = time::Duration::from_millis(100);
                 let mut problem: Option<ProofOfWorkProblem> = None;
 
@@ -75,8 +82,20 @@ impl Worker {
                     if problem.is_some() {
                         let boundary = problem.unwrap().boundary;
                         let block_hash = problem.unwrap().block_hash;
+                        let difficulty = problem.unwrap().difficulty;
 
-                        for _i in 0..10000000 {
+                        #[cfg(test)]
+                        {
+                            println!(
+                                "Start a new round with difficulty {}!",
+                                difficulty
+                            );
+                            if difficulty > 500000.into() {
+                                println!("Difficulty is too high to mine!");
+                            }
+                        }
+
+                        for _i in 0..100000 {
                             //TODO: adjust the number of times
                             let nonce = rand::random();
                             let hash = compute(nonce, &block_hash);
@@ -87,6 +106,12 @@ impl Worker {
                                     .expect("Failed to send the PoW solution.");
                                 problem = None;
                                 break;
+                            }
+                        }
+                        #[cfg(test)]
+                        {
+                            if problem.is_some() {
+                                println!("Sad, we failed in this round.");
                             }
                         }
                     } else {
@@ -147,7 +172,7 @@ impl BlockGenerator {
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
             .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
-            .with_difficulty(rand::random::<u64>().into()) //TODO: adjust difficulty
+            .with_difficulty(200000.into()) //TODO: adjust difficulty
             .with_referee_hashes(referee) //TODO: get referee hashes
             .with_nonce(0)
             .build();
@@ -160,6 +185,11 @@ impl BlockGenerator {
 
     /// Update and sync a new block
     pub fn on_mined_block(&self, block: Block) {
+        #[cfg(test)]
+        {
+            println!("Mined a block!");
+            return;
+        }
         self.sync.on_mined_block(block);
     }
 
@@ -258,7 +288,8 @@ impl BlockGenerator {
                         && !validate(
                             &current_problem.unwrap(),
                             &new_solution.unwrap(),
-                        ) {
+                        )
+                    {
                         new_solution = receiver.try_recv();
                     } else {
                         break;
