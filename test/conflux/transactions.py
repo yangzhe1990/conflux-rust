@@ -32,8 +32,9 @@ class Transaction(rlp.Serializable):
         ('nonce', big_endian_int),
         ('gas_price', big_endian_int),
         ('gas', big_endian_int),
+        ('action', address),
         ('value', big_endian_int),
-        ('receiver', address),
+        ('data', binary),
         ('v', big_endian_int),
         ('r', big_endian_int),
         ('s', big_endian_int),
@@ -41,11 +42,11 @@ class Transaction(rlp.Serializable):
 
     _sender = None
 
-    def __init__(self, nonce, gas_price, gas, value, receiver, v=0, r=0,
+    def __init__(self, nonce, gas_price, gas, action, value, data, v=0, r=0,
                  s=0):
 
         super(Transaction, self).__init__(
-            nonce, gas_price, gas, value, receiver, v, r, s
+            nonce, gas_price, gas, action, value, data, v, r, s
         )
         if self.gas_price >= TT256 or \
                 self.value >= TT256 or self.nonce >= TT256:

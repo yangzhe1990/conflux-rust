@@ -122,13 +122,14 @@ class TestNode:
         my_env = os.environ.copy()
         my_env["RUST_BACKTRACE"] = "1"
         if self.remote:
-            cli_mkdir = "ssh {}@{} mkdir -p {};".format(
-                self.user, self.ip, self.datadir)
-            cli_conf = "scp -r {0}/. {3} {1}@{2}:{0};".format(
-                self.datadir, self.user, self.ip, self.binary)
+            ssh_args = '-o "StrictHostKeyChecking no"'
+            cli_mkdir = "ssh {} {}@{} mkdir -p {};".format(
+                ssh_args, self.user, self.ip, self.datadir)
+            cli_conf = "scp {3} -r {0}/. {1}@{2}:{0};".format(
+                self.datadir, self.user, self.ip, ssh_args)
             self.args[0] = "~/conflux"
-            cli_exe = "ssh {}@{} {}".format(
-                self.user, self.ip, " ".join(self.args))
+            cli_exe = "ssh {} {}@{} \"{}\"".format(
+                ssh_args, self.user, self.ip, "cd {} && ".format(self.datadir) + " ".join(self.args))
             print(cli_mkdir + cli_conf + cli_exe)
             self.process = subprocess.Popen(cli_mkdir + cli_conf + cli_exe,
                                             stdout=stdout, stderr=stderr, cwd=self.datadir, shell=True, **kwargs)
@@ -191,8 +192,8 @@ class TestNode:
         self.stderr.seek(0)
         stderr = self.stderr.read().decode('utf-8').strip()
         if stderr != expected_stderr:
-            raise AssertionError("Unexpected stderr {} != {}".format(
-                stderr, expected_stderr))
+            raise AssertionError("Unexpected stderr {} != {} from {}:{} index={}".format(
+                stderr, expected_stderr, self.ip, self.port, self.index))
 
         self.stdout.close()
         self.stderr.close()
@@ -287,9 +288,9 @@ class TestNode:
         This method adds the p2p connection to the self.p2ps list and also
         returns the connection to the caller."""
         if 'dstport' not in kwargs:
-            kwargs['dstport'] = p2p_port(self.index)
+            kwargs['dstport'] = int(self.port)
         if 'dstaddr' not in kwargs:
-            kwargs['dstaddr'] = '127.0.0.1'
+            kwargs['dstaddr'] = self.ip
 
         # if self.ip is not None:
         #     kwargs['dstaddr'] = self.ip
