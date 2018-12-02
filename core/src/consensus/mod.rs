@@ -328,6 +328,15 @@ impl ConsensusGraph {
         }
     }
 
+    pub fn get_block_height(&self, hash: &H256) -> Option<u64> {
+        let blocks = self.blocks.read();
+        if let Some(block) = blocks.get(hash) {
+            Some(block.block_header.height())
+        } else {
+            None
+        }
+    }
+
     pub fn get_block_epoch_number(&self, hash: &H256) -> Option<usize> {
         let r = self.inner.read();
         if let Some(idx) = r.indices.get(hash) {

@@ -168,6 +168,7 @@ class GetBlockHeaders(rlp.Serializable):
 class BlockHeader(rlp.Serializable):
     fields = [
         ("parent_hash", hash32),
+        ("height", big_endian_int),
         ("timestamp", big_endian_int),
         ("author", hash20),
         ("transactions_root", hash32),
@@ -181,6 +182,7 @@ class BlockHeader(rlp.Serializable):
 
     def __init__(self,
                  parent_hash=default_config['GENESIS_PREVHASH'],
+                 height=0,
                  timestamp=0,
                  author=default_config['GENESIS_COINBASE'],
                  transactions_root=trie.BLANK_ROOT,

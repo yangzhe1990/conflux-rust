@@ -3,7 +3,10 @@ use ethereum_types::{H256, U256};
 use pow;
 use primitives::{Block, BlockHeader, SignedTransaction};
 use rlp::{encode, RlpStream};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    collections::HashSet,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use triehash::ordered_trie_root;
 use unexpected::{Mismatch, OutOfBounds};
 
@@ -20,6 +23,19 @@ pub fn verify_header_params(header: &BlockHeader) -> Result<(), Error> {
             max: None,
             found: difficulty,
         })));
+    }
+
+    // verify non-duplicated parent and referee hashes
+    let mut direct_ancestor_hashes = HashSet::new();
+    let parent_hash = header.parent_hash();
+    direct_ancestor_hashes.insert(parent_hash.clone());
+    for referee_hash in header.referee_hashes() {
+        if direct_ancestor_hashes.contains(referee_hash) {
+            return Err(From::from(BlockError::DuplicateParentOrRefereeHashes(
+                referee_hash.clone(),
+            )));
+        }
+        direct_ancestor_hashes.insert(referee_hash.clone());
     }
 
     // verify timestamp drift

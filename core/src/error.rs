@@ -34,6 +34,8 @@ pub enum BlockError {
     TooManyTransactions(Address),
     /// Parent given is unknown.
     UnknownParent(H256),
+    /// Duplicate parent or referee hashes exist.
+    DuplicateParentOrRefereeHashes(H256),
 }
 
 impl fmt::Display for BlockError {
@@ -76,6 +78,9 @@ impl fmt::Display for BlockError {
             UnknownParent(ref hash) => format!("Unknown parent: {}", hash),
             TooManyTransactions(ref address) => {
                 format!("Too many transactions from: {}", address)
+            }
+            DuplicateParentOrRefereeHashes(ref hash) => {
+                format!("Duplicate parent or referee hashes: {}", hash)
             }
         };
 

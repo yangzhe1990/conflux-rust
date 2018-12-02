@@ -8,6 +8,8 @@ use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 pub struct BlockHeader {
     /// Parent hash.
     parent_hash: H256,
+    /// Block height
+    height: u64,
     /// Block timestamp.
     timestamp: u64,
     /// Block author.
@@ -33,6 +35,7 @@ pub struct BlockHeader {
 impl PartialEq for BlockHeader {
     fn eq(&self, o: &BlockHeader) -> bool {
         self.parent_hash == o.parent_hash
+            && self.height == o.height
             && self.timestamp == o.timestamp
             && self.author == o.author
             && self.transactions_root == o.transactions_root
@@ -48,6 +51,7 @@ impl Default for BlockHeader {
     fn default() -> Self {
         BlockHeader {
             parent_hash: H256::default(),
+            height: 0,
             timestamp: 0,
             author: Address::default(),
             transactions_root: KECCAK_NULL_RLP,
@@ -68,6 +72,9 @@ impl BlockHeader {
 
     /// Get the parent_hash field of the header.
     pub fn parent_hash(&self) -> &H256 { &self.parent_hash }
+
+    /// Get the block height
+    pub fn height(&self) -> u64 { self.height }
 
     /// Get the timestamp field of the header.
     pub fn timestamp(&self) -> u64 { self.timestamp }
@@ -128,8 +135,9 @@ impl BlockHeader {
     /// Place this header(except nonce) into an RLP stream `stream`.
     fn stream_rlp_without_nonce(&self, stream: &mut RlpStream) {
         stream
-            .begin_list(9)
+            .begin_list(10)
             .append(&self.parent_hash)
+            .append(&self.height)
             .append(&self.timestamp)
             .append(&self.author)
             .append(&self.transactions_root)
@@ -143,8 +151,9 @@ impl BlockHeader {
     /// Place this header into an RLP stream `stream`.
     fn stream_rlp(&self, stream: &mut RlpStream) {
         stream
-            .begin_list(10)
+            .begin_list(11)
             .append(&self.parent_hash)
+            .append(&self.height)
             .append(&self.timestamp)
             .append(&self.author)
             .append(&self.transactions_root)
@@ -165,6 +174,7 @@ impl BlockHeader {
 
 pub struct BlockHeaderBuilder {
     parent_hash: H256,
+    height: u64,
     timestamp: u64,
     author: Address,
     transactions_root: H256,
@@ -180,6 +190,7 @@ impl BlockHeaderBuilder {
     pub fn new() -> Self {
         Self {
             parent_hash: H256::default(),
+            height: 0,
             timestamp: 0,
             author: Address::default(),
             transactions_root: KECCAK_NULL_RLP,
@@ -194,6 +205,11 @@ impl BlockHeaderBuilder {
 
     pub fn with_parent_hash(&mut self, parent_hash: H256) -> &mut Self {
         self.parent_hash = parent_hash;
+        self
+    }
+
+    pub fn with_height(&mut self, height: u64) -> &mut Self {
+        self.height = height;
         self
     }
 
@@ -251,6 +267,7 @@ impl BlockHeaderBuilder {
     pub fn build(&self) -> BlockHeader {
         BlockHeader {
             parent_hash: self.parent_hash,
+            height: self.height,
             timestamp: self.timestamp,
             author: self.author,
             transactions_root: self.transactions_root,
@@ -273,15 +290,16 @@ impl Decodable for BlockHeader {
     fn decode(r: &Rlp) -> Result<Self, DecoderError> {
         Ok(BlockHeader {
             parent_hash: r.val_at(0)?,
-            timestamp: r.val_at(1)?,
-            author: r.val_at(2)?,
-            transactions_root: r.val_at(3)?,
-            deferred_state_root: r.val_at(4)?,
-            difficulty: r.val_at(5)?,
-            gas_limit: r.val_at(6)?,
-            gas_used: r.val_at(7)?,
-            referee_hashes: r.list_at(8)?,
-            nonce: r.val_at(9)?,
+            height: r.val_at(1)?,
+            timestamp: r.val_at(2)?,
+            author: r.val_at(3)?,
+            transactions_root: r.val_at(4)?,
+            deferred_state_root: r.val_at(5)?,
+            difficulty: r.val_at(6)?,
+            gas_limit: r.val_at(7)?,
+            gas_used: r.val_at(8)?,
+            referee_hashes: r.list_at(9)?,
+            nonce: r.val_at(10)?,
             hash: keccak(r.as_raw()).into(),
         })
     }

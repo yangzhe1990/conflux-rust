@@ -8,18 +8,20 @@ use std::collections::{HashMap, HashSet, VecDeque};
 const NULL: usize = !0;
 
 const BLOCK_HEADER_ONLY: u8 = 0;
-const BLOCK_READY: u8 = 1;
+const BLOCK_HEADER_PARENTAL_TREE_READY: u8 = 1;
 #[allow(dead_code)]
-const BLOCK_PARENTAL_TREE_READY: u8 = 2;
+const BLOCK_HEADER_GRAPH_READY: u8 = 2;
 const BLOCK_GRAPH_READY: u8 = 3;
 
 pub struct SynchronizationGraphNode {
     pub hash: H256,
-    pub status: u8,
+    pub graph_status: u8,
+    pub block_ready: bool,
+    pub block_height: u64,
     pub parent: usize,
     pub children: Vec<usize>,
     pub referees: Vec<usize>,
-    pub pending_referees: HashSet<H256>,
+    pub pending_referee_count: usize,
     pub referrers: Vec<usize>,
 }
 
@@ -49,15 +51,17 @@ impl SynchronizationGraphInner {
         let hash = header.hash();
         let me = self.arena.insert(SynchronizationGraphNode {
             hash,
-            status: if *header.parent_hash() == H256::default() {
+            graph_status: if *header.parent_hash() == H256::default() {
                 BLOCK_GRAPH_READY
             } else {
                 BLOCK_HEADER_ONLY
             },
+            block_ready: *header.parent_hash() == H256::default(),
+            block_height: header.height(),
             parent: NULL,
             children: Vec::new(),
             referees: Vec::new(),
-            pending_referees: HashSet::new(),
+            pending_referee_count: 0,
             referrers: Vec::new(),
         });
         self.indices.insert(hash, me);
@@ -79,7 +83,8 @@ impl SynchronizationGraphInner {
                 self.arena[me].referees.push(referee);
                 self.arena[referee].referrers.push(me);
             } else {
-                self.arena[me].pending_referees.insert(*referee_hash);
+                self.arena[me].pending_referee_count =
+                    self.arena[me].pending_referee_count + 1;
                 self.referrers_by_hash
                     .entry(*referee_hash)
                     .or_insert(Vec::new())
@@ -95,29 +100,100 @@ impl SynchronizationGraphInner {
         }
         if let Some(referrers) = self.referrers_by_hash.remove(&hash) {
             for referrer in &referrers {
-                self.arena[*referrer].referees.push(me);
-                self.arena[*referrer].pending_referees.remove(&hash);
+                let ref mut node_referrer = self.arena[*referrer];
+                node_referrer.referees.push(me);
+                debug_assert!(node_referrer.pending_referee_count > 0);
+                if node_referrer.pending_referee_count > 0 {
+                    node_referrer.pending_referee_count =
+                        node_referrer.pending_referee_count - 1;
+                }
             }
             self.arena[me].referrers = referrers;
+        }
+
+        // Start to pass influence to descendants
+        let mut queue = VecDeque::new();
+        queue.push_back(me);
+        while let Some(index) = queue.pop_front() {
+            if self.new_to_be_header_graph_ready(index) {
+                self.arena[index].graph_status = BLOCK_HEADER_GRAPH_READY;
+                for child in &self.arena[index].children {
+                    debug_assert!(
+                        self.arena[*child].graph_status
+                            < BLOCK_HEADER_GRAPH_READY
+                    );
+                    queue.push_back(*child);
+                }
+                for referrer in &self.arena[index].referrers {
+                    debug_assert!(
+                        self.arena[*referrer].graph_status
+                            < BLOCK_HEADER_GRAPH_READY
+                    );
+                    queue.push_back(*referrer);
+                }
+            } else if self.new_to_be_header_parental_tree_ready(index) {
+                self.arena[index].graph_status =
+                    BLOCK_HEADER_PARENTAL_TREE_READY;
+                for child in &self.arena[index].children {
+                    debug_assert!(
+                        self.arena[*child].graph_status
+                            < BLOCK_HEADER_PARENTAL_TREE_READY
+                    );
+                    queue.push_back(*child);
+                }
+            }
         }
 
         me
     }
 
-    pub fn is_graph_ready(&self, index: usize) -> bool {
-        if self.arena[index].status < BLOCK_READY
-            || !self.arena[index].pending_referees.is_empty()
-        {
-            false
-        } else {
-            let parent = self.arena[index].parent;
-
-            parent != NULL
-                && self.arena[parent].status >= BLOCK_GRAPH_READY
-                && !self.arena[index].referees.iter().any(|&referee| {
-                    self.arena[referee].status < BLOCK_GRAPH_READY
-                })
+    pub fn new_to_be_header_parental_tree_ready(&self, index: usize) -> bool {
+        let ref node_me = self.arena[index];
+        if node_me.graph_status >= BLOCK_HEADER_PARENTAL_TREE_READY {
+            return false;
         }
+
+        let parent = node_me.parent;
+        parent != NULL
+            && self.arena[parent].graph_status
+                >= BLOCK_HEADER_PARENTAL_TREE_READY
+    }
+
+    pub fn new_to_be_header_graph_ready(&self, index: usize) -> bool {
+        let ref node_me = self.arena[index];
+        if node_me.graph_status >= BLOCK_HEADER_GRAPH_READY {
+            return false;
+        }
+
+        if node_me.pending_referee_count > 0 {
+            return false;
+        }
+
+        let parent = node_me.parent;
+        parent != NULL
+            && self.arena[parent].graph_status >= BLOCK_HEADER_GRAPH_READY
+            && !node_me.referees.iter().any(|&referee| {
+                self.arena[referee].graph_status < BLOCK_HEADER_GRAPH_READY
+            })
+    }
+
+    pub fn new_to_be_block_graph_ready(&self, index: usize) -> bool {
+        let ref node_me = self.arena[index];
+        if !node_me.block_ready {
+            return false;
+        }
+
+        if node_me.graph_status >= BLOCK_GRAPH_READY {
+            return false;
+        }
+
+        let parent = node_me.parent;
+        node_me.graph_status >= BLOCK_HEADER_GRAPH_READY
+            && parent != NULL
+            && self.arena[parent].graph_status >= BLOCK_GRAPH_READY
+            && !node_me.referees.iter().any(|&referee| {
+                self.arena[referee].graph_status < BLOCK_GRAPH_READY
+            })
     }
 }
 
@@ -191,21 +267,26 @@ impl SynchronizationGraph {
         let me = *inner.indices.get(&hash).unwrap();
         let mut queue = VecDeque::new();
 
-        inner.arena[me].status = BLOCK_READY;
+        debug_assert!(!inner.arena[me].block_ready);
+        inner.arena[me].block_ready = true;
         queue.push_back(me);
 
         while let Some(index) = queue.pop_front() {
-            if inner.is_graph_ready(index)
-                && inner.arena[index].status != BLOCK_GRAPH_READY
-            {
-                inner.arena[index].status = BLOCK_GRAPH_READY;
+            if inner.new_to_be_block_graph_ready(index) {
+                inner.arena[index].graph_status = BLOCK_GRAPH_READY;
                 self.consensus.on_new_block(
                     self.block_by_hash(&inner.arena[index].hash).unwrap(),
                 );
                 for child in &inner.arena[index].children {
+                    debug_assert!(
+                        inner.arena[*child].graph_status < BLOCK_GRAPH_READY
+                    );
                     queue.push_back(*child);
                 }
                 for referrer in &inner.arena[index].referrers {
+                    debug_assert!(
+                        inner.arena[*referrer].graph_status < BLOCK_GRAPH_READY
+                    );
                     queue.push_back(*referrer);
                 }
             }

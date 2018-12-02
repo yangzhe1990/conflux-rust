@@ -82,10 +82,10 @@ impl Worker {
                     if problem.is_some() {
                         let boundary = problem.unwrap().boundary;
                         let block_hash = problem.unwrap().block_hash;
-                        let difficulty = problem.unwrap().difficulty;
 
                         #[cfg(test)]
                         {
+                            let difficulty = problem.unwrap().difficulty;
                             println!(
                                 "Start a new round with difficulty {}!",
                                 difficulty
@@ -159,6 +159,8 @@ impl BlockGenerator {
     pub fn assemble_new_block(&self, num_txs: usize) -> Block {
         // get the best block
         let best_block_hash = self.consensus.best_block_hash();
+        let parent_height =
+            self.consensus.get_block_height(&best_block_hash).unwrap();
         let transactions = self.txpool.pack_transactions(num_txs);
         let mut tx_rlp = RlpStream::new_list(transactions.len());
         for tx in transactions.iter() {
@@ -169,12 +171,13 @@ impl BlockGenerator {
         let block_header = BlockHeaderBuilder::new()
             .with_transactions_root(keccak(tx_rlp.out()))
             .with_parent_hash(best_block_hash)
+            .with_height(parent_height + 1)
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
             .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
             .with_difficulty(200000.into()) //TODO: adjust difficulty
             .with_referee_hashes(referee) //TODO: get referee hashes
-            .with_nonce(0)
+            .with_nonce(rand::random()) // TODO: gen nonce from pow
             .build();
 
         Block {
@@ -288,8 +291,7 @@ impl BlockGenerator {
                         && !validate(
                             &current_problem.unwrap(),
                             &new_solution.unwrap(),
-                        )
-                    {
+                        ) {
                         new_solution = receiver.try_recv();
                     } else {
                         break;
