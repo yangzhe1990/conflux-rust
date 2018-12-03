@@ -31,6 +31,10 @@ memory-cache = { path = "../util/memory_cache" }
 unexpected = { path = "../util/unexpected" }
 triehash-ethereum = { version = "0.2",  path = "../util/triehash-ethereum" }
 elastic-array = "0.10"
+byteorder = "1.0"
+num = "0.2"
+parity-crypto = "0.2"
+bn = { git = "https://github.com/paritytech/bn", default-features = false }
 
 [dev-dependencies]
 rustc-hex = "1.0"

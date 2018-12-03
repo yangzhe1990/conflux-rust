@@ -1,4 +1,5 @@
 use ethereum_types::{H256, U256};
+use hash::KECCAK_EMPTY;
 use rlp::*;
 
 pub struct Account {
@@ -14,7 +15,7 @@ impl Default for Account {
             balance: U256::zero(),
             nonce: U256::zero(),
             storage_root: H256::zero(),
-            code_hash: H256::zero(),
+            code_hash: KECCAK_EMPTY,
         }
     }
 }

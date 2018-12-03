@@ -1,18 +1,22 @@
-use super::{
-    ext_db::SystemDB, transaction_pool::SharedTransactionPool, StateManager,
-};
 use ethereum_types::{H256, U256};
-use executor::Executor;
+use executive::Executive;
+use ext_db::SystemDB;
+use machine::new_byzantium_test_machine;
 use parking_lot::RwLock;
 use primitives::Block;
 use slab::Slab;
+use state::State;
+use statedb::StateDb;
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet, VecDeque},
     iter::FromIterator,
     sync::Arc,
 };
-use storage::state_manager::StateManagerTrait;
+use storage::{StorageManager, StorageManagerTrait};
+use transaction_pool::SharedTransactionPool;
+use vm::{EnvInfo, Spec};
+use vm_factory::VmFactory;
 
 const NULL: usize = !0;
 
@@ -46,20 +50,24 @@ pub struct ConsensusGraphInner {
     /// Track the block where the tx is successfully executed
     pub block_for_transaction: HashMap<H256, usize>,
     genesis_block_index: usize,
-    state_manager: Arc<StateManager>,
+    storage_manager: Arc<StorageManager>,
+    vm: VmFactory,
 }
 
 impl ConsensusGraphInner {
     pub fn with_genesis_block(
-        genesis_block: &Block, state_manager: Arc<StateManager>,
-    ) -> Self {
+        genesis_block: &Block, storage_manager: Arc<StorageManager>,
+        vm: VmFactory,
+    ) -> Self
+    {
         let mut inner = ConsensusGraphInner {
             arena: Slab::new(),
             indices: HashMap::new(),
             pivot_chain: Vec::new(),
             block_for_transaction: HashMap::new(),
             genesis_block_index: NULL,
-            state_manager,
+            storage_manager,
+            vm,
         };
         inner.genesis_block_index =
             inner.insert(genesis_block, &mut HashSet::new());
@@ -261,23 +269,47 @@ impl ConsensusGraphInner {
             }
 
             // Third, apply transactions in the determined total order
-            let mut state = self
-                .state_manager
-                .get_state_at(self.arena[new_pivot_chain[fork_at - 1]].hash).unwrap();
-            // TODO(yz): process the possible db failure in the line above.
-            let mut executor = Executor::new(&mut state);
+            let mut state = State::new(
+                StateDb::new(
+                    self.storage_manager
+                        .get_state_at(
+                            self.arena[new_pivot_chain[fork_at - 1]].hash,
+                        )
+                        .unwrap(),
+                ),
+                0.into(),
+                self.vm.clone(),
+            );
+            let spec = Spec::new_byzantium();
+            let machine = new_byzantium_test_machine();
             for index in reversed_indices.iter().rev() {
                 let block =
                     block_by_hash.get(&self.arena[*index].hash).unwrap();
+                let env = EnvInfo {
+                    number: 0, // TODO: replace 0 with correct cardinal number
+                    author: block.block_header.author().clone(),
+                    timestamp: block.block_header.timestamp(),
+                    difficulty: block.block_header.difficulty().clone(),
+                    gas_used: U256::zero(),
+                    gas_limit: U256::from(block.block_header.gas_limit()),
+                };
                 for transaction in &block.transactions {
-                    let success = executor.apply(transaction);
-                    if success {
+                    let mut ex =
+                        Executive::new(&mut state, &env, &machine, &spec);
+                    let r = ex.transact(transaction);
+                    if r.is_err() {
+                        warn!("transaction execution error: transaction={:?}, err={:?}", transaction, r);
+                    } else {
                         self.block_for_transaction
                             .insert(transaction.hash(), *index);
                     }
                 }
             }
-            executor.commit(self.arena[new_pivot_chain[fork_at]].hash, txpool);
+            state.commit_and_notify(
+                self.arena[new_pivot_chain[fork_at]].hash,
+                txpool,
+            );
+
             fork_at += 1;
         }
 
@@ -312,8 +344,8 @@ pub type SharedConsensusGraph = Arc<ConsensusGraph>;
 
 impl ConsensusGraph {
     pub fn with_genesis_block(
-        genesis_block: Block, state_mananger: Arc<StateManager>,
-        txpool: SharedTransactionPool, ledger_db: Arc<SystemDB>,
+        genesis_block: Block, state_mananger: Arc<StorageManager>,
+        vm: VmFactory, txpool: SharedTransactionPool, ledger_db: Arc<SystemDB>,
     ) -> Self
     {
         let genesis_block_hash = genesis_block.hash();
@@ -325,6 +357,7 @@ impl ConsensusGraph {
             inner: RwLock::new(ConsensusGraphInner::with_genesis_block(
                 &genesis_block,
                 state_mananger,
+                vm,
             )),
             blocks: Arc::new(RwLock::new(blocks)),
             genesis_block_hash,

@@ -21,9 +21,9 @@ pub struct BlockHeader {
     /// Block difficulty.
     difficulty: U256,
     /// Gas limit.
-    gas_limit: u64,
+    gas_limit: U256,
     /// Gas used.
-    gas_used: u64,
+    gas_used: U256,
     /// Referee hashes
     referee_hashes: Vec<H256>,
     /// Nonce of the block
@@ -56,9 +56,9 @@ impl Default for BlockHeader {
             author: Address::default(),
             transactions_root: KECCAK_NULL_RLP,
             deferred_state_root: KECCAK_NULL_RLP,
-            difficulty: U256::default(),
-            gas_limit: 0,
-            gas_used: 0,
+            difficulty: U256::zero(),
+            gas_limit: U256::zero(),
+            gas_used: U256::zero(),
             referee_hashes: Vec::new(),
             nonce: 0,
             hash: None,
@@ -90,6 +90,9 @@ impl BlockHeader {
 
     /// Get the difficulty field of the header.
     pub fn difficulty(&self) -> &U256 { &self.difficulty }
+
+    /// Get the gas limit field of the header.
+    pub fn gas_limit(&self) -> &U256 { &self.gas_limit }
 
     /// Get the referee hashes field of the header.
     pub fn referee_hashes(&self) -> &Vec<H256> { &self.referee_hashes }
@@ -180,8 +183,8 @@ pub struct BlockHeaderBuilder {
     transactions_root: H256,
     deferred_state_root: H256,
     difficulty: U256,
-    gas_limit: u64,
-    gas_used: u64,
+    gas_limit: U256,
+    gas_used: U256,
     referee_hashes: Vec<H256>,
     nonce: u64,
 }
@@ -196,8 +199,8 @@ impl BlockHeaderBuilder {
             transactions_root: KECCAK_NULL_RLP,
             deferred_state_root: KECCAK_NULL_RLP,
             difficulty: U256::default(),
-            gas_limit: 0,
-            gas_used: 0,
+            gas_limit: U256::zero(),
+            gas_used: U256::zero(),
             referee_hashes: Vec::new(),
             nonce: 0,
         }
@@ -242,12 +245,12 @@ impl BlockHeaderBuilder {
         self
     }
 
-    pub fn with_gas_limit(&mut self, gas_limit: u64) -> &mut Self {
+    pub fn with_gas_limit(&mut self, gas_limit: U256) -> &mut Self {
         self.gas_limit = gas_limit;
         self
     }
 
-    pub fn with_gas_used(&mut self, gas_used: u64) -> &mut Self {
+    pub fn with_gas_used(&mut self, gas_used: U256) -> &mut Self {
         self.gas_used = gas_used;
         self
     }

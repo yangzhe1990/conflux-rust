@@ -207,9 +207,7 @@ impl<'a> StateTrait for State<'a> {
         Ok(old_value)
     }
 
-    fn delete_all<T>(
-        &mut self, access_key_prefix: &[u8], removed_kvs: T,
-    ) -> Result<()> {
+    fn delete_all(&mut self, access_key_prefix: &[u8]) -> Result<()> {
         unimplemented!()
     }
 

@@ -44,7 +44,10 @@ mod rpc;
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
 use configuration::Configuration;
-use core::{ConsensusGraph, StateManager, TransactionPool};
+use core::{
+    storage::StorageManager, vm_factory::VmFactory, ConsensusGraph,
+    TransactionPool,
+};
 
 use ctrlc::CtrlC;
 use db::SystemDB;
@@ -92,15 +95,19 @@ fn start(
     let secret_store = Arc::new(SecretStore::new());
     let genesis_block = make_genesis();
 
-    let state_manager = Arc::new(StateManager::new(ledger_db.clone()));
-    state_manager.initialize(genesis_block.hash(), secret_store.as_ref());
+    let storage_manager = Arc::new(StorageManager::new(ledger_db.clone()));
+    storage_manager.initialize(genesis_block.hash(), secret_store.as_ref());
 
-    let txpool =
-        Arc::new(TransactionPool::with_capacity(10000, state_manager.clone()));
+    let txpool = Arc::new(TransactionPool::with_capacity(
+        10000,
+        storage_manager.clone(),
+    ));
 
+    let vm = VmFactory::new(1024 * 32);
     let consensus = Arc::new(ConsensusGraph::with_genesis_block(
         genesis_block,
-        state_manager.clone(),
+        storage_manager.clone(),
+        vm.clone(),
         txpool.clone(),
         ledger_db.clone(),
     ));
@@ -122,7 +129,7 @@ fn start(
 
     let txgen = Arc::new(TransactionGenerator::new(
         consensus.clone(),
-        state_manager.clone(),
+        storage_manager.clone(),
         txpool.clone(),
         secret_store.clone(),
         sync.net_key_pair().ok(),
@@ -155,7 +162,7 @@ fn start(
 
     let rpc_deps = rpc::Dependencies {
         remote: event_loop.raw_remote(),
-        state_manager: state_manager.clone(),
+        storage_manager: storage_manager.clone(),
         consensus: consensus.clone(),
         sync: sync.clone(),
         block_gen: blockgen.clone(),
@@ -366,7 +373,7 @@ fn main() {
                 "blockgen", "core", "conflux", "db", "eth_key", "network",
                 "rpc", "txgen",
             ]
-            .iter()
+                .iter()
             {
                 conf_builder = conf_builder.logger(
                     Logger::builder()

@@ -8,37 +8,37 @@ extern crate rand;
 
 pub use self::impls::TreapMap;
 use self::ready::Readiness;
-use super::{SharedStateManager, State, StateManagerTrait, StateTrait};
 use ethereum_types::{Address, H256, H512, U256, U512};
-use get_account;
 use parking_lot::RwLock;
 use primitives::{
     Account, EpochId, SignedTransaction, TransactionWithSignature,
 };
 use rlp::decode;
+use state::State;
 use std::{
     cmp::{min, Ordering},
     collections::hash_map::{Entry, HashMap},
     ops::DerefMut,
     sync::Arc,
 };
+use storage::{Storage, StorageManager, StorageManagerTrait, StorageTrait};
 
-pub const DEFAULT_MIN_TRANSACTION_GAS_PRICE: u64 = 100;
+pub const DEFAULT_MIN_TRANSACTION_GAS_PRICE: u64 = 1;
 pub const DEFAULT_MAX_TRANSACTION_GAS_LIMIT: u64 = 100_000;
 pub const DEFAULT_MAX_BLOCK_GAS_LIMIT: u64 = 30_000 * 100_000;
 
 pub const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 2000;
 
-pub struct AccountCache<'cache, 'state: 'cache> {
+pub struct AccountCache<'cache, 'storage: 'cache> {
     pub accounts: HashMap<Address, Account>,
-    pub state: &'cache State<'state>,
+    pub storage: &'cache Storage<'storage>,
 }
 
-impl<'cache, 'state> AccountCache<'cache, 'state> {
-    pub fn new(state: &'cache State<'state>) -> Self {
+impl<'cache, 'storage> AccountCache<'cache, 'storage> {
+    pub fn new(storage: &'cache Storage<'storage>) -> Self {
         AccountCache {
             accounts: HashMap::new(),
-            state,
+            storage,
         }
     }
 
@@ -50,7 +50,7 @@ impl<'cache, 'state> AccountCache<'cache, 'state> {
         let sender = tx.sender();
         if !self.accounts.contains_key(&sender) {
             let account = self
-                .state
+                .storage
                 .get(sender.as_ref())
                 .map(|rlp| decode::<Account>(rlp.as_ref()).unwrap())
                 .ok();
@@ -187,19 +187,19 @@ impl TransactionPoolInner {
 pub struct TransactionPool {
     capacity: usize,
     inner: RwLock<TransactionPoolInner>,
-    state_manager: SharedStateManager,
+    storage_manager: Arc<StorageManager>,
 }
 
 pub type SharedTransactionPool = Arc<TransactionPool>;
 
 impl TransactionPool {
     pub fn with_capacity(
-        capacity: usize, state_manager: SharedStateManager,
+        capacity: usize, storage_manager: Arc<StorageManager>,
     ) -> Self {
         TransactionPool {
             capacity,
             inner: RwLock::new(TransactionPoolInner::new()),
-            state_manager,
+            storage_manager,
         }
     }
 
@@ -210,8 +210,7 @@ impl TransactionPool {
         transactions: Vec<TransactionWithSignature>,
     )
     {
-        let state = self.state_manager.get_state_at(latest_epoch).unwrap();
-        // TODO(yz): process the possible db failure in the line above.
+        let state = self.storage_manager.get_state_at(latest_epoch).unwrap();
         let mut account_cache = AccountCache::new(&state);
         for tx in transactions {
             if let Ok(public) = tx.recover_public() {
@@ -402,8 +401,8 @@ impl TransactionPool {
     }
 
     /// pack at most num_txs transactions randomly
-    pub fn pack_transactions(
-        &self, num_txs: usize, state: State,
+    pub fn pack_transactions<'a>(
+        &self, num_txs: usize, state: State<'a>,
     ) -> Vec<SignedTransaction> {
         let mut inner = self.inner.write();
         let mut packed_transactions: Vec<SignedTransaction> = Vec::new();
@@ -426,9 +425,7 @@ impl TransactionPool {
             let sender = tx.sender;
             let nonce_entry = nonce_map.entry(sender);
             let nonce = nonce_entry.or_insert_with(|| {
-                get_account(&state, &sender)
-                    .map(|c| c.nonce)
-                    .unwrap_or(0.into())
+                state.nonce(&sender).unwrap_or(U256::zero())
             });
             inner.ready_transactions.remove(&tx.hash());
             if tx.nonce > *nonce {

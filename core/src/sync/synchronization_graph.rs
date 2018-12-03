@@ -270,10 +270,9 @@ impl SynchronizationGraphInner {
                 {
                     break;
                 }
-                if parent == index
-                    || self.arena[parent]
-                        .blockset_in_own_view_of_epoch
-                        .contains(&index)
+                if parent == index || self.arena[parent]
+                    .blockset_in_own_view_of_epoch
+                    .contains(&index)
                 {
                     in_old_epoch = true;
                     break;
@@ -348,17 +347,19 @@ impl SynchronizationGraphInner {
             })));
         }
 
-        let expected_difficulty: U256 = if epoch
-            <= self.pow_config.difficulty_adjustment_epoch_period
+        let expected_difficulty: U256 = if epoch <= self
+            .pow_config
+            .difficulty_adjustment_epoch_period
         {
             self.pow_config.initial_difficulty.into()
         } else {
-            let mut last_period_upper = (epoch
-                / self.pow_config.difficulty_adjustment_epoch_period)
-                * self.pow_config.difficulty_adjustment_epoch_period;
+            let mut last_period_upper =
+                (epoch / self.pow_config.difficulty_adjustment_epoch_period)
+                    * self.pow_config.difficulty_adjustment_epoch_period;
             if last_period_upper == epoch {
-                last_period_upper = last_period_upper
-                    - self.pow_config.difficulty_adjustment_epoch_period;
+                last_period_upper = last_period_upper - self
+                    .pow_config
+                    .difficulty_adjustment_epoch_period;
             }
             let mut cur = index;
             while self.arena[cur].block_header.height() > last_period_upper {
@@ -471,11 +472,10 @@ impl SynchronizationGraph {
     }
 
     fn parent_or_referees_invalid(&self, header: &BlockHeader) -> bool {
-        self.consensus.verified_invalid(header.parent_hash())
-            || header
-                .referee_hashes()
-                .iter()
-                .any(|referee| self.consensus.verified_invalid(referee))
+        self.consensus.verified_invalid(header.parent_hash()) || header
+            .referee_hashes()
+            .iter()
+            .any(|referee| self.consensus.verified_invalid(referee))
     }
 
     fn set_and_propagate_invalid(
@@ -569,11 +569,10 @@ impl SynchronizationGraph {
         let mut inner = self.inner.write();
         let header = Arc::new(header);
         let me = if need_to_verify {
-            if self.parent_or_referees_invalid(&*header)
-                || self
-                    .verification_config
-                    .verify_header_params(&*header)
-                    .is_err()
+            if self.parent_or_referees_invalid(&*header) || self
+                .verification_config
+                .verify_header_params(&*header)
+                .is_err()
             {
                 inner.insert_invalid(header.clone())
             } else {

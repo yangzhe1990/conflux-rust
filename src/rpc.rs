@@ -3,8 +3,12 @@ use conflux_rpc::types::{
     Block as RpcBlock, Status as RpcStatus, H256 as RpcH256,
 };
 use core::{
-    self, PeerInfo, SharedConsensusGraph, SharedSynchronizationService,
-    SharedTransactionPool, StateManager, StateManagerTrait,
+    self,
+    state::State,
+    statedb::StateDb,
+    storage::{StorageManager, StorageManagerTrait},
+    PeerInfo, SharedConsensusGraph, SharedSynchronizationService,
+    SharedTransactionPool,
 };
 use ethereum_types::{Address, H256, U256};
 use http::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
@@ -20,7 +24,7 @@ use tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder};
 
 pub struct Dependencies {
     pub remote: TokioRemote,
-    pub state_manager: Arc<StateManager>,
+    pub storage_manager: Arc<StorageManager>,
     pub consensus: SharedConsensusGraph,
     pub sync: SharedSynchronizationService,
     pub block_gen: Arc<BlockGenerator>,
@@ -115,7 +119,7 @@ build_rpc_trait! {
 }
 
 struct RpcImpl {
-    state_manager: Arc<StateManager>,
+    storage_manager: Arc<StorageManager>,
     consensus: SharedConsensusGraph,
     sync: SharedSynchronizationService,
     block_gen: Arc<BlockGenerator>,
@@ -125,13 +129,13 @@ struct RpcImpl {
 
 impl RpcImpl {
     fn new(
-        state_manager: Arc<StateManager>, consensus: SharedConsensusGraph,
+        storage_manager: Arc<StorageManager>, consensus: SharedConsensusGraph,
         sync: SharedSynchronizationService, block_gen: Arc<BlockGenerator>,
         tx_pool: SharedTransactionPool, exit: Arc<(Mutex<bool>, Condvar)>,
     ) -> Self
     {
         RpcImpl {
-            state_manager,
+            storage_manager,
             consensus,
             sync,
             block_gen,
@@ -146,16 +150,19 @@ impl Rpc for RpcImpl {
 
     fn get_balance(&self, addr: Address) -> RpcResult<U256> {
         info!("RPC Request: get_balance({:?})", addr);
-        let state = self
-            .state_manager
-            .get_state_at(self.consensus.best_block_hash()).unwrap();
-        // TODO(yz): handle possible Error from above;
+        let state = State::new(
+            StateDb::new(
+                self.storage_manager
+                    .get_state_at(self.consensus.best_block_hash())
+                    .unwrap(),
+            ),
+            0.into(),
+            Default::default(),
+        );
 
-        let account = core::get_account(&state, &addr);
-        if account.is_none() {
-            Err(RpcError::invalid_params("Unknown account"))
-        } else {
-            Ok(account.unwrap().balance)
+        match state.balance(&addr) {
+            Ok(balance) => Ok(balance),
+            Err(_) => Err(RpcError::internal_error()),
         }
     }
 
@@ -292,7 +299,7 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
     // extend_with maps each method in RpcImpl object into a RPC handler
     handler.extend_with(
         RpcImpl::new(
-            dependencies.state_manager.clone(),
+            dependencies.storage_manager.clone(),
             dependencies.consensus.clone(),
             dependencies.sync.clone(),
             dependencies.block_gen.clone(),

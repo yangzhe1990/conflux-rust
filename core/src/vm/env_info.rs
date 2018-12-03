@@ -18,6 +18,7 @@
 
 use ethereum_types::{Address, H256, U256};
 use hash::keccak;
+use primitives::CardinalNumber;
 use std::{cmp, sync::Arc};
 
 /// Simple vector of hashes, should be at most 256 items large, can be smaller
@@ -28,6 +29,8 @@ pub type LastHashes = Vec<H256>;
 /// message-call/contract-creation.
 #[derive(Debug, Clone)]
 pub struct EnvInfo {
+    /// The cardinal number.
+    pub number: CardinalNumber,
     /// The block author.
     pub author: Address,
     /// The block timestamp.
@@ -36,8 +39,6 @@ pub struct EnvInfo {
     pub difficulty: U256,
     /// The block gas limit.
     pub gas_limit: U256,
-    /// The last 256 block hashes.
-    pub last_hashes: Arc<LastHashes>,
     /// The gas used.
     pub gas_used: U256,
 }
@@ -45,11 +46,11 @@ pub struct EnvInfo {
 impl Default for EnvInfo {
     fn default() -> Self {
         EnvInfo {
+            number: 0,
             author: Address::default(),
             timestamp: 0,
             difficulty: 0.into(),
             gas_limit: 0.into(),
-            last_hashes: Arc::new(vec![]),
             gas_used: 0.into(),
         }
     }

@@ -31,6 +31,7 @@ use std::{
 };
 use triehash::ordered_trie_root;
 use txgen::SharedTransactionGenerator;
+use core::transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT;
 
 enum MiningState {
     Start,
@@ -196,6 +197,7 @@ impl BlockGenerator {
             .with_difficulty(self.pow_config.initial_difficulty.into()) //TODO: adjust difficulty
             .with_referee_hashes(referee) //TODO: get referee hashes
             .with_nonce(0) // TODO: gen nonce from pow
+            .with_gas_limit(DEFAULT_MAX_BLOCK_GAS_LIMIT.into())
             .build();
 
         Block {

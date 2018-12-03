@@ -1616,7 +1616,7 @@ impl Encodable for TrieNode {
 }
 
 impl Decodable for TrieNode {
-    fn decode(rlp: &Rlp) -> std::result::Result<Self, DecoderError> {
+    fn decode(rlp: &Rlp) -> ::std::result::Result<Self, DecoderError> {
         let compressed_path;
         if rlp.item_count()? != 4 {
             compressed_path = CompressedPathRaw::new(&[], 0);
@@ -1656,7 +1656,7 @@ impl<'a> Encodable for OwnedChildrenTableRef<'a> {
 }
 
 impl Decodable for OwnedChildrenTableWrapper {
-    fn decode(rlp: &Rlp) -> std::result::Result<Self, DecoderError> {
+    fn decode(rlp: &Rlp) -> ::std::result::Result<Self, DecoderError> {
         Ok(OwnedChildrenTableWrapper {
             owned_children_table: if rlp.item_count()? > 1 {
                 let mut children_table = Box::<ChildrenTable>::default();
@@ -1691,7 +1691,7 @@ impl<'a> Encodable for CompressedPathRef<'a> {
 
 impl Decodable for CompressedPathRaw {
     // TODO(yz): the format can be optimized.
-    fn decode(rlp: &Rlp) -> std::result::Result<Self, DecoderError> {
+    fn decode(rlp: &Rlp) -> ::std::result::Result<Self, DecoderError> {
         Ok(CompressedPathRaw::new(
             rlp.val_at::<Vec<u8>>(1)?.as_slice(),
             rlp.val_at(0)?,

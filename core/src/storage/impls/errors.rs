@@ -7,7 +7,7 @@ error_chain! {
     foreign_links {
         Io(io::Error);
         ParseIntError(num::ParseIntError);
-        RlpDecodeError(rlp::DecoderError);
+        RlpDecodeError(::rlp::DecoderError);
     }
 
     errors {

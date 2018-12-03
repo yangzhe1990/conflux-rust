@@ -21,7 +21,7 @@ from test_framework.util import *
 class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 10
+        self.num_nodes = 5
 
     def setup_network(self):
         self.setup_nodes()
@@ -64,19 +64,20 @@ class P2PTest(ConfluxTestFramework):
         '''Check if transaction from uncommitted new address can be accepted'''
         tx_n = 5
         receiver_sk = genesis_key
+        gas_price = 1
         for i in range(tx_n):
             sender_key = receiver_sk
-            value = int(balance_map[sender_key] * random.random())
+            value = int((balance_map[sender_key] - ((tx_n - i) * 21000 * gas_price)) * random.random())
             nonce = nonce_map[sender_key]
             receiver_sk, _ = ec_random_keys()
             nonce_map[receiver_sk] = 0
             balance_map[receiver_sk] = value
             tx = create_transaction(pri_key=sender_key, receiver=privtoaddr(receiver_sk), value=value, nonce=nonce,
-                                    gas_price=100)
+                                    gas_price=gas_price)
             r = random.randint(0, self.num_nodes - 1)
             self.nodes[r].p2p.send_protocol_msg(Transactions(transactions=[tx]))
             nonce_map[sender_key] = nonce + 1
-            balance_map[sender_key] -= value
+            balance_map[sender_key] -= value + gas_price * 21000
             self.log.debug("New tx %s: %s send value %d to %s, sender balance:%d, receiver balance:%d", encode_hex(tx.hash), eth_utils.encode_hex(privtoaddr(sender_key))[-4:],
                            value, eth_utils.encode_hex(privtoaddr(receiver_sk))[-4:], balance_map[sender_key], balance_map[receiver_sk])
             self.log.debug("Send Transaction %s to node %d", encode_hex(tx.hash), r)
@@ -90,13 +91,13 @@ class P2PTest(ConfluxTestFramework):
 
         '''Test Random Transactions'''
         all_txs = []
-        tx_n = 1000
+        tx_n = 100
         self.log.info("start to generate %d transactions with about %d seconds", tx_n, tx_n/10/2)
         for i in range(tx_n):
             sender_key = random.choice(list(balance_map))
             value = int(balance_map[sender_key] * random.random())
             # not enough transaction fee (gas_price * gas_limit)
-            if balance_map[sender_key] < value + 100:
+            if balance_map[sender_key] < value + gas_price * 21000:
                 continue
             nonce = nonce_map[sender_key]
             if random.random() < 0.1:
@@ -107,12 +108,12 @@ class P2PTest(ConfluxTestFramework):
                 receiver_sk = random.choice(list(balance_map))
                 balance_map[receiver_sk] += value
             tx = create_transaction(pri_key=sender_key, receiver=privtoaddr(receiver_sk), value=value, nonce=nonce,
-                                    gas_price=100)
+                                    gas_price=gas_price)
             r = random.randint(0, self.num_nodes - 1)
             self.nodes[r].p2p.send_protocol_msg(Transactions(transactions=[tx]))
             all_txs.append(tx)
             nonce_map[sender_key] = nonce + 1
-            balance_map[sender_key] -= value
+            balance_map[sender_key] -= value + gas_price * 21000
             self.log.debug("New tx %s: %s send value %d to %s, sender balance:%d, receiver balance:%d nonce:%d", encode_hex(tx.hash), eth_utils.encode_hex(privtoaddr(sender_key))[-4:],
                           value, eth_utils.encode_hex(privtoaddr(receiver_sk))[-4:], balance_map[sender_key], balance_map[receiver_sk], nonce)
             self.log.debug("Send Transaction %s to node %d", encode_hex(tx.hash), r)

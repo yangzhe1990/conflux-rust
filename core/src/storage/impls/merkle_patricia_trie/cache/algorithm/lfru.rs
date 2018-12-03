@@ -23,7 +23,7 @@ pub struct LFRU<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> {
 }
 
 type FrequencyType = u16;
-const MAX_VISIT_COUNT: FrequencyType = std::u16::MAX;
+const MAX_VISIT_COUNT: FrequencyType = ::std::u16::MAX;
 
 /// LFRUHandle points to the location where frequency data is stored. A non-null
 /// pos means that the object is maintained in LRU.

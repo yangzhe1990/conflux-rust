@@ -12,7 +12,7 @@ use super::{
 use ethereum_types::H256;
 use ethkey::KeyPair;
 use ext_db::SystemDB;
-use get_account;
+use hash::KECCAK_EMPTY;
 use kvdb::{DBTransaction, DBValue};
 use primitives::{Account, EpochId};
 use rlp::encode;
@@ -61,8 +61,8 @@ impl StateManager {
                     "state_root_db_key_for_epoch_id_".as_bytes(),
                     epoch_id.as_ref(),
                 ]
-                .concat()
-                .as_slice(),
+                    .concat()
+                    .as_slice(),
             ),
         )?;
         match db_key_result {
@@ -146,17 +146,11 @@ impl StateManager {
             balance: 1_000_000_000.into(),
             nonce: 0.into(),
             storage_root: H256::zero(),
-            code_hash: H256::zero(),
+            code_hash: KECCAK_EMPTY,
         };
         state.set(addr.as_ref(), encode(&account).as_ref()).unwrap();
         state.commit(genesis).unwrap();
         secret_store.insert(kp);
-        assert_eq!(
-            get_account(&self.get_state_at(genesis).unwrap(), &addr)
-                .map(|account| account.balance)
-                .unwrap(),
-            1_000_000_000.into()
-        );
     }
 }
 

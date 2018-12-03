@@ -18,6 +18,7 @@
 
 use super::{action_params::ActionParams, ResumeCall, ResumeCreate};
 use ethereum_types::Address;
+use statedb::Error as DbError;
 use std::fmt;
 
 #[derive(Debug)]
@@ -82,6 +83,12 @@ pub enum Error {
     OutOfBounds,
     /// Execution has been reverted with REVERT.
     Reverted,
+}
+
+impl From<DbError> for Error {
+    fn from(err: DbError) -> Self {
+        Error::Internal(format!("Internal error: {}", err))
+    }
 }
 
 impl fmt::Display for Error {

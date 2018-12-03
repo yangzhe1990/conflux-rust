@@ -30,9 +30,7 @@ pub trait StateTrait {
     // Contaianer must be a container or type which ignores all inserts. So far
     // there is no standard container traits that we can directly apply.
     // TODO(yz): maybe implement some constrains for Contaianer?
-    fn delete_all<Container>(
-        &mut self, access_key_prefix: &[u8], removed_kvs: Container,
-    ) -> Result<()>;
+    fn delete_all(&mut self, access_key_prefix: &[u8]) -> Result<()>;
 
     // Finalize
     fn commit(&mut self, epoch: EpochId) -> Result<MerkleHash>;

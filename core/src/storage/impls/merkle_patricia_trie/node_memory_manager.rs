@@ -513,7 +513,7 @@ impl CacheManager {
 }
 
 impl Decodable for MaybeNodeRef {
-    fn decode(rlp: &Rlp) -> std::result::Result<Self, DecoderError> {
+    fn decode(rlp: &Rlp) -> ::std::result::Result<Self, DecoderError> {
         Ok(MaybeNodeRef {
             value: rlp.as_val()?,
         })

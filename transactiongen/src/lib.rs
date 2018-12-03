@@ -12,8 +12,10 @@ extern crate log;
 
 use bytes::Bytes;
 use core::{
-    get_account, SharedConsensusGraph, SharedStateManager,
-    SharedTransactionPool, State, StateManagerTrait,
+    state::State,
+    statedb::StateDb,
+    storage::{StorageManager, StorageManagerTrait},
+    SharedConsensusGraph, SharedTransactionPool,
 };
 use ethereum_types::{Address, H512, U256, U512};
 use ethkey::{public_to_address, Generator, KeyPair, Random};
@@ -46,7 +48,7 @@ impl TransactionGeneratorConfig {
 
 pub struct TransactionGenerator {
     pub consensus: SharedConsensusGraph,
-    state_manager: SharedStateManager,
+    storage_manager: Arc<StorageManager>,
     txpool: SharedTransactionPool,
     secret_store: SharedSecretStore,
     state: RwLock<TransGenState>,
@@ -57,14 +59,14 @@ pub type SharedTransactionGenerator = Arc<TransactionGenerator>;
 
 impl TransactionGenerator {
     pub fn new(
-        consensus: SharedConsensusGraph, state_manager: SharedStateManager,
+        consensus: SharedConsensusGraph, storage_manager: Arc<StorageManager>,
         txpool: SharedTransactionPool, secret_store: SharedSecretStore,
         key_pair: Option<KeyPair>,
     ) -> Self
     {
         TransactionGenerator {
             consensus,
-            state_manager,
+            storage_manager,
             txpool,
             secret_store,
             state: RwLock::new(TransGenState::Start),
@@ -73,9 +75,15 @@ impl TransactionGenerator {
     }
 
     pub fn get_best_state(&self) -> State {
-        self.state_manager
-            .get_state_at(self.consensus.best_block_hash()).unwrap()
-        // TODO(yz): handle possible Error from above and remove unwrap().
+        State::new(
+            StateDb::new(
+                self.storage_manager
+                    .get_state_at(self.consensus.best_block_hash())
+                    .unwrap(),
+            ),
+            0.into(),
+            Default::default(),
+        )
     }
 
     pub fn generate_transaction(&self) -> SignedTransaction {
@@ -111,13 +119,9 @@ impl TransactionGenerator {
             sender_address,
             self.consensus.best_block_hash()
         );
-        let sender_balance = get_account(&state, &sender_address)
-            .map(|account| account.balance)
-            .unwrap_or(0.into());
+        let sender_balance = state.balance(&sender_address).unwrap_or(0.into());
 
-        let sender_nonce = get_account(&state, &sender_address)
-            .map(|account| account.nonce)
-            .unwrap_or(0.into());
+        let sender_nonce = state.nonce(&sender_address).unwrap_or(0.into());
 
         let mut balance_to_transfer: U256 = 0.into();
         if sender_balance > 0.into() {
@@ -163,10 +167,16 @@ impl TransactionGenerator {
                 _ => {}
             }
 
-            let state = txgen
-                .state_manager
-                .get_state_at(txgen.consensus.best_block_hash()).unwrap();
-            // TODO(yz): handle possible Error from above.
+            let state = State::new(
+                StateDb::new(
+                    txgen
+                        .storage_manager
+                        .get_state_at(txgen.consensus.best_block_hash())
+                        .unwrap(),
+                ),
+                0.into(),
+                Default::default(),
+            );
 
             // Randomly select sender and receiver.
             // Sender must exist in the account list.
@@ -185,8 +195,7 @@ impl TransactionGenerator {
             // Randomly generate the to-be-transferred value
             // based on the balance of sender
             let sender_address = public_to_address(sender_kp.public());
-            let sender_balance = get_account(&state, &sender_address)
-                .map(|account| account.balance);
+            let sender_balance = state.balance(&sender_address).ok();
 
             trace!(
                 "choose sender addr={:?} balance={:?}",
@@ -215,16 +224,9 @@ impl TransactionGenerator {
             } else {
                 receiver_kp = secret_store.get_keypair(receiver_index);
             }
-            //            let mut rng = thread_rng();
-            //            let mut balance_to_transfer: U256 =
-            // U256::from(rng.gen_range(0, 1000));            
-            // balance_to_transfer = balance_to_transfer * (sender_balance -
-            // 100) / 1000;
             let balance_to_transfer = U256::from(100);
             // Generate nonce for the transaction
-            let sender_state_nonce = get_account(&state, &sender_address)
-                .map(|account| account.nonce)
-                .unwrap();
+            let sender_state_nonce = state.nonce(&sender_address).unwrap();
             let entry = nonce_map
                 .entry(sender_address)
                 .or_insert(sender_state_nonce);
