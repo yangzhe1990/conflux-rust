@@ -4,6 +4,7 @@ use super::{
     super::state::*,
     merkle_patricia_trie::{data_structure::*, *},
 };
+use ethereum_types::H256;
 use ethkey::KeyPair;
 use get_account;
 use primitives::{Account, EpochId};
@@ -48,6 +49,8 @@ impl StateManager {
         let account = Account {
             balance: 1_000_000_000.into(),
             nonce: 0.into(),
+            storage_root: H256::zero(),
+            code_hash: H256::zero(),
         };
         state.set(addr.as_ref(), encode(&account).as_ref()).unwrap();
         state.commit(genesis);
