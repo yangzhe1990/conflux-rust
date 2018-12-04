@@ -113,7 +113,8 @@ class TestNode:
         self.stdout = stdout
         if extra_args is not None:
             self.args += extra_args
-        self.args += ["--public-address", "{}:{}".format(self.ip, self.port)]
+        if "--public-address" not in self.args:
+            self.args += ["--public-address", "{}:{}".format(self.ip, self.port)]
 
         # Delete any existing cookie file -- if such a file exists (eg due to
         # unclean shutdown), it will get overwritten anyway by bitcoind, and
@@ -128,7 +129,7 @@ class TestNode:
             cli_conf = "scp {3} -r {0}/. {1}@{2}:{0};".format(
                 self.datadir, self.user, self.ip, ssh_args)
             self.args[0] = "~/conflux"
-            cli_exe = "ssh {} {}@{} \"{}\"".format(
+            cli_exe = "ssh {} {}@{} \"{} > /dev/null\"".format(
                 ssh_args, self.user, self.ip, "cd {} && ".format(self.datadir) + " ".join(self.args))
             print(cli_mkdir + cli_conf + cli_exe)
             self.process = subprocess.Popen(cli_mkdir + cli_conf + cli_exe,
@@ -178,13 +179,16 @@ class TestNode:
         self.log.debug("Get node {} nodeid {}".format(self.index, self.key))
 
 
-    def stop_node(self, expected_stderr=''):
+    def stop_node(self, expected_stderr='', kill=False):
         """Stop the node."""
         if not self.running:
             return
         self.log.debug("Stopping node")
         try:
-            self.process.terminate()
+            if kill:
+                self.process.kill()
+            else:
+                self.process.terminate()
         except http.client.CannotSendRequest:
             self.log.exception("Unable to stop node.")
 

@@ -537,7 +537,7 @@ impl SynchronizationProtocolHandler {
                     io,
                     syn,
                     peer_id,
-                    parent_hash,
+                    hash,
                     DEFAULT_GET_HEADERS_NUM,
                 );
             }

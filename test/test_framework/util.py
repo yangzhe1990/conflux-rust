@@ -11,6 +11,9 @@ import random
 import re
 from subprocess import CalledProcessError
 import time
+import socket
+import fcntl
+import struct
 
 from . import coverage
 from .authproxy import AuthServiceProxy, JSONRPCException
@@ -316,8 +319,8 @@ def set_node_times(nodes, t):
 
 def disconnect_nodes(nodes, from_connection, node_num):
     try:
-        nodes[from_connection].removenode(nodes[node_num].key, get_peer_addr(nodes[node_num], node_num))
-        nodes[node_num].removenode(nodes[from_connection].key, get_peer_addr(nodes[from_connection], from_connection))
+        nodes[from_connection].removenode(nodes[node_num].key, get_peer_addr(nodes[node_num]))
+        nodes[node_num].removenode(nodes[from_connection].key, get_peer_addr(nodes[from_connection]))
     except JSONRPCException as e:
         # If this node is disconnected between calculating the peer id
         # and issuing the disconnect, don't worry about it.
@@ -338,14 +341,15 @@ def check_handshake(from_connection, target_addr):
     return False
 
 
-def get_peer_addr(from_connection, node_num):
-    return "{}:{}".format(from_connection.ip, str(p2p_port(node_num)))
+def get_peer_addr(connection):
+    return "{}:{}".format(connection.ip, connection.port)
 
 
 def connect_nodes(nodes, a, node_num):
     from_connection = nodes[a]
+    to_connection = nodes[node_num]
     key = nodes[node_num].key
-    peer_addr = get_peer_addr(from_connection, node_num)
+    peer_addr = get_peer_addr(to_connection)
     from_connection.addnode(key, peer_addr)
     # poll until hello handshake complete to avoid race conditions
     # with transaction relaying
@@ -471,3 +475,12 @@ def rpc_url(i, rpchost=None):
         rpchost = "127.0.0.1"
     port = rpc_port(i)
     return "http://%s:%d" % (rpchost, int(port))
+
+
+def get_ip_address(ifname):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return fcntl.ioctl(
+        s.fileno(),
+        0x8915,  # SIOCGIFADDR
+        struct.pack('256s', bytes(ifname[:15], 'utf-8'))
+    )[20:24]

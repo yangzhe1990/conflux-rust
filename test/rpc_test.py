@@ -73,8 +73,8 @@ class RpcTest(ConfluxTestFramework):
         res = self.nodes[0].getpeerinfo()
         assert_equal(len(res), 1)
         assert_equal(len(self.nodes[1].getpeerinfo()), 1)
-        assert_equal(res[0]['addr'], get_peer_addr(self.nodes[0], 1))
-        self.nodes[0].removenode(self.nodes[1].key, get_peer_addr(self.nodes[0], 1))
+        assert_equal(res[0]['addr'], get_peer_addr(self.nodes[1]))
+        self.nodes[0].removenode(self.nodes[1].key, get_peer_addr(self.nodes[1]))
         try:
             wait_until(lambda: len(self.nodes[0].getpeerinfo()) == 0, timeout=10)
         except Exception:

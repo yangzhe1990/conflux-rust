@@ -240,7 +240,7 @@ impl Deref for TransactionWithSignature {
 
 impl Decodable for TransactionWithSignature {
     fn decode(d: &Rlp) -> Result<Self, DecoderError> {
-        if d.item_count()? != 8 {
+        if d.item_count()? != 9 {
             return Err(DecoderError::RlpIncorrectListLen);
         }
         let hash = keccak(d.as_raw());

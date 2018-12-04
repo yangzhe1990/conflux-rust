@@ -135,7 +135,12 @@ impl ConsensusGraphInner {
             let heaviest = self.arena[me]
                 .children
                 .iter()
-                .max_by_key(|index| self.arena[**index].total_difficulty)
+                .max_by_key(|index| {
+                    (
+                        self.arena[**index].total_difficulty,
+                        self.arena[**index].hash,
+                    )
+                })
                 .cloned()
                 .unwrap();
             me = heaviest;

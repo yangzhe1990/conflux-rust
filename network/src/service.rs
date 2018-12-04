@@ -330,22 +330,20 @@ impl DelayedQueue {
         }
     }
 
-    fn send_delayed_messages(&self) {
+    fn send_delayed_messages(&self, network_service: &NetworkServiceInner) {
         let queue_lock = &self.queue;
         let mut queue = queue_lock.lock();
         trace!(target:"network", "Try to send delayed messages with queue length {}", queue.len());
         let context = queue.pop().unwrap();
-        context
-            .session
-            .lock()
-            .send_packet(
-                &context.io,
-                Some(context.protocol),
-                session::PACKET_USER,
-                &context.msg,
-            )
-            .unwrap();
-        // TODO: Handle result from send_packet()
+        if let Err(e) = context.session.lock().send_packet(
+            &context.io,
+            Some(context.protocol),
+            session::PACKET_USER,
+            &context.msg,
+        ) {
+            debug!("Error sending delayed message: {:?}", e);
+            network_service.kill_connection(context.peer, &context.io);
+        };
     }
 }
 
@@ -1253,7 +1251,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
             }
             SEND_DELAYED_MESSAGES => {
                 if let Some(ref queue) = self.delayed_queue {
-                    queue.send_delayed_messages();
+                    queue.send_delayed_messages(self);
                 }
             }
             _ => match self.timers.read().get(&token).cloned() {
@@ -1451,13 +1449,14 @@ struct DelayMessageContext {
     io: IoContext<NetworkIoMessage>,
     protocol: ProtocolId,
     session: SharedSession,
+    peer: PeerId,
     msg: Vec<u8>,
 }
 
 impl DelayMessageContext {
     pub fn new(
         ts: Instant, io: IoContext<NetworkIoMessage>, protocol: ProtocolId,
-        session: SharedSession, msg: Vec<u8>,
+        session: SharedSession, peer: PeerId, msg: Vec<u8>,
     ) -> Self
     {
         DelayMessageContext {
@@ -1465,6 +1464,7 @@ impl DelayMessageContext {
             io,
             protocol,
             session,
+            peer,
             msg,
         }
     }
@@ -1508,8 +1508,8 @@ impl<'a> NetworkContext<'a> {
 
 impl<'a> NetworkContextTrait for NetworkContext<'a> {
     fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error> {
-        let session =
-            { self.network_service.sessions.read().get(peer).cloned() };
+        let sessions = self.network_service.sessions.read();
+        let session = sessions.get(peer);
         trace!(target: "network", "Sending {} bytes to {}", msg.len(), peer);
         if let Some(session) = session {
             let latency =
@@ -1534,7 +1534,8 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
                         ts_to_send,
                         self.io.clone(),
                         self.protocol,
-                        session,
+                        (*session).clone(),
+                        peer,
                         msg,
                     ));
                     self.io.register_timer_once_nocancel(
@@ -1558,19 +1559,7 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
     }
 
     fn disconnect_peer(&self, peer: PeerId) {
-        // FIXME: Here we cannot get the handler to call on_peer_disconnected()
-        let sessions = self.network_service.sessions.read();
-        if let Some(session) = sessions.get(peer).cloned() {
-            let mut sess = session.lock();
-            if !sess.expired() {
-                sess.set_expired();
-            }
-            if sess.done() {
-                self.io.deregister_stream(sess.token()).unwrap_or_else(|e| {
-                    debug!("Error deregistering stream {:?}", e);
-                })
-            }
-        }
+        self.network_service.kill_connection(peer, self.io);
     }
 
     fn register_timer(

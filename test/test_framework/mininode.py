@@ -23,7 +23,7 @@ from conflux.transactions import Transaction
 from conflux.utils import hash32, hash20, sha3, int_to_bytes, sha3_256, ecrecover_to_pub, ec_random_keys, ecsign, \
     bytes_to_int, encode_int32, int_to_hex, zpad, rzpad
 from test_framework.blocktools import make_genesis
-from test_framework.util import wait_until
+from test_framework.util import wait_until, get_ip_address
 
 logger = logging.getLogger("TestFramework.mininode")
 
@@ -246,7 +246,7 @@ class P2PInterface(P2PConnection):
     Individual testcases should subclass this and override the on_* methods
     if they want to alter message handling behaviour."""
 
-    def __init__(self):
+    def __init__(self, remote=False):
         super().__init__()
 
         # Track number of messages of each type received and the most recent
@@ -269,6 +269,7 @@ class P2PInterface(P2PConnection):
         self.key = "0x"+int_to_hex(x)[2:]+int_to_hex(y)[2:]
         self.had_status = False
         self.on_packet_func = {}
+        self.remote = remote
 
     def peer_connect(self, *args, **kwargs):
         super().peer_connect(*args, **kwargs)
@@ -371,6 +372,8 @@ class P2PInterface(P2PConnection):
         self._log_message(
             "receive", "Hello, capabilities:{}".format(capabilities))
         ip = [127, 0, 0, 1]
+        if self.remote:
+            ip = get_ip_address("eth0")
         endpoint = NodeEndpoint(address=bytes(ip), port=32325, udp_port=32325)
         hello = Hello([Capability(self.protocol, self.protocol_version)], endpoint)
         to_sign = rlp.encode(hello, Hello)

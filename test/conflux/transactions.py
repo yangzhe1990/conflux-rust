@@ -116,5 +116,6 @@ def unsigned_tx_from_tx(tx):
         gas_price=tx.gas_price,
         gas=tx.gas,
         value=tx.value,
-        receiver=tx.receiver
+        action=tx.action,
+        data=tx.data
     )

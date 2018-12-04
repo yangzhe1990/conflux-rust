@@ -327,9 +327,9 @@ class ConfluxTestFramework:
                 coverage.write_all_rpc_commands(self.options.coveragedir,
                                                 node.rpc)
 
-    def stop_node(self, i, expected_stderr=''):
+    def stop_node(self, i, expected_stderr='', kill=False):
         """Stop a bitcoind test node"""
-        self.nodes[i].stop_node(expected_stderr)
+        self.nodes[i].stop_node(expected_stderr, kill)
         self.nodes[i].wait_until_stopped()
 
     def stop_nodes(self):
