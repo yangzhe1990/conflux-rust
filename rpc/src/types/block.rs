@@ -29,10 +29,12 @@ pub struct Block {
     pub hash: H256,
     /// Hash of the parent
     pub parent_hash: H256,
+    /// Distance to genesis
+    pub height: U256,
     /// Author's address
     pub author: H160,
     /// State root hash
-    pub state_root: H256,
+    pub deferred_state_root: H256,
     /// Transactions root hash
     pub transactions_root: H256,
     /// Epoch number
@@ -47,6 +49,10 @@ pub struct Block {
     pub difficulty: U256,
     /// Total difficulty
     pub total_difficulty: Option<U256>,
+    /// Referee hashes
+    pub referee_hashes: Vec<H256>,
+    /// Nonce of the block
+    pub nonce: u64,
     /// Transactions
     pub transactions: BlockTransactions,
     /// Size in bytes
@@ -58,8 +64,9 @@ impl Block {
         Block {
             hash: H256::from(b.block_header.hash().clone()),
             parent_hash: H256::from(b.block_header.parent_hash().clone()),
+            height: U256::from(b.block_header.height()),
             author: H160::from(b.block_header.author().clone()),
-            state_root: H256::from(b.block_header.deferred_state_root().clone()),
+            deferred_state_root: H256::from(b.block_header.deferred_state_root().clone()),
             transactions_root: H256::from(b.block_header.transactions_root().clone()),
             // PrimitiveBlock does not contain this information
             number: epoch_number,
@@ -70,6 +77,8 @@ impl Block {
             difficulty: U256::from(b.block_header.difficulty().clone()),
             // PrimitiveBlock does not contain this information
             total_difficulty: tot_diff.map(|x| U256::from(x)),
+            referee_hashes: b.block_header.referee_hashes().iter().map(|x|H256::from(*x)).collect(),
+            nonce: b.block_header.nonce(),
             transactions: BlockTransactions::Hashes(b.transactions.iter().map(
                 |x| H256::from(x.hash())
             ).collect()),
@@ -101,8 +110,9 @@ mod tests {
         let block = Block {
             hash: H256::default(),
             parent_hash: H256::default(),
+            height: U256::default(),
             author: H160::default(),
-            state_root: H256::default(),
+            deferred_state_root: H256::default(),
             transactions_root: H256::default(),
             number: Some(U256::default()),
             gas_used: U256::default(),
@@ -110,6 +120,8 @@ mod tests {
             timestamp: U256::default(),
             difficulty: U256::default(),
             total_difficulty: Some(U256::default()),
+            referee_hashes: Vec::new(),
+            nonce: 0,
             transactions: BlockTransactions::Hashes(vec![].into()),
             size: Some(69.into()),
         };
