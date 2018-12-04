@@ -18,5 +18,5 @@ pub use block::Block;
 pub use block_header::{BlockHeader, BlockHeaderBuilder};
 pub use epoch::EpochId;
 pub use transaction::{
-    SignedTransaction, Transaction, TransactionWithSignature,
+    SignedTransaction, Transaction, TransactionWithSignature, Action,
 };

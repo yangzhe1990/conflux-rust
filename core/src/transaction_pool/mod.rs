@@ -65,7 +65,9 @@ impl<'cache, 'state> AccountCache<'cache, 'state> {
                         > FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET.into()
                     {
                         Readiness::TooDistantFuture
-                    } else {
+                    } else
+                    /*  */
+                    {
                         Readiness::Future
                     }
                 }
@@ -388,11 +390,10 @@ impl TransactionPool {
 
     /// pack at most num_txs transactions randomly
     pub fn pack_transactions(&self, num_txs: usize) -> Vec<SignedTransaction> {
-        // TODO: handle duplicated (address, nonce) pair
         let mut inner = self.inner.write();
-        let mut packed_transaction: Vec<SignedTransaction> = Vec::new();
-        let len = inner.ready_transactions.len();
-        let num_txs = min(num_txs, len);
+        let mut packed_transactions: Vec<SignedTransaction> = Vec::new();
+        let mut new_ready_transactions: Vec<SignedTransaction> = Vec::new();
+        let num_txs = min(num_txs, inner.ready_transactions.len());
 
         for _ in 0..num_txs {
             let mut sum_gas_price = inner.ready_transactions.sum_weight();
@@ -404,11 +405,24 @@ impl TransactionPool {
                 .get_by_weight(rand_value)
                 .expect("Failed to pick transaction by weight")
                 .clone();
+
+            if let Some(next_tx) = inner
+                .pending_transactions
+                .remove(&tx.sender, &(tx.nonce + 1))
+            {
+                inner.ready_transactions.insert(
+                    next_tx.hash(),
+                    next_tx.clone(),
+                    U512::from(next_tx.gas_price),
+                );
+                new_ready_transactions.push(next_tx);
+            }
+
             inner.ready_transactions.remove(&tx.hash());
-            packed_transaction.push(tx);
+            packed_transactions.push(tx);
         }
 
-        for tx in packed_transaction.iter() {
+        for tx in packed_transactions.iter() {
             inner.ready_transactions.insert(
                 tx.hash(),
                 tx.clone(),
@@ -416,7 +430,12 @@ impl TransactionPool {
             );
         }
 
-        packed_transaction
+        for tx in new_ready_transactions {
+            inner.ready_transactions.remove(&tx.hash());
+            inner.pending_transactions.insert(tx);
+        }
+
+        packed_transactions
     }
 
     pub fn transactions_to_propagate(&self) -> Vec<SignedTransaction> {

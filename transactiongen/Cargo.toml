@@ -7,6 +7,7 @@ version = "0.1.0"
 authors = ["ming wu <ming@alt-chain.io>"]
 
 [dependencies]
+clap = "2"
 core = { path = "../core" }
 ethereum-types = "0.4"
 keccak-hash = { git = "https://github.com/paritytech/parity-common" }
@@ -19,3 +20,13 @@ network = { path = "../network" }
 ethkey = { path = "../ethkey" }
 log = "0.4"
 ethcore-bytes = { path = "../util/bytes" }
+db = { path = "../db" }
+kvdb-rocksdb = "0.1.3"
+toml = "0.4"
+
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "benchmark"
+harness = false

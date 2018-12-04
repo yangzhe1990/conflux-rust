@@ -1,7 +1,7 @@
 use super::TreapMap;
 use ethereum_types::{H256, U256, U512};
 use ethkey::{Public, Signature};
-use primitives::{SignedTransaction, Transaction};
+use primitives::{SignedTransaction, Transaction, Action};
 use rand::{prng::XorShiftRng, ChaChaRng, Rng, RngCore, SeedableRng};
 use std::{
     collections::BTreeMap,
@@ -99,7 +99,8 @@ fn next_signed_transaction(rng: &mut ChaChaRng) -> SignedTransaction {
             gas_price: next_u256(rng),
             gas: next_u256(rng),
             value: next_u256(rng),
-            receiver: 0.into(),
+            action: Action::Call(0.into()),
+            data: vec![],
         }
         .with_signature(Signature::default()),
     )
