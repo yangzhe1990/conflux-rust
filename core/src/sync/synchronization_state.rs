@@ -18,11 +18,17 @@ pub enum RequestMessage {
 }
 
 impl RequestMessage {
-    pub fn set_request_id(&mut self, reqid: u16) {
+    pub fn set_request_id(&mut self, request_id: u16) {
         match self {
-            RequestMessage::Headers(ref mut msg) => msg.set_request_id(reqid),
-            RequestMessage::Blocks(ref mut msg) => msg.set_request_id(reqid),
-            RequestMessage::Terminals(ref mut msg) => msg.set_request_id(reqid),
+            RequestMessage::Headers(ref mut msg) => {
+                msg.set_request_id(request_id)
+            }
+            RequestMessage::Blocks(ref mut msg) => {
+                msg.set_request_id(request_id)
+            }
+            RequestMessage::Terminals(ref mut msg) => {
+                msg.set_request_id(request_id)
+            }
         }
     }
 
@@ -44,7 +50,7 @@ impl SynchronizationPeerRequest {
     pub fn default() -> Self {
         SynchronizationPeerRequest {
             message: Box::new(RequestMessage::Headers(GetBlockHeaders {
-                reqid: 0,
+                request_id: 0.into(),
                 hash: H256::default(),
                 max_blocks: 0,
             })),
@@ -65,26 +71,27 @@ pub struct SynchronizationPeerState {
 }
 
 impl SynchronizationPeerState {
-    /// If new request will be allowed to send, advance the reqid now,
-    /// otherwise, actual new reqid will be given to this request
+    /// If new request will be allowed to send, advance the request id now,
+    /// otherwise, actual new request id will be given to this request
     /// when it is moved from pending to inflight queue.
     pub fn next_request_id(&mut self) -> Option<usize> {
         if self.inflight_requests.len() < self.inflight_requests.capacity() {
-            let reqid = self
+            let request_id = self
                 .inflight_requests
                 .insert(SynchronizationPeerRequest::default());
-            assert!(reqid < MAX_INFLIGHT_REQUEST_COUNT);
-            return Some(reqid);
+            assert!(request_id < MAX_INFLIGHT_REQUEST_COUNT);
+            Some(request_id)
+        } else {
+            None
         }
-        None
     }
 
     pub fn append_inflight_request(
-        &mut self, reqid: usize, msg: Box<RequestMessage>,
+        &mut self, request_id: usize, msg: Box<RequestMessage>,
         timed_req: Arc<TimedSyncRequests>,
     )
     {
-        let slot = self.inflight_requests.get_mut(reqid).unwrap();
+        let slot = self.inflight_requests.get_mut(request_id).unwrap();
         slot.message = msg;
         slot.timed_req = Some(timed_req);
     }
@@ -96,8 +103,8 @@ impl SynchronizationPeerState {
         });
     }
 
-    pub fn is_inflight_request(&self, reqid: usize) -> bool {
-        self.inflight_requests.contains(reqid)
+    pub fn is_inflight_request(&self, request_id: u16) -> bool {
+        self.inflight_requests.contains(request_id as usize)
     }
 
     pub fn has_pending_requests(&self) -> bool {
@@ -110,8 +117,8 @@ impl SynchronizationPeerState {
         self.pending_requests.pop_front()
     }
 
-    pub fn remove_inflight_request(&mut self, reqid: usize) {
-        self.inflight_requests.remove(reqid);
+    pub fn remove_inflight_request(&mut self, request_id: usize) {
+        self.inflight_requests.remove(request_id);
     }
 }
 

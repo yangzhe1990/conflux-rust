@@ -27,7 +27,7 @@ pub use getblockhashes::GetBlockHashes;
 pub use getblockheaders::GetBlockHeaders;
 pub use getblocks::GetBlocks;
 pub use getterminalblockhashes::GetTerminalBlockHashes;
-pub use message::{Message, MsgId};
+pub use message::{Message, MsgId, RequestId};
 pub use newblock::NewBlock;
 pub use newblockhashes::NewBlockHashes;
 pub use status::Status;

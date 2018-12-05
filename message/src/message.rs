@@ -1,5 +1,4 @@
-//use std::convert::Into;
-use rlp::Encodable;
+use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::fmt;
 
 pub type MsgIdInner = u8;
@@ -39,5 +38,35 @@ impl fmt::Display for MsgId {
 
 pub trait Message: Send + Sync + Encodable + 'static {
     fn msg_id(&self) -> MsgId;
-    fn set_request_id(&mut self, _reqid: u16) {}
+}
+
+#[derive(Debug, PartialEq, Eq, Default)]
+pub struct RequestId {
+    request_id: u16,
+}
+
+impl RequestId {
+    pub fn request_id(&self) -> u16 { self.request_id }
+
+    pub fn set_request_id(&mut self, request_id: u16) {
+        self.request_id = request_id;
+    }
+}
+
+impl From<u16> for RequestId {
+    fn from(request_id: u16) -> Self { RequestId { request_id } }
+}
+
+impl Encodable for RequestId {
+    fn rlp_append(&self, stream: &mut RlpStream) {
+        stream.append(&self.request_id);
+    }
+}
+
+impl Decodable for RequestId {
+    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        Ok(Self {
+            request_id: rlp.val_at(0)?,
+        })
+    }
 }

@@ -1,25 +1,35 @@
 use primitives::BlockHeader;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
+use std::ops::{Deref, DerefMut};
 use Message;
 use MsgId;
+use RequestId;
 
 #[derive(Debug, PartialEq, Default)]
 pub struct GetBlockHeadersResponse {
-    pub reqid: u16,
+    request_id: RequestId,
     pub headers: Vec<BlockHeader>,
 }
 
 impl Message for GetBlockHeadersResponse {
-    fn msg_id(&self) -> MsgId {
-        MsgId::GET_BLOCK_HEADERS_RESPONSE
-    }
+    fn msg_id(&self) -> MsgId { MsgId::GET_BLOCK_HEADERS_RESPONSE }
+}
+
+impl Deref for GetBlockHeadersResponse {
+    type Target = RequestId;
+
+    fn deref(&self) -> &Self::Target { &self.request_id }
+}
+
+impl DerefMut for GetBlockHeadersResponse {
+    fn deref_mut(&mut self) -> &mut RequestId { &mut self.request_id }
 }
 
 impl Encodable for GetBlockHeadersResponse {
     fn rlp_append(&self, stream: &mut RlpStream) {
         stream
             .begin_list(2)
-            .append(&self.reqid)
+            .append(&self.request_id)
             .append_list(&self.headers);
     }
 }
@@ -27,7 +37,7 @@ impl Encodable for GetBlockHeadersResponse {
 impl Decodable for GetBlockHeadersResponse {
     fn decode(rlp: &Rlp) -> Result<GetBlockHeadersResponse, DecoderError> {
         Ok(GetBlockHeadersResponse {
-            reqid: rlp.val_at(0)?,
+            request_id: rlp.val_at(0)?,
             headers: rlp.list_at(1)?,
         })
     }

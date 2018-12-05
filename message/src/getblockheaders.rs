@@ -1,29 +1,36 @@
 use ethereum_types::H256;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
+use std::ops::{Deref, DerefMut};
 use Message;
 use MsgId;
+use RequestId;
 
 #[derive(Debug, PartialEq)]
 pub struct GetBlockHeaders {
-    pub reqid: u16,
+    pub request_id: RequestId,
     pub hash: H256,
     pub max_blocks: u64,
 }
 
 impl Message for GetBlockHeaders {
-    fn msg_id(&self) -> MsgId {
-        MsgId::GET_BLOCK_HEADERS
-    }
-    fn set_request_id(&mut self, reqid: u16) {
-        self.reqid = reqid
-    }
+    fn msg_id(&self) -> MsgId { MsgId::GET_BLOCK_HEADERS }
+}
+
+impl Deref for GetBlockHeaders {
+    type Target = RequestId;
+
+    fn deref(&self) -> &Self::Target { &self.request_id }
+}
+
+impl DerefMut for GetBlockHeaders {
+    fn deref_mut(&mut self) -> &mut RequestId { &mut self.request_id }
 }
 
 impl Encodable for GetBlockHeaders {
     fn rlp_append(&self, stream: &mut RlpStream) {
         stream
             .begin_list(3)
-            .append(&self.reqid)
+            .append(&self.request_id)
             .append(&self.hash)
             .append(&self.max_blocks);
     }
@@ -36,7 +43,7 @@ impl Decodable for GetBlockHeaders {
         }
 
         Ok(GetBlockHeaders {
-            reqid: rlp.val_at(0)?,
+            request_id: rlp.val_at(0)?,
             hash: rlp.val_at(1)?,
             max_blocks: rlp.val_at(2)?,
         })
