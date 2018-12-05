@@ -1,9 +1,18 @@
 use consensus::SharedConsensusGraph;
-use ethereum_types::H256;
+use error::{BlockError, Error};
+use ethereum_types::{H256, U256};
 use parking_lot::RwLock;
+use pow::{
+    target_difficulty, DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD, INITIAL_DIFFICULTY,
+};
 use primitives::{Block, BlockHeader};
 use slab::Slab;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    cmp::{max, min},
+    collections::{HashMap, HashSet, VecDeque},
+    time::SystemTime,
+};
+use unexpected::Mismatch;
 
 const NULL: usize = !0;
 
@@ -14,15 +23,38 @@ const BLOCK_HEADER_GRAPH_READY: u8 = 2;
 const BLOCK_GRAPH_READY: u8 = 3;
 
 pub struct SynchronizationGraphNode {
+    /// The hash of the block header.
     pub hash: H256,
+    /// The status of graph connectivity in the current block view.
     pub graph_status: u8,
+    /// Whether the block body is ready.
     pub block_ready: bool,
+    /// The height of the block.
     pub block_height: u64,
+    /// The index of the parent of the block.
     pub parent: usize,
+    /// The indices of the children of the block.
     pub children: Vec<usize>,
+    /// The indices of the blocks referenced by the block.
     pub referees: Vec<usize>,
+    /// The number of blocks referenced by the block but
+    /// haven't been inserted in synchronization graph.
     pub pending_referee_count: usize,
+    /// The indices of the blocks referencing the block.
     pub referrers: Vec<usize>,
+    /// The indices set of the blocks in the epoch when the current
+    /// block is as pivot chain block. This set does not contain
+    /// the block itself.
+    pub blockset_in_own_view_of_epoch: HashSet<usize>,
+    /// The minimum epoch number of the block in the view of other
+    /// blocks including itself.
+    pub min_epoch_in_other_views: u64,
+    /// The difficulty of the block.
+    /// Used for verification.
+    pub difficulty: U256,
+    /// The timestamp of the block generation.
+    /// Used for verification.
+    pub timestamp: u64,
 }
 
 pub struct SynchronizationGraphInner {
@@ -47,6 +79,7 @@ impl SynchronizationGraphInner {
         inner
     }
 
+    /// Return the index of the inserted block.
     pub fn insert(&mut self, header: &BlockHeader) -> usize {
         let hash = header.hash();
         let me = self.arena.insert(SynchronizationGraphNode {
@@ -63,6 +96,10 @@ impl SynchronizationGraphInner {
             referees: Vec::new(),
             pending_referee_count: 0,
             referrers: Vec::new(),
+            blockset_in_own_view_of_epoch: HashSet::new(),
+            min_epoch_in_other_views: header.height(),
+            difficulty: *header.difficulty(),
+            timestamp: header.timestamp(),
         });
         self.indices.insert(hash, me);
 
@@ -117,6 +154,10 @@ impl SynchronizationGraphInner {
         while let Some(index) = queue.pop_front() {
             if self.new_to_be_header_graph_ready(index) {
                 self.arena[index].graph_status = BLOCK_HEADER_GRAPH_READY;
+                debug_assert!(self.arena[index].parent != NULL);
+                self.collect_blockset_in_own_view_of_epoch(index);
+                self.verify_header_graph_ready_block(index);
+
                 for child in &self.arena[index].children {
                     debug_assert!(
                         self.arena[*child].graph_status
@@ -195,15 +236,110 @@ impl SynchronizationGraphInner {
                 self.arena[referee].graph_status < BLOCK_GRAPH_READY
             })
     }
+
+    fn collect_blockset_in_own_view_of_epoch(&mut self, pivot: usize) {
+        let mut queue = VecDeque::new();
+        for referee in &self.arena[pivot].referees {
+            queue.push_back(*referee);
+        }
+
+        let mut visited = HashSet::new();
+        while let Some(index) = queue.pop_front() {
+            visited.insert(index);
+            let mut in_old_epoch = false;
+            let mut cur_pivot = pivot;
+            loop {
+                let parent = self.arena[cur_pivot].parent;
+                debug_assert!(parent != NULL);
+                if self.arena[parent].block_height
+                    < self.arena[index].min_epoch_in_other_views
+                {
+                    break;
+                }
+                if parent == index
+                    || self.arena[parent]
+                        .blockset_in_own_view_of_epoch
+                        .contains(&index)
+                {
+                    in_old_epoch = true;
+                    break;
+                }
+                cur_pivot = parent;
+            }
+
+            if !in_old_epoch {
+                let parent = self.arena[index].parent;
+                if !visited.contains(&parent) {
+                    queue.push_back(parent);
+                }
+                for referee in &self.arena[index].referees {
+                    if !visited.contains(referee) {
+                        queue.push_back(*referee);
+                    }
+                }
+                self.arena[index].min_epoch_in_other_views = min(
+                    self.arena[index].min_epoch_in_other_views,
+                    self.arena[pivot].block_height,
+                );
+                self.arena[pivot]
+                    .blockset_in_own_view_of_epoch
+                    .insert(index);
+            }
+        }
+    }
+
+    fn verify_header_graph_ready_block(
+        &self, index: usize,
+    ) -> Result<(), Error> {
+        let epoch = self.arena[index].block_height;
+        let expected_difficulty: U256 = if epoch
+            <= DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD
+        {
+            INITIAL_DIFFICULTY.into()
+        } else {
+            let mut last_period_upper = (epoch
+                / DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD)
+                * DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD;
+            if last_period_upper == epoch {
+                last_period_upper =
+                    last_period_upper - DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD;
+            }
+            let mut cur = index;
+            while self.arena[cur].block_height > last_period_upper {
+                cur = self.arena[cur].parent;
+            }
+            let cur_difficulty = self.arena[cur].difficulty;
+            let mut block_count = 0 as u64;
+            let mut max_time = u64::min_value();
+            let mut min_time = u64::max_value();
+            for i in 0..DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD {
+                block_count = block_count
+                    + self.arena[cur].blockset_in_own_view_of_epoch.len()
+                        as u64
+                    + 1;
+                max_time = max(max_time, self.arena[cur].timestamp);
+                min_time = min(min_time, self.arena[cur].timestamp);
+                cur = self.arena[cur].parent;
+            }
+            target_difficulty(block_count, max_time - min_time, &cur_difficulty)
+        };
+
+        if expected_difficulty != self.arena[index].difficulty {
+            return Err(From::from(BlockError::InvalidDifficulty(Mismatch {
+                expected: expected_difficulty,
+                found: self.arena[index].difficulty.clone(),
+            })));
+        }
+
+        Ok(())
+    }
 }
 
 pub struct SynchronizationGraph {
     pub inner: RwLock<SynchronizationGraphInner>,
-
     pub block_headers: RwLock<HashMap<H256, BlockHeader>>,
     pub blocks: RwLock<HashMap<H256, Block>>,
     genesis_block_hash: H256,
-
     pub consensus: SharedConsensusGraph,
 }
 
