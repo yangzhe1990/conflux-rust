@@ -59,14 +59,14 @@ impl From<u16> for RequestId {
 
 impl Encodable for RequestId {
     fn rlp_append(&self, stream: &mut RlpStream) {
-        stream.append(&self.request_id);
+        self.request_id.rlp_append(stream);
     }
 }
 
 impl Decodable for RequestId {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         Ok(Self {
-            request_id: rlp.val_at(0)?,
+            request_id: rlp.as_val()?,
         })
     }
 }
