@@ -46,10 +46,10 @@ class P2PTest(ConfluxTestFramework):
 
         self.stop_node(0, kill=True)
         self.log.info("node 0 stopped")
-        block_hash = self.nodes[-1].generate(1, 1000)
+        block_hash = self.nodes[-1].generate(1, 10)
         self.log.info("generate block %s", block_hash)
         wait_for_block_count(self.nodes[1], block_number + 1)
-        sync_blocks(self.nodes[1:], timeout=10)
+        sync_blocks(self.nodes[1:], timeout=30)
         self.log.info("blocks sync success among running nodes")
         self.start_node(0)
         sync_blocks(self.nodes, timeout=30)

@@ -21,10 +21,10 @@ def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, times
     return block
 
 
-def create_transaction(nonce=0, gas_price=1, gas=100, value=0, receiver=default_config['GENESIS_COINBASE'],
-                       v=0, r=0, s=0):
-    transaction = Transaction(nonce, gas_price, gas, receiver, value, b'', v, r, s)
-    return transaction.sign(decode_hex("46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"))
+def create_transaction(nonce=0, gas_price=1, gas=1, value=0, receiver=default_config['GENESIS_COINBASE'],
+                       data=b'', v=0, r=0, s=0, pri_key=default_config["GENESIS_PRI_KEY"]):
+    transaction = Transaction(nonce, gas_price, gas, receiver, value, data, v, r, s)
+    return transaction.sign(pri_key)
 
 
 def make_genesis():

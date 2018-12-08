@@ -124,7 +124,7 @@ def ecsign(rawhash, key):
 
 
 def ec_random_keys():
-    priv_key = random.randint(0, 2 ** 32).to_bytes(4, "big")
+    priv_key = random.randint(0, 2 ** 256).to_bytes(32, "big")
     pub_key = privtopub(priv_key)
     return priv_key, pub_key
 

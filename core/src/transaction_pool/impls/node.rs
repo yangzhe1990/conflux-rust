@@ -14,7 +14,7 @@ pub struct Node<K, V, W> {
     pub right: Option<Box<Node<K, V, W>>>,
 }
 
-impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
+impl<K: Ord, V: Clone, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
     Node<K, V, W>
 {
     pub fn new(key: K, value: V, weight: W, priority: u64) -> Node<K, V, W> {
@@ -45,9 +45,7 @@ impl<K: Ord, V, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
             return None;
         }
         match new.key.cmp(&node.as_ref().unwrap().key) {
-            Ordering::Equal => {
-                Some(mem::replace(node, Some(Box::new(new))).unwrap().value)
-            }
+            Ordering::Equal => Some(node.as_ref().unwrap().value.clone()),
             Ordering::Less => {
                 let result =
                     Node::insert(&mut node.as_mut().unwrap().left, new);

@@ -2,6 +2,7 @@ use super::node::Node;
 use rand::{prng::XorShiftRng, FromEntropy, RngCore};
 use std::{
     convert::From,
+    fmt::Debug,
     ops::{Add, Sub},
 };
 
@@ -12,9 +13,9 @@ pub struct TreapMap<K, V, W> {
 }
 
 impl<
-        K: Ord,
-        V,
-        W: Add<Output = W> + Sub<Output = W> + Ord + Clone + From<u32>,
+        K: Ord + Debug,
+        V: Clone,
+        W: Add<Output = W> + Sub<Output = W> + Ord + Clone + From<u32> + Debug,
     > TreapMap<K, V, W>
 {
     pub fn new() -> TreapMap<K, V, W> {
@@ -40,6 +41,7 @@ impl<
     pub fn contains_key(&self, key: &K) -> bool { self.get(key).is_some() }
 
     pub fn insert(&mut self, key: K, value: V, weight: W) -> Option<V> {
+        assert!(weight != 0.into());
         let result = Node::insert(
             &mut self.root,
             Node::new(key, value, weight, self.rng.next_u64()),

@@ -29,7 +29,8 @@ TEST_SCRIPTS = [
     "message_test.py",
     "p2p_test.py",
     "sync_test.py",
-    "crash_test.py"
+    "crash_test.py",
+    "transaction_test.py"
 ]
 
 test_dir = os.path.dirname(os.path.realpath(__file__))
@@ -40,7 +41,7 @@ for script in TEST_SCRIPTS:
     color = BLUE
     glyph = TICK
     try:
-        subprocess.check_output(args = ["python3", script], stdin = None, cwd = test_dir)
+        subprocess.check_output(args = ["python3", script, "--randomseed=1"], stdin = None, cwd = test_dir)
     except subprocess.CalledProcessError as err:
         color = RED
         glyph = CROSS

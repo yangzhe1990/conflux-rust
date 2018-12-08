@@ -10,14 +10,14 @@ pub use self::impls::TreapMap;
 use self::ready::Readiness;
 use super::{SharedStateManager, State, StateManagerTrait, StateTrait};
 use ethereum_types::{Address, H256, H512, U256, U512};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use primitives::{
     Account, EpochId, SignedTransaction, TransactionWithSignature,
 };
 use rlp::decode;
 use std::{
     cmp::{min, Ordering},
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     ops::DerefMut,
     sync::Arc,
 };
@@ -26,7 +26,7 @@ pub const DEFAULT_MIN_TRANSACTION_GAS_PRICE: u64 = 100;
 pub const DEFAULT_MAX_TRANSACTION_GAS_LIMIT: u64 = 100_000;
 pub const DEFAULT_MAX_BLOCK_GAS_LIMIT: u64 = 30_000 * 100_000;
 
-pub const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 32;
+pub const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 2000;
 
 pub struct AccountCache<'cache, 'state: 'cache> {
     pub accounts: HashMap<Address, Account>,
@@ -72,13 +72,10 @@ impl<'cache, 'state> AccountCache<'cache, 'state> {
                     }
                 }
                 Ordering::Less => Readiness::Stale,
-                Ordering::Equal => {
-                    account.nonce = account.nonce + 1;
-                    Readiness::Ready
-                }
+                Ordering::Equal => Readiness::Ready,
             }
         } else {
-            Readiness::TooDistantFuture
+            Readiness::Future
         }
     }
 }
@@ -156,6 +153,14 @@ impl PendingTransactionPool {
         }
         res
     }
+
+    pub fn get(
+        &self, address: &Address, nonce: &U256,
+    ) -> Option<&SignedTransaction> {
+        self.pool
+            .get(address)
+            .and_then(|bucket| bucket.bucket.get(nonce))
+    }
 }
 
 pub struct TransactionPoolInner {
@@ -178,10 +183,6 @@ impl TransactionPoolInner {
 
 pub struct TransactionPool {
     capacity: usize,
-    // Locking order:
-    // waiters.lock()
-    // inner.write()
-    pub waiters: Mutex<HashMap<Address, HashSet<U256>>>,
     inner: RwLock<TransactionPoolInner>,
     state_manager: SharedStateManager,
 }
@@ -194,7 +195,6 @@ impl TransactionPool {
     ) -> Self {
         TransactionPool {
             capacity,
-            waiters: Mutex::new(HashMap::new()),
             inner: RwLock::new(TransactionPoolInner::new()),
             state_manager,
         }
@@ -277,7 +277,6 @@ impl TransactionPool {
     pub fn add_with_readiness(
         &self, account_cache: &mut AccountCache, transaction: SignedTransaction,
     ) {
-        let mut waiters = self.waiters.lock();
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
 
@@ -288,24 +287,22 @@ impl TransactionPool {
 
         match account_cache.is_ready(&transaction) {
             Readiness::Ready => {
-                let account =
-                    account_cache.get_ready_account(&transaction.sender);
-                if let Some(account) = account {
+                let mut account =
+                    account_cache.accounts.get_mut(&transaction.sender);
+                if let Some(mut account) = account {
                     if self.verify_ready_transaction(account, &transaction) {
-                        self.add_ready_without_lock(inner, transaction);
+                        if self.add_ready_without_lock(inner, transaction) {
+                            account.nonce = account.nonce + 1;
+                        }
+                    } else {
+                        self.add_pending_without_lock(inner, transaction);
                     }
                 } else {
                     warn!("Ready transaction {} discarded due to sender not exist (should not happen!)", transaction.hash());
                 }
             }
             Readiness::Future => {
-                let sender = transaction.sender();
-                let nonce = transaction.nonce();
-                if self.add_pending_without_lock(inner, transaction) {
-                    // subscribe to waiter queue
-                    let entry = waiters.entry(sender).or_insert(HashSet::new());
-                    entry.insert(nonce);
-                }
+                self.add_pending_without_lock(inner, transaction);
             }
             Readiness::TooDistantFuture => {
                 warn!("Transaction {:?} is discarded due to in too distant future", transaction.hash());
@@ -319,11 +316,20 @@ impl TransactionPool {
         }
     }
 
-    pub fn add_ready(&self, transaction: SignedTransaction) -> bool { true }
+    pub fn add_ready(&self, transaction: SignedTransaction) -> bool {
+        let mut inner = self.inner.write();
+        let inner = inner.deref_mut();
+        self.add_ready_without_lock(inner, transaction)
+    }
 
     pub fn add_ready_without_lock(
         &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
     ) -> bool {
+        trace!(
+            "Insert tx into ready hash={:?} sender={:?}",
+            transaction.hash(),
+            transaction.sender
+        );
         inner
             .ready_transactions
             .insert(
@@ -343,11 +349,15 @@ impl TransactionPool {
     pub fn add_pending_without_lock(
         &self, inner: &mut TransactionPoolInner, transaction: SignedTransaction,
     ) -> bool {
+        trace!(
+            "Insert tx into pending hash={:?} sender={:?}",
+            transaction.hash(),
+            transaction.sender
+        );
         inner.pending_transactions.insert(transaction)
     }
 
     pub fn remove_ready(&self, transaction: SignedTransaction) -> bool {
-        // TODO: handle duplicated (address, nonce) pair
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
         if self.remove_ready_without_lock(inner, transaction).is_some() {
@@ -365,7 +375,6 @@ impl TransactionPool {
     }
 
     pub fn remove_pending(&self, transaction: &SignedTransaction) -> bool {
-        // TODO: handle duplicated (address, nonce) pair
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
         if self
@@ -392,12 +401,15 @@ impl TransactionPool {
     pub fn pack_transactions(&self, num_txs: usize) -> Vec<SignedTransaction> {
         let mut inner = self.inner.write();
         let mut packed_transactions: Vec<SignedTransaction> = Vec::new();
-        let mut new_ready_transactions: Vec<SignedTransaction> = Vec::new();
+        //        let mut new_ready_transactions: Vec<SignedTransaction> =
+        // Vec::new();
         let num_txs = min(num_txs, inner.ready_transactions.len());
 
         for _ in 0..num_txs {
             let mut sum_gas_price = inner.ready_transactions.sum_weight();
             let mut rand_value: U512 = U512::from(H512::random());
+            assert_ne!(inner.ready_transactions.len(), 0);
+            assert_ne!(sum_gas_price, 0.into());
             rand_value = rand_value % sum_gas_price;
 
             let tx = inner
@@ -406,17 +418,17 @@ impl TransactionPool {
                 .expect("Failed to pick transaction by weight")
                 .clone();
 
-            if let Some(next_tx) = inner
-                .pending_transactions
-                .remove(&tx.sender, &(tx.nonce + 1))
-            {
-                inner.ready_transactions.insert(
-                    next_tx.hash(),
-                    next_tx.clone(),
-                    U512::from(next_tx.gas_price),
-                );
-                new_ready_transactions.push(next_tx);
-            }
+            //            if let Some(next_tx) = inner
+            //                .pending_transactions
+            //                .remove(&tx.sender, &(tx.nonce + 1))
+            //            {
+            //                inner.ready_transactions.insert(
+            //                    next_tx.hash(),
+            //                    next_tx.clone(),
+            //                    U512::from(next_tx.gas_price),
+            //                );
+            //                new_ready_transactions.push(next_tx);
+            //            }
 
             inner.ready_transactions.remove(&tx.hash());
             packed_transactions.push(tx);
@@ -430,11 +442,10 @@ impl TransactionPool {
             );
         }
 
-        for tx in new_ready_transactions {
-            inner.ready_transactions.remove(&tx.hash());
-            inner.pending_transactions.insert(tx);
-        }
-
+        //        for tx in new_ready_transactions {
+        //            inner.ready_transactions.remove(&tx.hash());
+        //            inner.pending_transactions.insert(tx);
+        //        }
         packed_transactions
     }
 
@@ -451,27 +462,55 @@ impl TransactionPool {
     }
 
     pub fn notify_ready(&self, address: &Address, account: &Account) {
-        let mut waiters = self.waiters.lock();
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
-
         let nonce = &account.nonce;
-        let clear_waiter = if let Some(m) = waiters.get_mut(address) {
-            if m.remove(nonce) {
-                if let Some(tx) =
-                    inner.pending_transactions.remove(address, nonce)
-                {
-                    if self.verify_ready_transaction(account, &tx) {
-                        self.add_ready_without_lock(inner, tx);
-                    }
+
+        debug!("Notify ready {:?} with nonce {:?}", address, nonce);
+
+        let mut success = false;
+        if let Some(tx) = inner.pending_transactions.get(address, nonce) {
+            debug!("We got the tx from pending_pool with hash {:?}", tx.hash());
+            if self.verify_ready_transaction(account, tx) {
+                success = true;
+                debug!("Successfully verified tx with hash {:?}", tx.hash());
+            }
+        }
+        if success {
+            if let Some(tx) = inner.pending_transactions.remove(address, nonce)
+            {
+                if !self.add_ready_without_lock(inner, tx) {
+                    warn!("Check passed but fail to insert ready transaction");
                 }
             }
-            m.is_empty()
-        } else {
-            false
-        };
-        if clear_waiter {
-            waiters.remove(address);
         }
+
+        //        let clear_waiter = if let Some(m) = waiters.get_mut(address) {
+        //            warn!("Wa have this address in waiter");
+        //            if m.remove(nonce) {
+        //                warn!("We have this address in waiter with nonce
+        // {:?}", nonce);                if let Some(tx) =
+        //                    inner.pending_transactions.remove(address, nonce)
+        //                {
+        //                    warn!("We got the tx from pending_pool with hash
+        // {:?}", tx.hash());                    if
+        // self.verify_ready_transaction(account, &tx) {
+        // trace!("Try to insert transaction from pending to ready: {:?}", tx);
+        //                        if !self.add_ready_without_lock(inner, tx) {
+        //                            warn!("Fail to insert ready transaction");
+        //                        }
+        //                    }
+        //                } else {
+        //                    warn!("Nonce in waiter but not removed in
+        // pending_transactions: \
+        // addr={:?},nonce={:?}", address, nonce);                }
+        //            }
+        //            m.is_empty()
+        //        } else {
+        //            false
+        //        };
+        //        if clear_waiter {
+        //            waiters.remove(address);
+        //        }
     }
 }

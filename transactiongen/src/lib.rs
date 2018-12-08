@@ -56,7 +56,13 @@ impl TransactionGenerator {
     }
 
     pub fn generate_transaction(&self) -> SignedTransaction {
-        let is_send_to_new_address = true;
+        // Generate new address with 10% probability
+        let is_send_to_new_address = if rand::thread_rng().gen_range(0, 10) == 0
+            || self.secret_store.count() < 10{
+            true
+        } else  {
+            false
+        };
         let receiver_address = match is_send_to_new_address {
             false => {
                 let account_count = self.secret_store.count();

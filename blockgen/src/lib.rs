@@ -209,28 +209,21 @@ impl BlockGenerator {
     }
 
     /// Generate a block with fake transactions
-    pub fn generate_block(&self, num_txs: usize) -> H256 {
+    pub fn generate_block_with_transactions(&self, num_txs: usize) -> H256 {
         for _ in 0..num_txs {
             let tx = self.txgen.generate_transaction();
-            //            let tx = Transaction {
-            //                nonce: U256::zero(),
-            //                gas_price: U256::from(1_000_000_000_000_000u64),
-            //                gas: U256::from(200u64),
-            //                value: U256::zero(),
-            //                receiver: Address::default(),
-            //            };
-            //            let secret :Secret =
-            // "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f".
-            // parse().unwrap();            let tx =
-            // tx.sign(&secret);
             self.txpool.add_pending(tx);
         }
+        self.generate_block(num_txs)
+    }
+
+    /// Generate a block with transactions in the pool
+    pub fn generate_block(&self, num_txs:usize) -> H256{
         let block = self.assemble_new_block(num_txs);
         let hash = block.hash();
         debug!(
-            "generate_block with block header:{:?}, hash:{:?}",
-            block.block_header,
-            block.hash()
+            "generate_block with block header:{:?} tx_number:{}",
+            block.block_header, block.transactions.len()
         );
         self.on_mined_block(block);
         hash

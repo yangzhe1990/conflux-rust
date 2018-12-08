@@ -14,6 +14,7 @@ import shutil
 import sys
 import tempfile
 import time
+import random
 
 from .authproxy import JSONRPCException
 from . import coverage
@@ -140,6 +141,11 @@ class ConfluxTestFramework:
             default=False,
             action="store_true",
             help="use bitcoin-cli instead of RPC for all commands")
+        parser.add_argument(
+            "--randomseed",
+            dest="random_seed",
+            type=int,
+            help="Set a random seed")
         self.add_options(parser)
         self.options = parser.parse_args()
 
@@ -164,6 +170,9 @@ class ConfluxTestFramework:
         self._start_logging()
 
         success = TestStatus.FAILED
+
+        if self.options.random_seed is not None:
+            random.seed(self.options.random_seed)
 
         try:
             if self.options.usecli and not self.supports_cli:

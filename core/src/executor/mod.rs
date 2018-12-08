@@ -48,8 +48,7 @@ impl<'executor, 'state> Executor<'executor, 'state> {
                 if !self.cache.contains_key(&address) {
                     self.cache.insert(
                         address.clone(),
-                        get_account(self.state, &address)
-                            .unwrap_or_default(),
+                        get_account(self.state, &address).unwrap_or_default(),
                     );
                 }
                 if transaction.value <= self.cache[&transaction.sender].balance
@@ -60,6 +59,9 @@ impl<'executor, 'state> Executor<'executor, 'state> {
                     self.cache.entry(address.clone()).and_modify(|account| {
                         account.balance += transaction.value
                     });
+                } else {
+                    warn!("Not enough balance for transaction: {:?}, current balance is {}",
+                          transaction, self.cache[&transaction.sender].balance);
                 }
             }
         };
@@ -70,9 +72,10 @@ impl<'executor, 'state> Executor<'executor, 'state> {
     ) -> bool {
         let sender_account = self.cache.get_mut(&transaction.sender).unwrap();
         if transaction.nonce != sender_account.nonce {
-            warn!("Transaction aborted due to outdated nonce. (tx nonce: {:?}, account nonce: {:?})", transaction.nonce, sender_account.nonce);
+            warn!("Transaction aborted due to outdated nonce. (tx nonce: {:?}, account nonce: {:?}, account address: {:?})", transaction.nonce, sender_account.nonce, transaction.sender);
             return false;
         }
+        debug!("Executed new transaction. (account nonce: {:?}, tx hash {:?}, account address: {:?})", sender_account.nonce, transaction.hash(), transaction.sender);
         let adder = U256::from(1);
         sender_account.nonce = sender_account.nonce + adder;
         true

@@ -508,7 +508,8 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let new_block = rlp.as_val::<NewBlock>()?;
-        trace!("on_new_block, header={:?}", new_block.block.block_header);
+        trace!("on_new_block, header={:?} tx_number={}", new_block.block.block_header,
+               new_block.block.transactions.len());
         let hash = new_block.block.block_header.hash();
         let parent_hash = new_block.block.block_header.parent_hash();
         let referee_hashes = new_block.block.block_header.referee_hashes();
@@ -633,12 +634,6 @@ impl SynchronizationProtocolHandler {
         if headers_in_flight.contains(hash) {
             return;
         }
-        trace!(
-            "Requesting {:?} block headers starting at {:?} from peer {:?}",
-            max_blocks,
-            hash,
-            peer_id
-        );
 
         if let Some(timed_req) = self.send_request(
             io,
@@ -650,6 +645,13 @@ impl SynchronizationProtocolHandler {
                 max_blocks,
             })),
         ) {
+            trace!(
+                "Requesting {:?} block headers starting at {:?} from peer {:?} request_id={:?}",
+                max_blocks,
+                hash,
+                peer_id,
+                timed_req.request_id
+            );
             headers_in_flight.insert(hash.clone());
             self.requests_queue.lock().push(timed_req);
         }
@@ -662,7 +664,6 @@ impl SynchronizationProtocolHandler {
     {
         let mut blocks_in_flight = self.blocks_in_flight.lock();
         hashes.retain(|hash| !blocks_in_flight.contains(hash));
-        trace!("Requesting {:?} blocks from {:?}", hashes.len(), peer_id);
         if let Some(timed_req) = self.send_request(
             io,
             syn,
@@ -672,6 +673,7 @@ impl SynchronizationProtocolHandler {
                 hashes: hashes.clone(),
             })),
         ) {
+            trace!("Requesting {:?} blocks from {:?} request_id={}", hashes.len(), peer_id, timed_req.request_id);
             for hash in hashes {
                 blocks_in_flight.insert(hash);
             }

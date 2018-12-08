@@ -1,7 +1,7 @@
 use super::TreapMap;
 use ethereum_types::{H256, U256, U512};
 use ethkey::{Public, Signature};
-use primitives::{SignedTransaction, Transaction, Action};
+use primitives::{Action, SignedTransaction, Transaction};
 use rand::{prng::XorShiftRng, ChaChaRng, Rng, RngCore, SeedableRng};
 use std::{
     collections::BTreeMap,
