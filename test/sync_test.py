@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from eth_utils import decode_hex, encode_hex
 
-from test_framework.blocktools import create_block
+from test_framework.blocktools import create_block, create_transaction
 from test_framework.test_framework import ConfluxTestFramework
 from test_framework.mininode import *
 from test_framework.util import *
@@ -28,11 +28,11 @@ class P2PTest(ConfluxTestFramework):
         self.nodes[0].p2p.wait_for_status()
         self.nodes[1].p2p.wait_for_status()
         best_block = self.nodes[1].generate(1, 10)[0]
-        block1 = create_block(parent_hash=decode_hex(best_block), height=2, difficulty=1)
-        block2 = create_block(parent_hash=decode_hex(best_block), height=2, timestamp=10, difficulty=1)
+        block1 = create_block(parent_hash=decode_hex(best_block), height=2)
+        block2 = create_block(parent_hash=decode_hex(best_block), height=2, transactions=[create_transaction()])
         self.nodes[1].p2p.send_protocol_msg(NewBlock(block=block1))
         self.nodes[1].p2p.send_protocol_msg(NewBlock(block=block2))
-        block3 = create_block(parent_hash=block1.hash, height=3, difficulty=1, referee_hashes=[block2.hash])
+        block3 = create_block(parent_hash=block1.hash, height=3, referee_hashes=[block2.hash])
         self.nodes[1].p2p.send_protocol_msg(NewBlock(block=block3))
         connect_nodes(self.nodes, 0, 1)
         sync_blocks(self.nodes, timeout=5)
@@ -40,8 +40,8 @@ class P2PTest(ConfluxTestFramework):
 
         disconnect_nodes(self.nodes, 0, 1)
         best_block = self.nodes[0].getbestblockhash()
-        block1 = create_block(parent_hash=decode_hex(best_block), height=4, timestamp=1, difficulty=1)
-        block2 = create_block(parent_hash=decode_hex(best_block), height=4, timestamp=2, difficulty=1)
+        block1 = create_block(parent_hash=decode_hex(best_block), height=4)
+        block2 = create_block(parent_hash=decode_hex(best_block), height=4, transactions=[create_transaction()])
         self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block1))
         self.nodes[1].p2p.send_protocol_msg(NewBlock(block=block2))
         connect_nodes(self.nodes, 0, 1)

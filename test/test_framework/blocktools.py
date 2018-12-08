@@ -7,17 +7,26 @@ from conflux import utils, trie
 from conflux.config import default_config
 from conflux.messages import BlockHeader, Block
 from conflux.transactions import Transaction
-from conflux.utils import privtoaddr, int_to_bytes, zpad, encode_hex
+from conflux.utils import *
+
+TEST_DIFFICULTY = 4
+HASH_MAX = 1 << 256
 
 
-def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, timestamp=0, difficulty=0, transactions=[],
-                 gas_limit=0, gas_used=0, referee_hashes=[]):
+def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, timestamp=0, difficulty=TEST_DIFFICULTY, transactions=[],
+                 gas_limit=0, gas_used=0, referee_hashes=[], author=default_config["GENESIS_COINBASE"]):
     if len(transactions) != 0:
         tx_root = utils.sha3(rlp.encode(transactions))
     else:
         tx_root = trie.BLANK_ROOT
-    block = Block(BlockHeader(parent_hash=parent_hash, height=height, difficulty=difficulty, timestamp=timestamp,
-                              transactions_root=tx_root, gas_limit=gas_limit, gas_used=gas_used, referee_hashes=referee_hashes), transactions=transactions)
+    nonce = 0
+    while True:
+        block = Block(BlockHeader(parent_hash=parent_hash, height=height, difficulty=difficulty, timestamp=timestamp,
+                                  author=author, transactions_root=tx_root, gas_limit=gas_limit, gas_used=gas_used,
+                                  referee_hashes=referee_hashes, nonce=nonce), transactions=transactions)
+        if bytes_to_int(block.hash) * difficulty < HASH_MAX:
+            break
+        nonce += 1
     return block
 
 
@@ -35,5 +44,5 @@ def make_genesis():
 #         tx = create_transaction(0, 10**15, 200, 10**9, addr)
 #         signed_tx = tx.sign(sp)
 #         txs.append(signed_tx)
-    genesis = create_block()
+    genesis = create_block(difficulty=0)
     return genesis

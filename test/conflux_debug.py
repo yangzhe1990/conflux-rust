@@ -62,8 +62,7 @@ class MessageTest(ConfluxTestFramework):
             # Calling the generate() rpc is easier, but this allows us to exactly
             # control the blocks and transactions.
 
-            """ This triggers panic of conflux now """
-            block = create_block(tip, block_time, 1)
+            block = create_block(tip, block_time)
             self.node.send_protocol_msg(NewBlock(block=block))
             tip = block.block_header.hash
             blocks.append(block)

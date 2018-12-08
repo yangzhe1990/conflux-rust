@@ -175,9 +175,9 @@ impl BlockGenerator {
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
             .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
-            .with_difficulty(200000.into()) //TODO: adjust difficulty
+            .with_difficulty(4.into()) //TODO: adjust difficulty
             .with_referee_hashes(referee) //TODO: get referee hashes
-            .with_nonce(rand::random()) // TODO: gen nonce from pow
+            .with_nonce(0) // TODO: gen nonce from pow
             .build();
 
         Block {
@@ -219,7 +219,21 @@ impl BlockGenerator {
 
     /// Generate a block with transactions in the pool
     pub fn generate_block(&self, num_txs:usize) -> H256{
-        let block = self.assemble_new_block(num_txs);
+        let mut block = self.assemble_new_block(num_txs);
+        // TODO Get difficulty from PoWConfig
+        let test_diff = 4.into();
+        let problem = ProofOfWorkProblem{
+            block_hash: block.block_header.problem_hash(),
+            difficulty: test_diff,
+            boundary: difficulty_to_boundary(&test_diff),
+        };
+        loop{
+            let nonce = rand::random();
+            if validate(&problem, &ProofOfWorkSolution{nonce}) {
+                block.block_header.set_nonce(nonce);
+                break;
+            }
+        }
         let hash = block.hash();
         debug!(
             "generate_block with block header:{:?} tx_number:{}",
