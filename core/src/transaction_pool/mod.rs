@@ -65,9 +65,7 @@ impl<'cache, 'state> AccountCache<'cache, 'state> {
                         > FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET.into()
                     {
                         Readiness::TooDistantFuture
-                    } else
-                    /*  */
-                    {
+                    } else {
                         Readiness::Future
                     }
                 }
@@ -75,7 +73,11 @@ impl<'cache, 'state> AccountCache<'cache, 'state> {
                 Ordering::Equal => Readiness::Ready,
             }
         } else {
-            Readiness::Future
+            if tx.nonce() > FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET.into() {
+                Readiness::TooDistantFuture
+            } else {
+                Readiness::Future
+            }
         }
     }
 }
@@ -401,8 +403,6 @@ impl TransactionPool {
     pub fn pack_transactions(&self, num_txs: usize) -> Vec<SignedTransaction> {
         let mut inner = self.inner.write();
         let mut packed_transactions: Vec<SignedTransaction> = Vec::new();
-        //        let mut new_ready_transactions: Vec<SignedTransaction> =
-        // Vec::new();
         let num_txs = min(num_txs, inner.ready_transactions.len());
 
         for _ in 0..num_txs {
@@ -418,18 +418,6 @@ impl TransactionPool {
                 .expect("Failed to pick transaction by weight")
                 .clone();
 
-            //            if let Some(next_tx) = inner
-            //                .pending_transactions
-            //                .remove(&tx.sender, &(tx.nonce + 1))
-            //            {
-            //                inner.ready_transactions.insert(
-            //                    next_tx.hash(),
-            //                    next_tx.clone(),
-            //                    U512::from(next_tx.gas_price),
-            //                );
-            //                new_ready_transactions.push(next_tx);
-            //            }
-
             inner.ready_transactions.remove(&tx.hash());
             packed_transactions.push(tx);
         }
@@ -442,10 +430,6 @@ impl TransactionPool {
             );
         }
 
-        //        for tx in new_ready_transactions {
-        //            inner.ready_transactions.remove(&tx.hash());
-        //            inner.pending_transactions.insert(tx);
-        //        }
         packed_transactions
     }
 
@@ -457,7 +441,7 @@ impl TransactionPool {
             .iter()
             .flat_map(|(_, bucket)| bucket.bucket.iter())
             .map(|(_, x)| x.clone())
-            .chain(inner.ready_transactions.iter().map(|x| x.1.clone()))
+            .chain(inner.ready_transactions.iter().map(|(_, x)| x.clone()))
             .collect()
     }
 
@@ -484,33 +468,5 @@ impl TransactionPool {
                 }
             }
         }
-
-        //        let clear_waiter = if let Some(m) = waiters.get_mut(address) {
-        //            warn!("Wa have this address in waiter");
-        //            if m.remove(nonce) {
-        //                warn!("We have this address in waiter with nonce
-        // {:?}", nonce);                if let Some(tx) =
-        //                    inner.pending_transactions.remove(address, nonce)
-        //                {
-        //                    warn!("We got the tx from pending_pool with hash
-        // {:?}", tx.hash());                    if
-        // self.verify_ready_transaction(account, &tx) {
-        // trace!("Try to insert transaction from pending to ready: {:?}", tx);
-        //                        if !self.add_ready_without_lock(inner, tx) {
-        //                            warn!("Fail to insert ready transaction");
-        //                        }
-        //                    }
-        //                } else {
-        //                    warn!("Nonce in waiter but not removed in
-        // pending_transactions: \
-        // addr={:?},nonce={:?}", address, nonce);                }
-        //            }
-        //            m.is_empty()
-        //        } else {
-        //            false
-        //        };
-        //        if clear_waiter {
-        //            waiters.remove(address);
-        //        }
     }
 }
