@@ -6,6 +6,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
     time::Instant,
+    mem,
 };
 use sync::synchronization_protocol_handler::TimedSyncRequests;
 
@@ -89,11 +90,12 @@ impl SynchronizationPeerState {
     pub fn append_inflight_request(
         &mut self, request_id: usize, msg: Box<RequestMessage>,
         timed_req: Arc<TimedSyncRequests>,
-    )
+    ) -> RequestMessage
     {
         let slot = self.inflight_requests.get_mut(request_id).unwrap();
-        slot.message = msg;
+        let req = mem::replace(&mut slot.message, msg);
         slot.timed_req = Some(timed_req);
+        *req
     }
 
     pub fn append_pending_request(&mut self, msg: Box<RequestMessage>) {
@@ -117,8 +119,8 @@ impl SynchronizationPeerState {
         self.pending_requests.pop_front()
     }
 
-    pub fn remove_inflight_request(&mut self, request_id: usize) {
-        self.inflight_requests.remove(request_id);
+    pub fn remove_inflight_request(&mut self, request_id: usize) -> SynchronizationPeerRequest {
+        self.inflight_requests.remove(request_id)
     }
 }
 

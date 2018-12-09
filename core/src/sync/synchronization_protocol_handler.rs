@@ -30,6 +30,8 @@ use std::{
     time::{Duration, Instant},
 };
 use sync::synchronization_state::RequestMessage;
+use rand::Rng;
+use sync::synchronization_state::SynchronizationPeerRequest;
 
 pub const SYNCHRONIZATION_PROTOCOL_VERSION: u8 = 0x01;
 
@@ -713,12 +715,12 @@ impl SynchronizationProtocolHandler {
     fn match_request(
         &self, io: &NetworkContext, syn: &mut SynchronizationState,
         peer_id: PeerId, request_id: u16,
-    ) -> Result<(), Error>
+    ) -> Result<Option<RequestMessage>, Error>
     {
         if let Some(ref mut peer) = syn.peers.get_mut(&peer_id) {
             if peer.is_inflight_request(request_id) {
-                if peer.has_pending_requests() {
-                    self.remove_request(peer, request_id as usize, false);
+                let req = if peer.has_pending_requests() {
+                     self.remove_request(peer, request_id as usize, false);
                     let pending_req = peer.pop_pending_request().unwrap();
                     let mut pending_msg = pending_req.message;
                     pending_msg.set_request_id(request_id);
@@ -728,16 +730,17 @@ impl SynchronizationProtocolHandler {
                         request_id as usize,
                         &pending_msg,
                     ));
-                    peer.append_inflight_request(
+                    let req = peer.append_inflight_request(
                         request_id as usize,
                         pending_msg,
                         timed_req.clone(),
                     );
                     self.requests_queue.lock().push(timed_req);
+                    Some(req)
                 } else {
-                    self.remove_request(peer, request_id as usize, true);
-                }
-                Ok(())
+                    self.remove_request(peer, request_id as usize, true)
+                };
+                Ok(req)
             } else {
                 Err(ErrorKind::UnexpectedResponse.into())
             }
@@ -886,14 +889,33 @@ impl SynchronizationProtocolHandler {
                 requests.push(sync_req);
                 break;
             } else {
-                // TODO Requests of removed peers should be handled when the
-                // peer is removed. And should handle timeout peers.
-                self.match_request(
+                // TODO And should handle timeout peers.
+                let req = self.match_request(
                     io,
                     &mut *syn,
                     sync_req.peer_id,
                     sync_req.request_id as u16,
-                );
+                ).unwrap_or_else(|_|{
+                    warn!("Cannot get original timed-out requests");
+                    None
+                });
+                if let Some(request) = req {
+                    // TODO may have better choice than random peer
+                    let chosen_peer = {
+                        let peers_vec: Vec<&PeerId> = syn.peers.keys().collect();
+                        let p = peers_vec.get(random::new().gen_range(0, peers_vec.len())).unwrap();
+                        **p
+                    };
+                    match request {
+                        RequestMessage::Headers(get_headers) => {
+                            self.request_block_headers(io, &mut *syn, chosen_peer, &get_headers.hash, get_headers.max_blocks);
+                        }
+                        RequestMessage::Blocks(get_blocks) => {
+                            self.request_blocks(io, &mut *syn, chosen_peer, get_blocks.hashes);
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
         trace!("headers_in_flight: {:?}", *self.headers_in_flight.lock());
@@ -903,7 +925,7 @@ impl SynchronizationProtocolHandler {
     pub fn remove_request(
         &self, peer: &mut SynchronizationPeerState, request_id: usize,
         remove_slab: bool,
-    )
+    ) -> Option<RequestMessage>
     {
         let has = if let Some(req) = peer.inflight_requests.get(request_id) {
             match *req.message {
@@ -916,7 +938,7 @@ impl SynchronizationProtocolHandler {
                         blocks.remove(hash);
                     }
                 }
-                _ => return,
+                _ => return None,
             }
             // This should always be some for now
             if let Some(ref timed_req) = req.timed_req {
@@ -927,7 +949,9 @@ impl SynchronizationProtocolHandler {
             false
         };
         if has && remove_slab {
-            peer.remove_inflight_request(request_id);
+            Some(*peer.remove_inflight_request(request_id).message)
+        } else {
+            None
         }
     }
 }
