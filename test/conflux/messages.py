@@ -22,7 +22,7 @@ import threading
 from conflux import trie
 from conflux.config import default_config
 from conflux.transactions import Transaction
-from conflux.utils import hash32, hash20, sha3
+from conflux.utils import hash32, hash20, sha3, bytes_to_int
 from test_framework.util import wait_until
 
 logger = logging.getLogger("TestFramework.mininode")
@@ -204,6 +204,23 @@ class BlockHeader(rlp.Serializable):
 
     def get_hex_hash(self):
         return eth_utils.encode_hex(self.hash)
+
+    def problem_hash(self):
+        return sha3(rlp.encode(self.without_nonce()))
+
+    def pow_decimal(self):
+        return bytes_to_int(sha3(rlp.encode([self.problem_hash(), self.nonce])))
+
+    def without_nonce(self):
+        fields = {field: getattr(self, field) for field in BlockHeaderWithoutNonce._meta.field_names}
+        return BlockHeaderWithoutNonce(**fields)
+
+
+class BlockHeaderWithoutNonce(rlp.Serializable):
+    fields = [
+        (field, sedes) for field, sedes in BlockHeader._meta.fields if
+        field not in ["nonce"]
+    ]
 
 
 # class BlockHeaders(CountableList(BlockHeader)):

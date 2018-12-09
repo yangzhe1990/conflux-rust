@@ -62,16 +62,16 @@ class P2PTest(ConfluxTestFramework):
         network_thread_start()
         self.nodes[0].p2p.wait_for_status()
         tip = default_node.genesis.block_header.hash
-        block_time = 1
+        height = 1
         for i in range(block_number):
             # Use the mininode and blocktools functionality to manually build a block
             # Calling the generate() rpc is easier, but this allows us to exactly
             # control the blocks and transactions.
-            block = create_block(tip, block_time)
+            block = create_block(tip, height)
             self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block))
             tip = block.block_header.hash
             self.log.info("generate block %s", encode_hex(tip))
-            block_time += 1
+            height += 1
         wait_for_block_count(self.nodes[0], block_number * 2)
         sync_blocks(self.nodes, timeout=10)
         balance = self.nodes[0].getbalance(eth_utils.encode_hex(privtoaddr(decode_hex("0x46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"))))

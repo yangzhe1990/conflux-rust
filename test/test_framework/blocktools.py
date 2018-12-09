@@ -21,12 +21,13 @@ def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, times
         tx_root = trie.BLANK_ROOT
     nonce = 0
     while True:
-        block = Block(BlockHeader(parent_hash=parent_hash, height=height, difficulty=difficulty, timestamp=timestamp,
-                                  author=author, transactions_root=tx_root, gas_limit=gas_limit, gas_used=gas_used,
-                                  referee_hashes=referee_hashes, nonce=nonce), transactions=transactions)
-        if bytes_to_int(block.hash) * difficulty < HASH_MAX:
+        header = BlockHeader(parent_hash=parent_hash, height=height, difficulty=difficulty, timestamp=timestamp,
+                             author=author, transactions_root=tx_root, gas_limit=gas_limit, gas_used=gas_used,
+                             referee_hashes=referee_hashes, nonce=nonce)
+        if header.pow_decimal() * difficulty < HASH_MAX:
             break
         nonce += 1
+    block = Block(block_header=header, transactions=transactions)
     return block
 
 
