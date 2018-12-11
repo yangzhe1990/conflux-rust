@@ -109,9 +109,16 @@ fn start(
         network: network_config,
         consensus: consensus.clone(),
     };
-    let mut sync = core::SynchronizationService::new(sync_config);
+    let pow_config = conf.pow_config();
+    let verification_config = conf.verification_config();
+    let mut sync = core::SynchronizationService::new(
+        sync_config,
+        pow_config.clone(),
+        verification_config,
+    );
     sync.start().unwrap();
     let sync = Arc::new(sync);
+    let sync_graph = sync.get_synchronization_graph();
 
     let txgen = Arc::new(TransactionGenerator::new(
         consensus.clone(),
@@ -121,10 +128,11 @@ fn start(
     ));
 
     let blockgen = Arc::new(BlockGenerator::new(
-        consensus.clone(),
+        sync_graph.clone(),
         txpool.clone(),
         sync.clone(),
         txgen.clone(),
+        pow_config.clone(),
     ));
 
     //    let txgen_handle = thread::spawn(move || {

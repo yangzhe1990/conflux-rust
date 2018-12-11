@@ -1,5 +1,6 @@
 use super::{
-    Error, SynchronizationProtocolHandler, SYNCHRONIZATION_PROTOCOL_VERSION,
+    Error, SharedSynchronizationGraph, SynchronizationProtocolHandler,
+    SYNCHRONIZATION_PROTOCOL_VERSION,
 };
 use consensus::SharedConsensusGraph;
 use ethereum_types::H256;
@@ -8,8 +9,10 @@ use network::{
     Error as NetworkError, NetworkConfiguration, NetworkService, PeerInfo,
     ProtocolId,
 };
+use pow::ProofOfWorkConfig;
 use primitives::Block;
 use std::sync::Arc;
+use verification::verification::VerificationConfig;
 
 pub struct SynchronizationConfiguration {
     pub network: NetworkConfiguration,
@@ -23,14 +26,24 @@ pub struct SynchronizationService {
 }
 
 impl SynchronizationService {
-    pub fn new(config: SynchronizationConfiguration) -> Self {
+    pub fn new(
+        config: SynchronizationConfiguration, pow_config: ProofOfWorkConfig,
+        verification_config: VerificationConfig,
+    ) -> Self
+    {
         SynchronizationService {
             network: NetworkService::new(config.network),
             protocol_handler: Arc::new(SynchronizationProtocolHandler::new(
                 config.consensus,
+                pow_config,
+                verification_config,
             )),
             protocol: *b"cfx",
         }
+    }
+
+    pub fn get_synchronization_graph(&self) -> SharedSynchronizationGraph {
+        self.protocol_handler.get_synchronization_graph()
     }
 
     pub fn start(&mut self) -> Result<(), Error> {
@@ -49,9 +62,16 @@ impl SynchronizationService {
         });
     }
 
+    pub fn relay_blocks(&self, need_to_relay: Vec<H256>) {
+        self.network.with_context(self.protocol, |io| {
+            self.protocol_handler.relay_blocks(io, need_to_relay);
+        });
+    }
+
     pub fn on_mined_block(&self, block: Block) {
         let hash = block.hash();
-        self.protocol_handler.on_mined_block(block);
+        let need_to_relay = self.protocol_handler.on_mined_block(block);
+        self.relay_blocks(need_to_relay);
         self.announce_new_blocks(&[hash]);
     }
 

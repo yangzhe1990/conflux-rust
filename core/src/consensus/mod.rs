@@ -43,8 +43,6 @@ pub struct ConsensusGraphInner {
     pub arena: Slab<ConsensusGraphNode>,
     pub indices: HashMap<H256, usize>,
     pub pivot_chain: Vec<usize>,
-    pub terminal_block_hashes: HashSet<H256>,
-
     genesis_block_index: usize,
     state_manager: Arc<StateManager>,
 }
@@ -57,11 +55,11 @@ impl ConsensusGraphInner {
             arena: Slab::new(),
             indices: HashMap::new(),
             pivot_chain: Vec::new(),
-            terminal_block_hashes: HashSet::new(),
             genesis_block_index: NULL,
             state_manager,
         };
-        inner.genesis_block_index = inner.insert(genesis_block);
+        inner.genesis_block_index =
+            inner.insert(genesis_block, &mut HashSet::new());
         *inner.arena[inner.genesis_block_index]
             .data
             .epoch_number
@@ -71,7 +69,9 @@ impl ConsensusGraphInner {
         inner
     }
 
-    pub fn insert(&mut self, block: &Block) -> usize {
+    pub fn insert(
+        &mut self, block: &Block, terminal_hashes: &mut HashSet<H256>,
+    ) -> usize {
         let hash = block.hash();
 
         let parent = if *block.block_header.parent_hash() != H256::default() {
@@ -89,8 +89,7 @@ impl ConsensusGraphInner {
             .map(|hash| self.indices.get(hash).cloned().unwrap())
             .collect();
         for referee in &referees {
-            self.terminal_block_hashes
-                .remove(&self.arena[*referee].hash);
+            terminal_hashes.remove(&self.arena[*referee].hash);
         }
         let index = self.arena.insert(ConsensusGraphNode {
             hash,
@@ -103,8 +102,8 @@ impl ConsensusGraphInner {
         self.indices.insert(hash, index);
 
         if parent != NULL {
-            self.terminal_block_hashes.remove(&self.arena[parent].hash);
-            self.terminal_block_hashes.insert(hash);
+            terminal_hashes.remove(&self.arena[parent].hash);
+            terminal_hashes.insert(hash);
             self.arena[parent].children.push(index);
         }
 
@@ -114,9 +113,10 @@ impl ConsensusGraphInner {
     pub fn on_new_block(
         &mut self, txpool: &SharedTransactionPool, block: &Block,
         block_by_hash: &HashMap<H256, Block>,
-    )
+        terminal_hashes: &mut HashSet<H256>,
+    ) -> H256
     {
-        let mut me = self.insert(block);
+        let mut me = self.insert(block, terminal_hashes);
         loop {
             me = self.arena[me].parent;
             self.arena[me].total_difficulty += *block.block_header.difficulty();
@@ -272,6 +272,7 @@ impl ConsensusGraphInner {
         }
 
         self.pivot_chain = new_pivot_chain;
+        self.best_block_hash()
     }
 
     pub fn best_block_hash(&self) -> H256 {
@@ -288,6 +289,7 @@ pub struct ConsensusGraph {
     // ledger structure, like block- or transaction-related
     // stuffs.
     pub ledger_db: Arc<SystemDB>,
+    pub invalid_blocks: RwLock<HashSet<H256>>,
 }
 
 pub type SharedConsensusGraph = Arc<ConsensusGraph>;
@@ -312,6 +314,7 @@ impl ConsensusGraph {
             genesis_block_hash,
             txpool,
             ledger_db,
+            invalid_blocks: RwLock::new(HashSet::new()),
         }
     }
 
@@ -322,6 +325,14 @@ impl ConsensusGraph {
 
     pub fn contains_block(&self, hash: &H256) -> bool {
         self.blocks.read().contains_key(hash)
+    }
+
+    pub fn verified_invalid(&self, hash: &H256) -> bool {
+        self.invalid_blocks.read().contains(hash)
+    }
+
+    pub fn invalidate_block(&self, hash: &H256) {
+        self.invalid_blocks.write().insert(hash.clone());
     }
 
     pub fn get_block_total_difficulty(&self, hash: &H256) -> Option<U256> {
@@ -351,12 +362,15 @@ impl ConsensusGraph {
         }
     }
 
-    pub fn on_new_block(&self, block: Block) {
+    pub fn on_new_block(
+        &self, block: Block, terminal_hashes: &mut HashSet<H256>,
+    ) -> H256 {
         debug!(
             "insert new block into consensus hash:{:?}, block_header:{:?}",
             block.hash(),
             block.block_header
         );
+
         let mut blocks = self.blocks.write();
         blocks.insert(block.hash(), block.clone());
 
@@ -365,9 +379,12 @@ impl ConsensusGraph {
             self.txpool.remove_ready(tx.clone());
         }
 
-        self.inner
-            .write()
-            .on_new_block(&self.txpool, &block, &*blocks);
+        self.inner.write().on_new_block(
+            &self.txpool,
+            &block,
+            &*blocks,
+            terminal_hashes,
+        )
     }
 
     pub fn best_block_hash(&self) -> H256 {
@@ -375,13 +392,4 @@ impl ConsensusGraph {
     }
 
     pub fn block_count(&self) -> usize { self.blocks.read().len() }
-
-    pub fn terminal_block_hashes(&self) -> Vec<H256> {
-        self.inner
-            .read()
-            .terminal_block_hashes
-            .iter()
-            .map(|hash| hash.clone())
-            .collect()
-    }
 }

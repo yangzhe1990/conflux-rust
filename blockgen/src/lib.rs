@@ -6,6 +6,7 @@ extern crate parking_lot;
 extern crate primitives;
 extern crate rand;
 extern crate rlp;
+extern crate triehash_ethereum as triehash;
 extern crate txgen;
 
 #[macro_use]
@@ -15,18 +16,19 @@ extern crate log;
 mod tests;
 
 use core::{
-    pow::*, SharedConsensusGraph, SharedSynchronizationService,
-    SharedTransactionPool,
+    pow::*, BestInformation, SharedSynchronizationGraph,
+    SharedSynchronizationService, SharedTransactionPool,
 };
 use ethereum_types::{Address, H256};
 use hash::{keccak, KECCAK_NULL_RLP};
 use parking_lot::RwLock;
 use primitives::*;
-use rlp::RlpStream;
+use rlp::{encode, RlpStream};
 use std::{
     sync::{mpsc, Arc, Mutex},
     thread, time,
 };
+use triehash::ordered_trie_root;
 use txgen::SharedTransactionGenerator;
 
 enum MiningState {
@@ -36,7 +38,8 @@ enum MiningState {
 
 /// The interface for a conflux block generator
 pub struct BlockGenerator {
-    consensus: SharedConsensusGraph,
+    pow_config: ProofOfWorkConfig,
+    graph: SharedSynchronizationGraph,
     txpool: SharedTransactionPool,
     txgen: SharedTransactionGenerator,
     sync: SharedSynchronizationService,
@@ -126,12 +129,14 @@ impl Worker {
 
 impl BlockGenerator {
     pub fn new(
-        consensus: SharedConsensusGraph, txpool: SharedTransactionPool,
+        graph: SharedSynchronizationGraph, txpool: SharedTransactionPool,
         sync: SharedSynchronizationService, txgen: SharedTransactionGenerator,
+        pow_config: ProofOfWorkConfig,
     ) -> Self
     {
         BlockGenerator {
-            consensus,
+            pow_config,
+            graph,
             txpool,
             txgen,
             sync,
@@ -158,24 +163,29 @@ impl BlockGenerator {
     /// Assemble a new block without nonce
     pub fn assemble_new_block(&self, num_txs: usize) -> Block {
         // get the best block
-        let best_block_hash = self.consensus.best_block_hash();
+        let best_info = self.graph.get_best_info();
+        let best_block_hash = best_info.best_block_hash;
         let parent_height =
-            self.consensus.get_block_height(&best_block_hash).unwrap();
+            self.graph.get_block_height(&best_block_hash).unwrap();
         let transactions = self.txpool.pack_transactions(num_txs);
-        let mut tx_rlp = RlpStream::new_list(transactions.len());
-        for tx in transactions.iter() {
-            tx_rlp.append(tx);
+        let mut tx_rlps: Vec<Vec<u8>> = Vec::new();
+        for t in &transactions {
+            let t_rlp = encode(t);
+            tx_rlps.push(t_rlp);
         }
-        let mut referee = self.consensus.terminal_block_hashes();
+
+        let mut referee = best_info.terminal_block_hashes;
         referee.retain(|r| *r != best_block_hash);
         let block_header = BlockHeaderBuilder::new()
-            .with_transactions_root(keccak(tx_rlp.out()))
+            .with_transactions_root(ordered_trie_root(
+                tx_rlps.iter().map(|r| r.as_slice()),
+            ))
             .with_parent_hash(best_block_hash)
             .with_height(parent_height + 1)
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
             .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
-            .with_difficulty(4.into()) //TODO: adjust difficulty
+            .with_difficulty(self.pow_config.initial_difficulty.into()) //TODO: adjust difficulty
             .with_referee_hashes(referee) //TODO: get referee hashes
             .with_nonce(0) // TODO: gen nonce from pow
             .build();
@@ -199,7 +209,7 @@ impl BlockGenerator {
     /// Check if we need to mine on a new block
     pub fn is_mining_block_outdated(&self, block: &Block) -> bool {
         // 1st Check: if the parent block changed
-        let best_block_hash = self.consensus.best_block_hash();
+        let best_block_hash = self.graph.get_best_info().best_block_hash;
         if best_block_hash != *block.block_header.parent_hash() {
             return true;
         }
@@ -218,18 +228,17 @@ impl BlockGenerator {
     }
 
     /// Generate a block with transactions in the pool
-    pub fn generate_block(&self, num_txs:usize) -> H256{
+    pub fn generate_block(&self, num_txs: usize) -> H256 {
         let mut block = self.assemble_new_block(num_txs);
-        // TODO Get difficulty from PoWConfig
-        let test_diff = 4.into();
-        let problem = ProofOfWorkProblem{
+        let test_diff = self.pow_config.initial_difficulty.into();
+        let problem = ProofOfWorkProblem {
             block_hash: block.block_header.problem_hash(),
             difficulty: test_diff,
             boundary: difficulty_to_boundary(&test_diff),
         };
-        loop{
+        loop {
             let nonce = rand::random();
-            if validate(&problem, &ProofOfWorkSolution{nonce}) {
+            if validate(&problem, &ProofOfWorkSolution { nonce }) {
                 block.block_header.set_nonce(nonce);
                 break;
             }
@@ -237,7 +246,8 @@ impl BlockGenerator {
         let hash = block.hash();
         debug!(
             "generate_block with block header:{:?} tx_number:{}",
-            block.block_header, block.transactions.len()
+            block.block_header,
+            block.transactions.len()
         );
         self.on_mined_block(block);
         hash

@@ -6,6 +6,8 @@ use unexpected::{Mismatch, OutOfBounds};
 #[derive(Debug, PartialEq, Clone, Copy, Eq)]
 /// Errors concerning block processing.
 pub enum BlockError {
+    /// Number field of header is invalid.
+    InvalidHeight(Mismatch<u64>),
     /// Block has too much gas used.
     TooMuchGasUsed(OutOfBounds<U256>),
     /// State root header field is invalid.
@@ -23,7 +25,7 @@ pub enum BlockError {
     InvalidDifficulty(Mismatch<U256>),
     /// Proof-of-work aspect of seal, which we assume is a 256-bit value, is
     /// invalid.
-    InvalidProofOfWork(OutOfBounds<U256>),
+    InvalidProofOfWork(OutOfBounds<H256>),
     /// Gas limit header field is invalid.
     InvalidGasLimit(OutOfBounds<U256>),
     /// Timestamp header field is invalid.
@@ -43,6 +45,7 @@ impl fmt::Display for BlockError {
         use self::BlockError::*;
 
         let msg = match *self {
+            InvalidHeight(ref mis) => format!("Invalid block height: {}", mis),
             TooMuchGasUsed(ref oob) => {
                 format!("Block has too much gas used. {}", oob)
             }

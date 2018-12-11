@@ -3,7 +3,8 @@ use hash::keccak;
 use rlp::RlpStream;
 
 pub const DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD: u64 = 200;
-pub const TARGET_AVERAGE_BLOCK_GENERATION_PERIOD: u64 = 5;
+// Time unit is micro-second (usec)
+pub const TARGET_AVERAGE_BLOCK_GENERATION_PERIOD: u64 = 5000000;
 pub const INITIAL_DIFFICULTY: u64 = 200000;
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
@@ -16,6 +17,52 @@ pub struct ProofOfWorkProblem {
 #[derive(Debug, Copy, Clone)]
 pub struct ProofOfWorkSolution {
     pub nonce: u64,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ProofOfWorkConfig {
+    pub initial_difficulty: u64,
+    pub block_generation_period: u64,
+    pub difficulty_adjustment_epoch_period: u64,
+}
+
+impl ProofOfWorkConfig {
+    pub fn new(test_mode: bool) -> Self {
+        if test_mode {
+            ProofOfWorkConfig {
+                initial_difficulty: 4,
+                block_generation_period: 1000000,
+                difficulty_adjustment_epoch_period: 20,
+            }
+        } else {
+            ProofOfWorkConfig {
+                initial_difficulty: INITIAL_DIFFICULTY,
+                block_generation_period: TARGET_AVERAGE_BLOCK_GENERATION_PERIOD,
+                difficulty_adjustment_epoch_period:
+                    DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD,
+            }
+        }
+    }
+
+    pub fn target_difficulty(
+        &self, block_count: u64, timespan: u64, cur_difficulty: &U256,
+    ) -> U256 {
+        if timespan == 0 || block_count == 0 {
+            return self.initial_difficulty.into();
+        }
+
+        let target = (U512::from(*cur_difficulty)
+            * U512::from(self.block_generation_period)
+            * U512::from(block_count))
+            / (U512::from(timespan) * U512::from(1000000));
+        if target.is_zero() {
+            return 1.into();
+        }
+        if target > U256::max_value().into() {
+            return U256::max_value();
+        }
+        U256::from(target)
+    }
 }
 
 /// Convert boundary to its original difficulty. Basically just `f(x) = 2^256 /
@@ -53,24 +100,4 @@ pub fn validate(
     let nonce = solution.nonce;
     let hash = compute(nonce, &problem.block_hash);
     hash < problem.boundary
-}
-
-pub fn target_difficulty(
-    block_count: u64, timespan: u64, cur_difficulty: &U256,
-) -> U256 {
-    if timespan == 0 || block_count == 0 {
-        return INITIAL_DIFFICULTY.into();
-    }
-
-    let target = (U512::from(*cur_difficulty)
-        * U512::from(TARGET_AVERAGE_BLOCK_GENERATION_PERIOD)
-        * U512::from(block_count))
-        / U512::from(timespan);
-    if target.is_zero() {
-        return 1.into();
-    }
-    if target > U256::max_value().into() {
-        return U256::max_value();
-    }
-    U256::from(target)
 }

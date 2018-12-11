@@ -51,7 +51,7 @@ pub use storage::{
     state_manager::{SharedStateManager, StateManager, StateManagerTrait},
 };
 pub use sync::{
-    SharedSynchronizationService, SynchronizationConfiguration,
-    SynchronizationService,
+    BestInformation, SharedSynchronizationGraph, SharedSynchronizationService,
+    SynchronizationConfiguration, SynchronizationService,
 };
 pub use transaction_pool::{SharedTransactionPool, TransactionPool};

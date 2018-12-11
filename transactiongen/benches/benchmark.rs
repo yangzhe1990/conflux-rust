@@ -64,7 +64,13 @@ fn build_fake_environment() -> Arc<TransactionGenerator> {
         network: network_config,
         consensus: consensus.clone(),
     };
-    let mut sync = core::SynchronizationService::new(sync_config);
+    let pow_config = conf.pow_config();
+    let verification_config = conf.verification_config();
+    let mut sync = core::SynchronizationService::new(
+        sync_config,
+        pow_config,
+        verification_config,
+    );
     //sync.start().unwrap();
     let sync = Arc::new(sync);
 

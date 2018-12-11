@@ -1,7 +1,7 @@
 use super::{
     super::transaction_pool::SharedTransactionPool, random, Error, ErrorKind,
-    SynchronizationGraph, SynchronizationPeerState, SynchronizationState,
-    MAX_INFLIGHT_REQUEST_COUNT,
+    SharedSynchronizationGraph, SynchronizationGraph, SynchronizationPeerState,
+    SynchronizationState, MAX_INFLIGHT_REQUEST_COUNT,
 };
 use bytes::Bytes;
 use consensus::SharedConsensusGraph;
@@ -16,6 +16,7 @@ use network::{
     Error as NetworkError, NetworkContext, NetworkProtocolHandler, PeerId,
 };
 use parking_lot::{Mutex, RwLock};
+use pow::ProofOfWorkConfig;
 use primitives::{Block, SignedTransaction};
 use rand::RngCore;
 use rlp::Rlp;
@@ -30,6 +31,7 @@ use std::{
     time::{Duration, Instant},
 };
 use sync::synchronization_state::RequestMessage;
+use verification::verification::VerificationConfig;
 use rand::Rng;
 use sync::synchronization_state::SynchronizationPeerRequest;
 
@@ -47,7 +49,7 @@ const TX_TIMER: TimerToken = 0;
 const CHECK_REQUEST_TIMER: TimerToken = 1;
 
 pub struct SynchronizationProtocolHandler {
-    graph: SynchronizationGraph,
+    graph: SharedSynchronizationGraph,
     syn: RwLock<SynchronizationState>,
     headers_in_flight: Mutex<HashSet<H256>>,
     blocks_in_flight: Mutex<HashSet<H256>>,
@@ -103,14 +105,26 @@ impl PartialEq for TimedSyncRequests {
 }
 
 impl SynchronizationProtocolHandler {
-    pub fn new(consensus_graph: SharedConsensusGraph) -> Self {
+    pub fn new(
+        consensus_graph: SharedConsensusGraph, pow_config: ProofOfWorkConfig,
+        verification_config: VerificationConfig,
+    ) -> Self
+    {
         SynchronizationProtocolHandler {
-            graph: SynchronizationGraph::new(consensus_graph.clone()),
+            graph: Arc::new(SynchronizationGraph::new(
+                consensus_graph.clone(),
+                pow_config,
+                verification_config,
+            )),
             syn: RwLock::new(SynchronizationState::new()),
             headers_in_flight: Mutex::new(HashSet::new()),
             blocks_in_flight: Mutex::new(HashSet::new()),
             requests_queue: Mutex::new(BinaryHeap::new()),
         }
+    }
+
+    pub fn get_synchronization_graph(&self) -> SharedSynchronizationGraph {
+        self.graph.clone()
     }
 
     pub fn block_by_hash(&self, hash: &H256) -> Option<Block> {
@@ -272,7 +286,7 @@ impl SynchronizationProtocolHandler {
         trace!("on_get_terminal_block_hashes, msg=:{:?}", req);
         let msg: Box<dyn Message> = Box::new(GetTerminalBlockHashesResponse {
             request_id: req.request_id().into(),
-            hashes: self.graph.consensus.terminal_block_hashes(),
+            hashes: self.graph.get_best_info().terminal_block_hashes,
         });
         self.send_message(io, peer_id, msg.as_ref())?;
         Ok(())
@@ -388,17 +402,35 @@ impl SynchronizationProtocolHandler {
 
         let mut hashes = Vec::default();
         let mut dependent_hashes = Vec::new();
+        let mut need_to_relay = Vec::new();
 
         for header in &block_headers.headers {
             let hash = header.hash();
-            if !self.graph.contains_block_header(&hash) {
-                self.graph.insert_block_header(header.clone());
-                hashes.push(hash);
-            } else if !self.graph.contains_block(&hash) {
-                hashes.push(hash);
-            }
-            for referee in header.referee_hashes() {
-                dependent_hashes.push(*referee);
+            if !self.graph.verified_invalid(&hash) {
+                let need_to_fetch_referees =
+                    if !self.graph.contains_block_header(&hash) {
+                        let res = self
+                            .graph
+                            .insert_block_header(header.clone(), true);
+                        if res.0 {
+                            need_to_relay.extend(res.1);
+                            hashes.push(hash);
+                            true
+                        } else {
+                            false
+                        }
+                    } else if !self.graph.contains_block(&hash) {
+                        hashes.push(hash);
+                        true
+                    } else {
+                        true
+                    };
+
+                if need_to_fetch_referees {
+                    for referee in header.referee_hashes() {
+                        dependent_hashes.push(*referee);
+                    }
+                }
             }
         }
         {
@@ -413,6 +445,8 @@ impl SynchronizationProtocolHandler {
             }
         }
         dependent_hashes.push(parent_hash);
+
+        // FIXME: Should we make this code executable only in debug mode?
         let header_hashes: Vec<H256> = block_headers
             .headers
             .iter()
@@ -441,6 +475,19 @@ impl SynchronizationProtocolHandler {
             self.request_blocks(io, syn, peer_id, hashes);
         }
 
+        if !need_to_relay.is_empty() {
+            let new_block_hash_msg: Box<dyn Message> =
+                Box::new(NewBlockHashes {
+                    block_hashes: need_to_relay,
+                });
+            self.broadcast_message(
+                io,
+                syn,
+                PeerId::max_value(),
+                new_block_hash_msg.as_ref(),
+            )?;
+        }
+
         Ok(())
     }
 
@@ -453,37 +500,46 @@ impl SynchronizationProtocolHandler {
         trace!("on_blocks_response, get {} blocks", blocks.blocks.len());
         self.match_request(io, syn, peer_id, blocks.request_id())?;
 
+        let mut need_to_relay = Vec::new();
         let mut blocks_in_flight = self.blocks_in_flight.lock();
-        let new_block_hashes: Vec<H256> = blocks
-            .blocks
-            .into_iter()
-            .map(|block| {
-                let hash = block.hash();
-                if !self.graph.contains_block_header(&hash) {
-                    self.graph.insert_block_header(block.block_header.clone());
-                }
-                blocks_in_flight.remove(&hash);
-                if !self.graph.contains_block(&hash) {
-                    self.graph.insert_block(block);
-                    Some(hash)
+
+        for block in blocks.blocks {
+            let hash = block.hash();
+            blocks_in_flight.remove(&hash);
+
+            if self.graph.verified_invalid(&hash) {
+                continue;
+            }
+
+            if !self.graph.contains_block_header(&hash) {
+                debug_assert!(!self.graph.contains_block(&hash));
+                let res = self
+                    .graph
+                    .insert_block_header(block.block_header.clone(), true);
+                if res.0 {
+                    need_to_relay.extend(res.1);
                 } else {
-                    None
+                    continue;
                 }
-            })
-            .filter_map(|h| h)
-            .collect();
+            }
 
-        trace!("receive new blocks:{:?}", new_block_hashes);
+            if !self.graph.contains_block(&hash) {
+                let (_, to_relay) = self.graph.insert_block(block, true);
+                if to_relay {
+                    need_to_relay.push(hash);
+                }
+            }
+        }
 
-        if !new_block_hashes.is_empty() {
+        if !need_to_relay.is_empty() {
             let new_block_hash_msg: Box<dyn Message> =
                 Box::new(NewBlockHashes {
-                    block_hashes: new_block_hashes,
+                    block_hashes: need_to_relay,
                 });
             self.broadcast_message(
                 io,
                 syn,
-                peer_id,
+                PeerId::max_value(),
                 new_block_hash_msg.as_ref(),
             )?;
         }
@@ -491,17 +547,20 @@ impl SynchronizationProtocolHandler {
         Ok(())
     }
 
-    pub fn on_mined_block(&self, block: Block) {
+    pub fn on_mined_block(&self, block: Block) -> Vec<H256> {
         let hash = block.block_header.hash();
         let parent_hash = block.block_header.parent_hash();
 
         assert!(self.graph.contains_block_header(parent_hash));
-
         assert!(!self.graph.contains_block_header(&hash));
-        self.graph.insert_block_header(block.block_header.clone());
+        let res = self
+            .graph
+            .insert_block_header(block.block_header.clone(), false);
+        assert!(res.0);
 
         assert!(!self.graph.contains_block(&hash));
-        self.graph.insert_block(block.clone());
+        self.graph.insert_block(block.clone(), false);
+        res.1
     }
 
     fn on_new_block(
@@ -510,26 +569,46 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let new_block = rlp.as_val::<NewBlock>()?;
-        trace!("on_new_block, header={:?} tx_number={}", new_block.block.block_header,
-               new_block.block.transactions.len());
+        trace!(
+            "on_new_block, header={:?} tx_number={}",
+            new_block.block.block_header,
+            new_block.block.transactions.len()
+        );
         let hash = new_block.block.block_header.hash();
-        let parent_hash = new_block.block.block_header.parent_hash();
-        let referee_hashes = new_block.block.block_header.referee_hashes();
 
-        if !self.graph.contains_block_header(&hash) {
-            self.graph
-                .insert_block_header(new_block.block.block_header.clone());
-        }
-
-        let is_new = if !self.graph.contains_block(&hash) {
-            self.graph.insert_block(new_block.block.clone());
-            true
-        } else {
-            false
-        };
         self.headers_in_flight.lock().remove(&hash);
         self.blocks_in_flight.lock().remove(&hash);
 
+        if self.graph.verified_invalid(&hash) {
+            return Err(Error::from_kind(ErrorKind::Invalid));
+        }
+
+        let parent_hash = new_block.block.block_header.parent_hash();
+        let referee_hashes = new_block.block.block_header.referee_hashes();
+
+        let mut need_to_relay = Vec::new();
+        if !self.graph.contains_block_header(&hash) {
+            debug_assert!(!self.graph.contains_block(&hash));
+            let res = self.graph.insert_block_header(
+                new_block.block.block_header.clone(),
+                true,
+            );
+            if res.0 {
+                need_to_relay.extend(res.1);
+            } else {
+                return Err(Error::from_kind(ErrorKind::Invalid));
+            }
+        }
+
+        if !self.graph.contains_block(&hash) {
+            let (_, to_relay) =
+                self.graph.insert_block(new_block.block.clone(), true);
+            if to_relay {
+                need_to_relay.push(hash);
+            }
+        }
+
+        debug_assert!(!self.graph.verified_invalid(parent_hash));
         if !self.graph.contains_block_header(parent_hash) {
             self.request_block_headers(
                 io,
@@ -540,6 +619,7 @@ impl SynchronizationProtocolHandler {
             );
         }
         for hash in referee_hashes {
+            debug_assert!(!self.graph.verified_invalid(hash));
             if !self.graph.contains_block_header(hash) {
                 self.request_block_headers(
                     io,
@@ -551,16 +631,16 @@ impl SynchronizationProtocolHandler {
             }
         }
 
-        if is_new {
-            // broadcast the hash of the newly got block
-            let mut block_hashes: Vec<H256> = Vec::new();
-            block_hashes.push(hash);
+        // broadcast the hash of the newly got block
+        if !need_to_relay.is_empty() {
             let new_block_hash_msg: Box<dyn Message> =
-                Box::new(NewBlockHashes { block_hashes });
+                Box::new(NewBlockHashes {
+                    block_hashes: need_to_relay,
+                });
             self.broadcast_message(
                 io,
                 syn,
-                peer_id,
+                PeerId::max_value(),
                 new_block_hash_msg.as_ref(),
             )?;
         }
@@ -622,7 +702,10 @@ impl SynchronizationProtocolHandler {
             protocol_version: SYNCHRONIZATION_PROTOCOL_VERSION,
             network_id: 0x0,
             genesis_hash: *self.graph.genesis_hash(),
-            terminal_block_hashes: self.graph.consensus.terminal_block_hashes(),
+            terminal_block_hashes: self
+                .graph
+                .get_best_info()
+                .terminal_block_hashes,
         });
         self.send_message(io, peer, msg.as_ref())
     }
@@ -675,7 +758,12 @@ impl SynchronizationProtocolHandler {
                 hashes: hashes.clone(),
             })),
         ) {
-            trace!("Requesting {:?} blocks from {:?} request_id={}", hashes.len(), peer_id, timed_req.request_id);
+            trace!(
+                "Requesting {:?} blocks from {:?} request_id={}",
+                hashes.len(),
+                peer_id,
+                timed_req.request_id
+            );
             for hash in hashes {
                 blocks_in_flight.insert(hash);
             }
@@ -759,6 +847,26 @@ impl SynchronizationProtocolHandler {
                     .expect("Error sending new blocks!");
             }
         }
+    }
+
+    pub fn relay_blocks(
+        &self, io: &NetworkContext, need_to_relay: Vec<H256>,
+    ) -> Result<(), Error> {
+        let mut syn = self.syn.write();
+        if !need_to_relay.is_empty() {
+            let new_block_hash_msg: Box<dyn Message> =
+                Box::new(NewBlockHashes {
+                    block_hashes: need_to_relay,
+                });
+            self.broadcast_message(
+                io,
+                &mut *syn,
+                PeerId::max_value(),
+                new_block_hash_msg.as_ref(),
+            )?;
+        }
+
+        Ok(())
     }
 
     fn get_transaction_pool(&self) -> SharedTransactionPool {

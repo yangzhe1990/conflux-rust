@@ -11,7 +11,7 @@
 /// }
 /// ```
 /// `converter` is a function used to convert a provided String to `Result<type,
-/// String>`. For each entry, fieid `name` of type `type` will be created in
+/// String>`. For each entry, field `name` of type `type` will be created in
 /// `RawConfiguration`, and it will be assigned to the value passed through
 /// commandline argument or configuration file. Commandline argument will
 /// override the configuration file if the parameter is given in both.
@@ -137,6 +137,14 @@ impl Configuration {
             compact_profile,
             NUM_COLUMNS.clone(),
         )
+    }
+
+    pub fn pow_config(&self) -> ProofOfWorkConfig {
+        ProofOfWorkConfig::new(self.raw_conf.test_mode)
+    }
+
+    pub fn verification_config(&self) -> VerificationConfig {
+        VerificationConfig::new(self.raw_conf.test_mode)
     }
 }
 

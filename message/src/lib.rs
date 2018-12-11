@@ -3,6 +3,8 @@ extern crate ethcore_bytes as bytes;
 extern crate ethereum_types;
 extern crate primitives;
 extern crate rlp;
+#[macro_use]
+extern crate log;
 
 mod blockbodies;
 mod blockheaders;

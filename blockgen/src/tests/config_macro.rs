@@ -23,6 +23,8 @@ macro_rules! build_config{
             $(($c_name:ident, ($($c_type:tt)+), $c_default:expr, $converter:expr))*
         }
     ) => {
+        use core::pow::ProofOfWorkConfig;
+        use core::verification::verification::VerificationConfig;
         use tests::cache_config::CacheConfig;
         use tests::clap;
         use core::db::NUM_COLUMNS;

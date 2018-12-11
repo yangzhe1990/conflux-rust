@@ -133,6 +133,14 @@ impl Configuration {
             NUM_COLUMNS.clone(),
         )
     }
+
+    pub fn pow_config(&self) -> ProofOfWorkConfig {
+        ProofOfWorkConfig::new(self.raw_conf.test_mode)
+    }
+
+    pub fn verification_config(&self) -> VerificationConfig {
+        VerificationConfig::new(self.raw_conf.test_mode)
+    }
 }
 
 /// Validates and formats bootnodes option.
