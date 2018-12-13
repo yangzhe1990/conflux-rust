@@ -5,9 +5,10 @@ from rlp.sedes import CountableList
 
 from conflux import utils, trie
 from conflux.config import default_config
-from conflux.messages import BlockHeader, Block
+from conflux.messages import BlockHeader, Block, Transactions
 from conflux.transactions import Transaction
 from conflux.utils import *
+from trie import HexaryTrie
 
 TEST_DIFFICULTY = 4
 HASH_MAX = 1 << 256
@@ -16,7 +17,11 @@ HASH_MAX = 1 << 256
 def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, timestamp=0, difficulty=TEST_DIFFICULTY, transactions=[],
                  gas_limit=0, gas_used=0, referee_hashes=[], author=default_config["GENESIS_COINBASE"]):
     if len(transactions) != 0:
-        tx_root = utils.sha3(rlp.encode(transactions))
+        # tx_root = utils.sha3(rlp.encode(Transactions(transactions)))
+        trie_tree = HexaryTrie(db={})
+        for i in range(len(transactions)):
+            trie_tree[rlp.encode(i)] = rlp.encode(transactions[i])
+        tx_root = trie_tree.root_hash
     else:
         tx_root = trie.BLANK_ROOT
     nonce = 0

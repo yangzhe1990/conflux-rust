@@ -16,6 +16,7 @@ pip3 install py_ecc
 pip3 install coincurve
 pip3 install pysha3
 pip3 install coincurve
+pip3 install trie
 
 4. Install above packages before running the python scripts in test directory.
    Note that there is another sha3 package which does not contain necessary

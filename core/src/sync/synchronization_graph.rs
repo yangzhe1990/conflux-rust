@@ -623,9 +623,11 @@ impl SynchronizationGraph {
                 inner.arena[index].graph_status = BLOCK_HEADER_GRAPH_READY;
                 debug_assert!(inner.arena[index].parent != NULL);
 
+                let r = inner.verify_header_graph_ready_block(index);
                 if need_to_verify
-                    && inner.verify_header_graph_ready_block(index).is_err()
+                    && r.is_err()
                 {
+                    warn!("Invalid header: err={:?}", r);
                     if me == index {
                         me_invalid = true;
                     }
@@ -703,7 +705,9 @@ impl SynchronizationGraph {
         inner.arena[me].block_ready = true;
 
         if need_to_verify {
-            if self.verification_config.verify_block_basic(&block).is_err() {
+            let r = self.verification_config.verify_block_basic(&block);
+            if r.is_err() {
+                warn!("Invalid block: err={:?}", r);
                 inner.arena[me].graph_status = BLOCK_INVALID;
             }
         }

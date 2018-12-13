@@ -79,8 +79,8 @@ class P2PTest(ConfluxTestFramework):
                            value, eth_utils.encode_hex(privtoaddr(receiver_sk))[-4:], balance_map[sender_key], balance_map[receiver_sk])
             self.log.debug("Send Transaction %s to node %d", encode_hex(tx.hash), r)
             time.sleep(random.random() / 10)
-        t = BlockGenThread(self.nodes, self.log, random.random())
-        t.start()
+        block_gen_thread = BlockGenThread(self.nodes, self.log, random.random())
+        block_gen_thread.start()
         for k in balance_map:
             self.log.info("Check account sk:%s addr:%s", bytes_to_int(k), eth_utils.encode_hex(privtoaddr(k)))
             wait_until(lambda: self.check_account(k, balance_map))
@@ -118,6 +118,8 @@ class P2PTest(ConfluxTestFramework):
         for k in balance_map:
             self.log.info("Check account sk:%s addr:%s", bytes_to_int(k), eth_utils.encode_hex(privtoaddr(k)))
             wait_until(lambda: self.check_account(k, balance_map))
+        block_gen_thread.stop()
+        block_gen_thread.join()
         self.log.info("Pass")
 
     def check_account(self, k, balance_map):
@@ -149,19 +151,21 @@ class BlockGenThread(threading.Thread):
         self.log = log
         self.local_random = random.Random()
         self.local_random.seed(seed)
+        self.stopped = False
 
     def run(self):
-        try:
-            while True:
-                tx_n = 10000000
-                for i in range(tx_n):
-                    r = self.local_random.randint(0, len(self.nodes) - 1)
-                    h = self.nodes[r].generateoneblock()
-                    self.log.debug("%s generate block %s", r, h)
-                    time.sleep(self.local_random.random())
-        except Exception as e:
-            self.log.info("Fails to generate blocks")
-            self.log.info(e)
+        while not self.stopped:
+            try:
+                r = self.local_random.randint(0, len(self.nodes) - 1)
+                h = self.nodes[r].generateoneblock()
+                self.log.debug("%s generate block %s", r, h)
+                time.sleep(self.local_random.random())
+            except Exception as e:
+                self.log.info("Fails to generate blocks")
+                self.log.info(e)
+
+    def stop(self):
+        self.stopped = True
 
 
 class ConnectThread(threading.Thread):

@@ -1023,6 +1023,8 @@ impl SynchronizationProtocolHandler {
                         }
                         _ => {}
                     }
+                } else {
+                    warn!("Request is None");
                 }
             }
         }

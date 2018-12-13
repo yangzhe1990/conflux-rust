@@ -36,10 +36,11 @@ class P2PTest(ConfluxTestFramework):
         self.nodes[1].p2p.send_protocol_msg(NewBlock(block=block3))
         connect_nodes(self.nodes, 0, 1)
         sync_blocks(self.nodes, timeout=5)
+        best_block = self.nodes[0].getbestblockhash()
+        assert_equal(best_block, encode_hex(block3.hash))
         self.log.info("Pass 1")
 
         disconnect_nodes(self.nodes, 0, 1)
-        best_block = self.nodes[0].getbestblockhash()
         block1 = create_block(parent_hash=decode_hex(best_block), height=4)
         block2 = create_block(parent_hash=decode_hex(best_block), height=4, transactions=[create_transaction()])
         self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block1))
@@ -49,11 +50,11 @@ class P2PTest(ConfluxTestFramework):
         self.log.info("Pass 2")
 
         disconnect_nodes(self.nodes, 0, 1)
-        for i in range(1, block_number):
+        for i in range(block_number):
             chosen_peer = random.randint(1, self.num_nodes - 1)
             block_hash = self.nodes[chosen_peer].generate(1, 10)
             self.log.info("%s generate block %s", chosen_peer, block_hash)
-        wait_for_block_count(self.nodes[1], block_number)
+        wait_for_block_count(self.nodes[1], block_number + 7)
         sync_blocks(self.nodes[1:], timeout=10)
         self.log.info("blocks sync successfully between old nodes")
         connect_nodes(self.nodes, 0, 1)
