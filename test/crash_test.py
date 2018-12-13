@@ -32,6 +32,8 @@ class P2PTest(ConfluxTestFramework):
         self.node_extra_args = ["--bootnodes", bootnode_id, "--enable-discovery", "true", "--node-table-timeout", "1", "--node-table-promotion-timeout", "1"]
         for i in range(1, self.num_nodes):
             self.start_node(i, extra_args=self.node_extra_args)
+        for i in range(self.num_nodes):
+            wait_until(lambda: len(self.nodes[i].getpeerinfo()) >= 2)
 
     def run_test(self):
         block_number = 10

@@ -146,7 +146,7 @@ class DefaultNode(P2PInterface):
 
 class BlockGenThread(threading.Thread):
     def __init__(self, nodes, log, seed):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.nodes = nodes
         self.log = log
         self.local_random = random.Random()
@@ -156,10 +156,10 @@ class BlockGenThread(threading.Thread):
     def run(self):
         while not self.stopped:
             try:
+                time.sleep(self.local_random.random())
                 r = self.local_random.randint(0, len(self.nodes) - 1)
                 h = self.nodes[r].generateoneblock()
                 self.log.debug("%s generate block %s", r, h)
-                time.sleep(self.local_random.random())
             except Exception as e:
                 self.log.info("Fails to generate blocks")
                 self.log.info(e)
