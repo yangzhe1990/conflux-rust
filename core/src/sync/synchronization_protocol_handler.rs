@@ -18,7 +18,7 @@ use network::{
 use parking_lot::{Mutex, RwLock};
 use pow::ProofOfWorkConfig;
 use primitives::{Block, SignedTransaction};
-use rand::RngCore;
+use rand::{Rng, RngCore};
 use rlp::Rlp;
 use slab::Slab;
 use std::{
@@ -30,10 +30,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use sync::synchronization_state::RequestMessage;
+use sync::synchronization_state::{RequestMessage, SynchronizationPeerRequest};
 use verification::verification::VerificationConfig;
-use rand::Rng;
-use sync::synchronization_state::SynchronizationPeerRequest;
 
 pub const SYNCHRONIZATION_PROTOCOL_VERSION: u8 = 0x01;
 
@@ -143,6 +141,11 @@ impl SynchronizationProtocolHandler {
             e
         });
         // FIXME return error after we implement error handling
+        debug!(
+            "Send message({}) to {:?}",
+            msg.msg_id(),
+            io.get_peer_node_id(peer)
+        );
         Ok(())
     }
 
@@ -549,9 +552,9 @@ impl SynchronizationProtocolHandler {
 
     pub fn on_mined_block(&self, block: Block) -> Vec<H256> {
         let hash = block.block_header.hash();
-        let parent_hash = block.block_header.parent_hash();
+        let parent_hash = *block.block_header.parent_hash();
 
-        assert!(self.graph.contains_block_header(parent_hash));
+        assert!(self.graph.contains_block_header(&parent_hash));
         assert!(!self.graph.contains_block_header(&hash));
         let res = self
             .graph
@@ -559,7 +562,7 @@ impl SynchronizationProtocolHandler {
         assert!(res.0);
 
         assert!(!self.graph.contains_block(&hash));
-        self.graph.insert_block(block.clone(), false);
+        self.graph.insert_block(block, false);
         res.1
     }
 
@@ -808,7 +811,7 @@ impl SynchronizationProtocolHandler {
         if let Some(ref mut peer) = syn.peers.get_mut(&peer_id) {
             if peer.is_inflight_request(request_id) {
                 let req = if peer.has_pending_requests() {
-                     self.remove_request(peer, request_id as usize, false);
+                    self.remove_request(peer, request_id as usize, false);
                     let pending_req = peer.pop_pending_request().unwrap();
                     let mut pending_msg = pending_req.message;
                     pending_msg.set_request_id(request_id);
@@ -998,28 +1001,44 @@ impl SynchronizationProtocolHandler {
                 break;
             } else {
                 // TODO And should handle timeout peers.
-                let req = self.match_request(
-                    io,
-                    &mut *syn,
-                    sync_req.peer_id,
-                    sync_req.request_id as u16,
-                ).unwrap_or_else(|_|{
-                    warn!("Cannot get original timed-out requests");
-                    None
-                });
+                let req = self
+                    .match_request(
+                        io,
+                        &mut *syn,
+                        sync_req.peer_id,
+                        sync_req.request_id as u16,
+                    )
+                    .unwrap_or_else(|_| {
+                        warn!("Cannot get original timed-out requests");
+                        None
+                    });
                 if let Some(request) = req {
                     // TODO may have better choice than random peer
                     let chosen_peer = {
-                        let peers_vec: Vec<&PeerId> = syn.peers.keys().collect();
-                        let p = peers_vec.get(random::new().gen_range(0, peers_vec.len())).unwrap();
+                        let peers_vec: Vec<&PeerId> =
+                            syn.peers.keys().collect();
+                        let p = peers_vec
+                            .get(random::new().gen_range(0, peers_vec.len()))
+                            .unwrap();
                         **p
                     };
                     match request {
                         RequestMessage::Headers(get_headers) => {
-                            self.request_block_headers(io, &mut *syn, chosen_peer, &get_headers.hash, get_headers.max_blocks);
+                            self.request_block_headers(
+                                io,
+                                &mut *syn,
+                                chosen_peer,
+                                &get_headers.hash,
+                                get_headers.max_blocks,
+                            );
                         }
                         RequestMessage::Blocks(get_blocks) => {
-                            self.request_blocks(io, &mut *syn, chosen_peer, get_blocks.hashes);
+                            self.request_blocks(
+                                io,
+                                &mut *syn,
+                                chosen_peer,
+                                get_blocks.hashes,
+                            );
                         }
                         _ => {}
                     }
@@ -1095,6 +1114,9 @@ impl NetworkProtocolHandler for SynchronizationProtocolHandler {
 
     fn on_peer_disconnected(&self, _io: &NetworkContext, peer: PeerId) {
         trace!("Peer disconnected: peer={:?}", peer);
+        let mut syn = self.syn.write();
+        syn.peers.remove(&peer);
+        syn.handshaking_peers.remove(&peer);
     }
 
     fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {

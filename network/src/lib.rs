@@ -191,6 +191,8 @@ pub trait NetworkProtocolHandler: Sync + Send {
 }
 
 pub trait NetworkContext {
+    fn get_peer_node_id(&self, peer: PeerId) -> NodeId;
+
     fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error>;
 
     fn disconnect_peer(&self, peer: PeerId);

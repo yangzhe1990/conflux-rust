@@ -30,18 +30,11 @@ pub struct BestInformation {
 }
 
 pub struct SynchronizationGraphNode {
-    /// The hash of the block header.
-    pub hash: H256,
-    /// The hash of the parent block.
-    pub parent_hash: H256,
-    /// Referee hashes
-    pub referee_hashes: Vec<H256>,
+    pub block_header: Arc<BlockHeader>,
     /// The status of graph connectivity in the current block view.
     pub graph_status: u8,
     /// Whether the block body is ready.
     pub block_ready: bool,
-    /// The height of the block.
-    pub block_height: u64,
     /// The index of the parent of the block.
     pub parent: usize,
     /// The indices of the children of the block.
@@ -60,12 +53,6 @@ pub struct SynchronizationGraphNode {
     /// The minimum epoch number of the block in the view of other
     /// blocks including itself.
     pub min_epoch_in_other_views: u64,
-    /// The difficulty of the block.
-    /// Used for verification.
-    pub difficulty: U256,
-    /// The timestamp of the block generation.
-    /// Used for verification.
-    pub timestamp: u64,
 }
 
 pub struct SynchronizationGraphInner {
@@ -82,7 +69,7 @@ pub struct SynchronizationGraphInner {
 
 impl SynchronizationGraphInner {
     pub fn with_genesis_block(
-        genesis_block: &Block, pow_config: ProofOfWorkConfig,
+        genesis_header: Arc<BlockHeader>, pow_config: ProofOfWorkConfig,
     ) -> Self {
         let mut inner = SynchronizationGraphInner {
             arena: Slab::new(),
@@ -92,11 +79,11 @@ impl SynchronizationGraphInner {
             referrers_by_hash: HashMap::new(),
             pow_config,
             current_difficulty: pow_config.initial_difficulty.into(),
-            best_block_hash: genesis_block.hash(),
+            best_block_hash: genesis_header.hash(),
             terminal_block_hashes: HashSet::new(),
         };
-        inner.genesis_block_index = inner.insert(&genesis_block.block_header);
-        inner.terminal_block_hashes.insert(genesis_block.hash());
+        inner.genesis_block_index = inner.insert(genesis_header);
+        inner.terminal_block_hashes.insert(inner.best_block_hash);
 
         inner
     }
@@ -108,15 +95,11 @@ impl SynchronizationGraphInner {
             .collect()
     }
 
-    pub fn insert_invalid(&mut self, header: &BlockHeader) -> usize {
+    pub fn insert_invalid(&mut self, header: Arc<BlockHeader>) -> usize {
         let hash = header.hash();
         let me = self.arena.insert(SynchronizationGraphNode {
-            hash,
-            parent_hash: header.parent_hash().clone(),
-            referee_hashes: header.referee_hashes().clone(),
             graph_status: BLOCK_INVALID,
             block_ready: false,
-            block_height: header.height(),
             parent: NULL,
             children: Vec::new(),
             referees: Vec::new(),
@@ -124,8 +107,7 @@ impl SynchronizationGraphInner {
             referrers: Vec::new(),
             blockset_in_own_view_of_epoch: HashSet::new(),
             min_epoch_in_other_views: header.height(),
-            difficulty: *header.difficulty(),
-            timestamp: header.timestamp(),
+            block_header: header,
         });
         self.indices.insert(hash, me);
 
@@ -152,19 +134,15 @@ impl SynchronizationGraphInner {
     }
 
     /// Return the index of the inserted block.
-    pub fn insert(&mut self, header: &BlockHeader) -> usize {
+    pub fn insert(&mut self, header: Arc<BlockHeader>) -> usize {
         let hash = header.hash();
         let me = self.arena.insert(SynchronizationGraphNode {
-            hash,
-            parent_hash: header.parent_hash().clone(),
-            referee_hashes: header.referee_hashes().clone(),
             graph_status: if *header.parent_hash() == H256::default() {
                 BLOCK_GRAPH_READY
             } else {
                 BLOCK_HEADER_ONLY
             },
             block_ready: *header.parent_hash() == H256::default(),
-            block_height: header.height(),
             parent: NULL,
             children: Vec::new(),
             referees: Vec::new(),
@@ -172,8 +150,7 @@ impl SynchronizationGraphInner {
             referrers: Vec::new(),
             blockset_in_own_view_of_epoch: HashSet::new(),
             min_epoch_in_other_views: header.height(),
-            difficulty: *header.difficulty(),
-            timestamp: header.timestamp(),
+            block_header: header.clone(),
         });
         self.indices.insert(hash, me);
 
@@ -288,7 +265,7 @@ impl SynchronizationGraphInner {
             loop {
                 let parent = self.arena[cur_pivot].parent;
                 debug_assert!(parent != NULL);
-                if self.arena[parent].block_height
+                if self.arena[parent].block_header.height()
                     < self.arena[index].min_epoch_in_other_views
                 {
                     break;
@@ -316,7 +293,7 @@ impl SynchronizationGraphInner {
                 }
                 self.arena[index].min_epoch_in_other_views = min(
                     self.arena[index].min_epoch_in_other_views,
-                    self.arena[pivot].block_height,
+                    self.arena[pivot].block_header.height(),
                 );
                 self.arena[pivot]
                     .blockset_in_own_view_of_epoch
@@ -326,7 +303,7 @@ impl SynchronizationGraphInner {
     }
 
     fn target_difficulty(&self, cur_index: usize) -> U256 {
-        let epoch = self.arena[cur_index].block_height;
+        let epoch = self.arena[cur_index].block_header.height();
         assert_ne!(epoch, 0);
         debug_assert!(
             epoch
@@ -335,16 +312,16 @@ impl SynchronizationGraphInner {
         );
 
         let mut cur = cur_index;
-        let cur_difficulty = self.arena[cur].difficulty;
+        let cur_difficulty = *self.arena[cur].block_header.difficulty();
         let mut block_count = 0 as u64;
         let mut max_time = u64::min_value();
         let mut min_time = u64::max_value();
-        for i in 0..self.pow_config.difficulty_adjustment_epoch_period {
+        for _ in 0..self.pow_config.difficulty_adjustment_epoch_period {
             block_count = block_count
                 + self.arena[cur].blockset_in_own_view_of_epoch.len() as u64
                 + 1;
-            max_time = max(max_time, self.arena[cur].timestamp);
-            min_time = min(min_time, self.arena[cur].timestamp);
+            max_time = max(max_time, self.arena[cur].block_header.timestamp());
+            min_time = min(min_time, self.arena[cur].block_header.timestamp());
             cur = self.arena[cur].parent;
         }
         self.pow_config.target_difficulty(
@@ -357,41 +334,48 @@ impl SynchronizationGraphInner {
     fn verify_header_graph_ready_block(
         &self, index: usize,
     ) -> Result<(), Error> {
-        let epoch = self.arena[index].block_height;
+        let epoch = self.arena[index].block_header.height();
         let parent = self.arena[index].parent;
-        if self.arena[parent].block_height + 1 != epoch {
+        if self.arena[parent].block_header.height() + 1 != epoch {
+            warn!(
+                "Invalid height. mine {}, parent {}",
+                epoch,
+                self.arena[parent].block_header.height()
+            );
             return Err(From::from(BlockError::InvalidHeight(Mismatch {
-                expected: self.arena[parent].block_height + 1,
+                expected: self.arena[parent].block_header.height() + 1,
                 found: epoch,
             })));
         }
 
-        let expected_difficulty: U256 =
-            if epoch <= self.pow_config.difficulty_adjustment_epoch_period {
-                self.pow_config.initial_difficulty.into()
-            } else {
-                let mut last_period_upper = (epoch
-                    / self.pow_config.difficulty_adjustment_epoch_period)
-                    * self.pow_config.difficulty_adjustment_epoch_period;
-                if last_period_upper == epoch {
-                    last_period_upper = last_period_upper
-                        - self.pow_config.difficulty_adjustment_epoch_period;
-                }
-                let mut cur = index;
-                while self.arena[cur].block_height > last_period_upper {
-                    cur = self.arena[cur].parent;
-                }
-                self.target_difficulty(cur)
-            };
+        let expected_difficulty: U256 = if epoch
+            <= self.pow_config.difficulty_adjustment_epoch_period
+        {
+            self.pow_config.initial_difficulty.into()
+        } else {
+            let mut last_period_upper = (epoch
+                / self.pow_config.difficulty_adjustment_epoch_period)
+                * self.pow_config.difficulty_adjustment_epoch_period;
+            if last_period_upper == epoch {
+                last_period_upper = last_period_upper
+                    - self.pow_config.difficulty_adjustment_epoch_period;
+            }
+            let mut cur = index;
+            while self.arena[cur].block_header.height() > last_period_upper {
+                cur = self.arena[cur].parent;
+            }
+            self.target_difficulty(cur)
+        };
 
-        if expected_difficulty != self.arena[index].difficulty {
+        if expected_difficulty != *self.arena[index].block_header.difficulty() {
             warn!(
                 "expected_difficulty {}; difficulty {}",
-                expected_difficulty, self.arena[index].difficulty
+                expected_difficulty,
+                *self.arena[index].block_header.difficulty()
             );
             return Err(From::from(BlockError::InvalidDifficulty(Mismatch {
                 expected: expected_difficulty,
-                found: self.arena[index].difficulty.clone(),
+                found: self.arena[index].block_header.difficulty().clone(),
             })));
         }
 
@@ -401,17 +385,17 @@ impl SynchronizationGraphInner {
     pub fn adjust_difficulty_and_best_hash(&mut self, new_best_hash: &H256) {
         let old_best_index = *self.indices.get(&self.best_block_hash).unwrap();
         let new_best_index = *self.indices.get(new_best_hash).unwrap();
-        if self.arena[old_best_index].hash
-            == self.arena[new_best_index].parent_hash
+        if self.arena[old_best_index].block_header.hash()
+            == *self.arena[new_best_index].block_header.parent_hash()
         {
             // Pivot chain prolonged
             assert!(
                 self.current_difficulty
-                    == self.arena[new_best_index].difficulty
+                    == *self.arena[new_best_index].block_header.difficulty()
             );
         }
 
-        let epoch = self.arena[new_best_index].block_height;
+        let epoch = self.arena[new_best_index].block_header.height();
         assert_ne!(epoch, 0);
         if epoch
             == (epoch / self.pow_config.difficulty_adjustment_epoch_period)
@@ -419,7 +403,8 @@ impl SynchronizationGraphInner {
         {
             self.current_difficulty = self.target_difficulty(new_best_index);
         } else {
-            self.current_difficulty = self.arena[new_best_index].difficulty;
+            self.current_difficulty =
+                *self.arena[new_best_index].block_header.difficulty();
         }
 
         self.best_block_hash = new_best_hash.clone();
@@ -428,8 +413,8 @@ impl SynchronizationGraphInner {
 
 pub struct SynchronizationGraph {
     pub inner: RwLock<SynchronizationGraphInner>,
-    pub block_headers: RwLock<HashMap<H256, BlockHeader>>,
-    pub blocks: RwLock<HashMap<H256, Block>>,
+    pub block_headers: RwLock<HashMap<H256, Arc<BlockHeader>>>,
+    pub blocks: Arc<RwLock<HashMap<H256, Block>>>,
     genesis_block_hash: H256,
     pub consensus: SharedConsensusGraph,
     pub verification_config: VerificationConfig,
@@ -447,19 +432,16 @@ impl SynchronizationGraph {
         let genesis_block_hash = genesis_block.hash();
 
         let mut block_headers = HashMap::new();
-        block_headers
-            .insert(genesis_block_hash, genesis_block.block_header.clone());
-
-        let mut blocks = HashMap::new();
-        blocks.insert(genesis_block_hash, genesis_block.clone());
+        let genesis_header = Arc::new(genesis_block.block_header.clone());
+        block_headers.insert(genesis_block_hash, genesis_header.clone());
 
         SynchronizationGraph {
             inner: RwLock::new(SynchronizationGraphInner::with_genesis_block(
-                &genesis_block,
+                genesis_header,
                 pow_config,
             )),
             block_headers: RwLock::new(block_headers),
-            blocks: RwLock::new(blocks),
+            blocks: consensus.blocks.clone(),
             genesis_block_hash,
             consensus,
             verification_config,
@@ -475,12 +457,9 @@ impl SynchronizationGraph {
     }
 
     pub fn block_by_hash(&self, hash: &H256) -> Option<Block> {
-        warn!("enter block_by_hash");
         if let Some(block) = self.blocks.read().get(hash) {
-            warn!("Some");
             Some(block.clone())
         } else {
-            warn!("None");
             None
         }
     }
@@ -527,14 +506,14 @@ impl SynchronizationGraph {
     )
     {
         for index in invalid_set {
-            let hash = inner.arena[*index].hash;
+            let hash = inner.arena[*index].block_header.hash();
             self.consensus.invalidate_block(&hash);
 
             let parent = inner.arena[*index].parent;
             if parent != NULL {
                 inner.arena[parent].children.retain(|&x| x != *index);
             }
-            let parent_hash = inner.arena[*index].parent_hash;
+            let parent_hash = *inner.arena[*index].block_header.parent_hash();
             if let Some(children) = inner.children_by_hash.get_mut(&parent_hash)
             {
                 children.retain(|&x| x != *index);
@@ -546,7 +525,8 @@ impl SynchronizationGraph {
                 inner.arena[referee].referrers.retain(|&x| x != *index);
             }
             let referee_hashes: Vec<H256> = inner.arena[*index]
-                .referee_hashes
+                .block_header
+                .referee_hashes()
                 .iter()
                 .map(|x| *x)
                 .collect();
@@ -587,19 +567,20 @@ impl SynchronizationGraph {
         &self, header: BlockHeader, need_to_verify: bool,
     ) -> (bool, Vec<H256>) {
         let mut inner = self.inner.write();
+        let header = Arc::new(header);
         let me = if need_to_verify {
-            if self.parent_or_referees_invalid(&header)
+            if self.parent_or_referees_invalid(&*header)
                 || self
                     .verification_config
-                    .verify_header_params(&header)
+                    .verify_header_params(&*header)
                     .is_err()
             {
-                inner.insert_invalid(&header)
+                inner.insert_invalid(header.clone())
             } else {
-                inner.insert(&header)
+                inner.insert(header.clone())
             }
         } else {
-            inner.insert(&header)
+            inner.insert(header.clone())
         };
 
         // Start to pass influence to descendants
@@ -643,7 +624,7 @@ impl SynchronizationGraph {
 
                 // Passed verification on header.
                 if inner.arena[index].block_ready {
-                    need_to_relay.push(inner.arena[index].hash);
+                    need_to_relay.push(inner.arena[index].block_header.hash());
                 }
 
                 inner.collect_blockset_in_own_view_of_epoch(index);
@@ -693,7 +674,7 @@ impl SynchronizationGraph {
     pub fn insert_block(
         &self, block: Block, need_to_verify: bool,
     ) -> (bool, bool) {
-        let mut insert_success = false;
+        let mut insert_success = true;
         let mut need_to_relay = false;
 
         let hash = block.hash();
@@ -701,8 +682,10 @@ impl SynchronizationGraph {
 
         let mut inner = self.inner.write();
         let me = *inner.indices.get(&hash).unwrap();
+        debug_assert!(hash == inner.arena[me].block_header.hash());
         debug_assert!(!inner.arena[me].block_ready);
         inner.arena[me].block_ready = true;
+        warn!("block_ready {}", hash);
 
         if need_to_verify {
             let r = self.verification_config.verify_block_basic(&block);
@@ -712,7 +695,6 @@ impl SynchronizationGraph {
             }
         }
 
-        let mut me_invalid = false;
         let mut invalid_set: HashSet<usize> = HashSet::new();
         let mut queue = VecDeque::new();
         queue.push_back(me);
@@ -720,7 +702,7 @@ impl SynchronizationGraph {
         while let Some(index) = queue.pop_front() {
             if inner.arena[index].graph_status == BLOCK_INVALID {
                 if me == index {
-                    me_invalid = true;
+                    insert_success = false;
                 }
                 Self::set_and_propagate_invalid(
                     inner.deref_mut(),
@@ -730,15 +712,16 @@ impl SynchronizationGraph {
                 );
             } else if inner.new_to_be_block_graph_ready(index) {
                 inner.arena[index].graph_status = BLOCK_GRAPH_READY;
-                let b = if me == index {
-                    need_to_relay = true;
-                    block.clone()
-                } else {
-                    self.block_by_hash(&inner.arena[index].hash).unwrap()
-                };
+                if me == index {
+                    self.blocks.write().insert(hash, block.clone());
+                }
+                let h = inner.arena[index].block_header.hash();
                 let new_best_hash = self
                     .consensus
-                    .on_new_block(b, &mut inner.terminal_block_hashes);
+                    .on_new_block(&h, &mut inner.terminal_block_hashes);
+                if me == index {
+                    need_to_relay = true
+                }
                 inner.adjust_difficulty_and_best_hash(&new_best_hash);
                 for child in &inner.arena[index].children {
                     debug_assert!(
@@ -752,16 +735,15 @@ impl SynchronizationGraph {
                     );
                     queue.push_back(*referrer);
                 }
+            } else {
+                if me == index {
+                    self.blocks.write().insert(hash, block.clone());
+                }
             }
         }
 
         // Post-processing invalid blocks.
         self.process_invalid_blocks(inner.deref_mut(), &invalid_set);
-
-        if !me_invalid {
-            self.blocks.write().insert(hash, block);
-            insert_success = true;
-        }
 
         (insert_success, need_to_relay)
     }
@@ -780,11 +762,6 @@ impl SynchronizationGraph {
     }
 
     pub fn get_block_height(&self, hash: &H256) -> Option<u64> {
-        let blocks = self.blocks.read();
-        if let Some(block) = blocks.get(hash) {
-            Some(block.block_header.height())
-        } else {
-            self.consensus.get_block_height(hash)
-        }
+        self.consensus.get_block_height(hash)
     }
 }

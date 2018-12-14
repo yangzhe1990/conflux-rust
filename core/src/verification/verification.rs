@@ -111,6 +111,7 @@ impl VerificationConfig {
         let expected_root =
             ordered_trie_root(tx_rlps.iter().map(|r| r.as_slice()));
         if &expected_root != block.block_header.transactions_root() {
+            warn!("Invalid transaction root");
             bail!(BlockError::InvalidTransactionsRoot(Mismatch {
                 expected: expected_root,
                 found: *block.block_header.transactions_root(),

@@ -383,6 +383,8 @@ impl NetworkServiceInner {
                 )
         };
 
+        debug!("Self node id: {:?}", *keys.public());
+
         let tcp_listener = TcpListener::bind(&listen_address)?;
         listen_address = SocketAddr::new(
             listen_address.ip(),
@@ -824,6 +826,17 @@ impl NetworkServiceInner {
             }
         }
         peers
+    }
+
+    pub fn get_peer_node_id(&self, peer: PeerId) -> NodeId {
+        let sessions = self.sessions.read();
+        let session = sessions.get(peer);
+        if session.is_some() {
+            let sess = session.unwrap().lock();
+            sess.id().unwrap_or(&NodeId::default()).clone()
+        } else {
+            NodeId::default()
+        }
     }
 
     #[allow(unused)]
@@ -1390,6 +1403,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
                         if let Some(node_id) = sess.id() {
                             self.note_failure(node_id, true);
                         }
+                        debug!("Remove session {}", stream);
                         sessions.remove(stream);
                     }
                 }
@@ -1507,6 +1521,10 @@ impl<'a> NetworkContext<'a> {
 }
 
 impl<'a> NetworkContextTrait for NetworkContext<'a> {
+    fn get_peer_node_id(&self, peer: PeerId) -> NodeId {
+        self.network_service.get_peer_node_id(peer)
+    }
+
     fn send(&self, peer: PeerId, msg: Vec<u8>) -> Result<(), Error> {
         let sessions = self.network_service.sessions.read();
         let session = sessions.get(peer);

@@ -16,14 +16,14 @@ extern crate log;
 mod tests;
 
 use core::{
-    pow::*, BestInformation, SharedSynchronizationGraph,
-    SharedSynchronizationService, SharedTransactionPool,
+    pow::*, SharedSynchronizationGraph, SharedSynchronizationService,
+    SharedTransactionPool,
 };
 use ethereum_types::{Address, H256};
-use hash::{keccak, KECCAK_NULL_RLP};
+use hash::KECCAK_NULL_RLP;
 use parking_lot::RwLock;
 use primitives::*;
-use rlp::{encode, RlpStream};
+use rlp::encode;
 use std::{
     sync::{mpsc, Arc, Mutex},
     thread, time,

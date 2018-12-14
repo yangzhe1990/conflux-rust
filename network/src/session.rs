@@ -326,7 +326,7 @@ impl Session {
         if protocol.is_some()
             && (self.metadata.capabilities.is_empty() || !self.had_hello)
         {
-            debug!(target: "network", "Sending to unconfirmed session {}, protocol: {:?}, packet: {}", self.token(), protocol.as_ref().map(|p| str::from_utf8(&p[..]).unwrap_or("???")), packet_id);
+            debug!(target: "network", "Sending to unconfirmed session {}, protocol: {:?}, packet: {}, had_hello: {}", self.token(), protocol.as_ref().map(|p| str::from_utf8(&p[..]).unwrap_or("???")), packet_id, self.had_hello);
             bail!(ErrorKind::BadProtocol);
         }
         if self.expired() {

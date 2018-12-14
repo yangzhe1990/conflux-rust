@@ -468,6 +468,7 @@ impl Discovery {
             None => return,
         };
         if discovery_round == DISCOVERY_MAX_STEPS {
+            trace!("Discover stop due to beyond max round count.");
             self.stop();
             return;
         }
@@ -497,6 +498,7 @@ impl Discovery {
         }
 
         if tried_count == 0 {
+            trace!("Discovery stop due to 0 tried_count");
             self.stop();
             return;
         }

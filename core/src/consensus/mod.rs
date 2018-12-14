@@ -281,7 +281,7 @@ impl ConsensusGraphInner {
 }
 
 pub struct ConsensusGraph {
-    pub blocks: RwLock<HashMap<H256, Block>>,
+    pub blocks: Arc<RwLock<HashMap<H256, Block>>>,
     pub inner: RwLock<ConsensusGraphInner>,
     genesis_block_hash: H256,
     pub txpool: SharedTransactionPool,
@@ -310,7 +310,7 @@ impl ConsensusGraph {
                 &genesis_block,
                 state_mananger,
             )),
-            blocks: RwLock::new(blocks),
+            blocks: Arc::new(RwLock::new(blocks)),
             genesis_block_hash,
             txpool,
             ledger_db,
@@ -363,16 +363,16 @@ impl ConsensusGraph {
     }
 
     pub fn on_new_block(
-        &self, block: Block, terminal_hashes: &mut HashSet<H256>,
+        &self, hash: &H256, terminal_hashes: &mut HashSet<H256>,
     ) -> H256 {
+        let blocks = self.blocks.read();
+        let block = blocks.get(hash).unwrap();
+
         debug!(
             "insert new block into consensus hash:{:?}, block_header:{:?}",
             block.hash(),
             block.block_header
         );
-
-        let mut blocks = self.blocks.write();
-        blocks.insert(block.hash(), block.clone());
 
         for tx in block.transactions.iter() {
             self.txpool.remove_pending(&tx);
@@ -381,7 +381,7 @@ impl ConsensusGraph {
 
         self.inner.write().on_new_block(
             &self.txpool,
-            &block,
+            block,
             &*blocks,
             terminal_hashes,
         )
