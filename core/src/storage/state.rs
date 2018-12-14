@@ -14,7 +14,13 @@ pub use super::impls::state::State;
 // concrete struct is put into inner mod, because the implementation is
 // anticipated to be too complex to present in the same file of the API.
 // TODO(yz): check if this is the best way to organize code for this library.
-pub trait StateTrait<'a> {
+pub trait StateTrait {
+    // Status.
+    /// Check if the state exists. If not any state action operates on an empty state.
+    fn does_exist(&self) -> bool;
+    /// Merkle hash
+    fn get_merkle_hash(&self) -> Option<MerkleHash>;
+
     // Actions.
     fn get(&self, access_key: &[u8]) -> Result<Box<[u8]>>;
     fn set(&mut self, access_key: &[u8], value: &[u8]) -> Result<()>;

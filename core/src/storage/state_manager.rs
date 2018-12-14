@@ -16,6 +16,9 @@ pub type SharedStateManager = Arc<StateManager>;
 pub trait StateManagerTrait {
     fn from_snapshot(snapshot: &Snapshot) -> Self;
     fn make_snapshot(&self, epoch_id: EpochId) -> Snapshot;
+    /// Even for non-existing the method returns a State because we need a way to create the
+    /// genesis State. However there should be a special epoch_id to create the genesis State.
+    //  TODO(yz): special epoch_id for empty state.
     fn get_state_at(&self, epoch_id: EpochId) -> State;
     fn drop_state_outside(&self, epoch_id: EpochId);
 }

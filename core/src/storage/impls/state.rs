@@ -70,7 +70,20 @@ impl<'a> Drop for State<'a> {
     }
 }
 
-impl<'a> StateTrait<'a> for State<'a> {
+impl<'a> StateTrait for State<'a> {
+    fn does_exist(&self) -> bool {
+        self.get_root_node().is_ok()
+    }
+
+    fn get_merkle_hash(&self) -> Option<MerkleHash> {
+        match self.get_root_node() {
+            Err(_) => None,
+            Ok(node) => {
+                Some(self.allocator.get_merkle_at_node(node.into()))
+            },
+        }
+    }
+
     fn get(&self, access_key: &[u8]) -> Result<Box<[u8]>> {
         // Get won't create any new nodes so it's fine to pass an empty
         // owned_node_set.
@@ -104,7 +117,7 @@ impl<'a> StateTrait<'a> for State<'a> {
 
         let (old_value, _, root_node) = SubTrieVisitor::new(
             self.allocator,
-            self.get_or_create_root_node()?,
+            self.get_root_node()?,
             &mut self.owned_node_set,
         )
         .delete(access_key)?;
