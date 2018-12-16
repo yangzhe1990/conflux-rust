@@ -246,7 +246,7 @@ def wait_until(predicate,
 ################
 
 
-def initialize_datadir(dirname, n, ip="127.0.0.1"):
+def initialize_datadir(dirname, n, conf_parameters):
     datadir = get_datadir_path(dirname, n)
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
@@ -256,7 +256,9 @@ def initialize_datadir(dirname, n, ip="127.0.0.1"):
         f.write("jsonrpc-http-port=" + str(rpc_port(n)) + "\n")
         f.write("log-file=\"" + os.path.join(datadir, "conflux.log") + "\"\n")
         f.write("log-level=\"trace\"\n")
-        f.write("test-mode=true")
+        f.write("test-mode=true\n")
+        for k in conf_parameters:
+            f.write("{}={}\n".format(k, conf_parameters[k]))
         os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)
         os.makedirs(os.path.join(datadir, 'stdout'), exist_ok=True)
     return datadir

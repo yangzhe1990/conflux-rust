@@ -4,6 +4,7 @@ use super::{
 };
 use consensus::SharedConsensusGraph;
 use ethereum_types::H256;
+use ethkey::KeyPair;
 use network::{
     node_table::{NodeEntry, NodeId},
     Error as NetworkError, NetworkConfiguration, NetworkService, PeerInfo,
@@ -101,6 +102,10 @@ impl SynchronizationService {
 
     pub fn block_by_hash(&self, hash: &H256) -> Option<Block> {
         self.protocol_handler.block_by_hash(hash)
+    }
+
+    pub fn net_key_pair(&self) -> Result<KeyPair, NetworkError> {
+        self.network.net_key_pair()
     }
 }
 

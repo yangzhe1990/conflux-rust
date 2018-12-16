@@ -10,6 +10,7 @@ pub use self::impls::TreapMap;
 use self::ready::Readiness;
 use super::{SharedStateManager, State, StateManagerTrait, StateTrait};
 use ethereum_types::{Address, H256, H512, U256, U512};
+use get_account;
 use parking_lot::RwLock;
 use primitives::{
     Account, EpochId, SignedTransaction, TransactionWithSignature,
@@ -17,7 +18,7 @@ use primitives::{
 use rlp::decode;
 use std::{
     cmp::{min, Ordering},
-    collections::HashMap,
+    collections::hash_map::{Entry, HashMap},
     ops::DerefMut,
     sync::Arc,
 };
@@ -400,10 +401,14 @@ impl TransactionPool {
     }
 
     /// pack at most num_txs transactions randomly
-    pub fn pack_transactions(&self, num_txs: usize) -> Vec<SignedTransaction> {
+    pub fn pack_transactions(
+        &self, num_txs: usize, state: State,
+    ) -> Vec<SignedTransaction> {
         let mut inner = self.inner.write();
         let mut packed_transactions: Vec<SignedTransaction> = Vec::new();
         let num_txs = min(num_txs, inner.ready_transactions.len());
+        let mut nonce_map = HashMap::new();
+        let mut future_txs = HashMap::new();
 
         for _ in 0..num_txs {
             let mut sum_gas_price = inner.ready_transactions.sum_weight();
@@ -417,9 +422,36 @@ impl TransactionPool {
                 .get_by_weight(rand_value)
                 .expect("Failed to pick transaction by weight")
                 .clone();
-
+            let sender = tx.sender;
+            let nonce_entry = nonce_map.entry(sender);
+            let nonce = nonce_entry.or_insert_with(|| {
+                get_account(&state, &sender)
+                    .map(|c| c.nonce)
+                    .unwrap_or(0.into())
+            });
             inner.ready_transactions.remove(&tx.hash());
-            packed_transactions.push(tx);
+            if tx.nonce > *nonce {
+                future_txs
+                    .entry(sender)
+                    .or_insert(HashMap::new())
+                    .insert(tx.nonce, tx);
+            } else if tx.nonce == *nonce {
+                *nonce += 1.into();
+                packed_transactions.push(tx);
+                if let Some(mut tx_map) = future_txs.get_mut(&sender) {
+                    loop {
+                        if tx_map.is_empty() {
+                            break;
+                        }
+                        if let Some(tx) = tx_map.remove(nonce) {
+                            packed_transactions.push(tx);
+                            *nonce += 1.into();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         for tx in packed_transactions.iter() {
@@ -428,6 +460,13 @@ impl TransactionPool {
                 tx.clone(),
                 U512::from(tx.gas_price),
             );
+        }
+
+        for (_, txs) in future_txs.into_iter() {
+            for (_, tx) in txs.into_iter() {
+                let gas_price = U512::from(tx.gas_price);
+                inner.ready_transactions.insert(tx.hash(), tx, gas_price);
+            }
         }
 
         packed_transactions

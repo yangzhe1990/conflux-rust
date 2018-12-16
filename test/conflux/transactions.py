@@ -1,3 +1,4 @@
+import eth_utils
 import rlp
 # import sender as sender
 from rlp.sedes import big_endian_int, binary
@@ -78,6 +79,9 @@ class Transaction(rlp.Serializable):
     @property
     def hash(self):
         return utils.sha3(rlp.encode(self))
+
+    def hash_hex(self):
+        return eth_utils.encode_hex(self.hash)
 
     def to_dict(self):
         d = {}

@@ -71,6 +71,7 @@ class ConfluxTestFramework:
         self.rpc_timewait = 60  # Wait for up to 60 seconds for the RPC server to respond
         self.supports_cli = False
         self.bind_to_localhost_only = True
+        self.conf_parameters = {}
         self.set_test_params()
 
         assert hasattr(
@@ -473,7 +474,7 @@ class ConfluxTestFramework:
             to_dir = get_datadir_path(self.options.tmpdir, i)
             shutil.copytree(from_dir, to_dir)
             initialize_datadir(self.options.tmpdir,
-                               i)  # Overwrite port/rpcport in bitcoin.conf
+                               i, self.conf_parameters)  # Overwrite port/rpcport in bitcoin.conf
 
     def _initialize_chain_clean(self):
         """Initialize empty blockchain for use by the test.
@@ -481,7 +482,7 @@ class ConfluxTestFramework:
         Create an empty blockchain and num_nodes wallets.
         Useful if a test case wants complete control over initialization."""
         for i in range(self.num_nodes):
-            initialize_datadir(self.options.tmpdir, i)
+            initialize_datadir(self.options.tmpdir, i, self.conf_parameters)
 
 
 class SkipTest(Exception):

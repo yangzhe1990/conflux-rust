@@ -36,7 +36,7 @@ def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, times
     return block
 
 
-def create_transaction(nonce=0, gas_price=1, gas=1, value=0, receiver=default_config['GENESIS_COINBASE'],
+def create_transaction(nonce=0, gas_price=100, gas=1, value=0, receiver=default_config['GENESIS_COINBASE'],
                        data=b'', v=0, r=0, s=0, pri_key=default_config["GENESIS_PRI_KEY"]):
     transaction = Transaction(nonce, gas_price, gas, receiver, value, data, v, r, s)
     return transaction.sign(pri_key)

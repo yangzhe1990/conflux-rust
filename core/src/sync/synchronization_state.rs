@@ -4,14 +4,15 @@ use network::PeerId;
 use slab::Slab;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    mem,
     sync::Arc,
     time::Instant,
-    mem,
 };
 use sync::synchronization_protocol_handler::TimedSyncRequests;
 
 pub const MAX_INFLIGHT_REQUEST_COUNT: usize = 64;
 
+#[derive(Debug)]
 pub enum RequestMessage {
     Headers(GetBlockHeaders),
     Blocks(GetBlocks),
@@ -42,6 +43,7 @@ impl RequestMessage {
     }
 }
 
+#[derive(Debug)]
 pub struct SynchronizationPeerRequest {
     pub message: Box<RequestMessage>,
     pub timed_req: Option<Arc<TimedSyncRequests>>,
@@ -119,7 +121,9 @@ impl SynchronizationPeerState {
         self.pending_requests.pop_front()
     }
 
-    pub fn remove_inflight_request(&mut self, request_id: usize) -> SynchronizationPeerRequest {
+    pub fn remove_inflight_request(
+        &mut self, request_id: usize,
+    ) -> SynchronizationPeerRequest {
         self.inflight_requests.remove(request_id)
     }
 }

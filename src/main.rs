@@ -125,6 +125,7 @@ fn start(
         state_manager.clone(),
         txpool.clone(),
         secret_store.clone(),
+        sync.net_key_pair().ok(),
     ));
 
     let blockgen = Arc::new(BlockGenerator::new(
@@ -135,9 +136,20 @@ fn start(
         pow_config.clone(),
     ));
 
-    //    let txgen_handle = thread::spawn(move || {
-    //        TransactionGenerator::generate_transactions(txgen).unwrap();
-    //    });
+    let tx_conf = conf.tx_gen_config();
+    let txgen_handle = if tx_conf.generate_tx {
+        Some(
+            thread::Builder::new()
+                .name("txgen".into())
+                .spawn(move || {
+                    TransactionGenerator::generate_transactions(txgen, tx_conf)
+                        .unwrap();
+                })
+                .expect("should succeed"),
+        )
+    } else {
+        None
+    };
 
     let event_loop = EventLoop::spawn();
 
@@ -167,7 +179,8 @@ fn start(
             rpc_http_server,
             sync,
             blockgen,
-            secret_store.clone(),
+            secret_store,
+            txgen_handle,
         )),
     ))
 }
@@ -175,8 +188,8 @@ fn start(
 /// Use a Weak pointer to ensure that other Arc pointers are released
 fn wait_for_drop<T>(w: Weak<T>) {
     let sleep_duration = Duration::from_secs(1);
-    let warn_timeout = Duration::from_secs(10);
-    let max_timeout = Duration::from_secs(60);
+    let warn_timeout = Duration::from_secs(5);
+    let max_timeout = Duration::from_secs(20);
     let instant = Instant::now();
     let mut warned = false;
     while instant.elapsed() < max_timeout {
@@ -343,21 +356,15 @@ fn main() {
                     conf_builder.appender(Appender::builder().build(
                         "logfile",
                         Box::new(
-                            FileAppender::builder().encoder(Box::new(PatternEncoder::new("{d:23.23} {h({l}):5.5} {T:<12.12} {t:12.12} - {m}{n}"))).build(log_file).unwrap(),
+                            FileAppender::builder().encoder(Box::new(PatternEncoder::new("{d:23.23} {h({l}):5.5} {T:<20.20} {t:12.12} - {m}{n}"))).build(log_file).unwrap(),
                         ),
                     ));
                 root_builder = root_builder.appender("logfile");
             };
             // Should add new crate names here
             for crate_name in [
-                "blockgen",
-                "core",
-                "conflux",
-                "db",
-                "eth_key",
-                "network",
-                "rpc",
-                "transactiongen",
+                "blockgen", "core", "conflux", "db", "eth_key", "network",
+                "rpc", "txgen",
             ]
             .iter()
             {

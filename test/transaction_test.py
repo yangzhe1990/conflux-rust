@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from http.client import CannotSendRequest
+
 from eth_utils import decode_hex
 from rlp.sedes import Binary, BigEndianInt
 
@@ -87,6 +89,7 @@ class P2PTest(ConfluxTestFramework):
         self.log.info("Pass 1")
 
         '''Test Random Transactions'''
+        all_txs = []
         tx_n = 1000
         self.log.info("start to generate %d transactions with about %d seconds", tx_n, tx_n/10/2)
         for i in range(tx_n):
@@ -107,6 +110,7 @@ class P2PTest(ConfluxTestFramework):
                                     gas_price=100)
             r = random.randint(0, self.num_nodes - 1)
             self.nodes[r].p2p.send_protocol_msg(Transactions(transactions=[tx]))
+            all_txs.append(tx)
             nonce_map[sender_key] = nonce + 1
             balance_map[sender_key] -= value
             self.log.debug("New tx %s: %s send value %d to %s, sender balance:%d, receiver balance:%d nonce:%d", encode_hex(tx.hash), eth_utils.encode_hex(privtoaddr(sender_key))[-4:],
@@ -114,7 +118,24 @@ class P2PTest(ConfluxTestFramework):
             self.log.debug("Send Transaction %s to node %d", encode_hex(tx.hash), r)
             time.sleep(random.random() / 10)
         for k in balance_map:
-            self.log.info("Account %s with balance:%s", bytes_to_int(k), balance_map[k]);
+            self.log.info("Account %s with balance:%s", bytes_to_int(k), balance_map[k])
+        for tx in all_txs:
+            self.log.debug("Wait for tx to confirm %s", tx.hash_hex())
+            for i in range(3):
+                try:
+                    retry = True
+                    while retry:
+                        try:
+                            wait_until(lambda: self.nodes[0].checktx(tx.hash_hex()), timeout=10)
+                            retry = False
+                        except CannotSendRequest:
+                            time.sleep(0.01)
+                    break
+                except AssertionError as _:
+                    self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
+                if i == 2:
+                    raise AssertionError("Tx {} not confirmed after 30 seconds".format(tx.hash_hex()))
+
         for k in balance_map:
             self.log.info("Check account sk:%s addr:%s", bytes_to_int(k), eth_utils.encode_hex(privtoaddr(k)))
             wait_until(lambda: self.check_account(k, balance_map))
@@ -158,7 +179,7 @@ class BlockGenThread(threading.Thread):
             try:
                 time.sleep(self.local_random.random())
                 r = self.local_random.randint(0, len(self.nodes) - 1)
-                h = self.nodes[r].generateoneblock()
+                h = self.nodes[r].generateoneblock(1000)
                 self.log.debug("%s generate block %s", r, h)
             except Exception as e:
                 self.log.info("Fails to generate blocks")
@@ -170,11 +191,12 @@ class BlockGenThread(threading.Thread):
 
 class ConnectThread(threading.Thread):
     def __init__(self, nodes, a, peers, latencies, log):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.nodes = nodes
         self.a = a
         self.peers = peers
         self.latencies = latencies
+        self.log = log
 
     def run(self):
         try:

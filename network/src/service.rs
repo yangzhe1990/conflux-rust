@@ -257,6 +257,14 @@ impl NetworkService {
         }
     }
 
+    pub fn net_key_pair(&self) -> Result<KeyPair, Error> {
+        if let Some(ref inner) = self.inner {
+            Ok(inner.metadata.read().keys.clone())
+        } else {
+            Err("Network service not started yet!".into())
+        }
+    }
+
     pub fn add_latency(
         &self, id: NodeId, latency_ms: f64,
     ) -> Result<(), Error> {

@@ -43,6 +43,8 @@ pub struct ConsensusGraphInner {
     pub arena: Slab<ConsensusGraphNode>,
     pub indices: HashMap<H256, usize>,
     pub pivot_chain: Vec<usize>,
+    /// Track the block where the tx is successfully executed
+    pub block_for_transaction: HashMap<H256, usize>,
     genesis_block_index: usize,
     state_manager: Arc<StateManager>,
 }
@@ -55,6 +57,7 @@ impl ConsensusGraphInner {
             arena: Slab::new(),
             indices: HashMap::new(),
             pivot_chain: Vec::new(),
+            block_for_transaction: HashMap::new(),
             genesis_block_index: NULL,
             state_manager,
         };
@@ -178,26 +181,28 @@ impl ConsensusGraphInner {
 
         while fork_at < new_pivot_chain.len() {
             // First, identify all the blocks in the current epoch
-            let copy_of_fork_at = fork_at;
-            let enqueue_if_new = |queue: &mut Vec<usize>, index| {
-                let mut epoch_number =
-                    self.arena[index].data.epoch_number.borrow_mut();
-                if *epoch_number == NULL {
-                    *epoch_number = copy_of_fork_at;
-                    queue.push(index);
-                }
-            };
-
             let mut queue = Vec::new();
-            let mut at = 0;
-            enqueue_if_new(&mut queue, new_pivot_chain[fork_at]);
-            while at < queue.len() {
-                let me = queue[at];
-                for referee in &self.arena[me].referees {
-                    enqueue_if_new(&mut queue, *referee);
+            {
+                let copy_of_fork_at = fork_at;
+                let enqueue_if_new = |queue: &mut Vec<usize>, index| {
+                    let mut epoch_number =
+                        self.arena[index].data.epoch_number.borrow_mut();
+                    if *epoch_number == NULL {
+                        *epoch_number = copy_of_fork_at;
+                        queue.push(index);
+                    }
+                };
+
+                let mut at = 0;
+                enqueue_if_new(&mut queue, new_pivot_chain[fork_at]);
+                while at < queue.len() {
+                    let me = queue[at];
+                    for referee in &self.arena[me].referees {
+                        enqueue_if_new(&mut queue, *referee);
+                    }
+                    enqueue_if_new(&mut queue, self.arena[me].parent);
+                    at += 1;
                 }
-                enqueue_if_new(&mut queue, self.arena[me].parent);
-                at += 1;
             }
 
             // Second, sort all the blocks based on their topological order
@@ -260,13 +265,17 @@ impl ConsensusGraphInner {
                 .state_manager
                 .get_state_at(self.arena[new_pivot_chain[fork_at - 1]].hash);
             let mut executor = Executor::new(&mut state);
-            reversed_indices.iter().rev().for_each(|index| {
+            for index in reversed_indices.iter().rev() {
                 let block =
                     block_by_hash.get(&self.arena[*index].hash).unwrap();
                 for transaction in &block.transactions {
-                    executor.apply(transaction);
+                    let success = executor.apply(transaction);
+                    if success {
+                        self.block_for_transaction
+                            .insert(transaction.hash(), *index);
+                    }
                 }
-            });
+            }
             executor.commit(self.arena[new_pivot_chain[fork_at]].hash, txpool);
             fork_at += 1;
         }
@@ -277,6 +286,12 @@ impl ConsensusGraphInner {
 
     pub fn best_block_hash(&self) -> H256 {
         self.arena[*self.pivot_chain.last().unwrap()].hash
+    }
+
+    pub fn get_block_for_tx_execution(&self, tx_hash: &H256) -> Option<H256> {
+        self.block_for_transaction
+            .get(tx_hash)
+            .map(|index| self.arena[*index].hash)
     }
 }
 
@@ -392,4 +407,8 @@ impl ConsensusGraph {
     }
 
     pub fn block_count(&self) -> usize { self.blocks.read().len() }
+
+    pub fn get_block_for_tx_execution(&self, tx_hash: &H256) -> Option<H256> {
+        self.inner.read().get_block_for_tx_execution(tx_hash)
+    }
 }

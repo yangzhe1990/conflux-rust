@@ -25,6 +25,7 @@ use parking_lot::RwLock;
 use primitives::*;
 use rlp::encode;
 use std::{
+    collections::HashSet,
     sync::{mpsc, Arc, Mutex},
     thread, time,
 };
@@ -165,9 +166,16 @@ impl BlockGenerator {
         // get the best block
         let best_info = self.graph.get_best_info();
         let best_block_hash = best_info.best_block_hash;
+        debug_assert_eq!(
+            best_block_hash,
+            self.txgen.consensus.best_block_hash()
+        );
         let parent_height =
             self.graph.get_block_height(&best_block_hash).unwrap();
-        let transactions = self.txpool.pack_transactions(num_txs);
+        let transactions = self
+            .txpool
+            .pack_transactions(num_txs, self.txgen.get_best_state());
+        trace!("{} txs packed", transactions.len());
         let mut tx_rlps: Vec<Vec<u8>> = Vec::new();
         for t in &transactions {
             let t_rlp = encode(t);
@@ -220,10 +228,19 @@ impl BlockGenerator {
 
     /// Generate a block with fake transactions
     pub fn generate_block_with_transactions(&self, num_txs: usize) -> H256 {
+        let mut txs = Vec::new();
         for _ in 0..num_txs {
             let tx = self.txgen.generate_transaction();
+            txs.push(tx);
+        }
+        trace!("finish generating txs");
+        for tx in txs.clone() {
             self.txpool.add_pending(tx);
         }
+        self.txpool.insert_new_transactions(
+            self.graph.consensus.best_block_hash(),
+            txs.into_iter().map(|tx| tx.transaction).collect(),
+        );
         self.generate_block(num_txs)
     }
 

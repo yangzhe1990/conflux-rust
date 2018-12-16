@@ -16,10 +16,9 @@ import urllib.parse
 
 import eth_utils
 
-from conflux.utils import get_nodeid
+from conflux.utils import get_nodeid, sha3, encode_int32
 from .authproxy import JSONRPCException
-from .util import (delete_cookie_file, get_rpc_proxy,
-                   rpc_url, wait_until, p2p_port)
+from .util import *
 
 CONFLUX_RPC_WAIT_TIMEOUT = 60
 
@@ -175,7 +174,9 @@ class TestNode:
         self._raise_assertion_error("Unable to connect to bitcoind")
 
     def wait_for_nodeid(self):
-        self.key = eth_utils.encode_hex(get_nodeid(self))
+        pubkey, x, y = get_nodeid(self)
+        self.key = eth_utils.encode_hex(pubkey)
+        self.addr = sha3(encode_int32(x) + encode_int32(y))[12:]
         self.log.debug("Get node {} nodeid {}".format(self.index, self.key))
 
 

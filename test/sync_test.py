@@ -39,6 +39,8 @@ class P2PTest(ConfluxTestFramework):
         best_block = self.nodes[0].getbestblockhash()
         assert_equal(best_block, encode_hex(block3.hash))
         self.log.info("Pass 1")
+        for block in [block1, block2, block3]:
+            print(encode_hex(block.hash))
 
         disconnect_nodes(self.nodes, 0, 1)
         block1 = create_block(parent_hash=decode_hex(best_block), height=4)

@@ -1,3 +1,4 @@
+use txgen::TransactionGeneratorConfig;
 /// usage:
 /// ```
 /// build_config! {
@@ -34,6 +35,8 @@ build_config!{
         (db_cache_size, (Option<usize>), None)
         (db_compaction_profile, (Option<String>), None)
         (db_dir, (Option<String>), Some("./db".to_string()))
+        (generate_tx, (bool), false)
+        (generate_tx_period_ms, (Option<u64>), Some(100))
     }
     {
         (
@@ -145,6 +148,13 @@ impl Configuration {
 
     pub fn verification_config(&self) -> VerificationConfig {
         VerificationConfig::new(self.raw_conf.test_mode)
+    }
+
+    pub fn tx_gen_config(&self) -> TransactionGeneratorConfig {
+        TransactionGeneratorConfig::new(
+            self.raw_conf.generate_tx,
+            self.raw_conf.generate_tx_period_ms.expect("has default"),
+        )
     }
 }
 

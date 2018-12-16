@@ -98,7 +98,9 @@ def ecrecover_to_pub(rawhash, v, r, s):
                 hasher=None,
             )
             pub = pk.format(compressed=False)[1:]
+            x, y = pk.point()
         except BaseException:
+            x, y = 0, 0
             pub = b"\x00" * 64
     else:
         result = ecdsa_raw_recover(rawhash, (v, r, s))
@@ -108,7 +110,7 @@ def ecrecover_to_pub(rawhash, v, r, s):
         else:
             raise ValueError('Invalid VRS')
     assert len(pub) == 64
-    return pub
+    return pub, x, y
 
 
 def ecsign(rawhash, key):
@@ -214,6 +216,12 @@ assert encode_hex(
 def privtoaddr(k):
     k = normalize_key(k)
     x, y = privtopub(k)
+    return sha3(encode_int32(x) + encode_int32(y))[12:]
+
+
+def pubtoaddr(k):
+    x = big_endian_to_int(decode_hex(k[2:34]))
+    y = big_endian_to_int(decode_hex(k[34:66]))
     return sha3(encode_int32(x) + encode_int32(y))[12:]
 
 

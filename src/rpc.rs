@@ -107,7 +107,10 @@ build_rpc_trait! {
         fn add_latency(&self, NodeId, f64) -> RpcResult<()>;
 
         #[rpc(name = "generateoneblock")]
-        fn generate_one_block(&self) -> RpcResult<H256>;
+        fn generate_one_block(&self, usize) -> RpcResult<H256>;
+
+        #[rpc(name = "checktx")]
+        fn check_tx(&self, H256) -> RpcResult<bool>;
     }
 }
 
@@ -215,15 +218,16 @@ impl Rpc for RpcImpl {
         info!("RPC Request: generate({:?})", num_blocks);
         let mut hashes = Vec::new();
         for _i in 0..num_blocks {
-            hashes.push(self.block_gen.generate_block_with_transactions(num_txs));
+            hashes
+                .push(self.block_gen.generate_block_with_transactions(num_txs));
         }
         Ok(hashes)
     }
 
-    fn generate_one_block(&self) -> RpcResult<H256>{
+    fn generate_one_block(&self, num_txs: usize) -> RpcResult<H256> {
         info!("RPC Request: generate_one_block()");
         // TODO Choose proper num_txs
-        let hash = self.block_gen.generate_block(2000);
+        let hash = self.block_gen.generate_block(num_txs);
         Ok(hash)
     }
 
@@ -269,6 +273,15 @@ impl Rpc for RpcImpl {
             Ok(_) => Ok(()),
             Err(_) => Err(RpcError::internal_error()),
         }
+    }
+
+    fn check_tx(&self, tx_hash: H256) -> RpcResult<bool> {
+        let success = match self.consensus.get_block_for_tx_execution(&tx_hash)
+        {
+            Some(_) => true,
+            None => false,
+        };
+        Ok(success)
     }
 }
 

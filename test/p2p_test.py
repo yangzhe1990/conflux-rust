@@ -51,10 +51,11 @@ class P2PTest(ConfluxTestFramework):
         for i in range(1, block_number):
             chosen_peer = random.randint(0, self.num_nodes - 1)
             block_hash = self.nodes[chosen_peer].generate(1, 10)
-            self.log.info("generate block %s", block_hash)
+            self.log.info("%d generate block %s", chosen_peer, block_hash)
             time.sleep(random.random())
         wait_for_block_count(self.nodes[0], block_number)
         sync_blocks(self.nodes, timeout=10)
+        # assert_equal(len(self.nodes[0].getblock(block_hash[0])["transactions"]), 10)
         self.log.info("remotely generated blocks received by all")
 
         """Start Some P2P Message Test From Here"""

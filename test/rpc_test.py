@@ -4,9 +4,10 @@ import time
 
 import eth_utils
 
-from conflux.messages import GetBlockHeaders, GET_BLOCK_HEADERS_RESPONSE
-from conflux.utils import int_to_hex, privtoaddr
-from test_framework.blocktools import make_genesis
+from conflux.config import default_config
+from conflux.messages import GetBlockHeaders, GET_BLOCK_HEADERS_RESPONSE, Transactions
+from conflux.utils import int_to_hex, privtoaddr, encode_hex
+from test_framework.blocktools import make_genesis, create_transaction
 from test_framework.mininode import network_thread_start, P2PInterface
 from test_framework.test_framework import ConfluxTestFramework
 from test_framework.util import assert_equal, connect_nodes, get_peer_addr, wait_until, WaitHandler
@@ -33,6 +34,7 @@ class RpcTest(ConfluxTestFramework):
         self._test_getpeerinfo()
         self._test_addlatency()
         self._test_getstatus()
+        self._test_checktx()
 
         # Test stop at last
         self._test_stop()
@@ -119,6 +121,16 @@ class RpcTest(ConfluxTestFramework):
         except Exception:
             pass
 
+    def _test_checktx(self):
+        self.log.info("Test checktx")
+        sk = default_config["GENESIS_PRI_KEY"]
+        tx = create_transaction(pri_key=sk, receiver=privtoaddr(sk), value=100, nonce=0)
+        self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
+
+        def check_tx():
+            self.nodes[0].generateoneblock(1)
+            return self.nodes[0].checktx(tx.hash_hex())
+        wait_until(check_tx)
 
 
 if __name__ == "__main__":

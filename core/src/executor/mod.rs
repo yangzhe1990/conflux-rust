@@ -29,7 +29,7 @@ impl<'executor, 'state> Executor<'executor, 'state> {
         }
     }
 
-    pub fn apply(&mut self, transaction: &SignedTransaction) {
+    pub fn apply(&mut self, transaction: &SignedTransaction) -> bool {
         if !self.cache.contains_key(&transaction.sender) {
             self.cache.insert(
                 transaction.sender.clone(),
@@ -39,7 +39,7 @@ impl<'executor, 'state> Executor<'executor, 'state> {
         }
         // check nonce
         if !self.check_increment_nonce_in_cache(transaction) {
-            return;
+            return false;
         }
 
         match transaction.action {
@@ -60,11 +60,13 @@ impl<'executor, 'state> Executor<'executor, 'state> {
                         account.balance += transaction.value
                     });
                 } else {
+                    return false;
                     warn!("Not enough balance for transaction: {:?}, current balance is {}",
                           transaction, self.cache[&transaction.sender].balance);
                 }
             }
         };
+        true
     }
 
     pub fn check_increment_nonce_in_cache(

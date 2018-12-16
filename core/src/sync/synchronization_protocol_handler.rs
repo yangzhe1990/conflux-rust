@@ -54,6 +54,7 @@ pub struct SynchronizationProtocolHandler {
     requests_queue: Mutex<BinaryHeap<Arc<TimedSyncRequests>>>,
 }
 
+#[derive(Debug)]
 pub struct TimedSyncRequests {
     pub peer_id: PeerId,
     pub timeout_time: Instant,
@@ -500,7 +501,14 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let blocks = rlp.as_val::<GetBlocksResponse>()?;
-        trace!("on_blocks_response, get {} blocks", blocks.blocks.len());
+        trace!(
+            "on_blocks_response, get block hashes {:?}",
+            blocks
+                .blocks
+                .iter()
+                .map(|b| b.hash())
+                .collect::<Vec<H256>>()
+        );
         self.match_request(io, syn, peer_id, blocks.request_id())?;
 
         let mut need_to_relay = Vec::new();
@@ -508,6 +516,7 @@ impl SynchronizationProtocolHandler {
 
         for block in blocks.blocks {
             let hash = block.hash();
+            trace!("on_blocks_response, get block {:?}", block.hash());
             blocks_in_flight.remove(&hash);
 
             if self.graph.verified_invalid(&hash) {
@@ -762,8 +771,8 @@ impl SynchronizationProtocolHandler {
             })),
         ) {
             trace!(
-                "Requesting {:?} blocks from {:?} request_id={}",
-                hashes.len(),
+                "Requesting blocks {:?} from {:?} request_id={}",
+                hashes,
                 peer_id,
                 timed_req.request_id
             );
@@ -796,10 +805,12 @@ impl SynchronizationProtocolHandler {
                 );
                 return Some(timed_req);
             } else {
+                warn!("Append requests for later:{:?}", msg);
                 peer.append_pending_request(msg);
                 return None;
             }
         }
+        warn!("No peer for request:{:?}", msg);
         None
     }
 
@@ -833,6 +844,10 @@ impl SynchronizationProtocolHandler {
                 };
                 Ok(req)
             } else {
+                warn!(
+                    "Unexpected Responce: peer={:?} request_id={:?}",
+                    peer_id, request_id
+                );
                 Err(ErrorKind::UnexpectedResponse.into())
             }
         } else {
@@ -986,65 +1001,72 @@ impl SynchronizationProtocolHandler {
     pub fn remove_expired_flying_request(&self, io: &NetworkContext) {
         // FIXME should get expired requests from other peers
         let mut syn = self.syn.write();
-        let mut requests = self.requests_queue.lock();
         let now = Instant::now();
-        loop {
-            if requests.is_empty() {
-                break;
-            }
-            let sync_req = requests.pop().unwrap();
-            if sync_req.removed.load(AtomicOrdering::Relaxed) == true {
-                continue;
-            }
-            if sync_req.timeout_time >= now {
-                requests.push(sync_req);
-                break;
-            } else {
-                // TODO And should handle timeout peers.
-                let req = self
-                    .match_request(
-                        io,
-                        &mut *syn,
-                        sync_req.peer_id,
-                        sync_req.request_id as u16,
-                    )
-                    .unwrap_or_else(|_| {
-                        warn!("Cannot get original timed-out requests");
-                        None
-                    });
-                if let Some(request) = req {
-                    // TODO may have better choice than random peer
-                    let chosen_peer = {
-                        let peers_vec: Vec<&PeerId> =
-                            syn.peers.keys().collect();
-                        let p = peers_vec
-                            .get(random::new().gen_range(0, peers_vec.len()))
-                            .unwrap();
-                        **p
-                    };
-                    match request {
-                        RequestMessage::Headers(get_headers) => {
-                            self.request_block_headers(
-                                io,
-                                &mut *syn,
-                                chosen_peer,
-                                &get_headers.hash,
-                                get_headers.max_blocks,
-                            );
-                        }
-                        RequestMessage::Blocks(get_blocks) => {
-                            self.request_blocks(
-                                io,
-                                &mut *syn,
-                                chosen_peer,
-                                get_blocks.hashes,
-                            );
-                        }
-                        _ => {}
-                    }
-                } else {
-                    warn!("Request is None");
+        let mut timeout_requests = Vec::new();
+        {
+            let mut requests = self.requests_queue.lock();
+            loop {
+                if requests.is_empty() {
+                    break;
                 }
+                let sync_req = requests.pop().expect("queue not empty");
+                if sync_req.removed.load(AtomicOrdering::Relaxed) == true {
+                    continue;
+                }
+                if sync_req.timeout_time >= now {
+                    requests.push(sync_req);
+                    break;
+                } else {
+                    // TODO And should handle timeout peers.
+                    timeout_requests.push(sync_req);
+                }
+            }
+        }
+        for sync_req in timeout_requests {
+            trace!("Timeout sync_req: {:?}", sync_req);
+            let req = self
+                .match_request(
+                    io,
+                    &mut *syn,
+                    sync_req.peer_id,
+                    sync_req.request_id as u16,
+                )
+                .unwrap_or_else(|_| {
+                    warn!("Cannot get original timed-out requests");
+                    None
+                });
+            if let Some(request) = req {
+                // TODO may have better choice than random peer
+                trace!("Timeout request: {:?}", request);
+                let chosen_peer = {
+                    let peers_vec: Vec<&PeerId> = syn.peers.keys().collect();
+                    let p = peers_vec
+                        .get(random::new().gen_range(0, peers_vec.len()))
+                        .unwrap();
+                    **p
+                };
+                match request {
+                    RequestMessage::Headers(get_headers) => {
+                        self.request_block_headers(
+                            io,
+                            &mut *syn,
+                            chosen_peer,
+                            &get_headers.hash,
+                            get_headers.max_blocks,
+                        );
+                    }
+                    RequestMessage::Blocks(get_blocks) => {
+                        self.request_blocks(
+                            io,
+                            &mut *syn,
+                            chosen_peer,
+                            get_blocks.hashes,
+                        );
+                    }
+                    _ => {}
+                }
+            } else {
+                warn!("Request is None");
             }
         }
         trace!("headers_in_flight: {:?}", *self.headers_in_flight.lock());
