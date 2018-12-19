@@ -16,10 +16,11 @@ pub use super::impls::state::State;
 // TODO(yz): check if this is the best way to organize code for this library.
 pub trait StateTrait {
     // Status.
-    /// Check if the state exists. If not any state action operates on an empty state.
+    /// Check if the state exists. If not any state action operates on an empty
+    /// state.
     fn does_exist(&self) -> bool;
     /// Merkle hash
-    fn get_merkle_hash(&self) -> Option<MerkleHash>;
+    fn get_merkle_hash(&self) -> Result<Option<MerkleHash>>;
 
     // Actions.
     fn get(&self, access_key: &[u8]) -> Result<Box<[u8]>>;
@@ -29,12 +30,13 @@ pub trait StateTrait {
     // Contaianer must be a container or type which ignores all inserts. So far
     // there is no standard container traits that we can directly apply.
     // TODO(yz): maybe implement some constrains for Contaianer?
-    fn delete_all<Contaianer>(
-        &mut self, access_key_prefix: &[u8], removed_kvs: Contaianer,
+    fn delete_all<Container>(
+        &mut self, access_key_prefix: &[u8], removed_kvs: Container,
     ) -> Result<()>;
 
     // Finalize
-    fn commit(&mut self, epoch: EpochId) -> MerkleHash;
+    fn commit(&mut self, epoch: EpochId) -> Result<MerkleHash>;
+    fn revert(&mut self);
 
     // TODO(yz): verifiable proof related methods.
 }

@@ -27,8 +27,10 @@ use rlp;
 // database columns
 /// Column for miscellaneous items
 pub const COL_MISC: Option<u32> = Some(0);
+/// Column for delta trie.
+pub const COL_DELTA_TRIE: Option<u32> = Some(1);
 /// Number of columns in DB
-pub const NUM_COLUMNS: Option<u32> = Some(1);
+pub const NUM_COLUMNS: Option<u32> = Some(2);
 
 /// Modes for updating caches.
 #[derive(Clone, Copy)]

@@ -1,18 +1,18 @@
 use super::super::state::*;
 
 use super::{
-    super::state_manager::*,
+    super::{super::db::COL_DELTA_TRIE, state_manager::*},
     errors::*,
     merkle_patricia_trie::{
-        data_structure::*, merkle::*, MultiVersionMerklePatriciaTrie,
+        data_structure::*, merkle::*, node_memory_manager::*,
+        MultiVersionMerklePatriciaTrie,
     },
 };
 use primitives::EpochId;
 
 pub struct State<'a> {
     manager: &'a StateManager,
-    // FIXME: change to memory allocator.
-    allocator: &'a MultiVersionMerklePatriciaTrie,
+    delta_trie: &'a MultiVersionMerklePatriciaTrie,
     root_node: MaybeNodeRef,
     owned_node_set: Option<OwnedNodeSet>,
     dirty: bool,
@@ -22,7 +22,7 @@ impl<'a> State<'a> {
     pub fn new(manager: &'a StateManager, root_node: MaybeNodeRef) -> Self {
         Self {
             manager: manager,
-            allocator: manager.get_trie_memory_allocator(),
+            delta_trie: manager.get_delta_trie(),
             root_node: root_node,
             owned_node_set: Some(Default::default()),
             dirty: false,
@@ -33,7 +33,7 @@ impl<'a> State<'a> {
         if !self.dirty {
             self.dirty = true
         }
-        self.allocator.node_memory_allocator.enlarge().unwrap();
+        self.delta_trie.get_node_memory_manager().enlarge().ok();
     }
 
     // FIXME: move to data_structure mod
@@ -47,7 +47,8 @@ impl<'a> State<'a> {
 
     fn get_or_create_root_node(&mut self) -> Result<NodeRef> {
         if self.root_node == MaybeNodeRef::NULL_NODE {
-            let allocator = self.allocator.get_allocator();
+            let allocator =
+                self.delta_trie.get_node_memory_manager().get_allocator();
             let (mut root_cow, entry) = CowNodeRef::new_uninitialized_node(
                 &allocator,
                 self.owned_node_set.as_mut().unwrap(),
@@ -60,6 +61,88 @@ impl<'a> State<'a> {
 
         self.get_root_node()
     }
+
+    fn do_db_commit(
+        &mut self, epoch_id: EpochId, cache_manager: &mut CacheManager,
+    ) -> Result<MerkleHash> {
+        self.dirty = false;
+
+        let maybe_root_node: Option<NodeRef> = self.root_node.into();
+        match maybe_root_node {
+            None => {
+                // Don't commit empty state. Empty state shouldn't exists since
+                // genesis block.
+                Ok(MERKLE_NULL_NODE)
+            }
+            Some(root_node) => {
+                // Use coarse lock to prevent row number from interleaving,
+                // which makes it cleaner to restart from db
+                // failure. Without a coarse lock all threads
+                // may not be able to do anything else
+                // because they compete with each other on slowly writing db.
+                let mut commit_transaction = self.manager.start_commit();
+
+                let mut cow_root = CowNodeRef::new(
+                    root_node.clone(),
+                    self.owned_node_set.as_ref().unwrap(),
+                );
+                let allocator =
+                    self.delta_trie.get_node_memory_manager().get_allocator();
+                let mut trie_node_root = self
+                    .delta_trie
+                    .get_node_memory_manager()
+                    .node_as_mut_with_cache_manager(
+                        &allocator,
+                        &mut cow_root.node_ref,
+                        cache_manager,
+                    )?;
+                let merkle_and_was_dirty_flag = cow_root
+                    .get_merkle_or_compute_and_commit(
+                        self.delta_trie,
+                        self.owned_node_set.as_mut().unwrap(),
+                        trie_node_root,
+                        &mut commit_transaction,
+                        cache_manager,
+                    )?;
+                cow_root.into_child();
+
+                commit_transaction.transaction.put(
+                    COL_DELTA_TRIE,
+                    "last_row_number".as_bytes(),
+                    commit_transaction.info.row_number.to_string().as_bytes(),
+                );
+
+                let db_key = {
+                    match root_node {
+                        NodeRef::Dirty { index } => {
+                            commit_transaction.info.row_number.value - 1
+                        }
+                        NodeRef::Committed { db_key } => db_key,
+                    }
+                };
+
+                commit_transaction.transaction.put(
+                    COL_DELTA_TRIE,
+                    [
+                        "state_root_db_key_for_epoch_id_".as_bytes(),
+                        epoch_id.as_ref(),
+                    ]
+                    .concat()
+                    .as_slice(),
+                    db_key.to_string().as_bytes(),
+                );
+
+                self.manager
+                    .db
+                    .key_value()
+                    .write(commit_transaction.transaction)?;
+
+                self.manager.mpt_commit_state_root(epoch_id, self.root_node);
+
+                Ok(merkle_and_was_dirty_flag.0)
+            }
+        }
+    }
 }
 
 impl<'a> Drop for State<'a> {
@@ -71,26 +154,25 @@ impl<'a> Drop for State<'a> {
 }
 
 impl<'a> StateTrait for State<'a> {
-    fn does_exist(&self) -> bool {
-        self.get_root_node().is_ok()
-    }
+    fn does_exist(&self) -> bool { self.get_root_node().is_ok() }
 
-    fn get_merkle_hash(&self) -> Option<MerkleHash> {
+    fn get_merkle_hash(&self) -> Result<Option<MerkleHash>> {
         match self.get_root_node() {
-            Err(_) => None,
+            Err(_) => Ok(None),
             Ok(node) => {
-                Some(self.allocator.get_merkle_at_node(node.into()))
-            },
+                Ok(Some(self.delta_trie.get_merkle_at_node(node.into())?))
+            }
         }
     }
 
+    // FIXME: get a non-existing key shouldn't be an error.
     fn get(&self, access_key: &[u8]) -> Result<Box<[u8]>> {
         // Get won't create any new nodes so it's fine to pass an empty
         // owned_node_set.
         let mut empty_owned_node_set: Option<OwnedNodeSet> =
             Some(Default::default());
         let value = SubTrieVisitor::new(
-            self.allocator,
+            self.delta_trie,
             self.get_root_node()?,
             &mut empty_owned_node_set,
         )
@@ -103,7 +185,7 @@ impl<'a> StateTrait for State<'a> {
         self.pre_modification();
 
         self.root_node = SubTrieVisitor::new(
-            self.allocator,
+            self.delta_trie,
             self.get_or_create_root_node()?,
             &mut self.owned_node_set,
         )
@@ -116,7 +198,7 @@ impl<'a> StateTrait for State<'a> {
         self.pre_modification();
 
         let (old_value, _, root_node) = SubTrieVisitor::new(
-            self.allocator,
+            self.delta_trie,
             self.get_root_node()?,
             &mut self.owned_node_set,
         )
@@ -131,36 +213,41 @@ impl<'a> StateTrait for State<'a> {
         unimplemented!()
     }
 
-    fn commit(&mut self, epoch_id: EpochId) -> MerkleHash {
+    // TODO(yz): replace coarse lock with a queue.
+    fn commit(&mut self, epoch_id: EpochId) -> Result<MerkleHash> {
+        // TODO(yz): Think about leaving these node dirty and only commit when
+        // the dirty node is removed from cache.
+        let merkle_result = self.do_db_commit(
+            epoch_id,
+            &mut *self
+                .delta_trie
+                .get_node_memory_manager()
+                .get_cache_manager_mut(),
+        );
+        if merkle_result.is_err() {
+            self.revert();
+        } else {
+            // Add all nodes into cache.
+            let owned_node_set = self.owned_node_set.as_ref().unwrap();
+            for owned_node in owned_node_set {
+                self.delta_trie
+                    .get_node_memory_manager()
+                    .dirty_node_committed(owned_node);
+            }
+        }
+
+        merkle_result
+    }
+
+    fn revert(&mut self) {
         self.dirty = false;
 
-        let maybe_root_node: Option<NodeRef> = self.root_node.into();
-        let merkle = match maybe_root_node {
-            None => MERKLE_NULL_NODE,
-            Some(root_node) => {
-                let allocator = self.allocator.get_allocator();
-                let mut cow_root = CowNodeRef::new(
-                    root_node,
-                    self.owned_node_set.as_ref().unwrap(),
-                );
-                let mut trie_node_root = NodeMemoryAllocator::node_as_mut(
-                    &allocator,
-                    &mut cow_root.node_ref,
-                );
-                let merkle = cow_root.get_or_compute_merkle(
-                    self.allocator,
-                    &allocator,
-                    self.owned_node_set.as_ref().unwrap(),
-                    trie_node_root,
-                );
-                cow_root.into_child();
-
-                merkle
-            }
-        };
-
-        self.manager.commit_state_root(epoch_id, self.root_node);
-
-        merkle
+        // Free all modified nodes.
+        let owned_node_set = self.owned_node_set.as_ref().unwrap();
+        for owned_node in owned_node_set {
+            let mut cow_node =
+                CowNodeRef::new(owned_node.clone(), owned_node_set);
+            cow_node.delete_node(&self.delta_trie.get_node_memory_manager());
+        }
     }
 }

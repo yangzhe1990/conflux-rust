@@ -1,4 +1,7 @@
-use super::super::{state::*, state_manager::*};
+use super::{
+    super::{state::*, state_manager::*},
+    new_state_manager_for_testing,
+};
 use ethereum_types::H256;
 use rand::{ChaChaRng, Rng, SeedableRng};
 use std::mem;
@@ -33,8 +36,8 @@ fn get_rng_for_test() -> ChaChaRng { ChaChaRng::from_seed([123; 32]) }
 #[test]
 fn test_set_get() {
     let mut rng = get_rng_for_test();
-    let state_manager = StateManager::default();
-    let mut state = state_manager.get_state_at(H256::default());
+    let state_manager = new_state_manager_for_testing();
+    let mut state = state_manager.get_state_at(H256::default()).unwrap();
     let mut keys: Vec<[u8; 4]> = generate_keys()
         .iter()
         .filter(|_| rng.gen_bool(0.5))
@@ -57,13 +60,13 @@ fn test_set_get() {
 
     let mut epoch_id = H256::default();
     epoch_id[0] = 1;
-    state.commit(epoch_id);
+    state.commit(epoch_id).unwrap();
 }
 
 #[test]
 fn test_get_set_at_second_commit() {
     let rng = get_rng_for_test();
-    let state_manager = StateManager::default();
+    let state_manager = new_state_manager_for_testing();
     let keys: Vec<[u8; 4]> = generate_keys();
     let set_size = 10000;
     let (keys_0, keys_1_new, keys_remain, keys_1_overwritten) = (
@@ -74,7 +77,7 @@ fn test_get_set_at_second_commit() {
     );
 
     let parent_epoch_0 = H256::default();
-    let mut state_0 = state_manager.get_state_at(parent_epoch_0);
+    let mut state_0 = state_manager.get_state_at(parent_epoch_0).unwrap();
     println!("Setting state_0 0 with {} keys.", keys_0.len());
 
     for key in keys_0 {
@@ -85,7 +88,7 @@ fn test_get_set_at_second_commit() {
     epoch_id_0[0] = 1;
     state_0.commit(epoch_id_0);
 
-    let mut state_1 = state_manager.get_state_at(epoch_id_0);
+    let mut state_1 = state_manager.get_state_at(epoch_id_0).unwrap();
     println!("Set new {} keys for state_1.", keys_1_new.len(),);
     for key in keys_1_new {
         let value = vec![&key[..], &key[..]].concat();
@@ -137,8 +140,8 @@ fn test_get_set_at_second_commit() {
 #[test]
 fn test_set_delete() {
     let mut rng = get_rng_for_test();
-    let state_manager = StateManager::default();
-    let mut state = state_manager.get_state_at(H256::default());
+    let state_manager = new_state_manager_for_testing();
+    let mut state = state_manager.get_state_at(H256::default()).unwrap();
     let mut keys: Vec<[u8; 4]> = generate_keys();
 
     println!("Testing with {} set operations.", keys.len());
@@ -160,5 +163,5 @@ fn test_set_delete() {
 
     let mut epoch_id = H256::default();
     epoch_id[0] = 1;
-    state.commit(epoch_id);
+    state.commit(epoch_id).unwrap();
 }

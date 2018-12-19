@@ -105,10 +105,8 @@
 #![doc(html_root_url = "https://docs.rs/slab/0.4.1")]
 
 use super::super::errors::*;
-use std::{
-    fmt, iter::IntoIterator, marker::PhantomData, mem, ops, ptr, slice,
-    sync::Mutex,
-};
+use parking_lot::Mutex;
+use std::{fmt, iter::IntoIterator, marker::PhantomData, mem, ops, ptr, slice};
 
 /// Pre-allocated storage for a uniform data type.
 /// The modified slab offers internal mutability which mimics the behavior of
@@ -490,8 +488,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// ```
     pub fn shrink_to_fit(&mut self) {
         let capacity = self.capacity();
-        let new_capacity =
-            self.alloc_fields.get_mut().unwrap().size_initialized;
+        let new_capacity = self.alloc_fields.get_mut().size_initialized;
 
         self.resize_down(capacity, new_capacity);
         self.entries.shrink_to_fit();
@@ -530,7 +527,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     ///
     /// assert_eq!(3, slab.len());
     /// ```
-    pub fn len(&self) -> usize { self.alloc_fields.lock().unwrap().used }
+    pub fn len(&self) -> usize { self.alloc_fields.lock().used }
 
     /// Return `true` if there are no values stored in the slab.
     ///
@@ -744,7 +741,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     }
 
     pub fn allocate(&self) -> Result<usize> {
-        let mut alloc_fields = self.alloc_fields.lock().unwrap();
+        let mut alloc_fields = self.alloc_fields.lock();
         let key = alloc_fields.next;
         if key == self.entries.capacity() {
             Err(Error::from_kind(ErrorKind::OutOfMem))
@@ -818,7 +815,7 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// assert!(!slab.contains(hello));
     /// ```
     pub fn remove(&self, key: usize) -> Result<T> {
-        let mut alloc_fields = self.alloc_fields.lock().unwrap();
+        let mut alloc_fields = self.alloc_fields.lock();
         let next = alloc_fields.next;
         let old_value = match self.entries.get(key) {
             Some(ref val) => {

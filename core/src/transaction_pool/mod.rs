@@ -210,7 +210,8 @@ impl TransactionPool {
         transactions: Vec<TransactionWithSignature>,
     )
     {
-        let state = self.state_manager.get_state_at(latest_epoch);
+        let state = self.state_manager.get_state_at(latest_epoch).unwrap();
+        // TODO(yz): process the possible db failure in the line above.
         let mut account_cache = AccountCache::new(&state);
         for tx in transactions {
             if let Ok(public) = tx.recover_public() {

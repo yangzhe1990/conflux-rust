@@ -1,31 +1,25 @@
 use self::access_mode::*;
 use super::{
-    super::errors::*, merkle::*, return_after_use::ReturnAfterUse, slab::Slab,
+    super::{
+        super::super::db::COL_DELTA_TRIE, errors::*,
+        state_manager::AtomicCommitTransaction,
+    },
+    cache::algorithm::lfru::LFRUHandle,
+    maybe_in_place_byte_array::MaybeInPlaceByteArray,
+    merkle::*,
+    node_memory_manager::*,
+    node_ref_map::NodeRefDeltaMPT,
+    return_after_use::ReturnAfterUse,
 };
-use std::slice;
+use rlp::*;
 use std::{
     cmp::min,
     collections::BTreeSet,
+    hint::unreachable_unchecked,
     marker::{Send, Sync},
     mem::replace,
-    ptr::null_mut,
-    sync::{RwLock, RwLockReadGuard},
     vec::Vec,
 };
-
-impl NodeMemoryAllocator {
-    /// In disk hybrid solution, the nodes in memory are merely LRU cache of
-    /// non-leaf nodes. So the memory consumption is 128B * number of nodes.
-    /// 5GB ~ 31_250_000 nodes. There are costs to maintain references to disk
-    /// and cache recency... so TODO(yz): maybe
-    pub const MAX_IN_MEM_TRIE_NODES_DISK_HYBRID: u32 = 26_000_000;
-    /// If we do not swap out any node onto disk, the maximum tolerable nodes is
-    /// about 43.2M, where there is about 7.2M leaf node. The total memory
-    /// consumption is about 43.2 * 128 - 7.2 * 64 MB ~= 5GB. It can hold new
-    /// items for about 1 hour assuming 2k updates per second.
-    pub const MAX_IN_MEM_TRIE_NODES_MEM_ONLY: u32 = 43_200_000;
-    pub const START_CAPACITY: u32 = 1_000_000;
-}
 
 // TODO(yz): choose the best place to attach the consts.
 impl TrieNode {
@@ -41,9 +35,9 @@ impl TrieNode {
     }
 }
 
-// TODO(yz): statically check the size to be 64B
+// TODO(yz): statically check the size to be "around" 64B + 64B (merkle_hash)
 // TODO(yz): TrieNode should leave one byte so that it can be used to indicate a
-// free slot in memory region.
+// free slot in memory region, in order to implement EntryTrait.
 /// A node consists of an optional compressed path (concept of Patricia
 /// Trie), an optional ChildrenTable (if the node is intermediate), an
 /// optional value attached, and the Merkle hash for subtree.
@@ -85,9 +79,11 @@ pub struct TrieNode {
     // total size of the struct.
     /// We limit the maximum value length by u16. If it proves insufficient,
     /// manage the length and content separately.
-    value_size: u16,
+    value_size: u32,
     value: MaybeInPlaceByteArray,
     pub merkle_hash: MerkleHash,
+
+    pub cache_algo_data: LFRUHandle<LFRUPosT>,
 }
 
 /// Compiler is not sure about the pointer in MaybeInPlaceByteArray fields.
@@ -99,216 +95,25 @@ unsafe impl Send for TrieNode {}
 /// is pointing to, therefore TrieNode is Sync.
 unsafe impl Sync for TrieNode {}
 
-union MaybeInPlaceByteArray {
-    in_place: [u8; 8],
-    // TODO(yz): statically assert that the ptr has size of at most 8.
-    // TODO(yz): to initialize and destruct, convert from/into Vec.
-    // TODO(yz): introduce a type to pass into template which manages the
-    // conversion from/to  Vec<A>. The type should also take the offset of
-    // u16 size from the TrieNode struct to manage memory buffer, and
-    // should offer a type for ptr here.
-    /// Only raw pointer is 8B.
-    ptr: *mut u8,
-}
-
-impl Default for MaybeInPlaceByteArray {
-    fn default() -> Self {
-        Self {
-            in_place: Default::default(),
-        }
-    }
-}
-
-impl MaybeInPlaceByteArray {
-    /// Take ptr out and clear ptr.
-    // FIXME: hide this method.
-    unsafe fn ptr_into_vec(&mut self, size: usize) -> Vec<u8> {
-        let vec = Vec::from_raw_parts(self.ptr, size, size);
-        self.ptr = null_mut();
-        vec
-    }
-
-    // FIXME: hide this method.
-    unsafe fn ptr_slice(&self, size: usize) -> &[u8] {
-        slice::from_raw_parts(self.ptr, size)
-    }
-
-    unsafe fn ptr_slice_mut(&mut self, size: usize) -> &mut [u8] {
-        slice::from_raw_parts_mut(self.ptr, size)
-    }
-
-    fn get_slice_mut(&mut self, size: u16) -> &mut [u8] {
-        let is_ptr = size > Self::MAX_INPLACE_SIZE;
-        let size = size as usize;
-        unsafe {
-            if is_ptr {
-                self.ptr_slice_mut(size)
-            } else {
-                &mut self.in_place[0..size]
-            }
-        }
-    }
-
-    fn get_slice(&self, size: u16) -> &[u8] {
-        let is_ptr = size > Self::MAX_INPLACE_SIZE;
-        let size = size as usize;
-        unsafe {
-            if is_ptr {
-                self.ptr_slice(size)
-            } else {
-                &self.in_place[0..size]
-            }
-        }
-    }
-
-    fn into_vec(&mut self, size: u16) -> Vec<u8> {
-        let is_ptr = size > Self::MAX_INPLACE_SIZE;
-        let size = size as usize;
-        unsafe {
-            if is_ptr {
-                self.ptr_into_vec(size)
-            } else {
-                Vec::from(&self.in_place[0..size])
-            }
-        }
-    }
-
-    /// The @size: u16 parameter reminds the caller to check if the vector is
-    /// over sized.
-    fn new(value: Box<[u8]>, size: u16) -> Self {
-        if size > Self::MAX_INPLACE_SIZE {
-            Self {
-                ptr: Box::into_raw(value) as *mut u8,
-            }
-        } else {
-            let mut x = Self {
-                in_place: Default::default(),
-            };
-            unsafe {
-                x.in_place[0..size.into()].copy_from_slice(&*value);
-            }
-            x
-        }
-    }
-
-    fn new_uninitialized(size: u16) -> Self {
-        Self::new(vec![0u8; size as usize].into_boxed_slice(), size)
-    }
-
-    fn copy_from(value: &[u8], size: u16) -> Self {
-        if size > Self::MAX_INPLACE_SIZE {
-            Self {
-                ptr: Box::into_raw(Box::<[u8]>::from(value)) as *mut u8,
-            }
-        } else {
-            let mut x: Self = Self {
-                in_place: Default::default(),
-            };
-            unsafe {
-                x.in_place[0..size.into()].copy_from_slice(value);
-            }
-            x
-        }
-    }
-}
-
-impl MaybeInPlaceByteArray {
-    const MAX_INPLACE_SIZE: u16 = 8;
-    const MAX_SIZE: u16 = 0xffff;
-}
-
 pub const CHILDREN_COUNT: usize = 16;
-// TODO(yz): statically check the size to be 64B
 /// The children table for a non-leaf trie node.
-type ChildrenTable = [MaybeNodeRef; CHILDREN_COUNT];
+pub type ChildrenTable = [MaybeNodeRef; CHILDREN_COUNT];
+
+// TODO(yz): 2^16 = 2B. 2B + actual children to save space.
+/// For delta MPT the index type is DeltaMptDbKey, for persistent MPT see
+/// node_ref_map.rs (not implemented yet).
+struct CompactedChildrenTable<IndexT> {
+    table: Box<[IndexT]>,
+}
 
 type NodeMemoryRegion = Vec<TrieNode>;
 
-// FIXME: implement EntryTrait.
-type TrieNodeSlabEntry = super::slab::Entry<TrieNode>;
-type Allocator = Slab<TrieNode, TrieNodeSlabEntry>;
-type VacantEntry<'a> =
+// FIXME: implement EntryTrait for TrieNode.
+pub type TrieNodeSlabEntry = super::slab::Entry<TrieNode>;
+pub type VacantEntry<'a> =
     super::slab::VacantEntry<'a, TrieNode, TrieNodeSlabEntry>;
-pub type AllocatorRef<'trie> = RwLockReadGuard<'trie, Allocator>;
-pub type AllocatorRefRef<'trie> = &'trie AllocatorRef<'trie>;
 
-pub struct NodeMemoryAllocator {
-    /// The number of available memory for nodes.
-    idle_size: u32,
-    /// The max number of nodes.
-    size_limit: u32,
-    // FIXME: implement EntryTrait for TrieNode
-    allocator: RwLock<Allocator>,
-}
-
-/// The MSB is used to indicate if a node is in mem or on disk,
-/// the rest 31 bits specifies the index of the node in the
-/// memory region.
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub struct MaybeNodeRef {
-    index: u32,
-}
-
-impl Default for MaybeNodeRef {
-    fn default() -> Self { Self { index: Self::NULL } }
-}
-
-impl MaybeNodeRef {
-    const MAX_INDEX: u32 = 0x7fffffff;
-    const NULL: u32 = 0;
-    pub const NULL_NODE: MaybeNodeRef = MaybeNodeRef { index: Self::NULL };
-    const ON_DISK_BIT: u32 = 0x80000000;
-}
-
-impl From<MaybeNodeRef> for Option<NodeRef> {
-    fn from(x: MaybeNodeRef) -> Self {
-        if x.index == MaybeNodeRef::NULL {
-            Option::None
-        } else if MaybeNodeRef::ON_DISK_BIT & x.index != 0 {
-            Option::Some(NodeRef::OnDisk {
-                index: (MaybeNodeRef::ON_DISK_BIT ^ x.index) as usize,
-            })
-        } else {
-            Option::Some(NodeRef::InMemory {
-                index: (MaybeNodeRef::MAX_INDEX ^ x.index) as usize,
-            })
-        }
-    }
-}
-
-impl From<NodeRef> for MaybeNodeRef {
-    fn from(node: NodeRef) -> Self {
-        match node {
-            NodeRef::InMemory { index } => Self {
-                index: (index as u32) ^ MaybeNodeRef::MAX_INDEX,
-            },
-            NodeRef::OnDisk { index } => Self {
-                index: (index as u32) ^ MaybeNodeRef::ON_DISK_BIT,
-            },
-        }
-    }
-}
-
-impl From<Option<NodeRef>> for MaybeNodeRef {
-    fn from(maybe_node: Option<NodeRef>) -> Self {
-        match maybe_node {
-            None => MaybeNodeRef::NULL_NODE,
-            Some(node) => node.into(),
-        }
-    }
-}
-
-// Manages access to a child TrieNode. Converted from MaybeOwnedNode.
-// TODO(yz): It must provide a way to check for COW tag, indicating if this node
-// is created in the current commit. NodeRef is move because it controls access
-// to TrieNode.
-#[derive(Clone, Eq, PartialOrd, PartialEq, Ord)]
-pub enum NodeRef {
-    InMemory { index: usize },
-    OnDisk { index: usize },
-}
-
-type OwnedChildrenTable = Option<Box<ChildrenTable>>;
+pub type OwnedChildrenTable = Option<Box<ChildrenTable>>;
 
 /// Key length should be multiple of 8.
 // TODO(yz): align key @8B with mask.
@@ -320,9 +125,9 @@ const EMPTY_KEY_PART: KeyPart = &[];
 impl Drop for TrieNode {
     fn drop(&mut self) {
         unsafe {
-            let size = self.value_size;
+            let size = self.value_size as usize;
             if size > MaybeInPlaceByteArray::MAX_INPLACE_SIZE {
-                self.value.ptr_into_vec(size.into());
+                self.value.ptr_into_vec(size);
             }
 
             self.clear_path();
@@ -339,15 +144,15 @@ impl TrieNode {
     fn compressed_path_ref(&self) -> CompressedPathRef {
         let size = self.get_compressed_path_size();
         CompressedPathRef {
-            path_slice: self.path.get_slice(size),
+            path_slice: self.path.get_slice(size as usize),
             end_mask: self.path_end_mask,
         }
     }
 
     unsafe fn clear_path(&mut self) {
-        let size = self.get_compressed_path_size();
+        let size = self.get_compressed_path_size() as usize;
         if size > MaybeInPlaceByteArray::MAX_INPLACE_SIZE {
-            self.path.ptr_into_vec(size.into());
+            self.path.ptr_into_vec(size);
         }
     }
 
@@ -368,10 +173,8 @@ impl TrieNode {
             new_path.end_mask,
         );
         self.path_end_mask = new_path.end_mask;
-        self.path = MaybeInPlaceByteArray::copy_from(
-            path_slice,
-            path_slice.len() as u16,
-        );
+        self.path =
+            MaybeInPlaceByteArray::copy_from(path_slice, path_slice.len());
     }
 
     fn set_compressed_path(&mut self, path: CompressedPathRaw) {
@@ -389,8 +192,8 @@ impl TrieNode {
     fn has_value(&self) -> bool { self.value_size > 0 }
 
     fn value_as_slice(&self) -> &[u8] {
-        let size = self.value_size;
-        if size > 0 {
+        let size = self.value_size as usize;
+        if size != 0 {
             self.value.get_slice(size)
         } else {
             &[]
@@ -398,8 +201,8 @@ impl TrieNode {
     }
 
     fn value(&self) -> Option<Box<[u8]>> {
-        let size = self.value_size;
-        if size > 0 {
+        let size = self.value_size as usize;
+        if size != 0 {
             Option::Some(self.value.get_slice(size).into())
         } else {
             Option::None
@@ -411,9 +214,9 @@ impl TrieNode {
     /// empty node must be removed and pass compression must be maintained.
     // FIXME: hide this method
     fn value_into_vec(&mut self) -> Option<Vec<u8>> {
-        let size = self.value_size;
+        let size = self.value_size as usize;
         let maybe_value: Option<Vec<u8>>;
-        if size > 0 {
+        if size != 0 {
             maybe_value = Some(self.value.into_vec(size));
             self.value_size = 0;
         } else {
@@ -427,8 +230,8 @@ impl TrieNode {
         if old_value.is_none() {
             self.number_of_children_plus_value += 1;
         }
-        let value_size = value.len() as u16;
-        self.value_size = value_size;
+        let value_size = value.len();
+        self.value_size = value_size as u32;
         self.value = MaybeInPlaceByteArray::copy_from(value, value_size);
 
         old_value
@@ -436,26 +239,29 @@ impl TrieNode {
 
     fn check_value_size(value: &[u8]) -> Result<()> {
         let value_size = value.len();
-        if value_size > MaybeInPlaceByteArray::MAX_SIZE as usize {
+        if value_size > MaybeInPlaceByteArray::MAX_SIZE_U32 {
             // TODO(yz): value too long.
             return Err(Error::from_kind(ErrorKind::MPTInvalidValue));
         }
-        if value_size == 0 {
-            // TODO(yz): value is empty.
-            return Err(Error::from_kind(ErrorKind::MPTInvalidValue));
+        // We may use empty value to represent special state, such as tombstone.
+        // Therefore We don't check for emptiness.
+
+        Ok(())
+    }
+
+    fn check_key_size(access_key: &[u8]) -> Result<()> {
+        let key_size = access_key.len();
+        if key_size > MaybeInPlaceByteArray::MAX_SIZE_U16 {
+            // TODO(yz): key too long.
+            return Err(Error::from_kind(ErrorKind::MPTInvalidKey));
+        }
+        if key_size == 0 {
+            // TODO(yz): key is empty.
+            return Err(Error::from_kind(ErrorKind::MPTInvalidKey));
         }
 
         Ok(())
     }
-}
-
-//struct CompressedPath<'a> {
-//    path_slice: &'a [u8],
-// FIXME: is it indeed useful?
-//#[derive(Default)]
-struct CompressedPath {
-    path_slice: Box<[u8]>,
-    end_mask: u8,
 }
 
 pub struct CompressedPathRef<'a> {
@@ -464,7 +270,7 @@ pub struct CompressedPathRef<'a> {
 }
 
 #[derive(Default)]
-struct CompressedPathRaw {
+pub struct CompressedPathRaw {
     path_size: u16,
     path: MaybeInPlaceByteArray,
     end_mask: u8,
@@ -472,18 +278,18 @@ struct CompressedPathRaw {
 
 impl CompressedPathRaw {
     fn new(path_slice: &[u8], end_mask: u8) -> Self {
-        let path_size = path_slice.len() as u16;
+        let path_size = path_slice.len();
         Self {
-            path_size: path_size,
+            path_size: path_size as u16,
             path: MaybeInPlaceByteArray::copy_from(path_slice, path_size),
             end_mask: end_mask,
         }
     }
 
-    fn new_uninitialized(path_size: u16, end_mask: u8) -> Self {
+    fn new_zeroed(path_size: u16, end_mask: u8) -> Self {
         Self {
             path_size: path_size,
-            path: MaybeInPlaceByteArray::new_uninitialized(path_size),
+            path: MaybeInPlaceByteArray::new_zeroed(path_size as usize),
             end_mask: end_mask,
         }
     }
@@ -745,9 +551,43 @@ enum TrieNodeAction {
 
 /// Update
 impl TrieNode {
+    pub fn new(
+        merkle: &MerkleHash, children_table: OwnedChildrenTable, value: &[u8],
+        compressed_path: CompressedPathRaw,
+    ) -> TrieNode
+    {
+        let mut ret = TrieNode::default();
+
+        ret.merkle_hash = *merkle;
+
+        ret.number_of_children_plus_value = match children_table.as_ref() {
+            None => 0,
+            Some(ref table) => {
+                let mut count = 0;
+                for node in table.as_ref() {
+                    if *node != MaybeNodeRef::NULL_NODE {
+                        count += 1;
+                    }
+                }
+                count
+            }
+        };
+
+        ret.children_table = children_table;
+        ret.replace_value_unchecked(value);
+        ret.set_compressed_path(compressed_path);
+
+        ret
+    }
+
     /// new_value can only be set according to the situation.
     /// children_table can only be replaced when there is no children in both
     /// old and new table.
+    ///
+    /// unsafe because:
+    /// 1. precondition on children_table;
+    /// 2. number_of_children_plus_value is only incrementally calculated.
+    /// 3. delete value assumes that self contains some value.
     unsafe fn copy_and_replace_fields(
         &self, new_value: Option<Option<&[u8]>>,
         new_path: Option<CompressedPathRaw>,
@@ -767,10 +607,11 @@ impl TrieNode {
                 }
             },
             None => {
+                let value_size = self.value_size as usize;
                 ret.value_size = self.value_size;
                 ret.value = MaybeInPlaceByteArray::copy_from(
-                    self.value.get_slice(self.value_size),
-                    self.value_size,
+                    self.value.get_slice(value_size),
+                    value_size,
                 );
             }
         }
@@ -801,10 +642,10 @@ impl TrieNode {
         let path = self.compressed_path_ref();
 
         let mut new_path =
-            CompressedPathRaw::new_uninitialized(concated_size, path.end_mask);
+            CompressedPathRaw::new_zeroed(concated_size, path.end_mask);
 
         {
-            let slice = new_path.path.get_slice_mut(concated_size);
+            let slice = new_path.path.get_slice_mut(concated_size as usize);
             if prefix.end_mask == 0 {
                 slice[0..prefix_size].copy_from_slice(prefix.path_slice);
                 slice[prefix_size..].copy_from_slice(path.path_slice);
@@ -867,7 +708,7 @@ impl TrieNode {
                 };
             }
         }
-        unreachable!()
+        unsafe { unreachable_unchecked() }
     }
 
     fn merge_path_action_after_child_deletion(
@@ -887,7 +728,7 @@ impl TrieNode {
                 };
             }
         }
-        unreachable!()
+        unsafe { unreachable_unchecked() }
     }
 
     // Children table.
@@ -923,11 +764,6 @@ impl TrieNode {
             (self.number_of_children_plus_value as i16 + delta) as u8;
     }
 
-    // FIXME: replace_child should be called on something that the
-    // SubTrieVisitor owns because it modifies its FIXME: children_table in
-    // any cases. FIXME: However it doesn't imply that when if falls into
-    // the situation that a path compression is FIXME: necessary, the child
-    // node is also owned.
     /// Returns old_child, is_self_about_to_delete, replacement_node_for_self
     fn check_replace_child(
         &self, child_index: u8, new_child_node: MaybeNodeRef,
@@ -984,7 +820,9 @@ impl Default for CowNodeRef {
         Self {
             moved: false,
             owned: false,
-            node_ref: NodeRef::InMemory { index: 0 },
+            node_ref: NodeRef::Dirty {
+                index: NodeRefDeltaMPT::NULL_SLOT,
+            },
         }
     }
 }
@@ -992,10 +830,10 @@ impl Default for CowNodeRef {
 pub type OwnedNodeSet = BTreeSet<NodeRef>;
 
 impl CowNodeRef {
-    pub fn new_uninitialized_node<'trie>(
-        allocator: AllocatorRefRef<'trie>, owned_node_set: &mut OwnedNodeSet,
-    ) -> Result<(Self, VacantEntry<'trie>)> {
-        let (node_ref, new_entry) = NodeMemoryAllocator::new_node(allocator)?;
+    pub fn new_uninitialized_node<'a>(
+        allocator: AllocatorRefRef<'a>, owned_node_set: &mut OwnedNodeSet,
+    ) -> Result<(Self, VacantEntry<'a>)> {
+        let (node_ref, new_entry) = NodeMemoryManager::new_node(allocator)?;
         owned_node_set.insert(node_ref.clone());
 
         Ok((
@@ -1008,9 +846,7 @@ impl CowNodeRef {
         ))
     }
 
-    pub fn new<'trie>(
-        node_ref: NodeRef, owned_node_set: &'trie OwnedNodeSet,
-    ) -> Self {
+    pub fn new(node_ref: NodeRef, owned_node_set: &OwnedNodeSet) -> Self {
         Self {
             owned: owned_node_set.contains(&node_ref),
             moved: false,
@@ -1018,29 +854,20 @@ impl CowNodeRef {
         }
     }
 
-    fn into_owned<'trie>(
-        &mut self, allocator: AllocatorRefRef<'trie>,
-        owned_node_set: &'trie mut OwnedNodeSet,
-    ) -> Result<Option<(&'trie TrieNode, VacantEntry<'trie>)>>
+    fn into_owned<'a>(
+        &mut self, node_memory_manager: &NodeMemoryManager,
+        allocator: AllocatorRefRef<'a>, owned_node_set: &mut OwnedNodeSet,
+    ) -> Result<Option<(&'a TrieNode, VacantEntry<'a>)>>
     {
         if self.owned {
-            // TODO(yz): check if unused at all.
-            //            let node: &'trie mut TrieNode;
-            //            match self.node_ref {
-            //                NodeRef::InMemory { ref mut index } => {
-            //                    node =
-            // NodeMemoryAllocator::get_node_mut(allocator, index);
-            //                }
-            //                _ => unreachable!(),
-            //            }
             Ok(None)
         } else {
             let old_node =
-                NodeMemoryAllocator::node_as_ref(allocator, &self.node_ref);
+                node_memory_manager.node_as_ref(allocator, &self.node_ref)?;
 
             // TODO(yz): maybe use Self::new_uninitialized_node().
             let (node_ref, new_entry) =
-                NodeMemoryAllocator::new_node(allocator)?;
+                NodeMemoryManager::new_node(&allocator)?;
             owned_node_set.insert(node_ref.clone());
             self.node_ref = node_ref;
 
@@ -1048,9 +875,9 @@ impl CowNodeRef {
         }
     }
 
-    fn delete_node(&mut self, allocator: &NodeMemoryAllocator) {
+    pub fn delete_node(&mut self, node_memory_manager: &NodeMemoryManager) {
         if self.owned {
-            allocator.free_node(&mut self.node_ref);
+            node_memory_manager.free_node(&mut self.node_ref);
             self.owned = false;
         }
         self.moved = true;
@@ -1066,15 +893,18 @@ impl CowNodeRef {
     }
 
     /// Only called on Merkle computation.
-    fn load_merkles_from_children<'trie>(
-        &self, trie: &'trie MultiVersionMerklePatriciaTrie,
-        allocator: AllocatorRefRef<'trie>, owned_node_set: &'trie OwnedNodeSet,
-        trie_node: &'trie TrieNode,
-    ) -> MaybeMerkleTable
+    fn children_merkles_get_or_compute_and_commit(
+        &mut self, trie: &MultiVersionMerklePatriciaTrie,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
+        commit_transaction: &mut AtomicCommitTransaction,
+        cache_manager: &mut CacheManager,
+    ) -> Result<MaybeMerkleTable>
     {
         match trie_node.children_table {
-            None => None,
-            Some(ref table) => {
+            None => Ok(None),
+            Some(ref mut table) => {
+                let allocator = trie.get_node_memory_manager().get_allocator();
+
                 let mut merkles = ChildrenMerkleTable::default();
                 for i in 0..CHILDREN_COUNT {
                     let maybe_child_node: Option<NodeRef> = table[i].into();
@@ -1083,27 +913,36 @@ impl CowNodeRef {
                         Some(node_ref) => {
                             let mut cow_child_node =
                                 Self::new(node_ref, owned_node_set);
-                            let mut trie_node =
-                                NodeMemoryAllocator::node_as_mut(
-                                    allocator,
+                            let mut trie_node = trie
+                                .get_node_memory_manager()
+                                .node_as_mut_with_cache_manager(
+                                    &allocator,
                                     &mut cow_child_node.node_ref,
-                                );
-                            let merkle = cow_child_node.get_or_compute_merkle(
-                                trie,
-                                allocator,
-                                owned_node_set,
-                                trie_node,
-                            );
+                                    cache_manager,
+                                )?;
+                            let (merkle, was_owned) = cow_child_node
+                                .get_merkle_or_compute_and_commit(
+                                    trie,
+                                    owned_node_set,
+                                    trie_node,
+                                    commit_transaction,
+                                    cache_manager,
+                                )?;
 
-                            // The child node isn't replaced so it's safe to not
-                            // insert into to parent node.
-                            cow_child_node.into_child();
+                            // A owned child TrieNode now have a new NodeRef.
+                            // Unowned child TrieNode isn't changed so it's safe
+                            // to not reset children
+                            // table in parent node.
+                            let new_node_ref = cow_child_node.into_child();
+                            if was_owned {
+                                table[i] = new_node_ref;
+                            }
 
                             merkle
                         }
                     }
                 }
-                Some(merkles)
+                Ok(Some(merkles))
             }
         }
     }
@@ -1121,27 +960,56 @@ impl CowNodeRef {
         merkle
     }
 
-    /// get if unowned, compute if owned.
-    pub fn get_or_compute_merkle<'trie>(
-        &mut self, trie: &'trie MultiVersionMerklePatriciaTrie,
-        allocator: AllocatorRefRef<'trie>, owned_node_set: &'trie OwnedNodeSet,
-        trie_node: &mut TrieNode,
-    ) -> MerkleHash
+    /// get if unowned, compute and commit if owned.
+    pub fn get_merkle_or_compute_and_commit(
+        &mut self, trie: &MultiVersionMerklePatriciaTrie,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
+        commit_transaction: &mut AtomicCommitTransaction,
+        cache_manager: &mut CacheManager,
+    ) -> Result<(MerkleHash, bool)>
     {
         if self.owned {
-            let children_merkles = self.load_merkles_from_children(
-                trie,
-                allocator,
-                owned_node_set,
-                trie_node,
+            let children_merkles = self
+                .children_merkles_get_or_compute_and_commit(
+                    trie,
+                    owned_node_set,
+                    trie_node,
+                    commit_transaction,
+                    cache_manager,
+                )?;
+
+            let merkle = self.set_merkle(children_merkles, trie_node);
+
+            let db_key = commit_transaction.info.row_number.value;
+            commit_transaction.transaction.put(
+                COL_DELTA_TRIE,
+                commit_transaction.info.row_number.to_string().as_bytes(),
+                trie_node.rlp_bytes().as_slice(),
             );
-            self.set_merkle(children_merkles, trie_node)
+            commit_transaction.info.row_number =
+                commit_transaction.info.row_number.get_next()?;
+
+            let slot = match &self.node_ref {
+                NodeRef::Dirty { index } => *index,
+                _ => unsafe { unreachable_unchecked() },
+            };
+            owned_node_set.remove(&self.node_ref);
+            self.node_ref = NodeRef::Committed { db_key: db_key };
+            owned_node_set.insert(self.node_ref.clone());
+
+            cache_manager.insert_to_node_ref_map(
+                db_key,
+                slot,
+                trie.get_node_memory_manager(),
+            );
+
+            Ok((merkle, true))
         } else {
-            trie_node.merkle_hash
+            Ok((trie_node.merkle_hash, false))
         }
     }
 
-    // FIXME: why mut TrieNode when Cow doesn't own it?
+    // FIXME: why mut TrieNode when Cow doesn't own it? mut self?
     unsafe fn delete_value_if_owned(
         &self, trie_node: &mut TrieNode,
     ) -> Vec<u8> {
@@ -1153,13 +1021,15 @@ impl CowNodeRef {
         }
     }
 
-    fn cow_set_compressed_path<'trie>(
-        &mut self, allocator: AllocatorRefRef<'trie>,
-        owned_node_set: &'trie mut OwnedNodeSet, path: CompressedPathRaw,
+    fn cow_set_compressed_path(
+        &mut self, node_memory_manager: &NodeMemoryManager,
+        owned_node_set: &mut OwnedNodeSet, path: CompressedPathRaw,
         trie_node: &mut TrieNode,
     ) -> Result<()>
     {
-        let copied = self.into_owned(allocator, owned_node_set)?;
+        let allocator = node_memory_manager.get_allocator();
+        let copied =
+            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
         match copied {
             Some((old, new_entry)) => {
                 new_entry.insert(unsafe {
@@ -1173,12 +1043,14 @@ impl CowNodeRef {
         Ok(())
     }
 
-    fn cow_delete_value_unchecked<'trie>(
-        &mut self, allocator: AllocatorRefRef<'trie>,
-        owned_node_set: &'trie mut OwnedNodeSet, trie_node: &mut TrieNode,
+    fn cow_delete_value_unchecked(
+        &mut self, node_memory_manager: &NodeMemoryManager,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
     ) -> Result<Vec<u8>>
     {
-        let copied = self.into_owned(allocator, owned_node_set)?;
+        let allocator = node_memory_manager.get_allocator();
+        let copied =
+            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
         Ok(match copied {
             None => unsafe { trie_node.delete_value_unchecked() },
             Some((old, new_entry)) => {
@@ -1190,13 +1062,15 @@ impl CowNodeRef {
         })
     }
 
-    fn cow_replace_value_unchecked<'trie>(
-        &mut self, allocator: AllocatorRefRef<'trie>,
-        owned_node_set: &'trie mut OwnedNodeSet, trie_node: &mut TrieNode,
+    fn cow_replace_value_unchecked(
+        &mut self, node_memory_manager: &NodeMemoryManager,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
         value: &[u8],
     ) -> Result<Option<Vec<u8>>>
     {
-        let copied = self.into_owned(allocator, owned_node_set)?;
+        let allocator = node_memory_manager.get_allocator();
+        let copied =
+            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
         Ok(match copied {
             None => trie_node.replace_value_unchecked(value),
             Some((old, new_entry)) => {
@@ -1208,12 +1082,14 @@ impl CowNodeRef {
         })
     }
 
-    fn cow_delete_children_table<'trie>(
-        &mut self, allocator: AllocatorRefRef<'trie>,
-        owned_node_set: &'trie mut OwnedNodeSet, trie_node: &mut TrieNode,
+    fn cow_delete_children_table(
+        &mut self, node_memory_manager: &NodeMemoryManager,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
     ) -> Result<()>
     {
-        let copied = self.into_owned(allocator, owned_node_set)?;
+        let allocator = node_memory_manager.get_allocator();
+        let copied =
+            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
         match copied {
             None => {
                 trie_node.children_table = None;
@@ -1227,13 +1103,15 @@ impl CowNodeRef {
         Ok(())
     }
 
-    fn cow_replace_child<'trie>(
-        &mut self, allocator: AllocatorRefRef<'trie>,
-        owned_node_set: &'trie mut OwnedNodeSet, trie_node: &mut TrieNode,
+    fn cow_replace_child(
+        &mut self, node_memory_manager: &NodeMemoryManager,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
         child_index: u8, child_node: MaybeNodeRef,
     ) -> Result<()>
     {
-        let copied = self.into_owned(allocator, owned_node_set)?;
+        let allocator = node_memory_manager.get_allocator();
+        let copied =
+            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
         match copied {
             None => {
                 trie_node.set_child(child_index, child_node);
@@ -1268,19 +1146,12 @@ impl Drop for CowNodeRef {
     }
 }
 
-/// TO convert a MaybeOwnedNode into a TrieNode, external information
-/// is needed: disk db object and memory region object. A cache policy object is
-/// also required
-// TODO(yz): update doc.
-
-// FIXME: use allocator instead of trie.
 pub struct SubTrieVisitor<'trie> {
     trie_ref: &'trie MultiVersionMerklePatriciaTrie,
     root: CowNodeRef,
 
-    // TODO: make sure that the NodeRef as key in cow_node_set doesn't change.
-    // e.g. if some owned node is in memory, it should not be promoted into
-    // memory without updating owned_node_set.
+    /// We use ReturnAfterUse because only one SubTrieVisitor(the deepest) can
+    /// hold the mutable reference of owned_node_set.
     owned_node_set: ReturnAfterUse<'trie, OwnedNodeSet>,
 }
 
@@ -1317,23 +1188,22 @@ impl<'trie> SubTrieVisitor<'trie> {
         self.trie_ref
     }
 
-    fn memory_allocator(&self) -> &'trie NodeMemoryAllocator {
-        &self.get_trie_ref().node_memory_allocator
+    fn node_memory_manager(&self) -> &'trie NodeMemoryManager {
+        &self.get_trie_ref().get_node_memory_manager()
     }
 
     fn memory_allocator_borrow(&self) -> AllocatorRef<'trie> {
-        self.memory_allocator().allocator.read().unwrap()
+        self.node_memory_manager().get_allocator()
     }
 
-    pub fn get<'key>(&self, key: KeyPart<'key>) -> Result<Box<[u8]>> {
-        let allocator = self.memory_allocator_borrow();
+    pub fn get(&self, key: KeyPart) -> Result<Box<[u8]>> {
+        let node_memory_manager = self.node_memory_manager();
+        let allocator = node_memory_manager.get_allocator();
         let mut node_cow = self.root.clone();
         let mut key = key;
         loop {
-            let trie_node = NodeMemoryAllocator::node_as_ref(
-                &allocator,
-                &node_cow.node_ref,
-            );
+            let trie_node = node_memory_manager
+                .node_as_ref(&allocator, &node_cow.node_ref)?;
             match trie_node.walk::<Read>(key) {
                 WalkStop::Arrived => {
                     return trie_node.value().map_or_else(
@@ -1362,18 +1232,17 @@ impl<'trie> SubTrieVisitor<'trie> {
     /// The visitor can only be used once to modify.
     /// Returns (deleted value, is root node replaced, the current root node for
     /// the subtree).
-    pub fn delete<'key>(
-        mut self, key: KeyPart<'key>,
+    pub fn delete(
+        mut self, key: KeyPart,
     ) -> Result<(Vec<u8>, bool, MaybeNodeRef)> {
-        let allocator = self.memory_allocator_borrow();
+        let node_memory_manager = self.node_memory_manager();
+        let allocator = node_memory_manager.get_allocator();
         let mut node_cow = replace(&mut self.root, Default::default());
         // TODO(yz): be compliant to borrow rule and avoid duplicated
 
         // FIXME: map_split?
-        let trie_node_mut = NodeMemoryAllocator::node_as_mut(
-            &allocator,
-            &mut node_cow.node_ref,
-        );
+        let trie_node_mut = node_memory_manager
+            .node_as_mut(&allocator, &mut node_cow.node_ref)?;
         match trie_node_mut.walk::<Read>(key) {
             WalkStop::Arrived => {
                 // If value doesn't exists, returns invalid key error.
@@ -1391,7 +1260,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                         };
                         // FIXME: deal with deletion while holding the
                         // trie_node_mut.
-                        node_cow.delete_node(self.memory_allocator());
+                        node_cow.delete_node(self.node_memory_manager());
                         // FIXME: maybe unify NULL_NODE into
                         // node_cow.into_child()?
                         Ok((value, true, MaybeNodeRef::NULL_NODE))
@@ -1415,19 +1284,20 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 child_node_ref,
                                 self.owned_node_set.get_ref(),
                             );
-                            new_path = NodeMemoryAllocator::node_as_ref(
-                                &allocator,
-                                &child_node_cow.node_ref,
-                            )
-                            .path_prepended(path_prefix, child_index);
+                            new_path = node_memory_manager
+                                .node_as_ref(
+                                    &allocator,
+                                    &child_node_cow.node_ref,
+                                )?
+                                .path_prepended(path_prefix, child_index);
                         }
                         // FIXME: error processing for OOM.
-                        let child_trie_node = NodeMemoryAllocator::node_as_mut(
+                        let child_trie_node = node_memory_manager.node_as_mut(
                             &allocator,
                             &mut child_node_cow.node_ref,
-                        );
+                        )?;
                         child_node_cow.cow_set_compressed_path(
-                            &allocator,
+                            &node_memory_manager,
                             self.owned_node_set.get_mut(),
                             new_path,
                             child_trie_node,
@@ -1437,21 +1307,21 @@ impl<'trie> SubTrieVisitor<'trie> {
                         // after call to node_mut.delete_node?
                         // FIXME: trie_node_mut should be considered ref of
                         // node_mut.
-                        node_cow.delete_node(self.memory_allocator());
+                        node_cow.delete_node(self.node_memory_manager());
 
                         Ok((value, true, child_node_cow.into_child()))
                     }
                     TrieNodeAction::Modify => {
                         let node_changed = !node_cow.owned;
                         let value = node_cow.cow_delete_value_unchecked(
-                            &allocator,
+                            &node_memory_manager,
                             self.owned_node_set.get_mut(),
                             trie_node_mut,
                         )?;
 
                         Ok((value, node_changed, node_cow.into_child()))
                     }
-                    _ => unreachable!(),
+                    _ => unsafe { unreachable_unchecked() },
                 }
             }
             WalkStop::Descent {
@@ -1487,19 +1357,20 @@ impl<'trie> SubTrieVisitor<'trie> {
                                     child_node_ref,
                                     self.owned_node_set.get_ref(),
                                 );
-                                new_path = NodeMemoryAllocator::node_as_ref(
-                                    &allocator,
-                                    &child_node_cow.node_ref,
-                                )
-                                .path_prepended(path_prefix, child_index);
+                                new_path = node_memory_manager
+                                    .node_as_ref(
+                                        &allocator,
+                                        &child_node_cow.node_ref,
+                                    )?
+                                    .path_prepended(path_prefix, child_index);
                             }
-                            let child_trie_node =
-                                NodeMemoryAllocator::node_as_mut(
+                            let child_trie_node = node_memory_manager
+                                .node_as_mut(
                                     &allocator,
                                     &mut child_node_cow.node_ref,
-                                );
+                                )?;
                             child_node_cow.cow_set_compressed_path(
-                                &allocator,
+                                &node_memory_manager,
                                 self.owned_node_set.get_mut(),
                                 new_path,
                                 child_trie_node,
@@ -1509,14 +1380,14 @@ impl<'trie> SubTrieVisitor<'trie> {
                             // invalid after call to node_mut.delete_node?
                             // FIXME: trie_node_mut should be considered ref of
                             // node_mut.
-                            node_cow.delete_node(self.memory_allocator());
+                            node_cow.delete_node(self.node_memory_manager());
 
                             Ok((value, true, child_node_cow.into_child()))
                         }
                         TrieNodeAction::DeleteChildrenTable => {
                             let node_changed = !node_cow.owned;
                             node_cow.cow_delete_children_table(
-                                &allocator,
+                                &node_memory_manager,
                                 self.owned_node_set.get_mut(),
                                 trie_node_mut,
                             )?;
@@ -1526,7 +1397,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                         TrieNodeAction::Modify => {
                             let node_changed = !node_cow.owned;
                             node_cow.cow_replace_child(
-                                &allocator,
+                                &node_memory_manager,
                                 self.owned_node_set.get_mut(),
                                 trie_node_mut,
                                 child_index,
@@ -1535,7 +1406,7 @@ impl<'trie> SubTrieVisitor<'trie> {
 
                             Ok((value, node_changed, node_cow.into_child()))
                         }
-                        _ => unreachable!(),
+                        _ => unsafe { unreachable_unchecked() },
                     }
                 } else {
                     Ok((value, false, node_cow.into_child()))
@@ -1549,6 +1420,14 @@ impl<'trie> SubTrieVisitor<'trie> {
         }
     }
 
+    // In a method we visit node one or 2 times but borrow-checker prevent
+    // holding and access other fields so it's visited multiple times.
+    // FIXME: Check if we did something like this.
+    // It's correct behavior if we first
+    // access this node, recurse into children, then access it again, because
+    // the accesses in subtree and other threads may in extreme cases evict
+    // this node from cache.
+
     // Assume that the obtained TrieNode will be set valid value (non-empty)
     // later on.
     /// Insert a valid value into MPT.
@@ -1556,19 +1435,18 @@ impl<'trie> SubTrieVisitor<'trie> {
     unsafe fn insert_checked_value<'key>(
         mut self, key: KeyPart<'key>, value: &[u8],
     ) -> Result<(bool, MaybeNodeRef)> {
-        let allocator = self.memory_allocator_borrow();
+        let node_memory_manager = self.node_memory_manager();
+        let allocator = node_memory_manager.get_allocator();
         let mut node_cow = replace(&mut self.root, Default::default());
         // TODO(yz): be compliant to borrow rule and avoid duplicated
 
-        let trie_node_mut = NodeMemoryAllocator::node_as_mut(
-            &allocator,
-            &mut node_cow.node_ref,
-        );
+        let trie_node_mut = node_memory_manager
+            .node_as_mut(&allocator, &mut node_cow.node_ref)?;
         match trie_node_mut.walk::<Write>(key) {
             WalkStop::Arrived => {
                 let node_changed = !node_cow.owned;
                 node_cow.cow_replace_value_unchecked(
-                    &allocator,
+                    &node_memory_manager,
                     self.owned_node_set.get_mut(),
                     trie_node_mut,
                     value,
@@ -1594,7 +1472,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 if child_changed {
                     let node_changed = !node_cow.owned;
                     node_cow.cow_replace_child(
-                        &allocator,
+                        &node_memory_manager,
                         self.owned_node_set.get_mut(),
                         trie_node_mut,
                         child_index,
@@ -1629,7 +1507,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 new_node.set_compressed_path(matched_path);
 
                 node_cow.cow_set_compressed_path(
-                    &allocator,
+                    &node_memory_manager,
                     self.owned_node_set.get_mut(),
                     unmatched_path_remaining,
                     trie_node_mut,
@@ -1694,7 +1572,7 @@ impl<'trie> SubTrieVisitor<'trie> {
 
                 let node_changed = !node_cow.owned;
                 node_cow.cow_replace_child(
-                    &allocator,
+                    &node_memory_manager,
                     self.owned_node_set.get_mut(),
                     trie_node_mut,
                     child_index,
@@ -1706,10 +1584,8 @@ impl<'trie> SubTrieVisitor<'trie> {
         }
     }
 
-    pub fn set<'key>(
-        self, key: KeyPart<'key>, value: &[u8],
-    ) -> Result<MaybeNodeRef> {
-        TrieNode::check_value_size(key)?;
+    pub fn set(self, key: KeyPart, value: &[u8]) -> Result<MaybeNodeRef> {
+        TrieNode::check_key_size(key)?;
         TrieNode::check_value_size(value)?;
         let new_root: MaybeNodeRef;
         unsafe {
@@ -1719,97 +1595,106 @@ impl<'trie> SubTrieVisitor<'trie> {
     }
 }
 
-impl Default for NodeMemoryAllocator {
-    fn default() -> Self {
-        // TODO(yz): use MAX_IN_MEM_TRIE_NODES_DISK_HYBRID.
-        Self::new_with_idle_and_size_limit(
-            Self::START_CAPACITY,
-            Self::MAX_IN_MEM_TRIE_NODES_MEM_ONLY,
-        )
-        .unwrap()
+impl Encodable for TrieNode {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        // Format: [ merkle, children_table ([] or [*16], value (maybe empty) ]
+        // ( + [compressed_path] )
+        s.begin_unbounded_list()
+            .append(&self.merkle_hash)
+            .append(&OwnedChildrenTableRef {
+                children_table_ref: &self.children_table,
+            })
+            .append(&self.value_as_slice());
+
+        let compressed_path_ref = self.compressed_path_ref();
+        if compressed_path_ref.path_slice.len() > 0 {
+            s.append(&compressed_path_ref);
+        }
+
+        s.complete_unbounded_list();
     }
 }
 
-impl NodeMemoryAllocator {
-    fn new_with_idle_and_size_limit(
-        idle_size: u32, size_limit: u32,
-    ) -> Result<Self> {
-        Ok(Self {
-            idle_size: idle_size,
-            size_limit: size_limit,
-            allocator: RwLock::new(Slab::with_capacity(idle_size as usize)),
+impl Decodable for TrieNode {
+    fn decode(rlp: &Rlp) -> std::result::Result<Self, DecoderError> {
+        let compressed_path;
+        if rlp.item_count()? != 4 {
+            compressed_path = CompressedPathRaw::new(&[], 0);
+        } else {
+            compressed_path = rlp.val_at(3)?;
+        }
+
+        Ok(TrieNode::new(
+            &rlp.val_at::<Vec<u8>>(0)?.as_slice().into(),
+            rlp.val_at::<OwnedChildrenTableWrapper>(1)?
+                .owned_children_table,
+            rlp.val_at::<Vec<u8>>(2)?.as_slice(),
+            compressed_path,
+        ))
+    }
+}
+
+pub struct OwnedChildrenTableWrapper {
+    pub owned_children_table: OwnedChildrenTable,
+}
+
+pub struct OwnedChildrenTableRef<'a> {
+    pub children_table_ref: &'a OwnedChildrenTable,
+}
+
+impl<'a> Encodable for OwnedChildrenTableRef<'a> {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        match self.children_table_ref {
+            Some(ref owned_children_table) => {
+                s.append_list(owned_children_table.as_ref().as_ref());
+            }
+            None => {
+                s.begin_list(0);
+            }
+        }
+    }
+}
+
+impl Decodable for OwnedChildrenTableWrapper {
+    fn decode(rlp: &Rlp) -> std::result::Result<Self, DecoderError> {
+        Ok(OwnedChildrenTableWrapper {
+            owned_children_table: if rlp.item_count()? > 1 {
+                let mut children_table = Box::<ChildrenTable>::default();
+                let parsed_children_table = rlp.as_list()?;
+                // Prevent copy_from_slice from asserting.
+                if parsed_children_table.len() != CHILDREN_COUNT {
+                    return Err(DecoderError::RlpIncorrectListLen);
+                }
+                children_table
+                    .copy_from_slice(parsed_children_table.as_slice());
+                Some(children_table)
+            } else {
+                None
+            },
         })
     }
+}
 
-    pub fn get_allocator<'a>(&'a self) -> AllocatorRef<'a> {
-        self.allocator.read().unwrap()
+impl<'a> CompressedPathRef<'a> {
+    // TODO(yz): the format can be optimized.
+    pub fn rlp_append_parts(&self, s: &mut RlpStream) {
+        s.append(&self.end_mask).append(&self.path_slice);
     }
+}
 
-    // Methods that requires mut borrow of slab.
-    pub fn enlarge(&self) -> Result<()> {
-        // TODO(yz): no unwrap to LockResult here?
-        let mut allocator_mut = self.allocator.write().unwrap();
-        let new_size = allocator_mut.len() + self.idle_size as usize;
-        let size_limit = self.size_limit as usize;
-        if new_size * 2 >= size_limit {
-            allocator_mut.reserve_exact(size_limit)?;
-        } else {
-            allocator_mut.reserve(new_size)?;
-        }
-        Ok(())
+impl<'a> Encodable for CompressedPathRef<'a> {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(2);
+        self.rlp_append_parts(s);
     }
+}
 
-    pub fn node_as_ref<'a>(
-        allocator: AllocatorRefRef<'a>, node: &NodeRef,
-    ) -> &'a TrieNode {
-        match node {
-            NodeRef::InMemory { index } => {
-                NodeMemoryAllocator::get_in_memory_node_ref(allocator, index)
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    pub fn node_as_mut<'a>(
-        allocator: AllocatorRefRef<'a>, node: &mut NodeRef,
-    ) -> &'a mut TrieNode {
-        match node {
-            NodeRef::InMemory { index } => {
-                NodeMemoryAllocator::get_in_memory_node_mut(allocator, index)
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    // Methods that doesn't requires mut borrow of slab.
-    pub fn get_in_memory_node_ref<'a>(
-        allocator: AllocatorRefRef<'a>, index: &usize,
-    ) -> &'a TrieNode {
-        unsafe { allocator.get_unchecked(*index) }
-    }
-
-    fn get_in_memory_node_mut<'a>(
-        allocator: AllocatorRefRef<'a>, index: &mut usize,
-    ) -> &'a mut TrieNode {
-        unsafe { allocator.get_unchecked_mut(*index) }
-    }
-
-    fn new_node<'a>(
-        allocator: AllocatorRefRef<'a>,
-    ) -> Result<(NodeRef, VacantEntry<'a>)> {
-        let vacant_entry = allocator.vacant_entry()?;
-        let node = NodeRef::InMemory {
-            index: vacant_entry.key(),
-        };
-        Ok((node, vacant_entry))
-    }
-
-    fn free_node(&self, node: &mut NodeRef) {
-        match *node {
-            NodeRef::InMemory { index } => {
-                self.allocator.read().unwrap().remove(index).unwrap();
-            }
-            NodeRef::OnDisk { index } => unimplemented!(),
-        }
+impl Decodable for CompressedPathRaw {
+    // TODO(yz): the format can be optimized.
+    fn decode(rlp: &Rlp) -> std::result::Result<Self, DecoderError> {
+        Ok(CompressedPathRaw::new(
+            rlp.val_at::<Vec<u8>>(1)?.as_slice(),
+            rlp.val_at(0)?,
+        ))
     }
 }

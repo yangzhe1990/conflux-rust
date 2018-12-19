@@ -1,4 +1,4 @@
-use super::state::State;
+use super::{impls::errors::*, state::State};
 use primitives::EpochId;
 use snapshot::snapshot::Snapshot;
 use std::sync::Arc;
@@ -16,9 +16,10 @@ pub type SharedStateManager = Arc<StateManager>;
 pub trait StateManagerTrait {
     fn from_snapshot(snapshot: &Snapshot) -> Self;
     fn make_snapshot(&self, epoch_id: EpochId) -> Snapshot;
-    /// Even for non-existing the method returns a State because we need a way to create the
-    /// genesis State. However there should be a special epoch_id to create the genesis State.
+    /// Even for non-existing the method returns a State because we need a way
+    /// to create the genesis State. However there should be a special
+    /// epoch_id to create the genesis State.
     //  TODO(yz): special epoch_id for empty state.
-    fn get_state_at(&self, epoch_id: EpochId) -> State;
+    fn get_state_at(&self, epoch_id: EpochId) -> Result<State>;
     fn drop_state_outside(&self, epoch_id: EpochId);
 }

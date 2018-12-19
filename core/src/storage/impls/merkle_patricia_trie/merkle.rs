@@ -34,10 +34,8 @@ pub fn compute_merkle(
 
     if compressed_path.path_slice.len() != 0 {
         let mut rlp_stream = RlpStream::new_list(3);
-        rlp_stream
-            .append(&compressed_path.end_mask)
-            .append(&compressed_path.path_slice)
-            .append(&merkle);
+        compressed_path.rlp_append_parts(&mut rlp_stream);
+        rlp_stream.append(&merkle);
 
         merkle = compute_merkle_for_rlp(&rlp_stream);
     }

@@ -33,7 +33,9 @@ pub struct SystemDB {
 }
 
 impl SystemDB {
-    fn key_value(&self) -> &Arc<KeyValueDB> { &self.key_value }
+    pub fn key_value(&self) -> &Arc<KeyValueDB> { &self.key_value }
+
+    pub fn new(kvdb: Arc<KeyValueDB>) -> Self { Self { key_value: kvdb } }
 }
 
 /// db compaction profile
@@ -97,7 +99,7 @@ pub fn open_database(
         Ok(db) => {
             info!("Open db successfully ({:?})", path);
             db
-        },
+        }
         Err(e) => {
             warn!("Failed to open db ({:?})", path);
             return Err(e);

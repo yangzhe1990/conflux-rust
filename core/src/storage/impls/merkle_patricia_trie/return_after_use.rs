@@ -1,4 +1,4 @@
-use std::mem::swap;
+use std::{hint::unreachable_unchecked, mem::swap};
 
 pub struct ReturnAfterUse<'a, T: 'a> {
     origin: Option<&'a mut Option<T>>,
@@ -18,7 +18,7 @@ impl<'a, T> Drop for ReturnAfterUse<'a, T> {
     fn drop(&mut self) {
         match &mut self.origin {
             Some(origin_mut) => swap(*origin_mut, &mut self.current),
-            _ => unreachable!(),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }

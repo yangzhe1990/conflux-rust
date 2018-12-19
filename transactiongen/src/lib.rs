@@ -74,7 +74,8 @@ impl TransactionGenerator {
 
     pub fn get_best_state(&self) -> State {
         self.state_manager
-            .get_state_at(self.consensus.best_block_hash())
+            .get_state_at(self.consensus.best_block_hash()).unwrap()
+        // TODO(yz): handle possible Error from above and remove unwrap().
     }
 
     pub fn generate_transaction(&self) -> SignedTransaction {
@@ -164,7 +165,8 @@ impl TransactionGenerator {
 
             let state = txgen
                 .state_manager
-                .get_state_at(txgen.consensus.best_block_hash());
+                .get_state_at(txgen.consensus.best_block_hash()).unwrap();
+            // TODO(yz): handle possible Error from above.
 
             // Randomly select sender and receiver.
             // Sender must exist in the account list.

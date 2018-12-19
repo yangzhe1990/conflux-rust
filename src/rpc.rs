@@ -148,7 +148,8 @@ impl Rpc for RpcImpl {
         info!("RPC Request: get_balance({:?})", addr);
         let state = self
             .state_manager
-            .get_state_at(self.consensus.best_block_hash());
+            .get_state_at(self.consensus.best_block_hash()).unwrap();
+        // TODO(yz): handle possible Error from above;
 
         let account = core::get_account(&state, &addr);
         if account.is_none() {

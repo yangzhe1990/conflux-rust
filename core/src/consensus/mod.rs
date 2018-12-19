@@ -263,7 +263,8 @@ impl ConsensusGraphInner {
             // Third, apply transactions in the determined total order
             let mut state = self
                 .state_manager
-                .get_state_at(self.arena[new_pivot_chain[fork_at - 1]].hash);
+                .get_state_at(self.arena[new_pivot_chain[fork_at - 1]].hash).unwrap();
+            // TODO(yz): process the possible db failure in the line above.
             let mut executor = Executor::new(&mut state);
             for index in reversed_indices.iter().rev() {
                 let block =

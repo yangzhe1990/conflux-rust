@@ -92,7 +92,7 @@ fn start(
     let secret_store = Arc::new(SecretStore::new());
     let genesis_block = make_genesis();
 
-    let state_manager = Arc::new(StateManager::default());
+    let state_manager = Arc::new(StateManager::new(ledger_db.clone()));
     state_manager.initialize(genesis_block.hash(), secret_store.as_ref());
 
     let txpool =
