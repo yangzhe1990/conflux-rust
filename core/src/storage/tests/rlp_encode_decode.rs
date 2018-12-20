@@ -17,7 +17,8 @@ fn test_rlp_encode_decode() {
     // Non-empty OwnedChildrenTable
     let mut owned_children_table = Some(Box::new(ChildrenTable::default()));
     for i in 0..CHILDREN_COUNT {
-        owned_children_table.as_mut().unwrap()[i] = MaybeNodeRef::new(i as u32 * 16384);
+        owned_children_table.as_mut().unwrap()[i] =
+            MaybeNodeRef::new(i as u32 * 16384);
     }
     owned_children_table.as_mut().unwrap()[11] =
         NodeRef::Committed { db_key: 0 }.into();

@@ -5,7 +5,7 @@ pub mod state;
 pub mod state_manager;
 
 #[cfg(test)]
-mod tests;
+pub mod tests;
 
 mod impls;
 

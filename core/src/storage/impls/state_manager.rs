@@ -61,8 +61,8 @@ impl StateManager {
                     "state_root_db_key_for_epoch_id_".as_bytes(),
                     epoch_id.as_ref(),
                 ]
-                    .concat()
-                    .as_slice(),
+                .concat()
+                .as_slice(),
             ),
         )?;
         match db_key_result {
@@ -149,6 +149,7 @@ impl StateManager {
             code_hash: KECCAK_EMPTY,
         };
         state.set(addr.as_ref(), encode(&account).as_ref()).unwrap();
+        state.compute_state_root().unwrap();
         state.commit(genesis).unwrap();
         secret_store.insert(kp);
     }

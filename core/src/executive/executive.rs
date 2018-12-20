@@ -733,10 +733,8 @@ impl<'a> CallCreateExecutive<'a> {
         let mut last_res =
             Some((false, self.gas, self.exec(state, top_substate)));
 
-        let mut callstack: Vec<(
-            Option<Address>,
-            CallCreateExecutive<'a>,
-        )> = Vec::new();
+        let mut callstack: Vec<(Option<Address>, CallCreateExecutive<'a>)> =
+            Vec::new();
         loop {
             match last_res {
                 None => {
@@ -1199,7 +1197,10 @@ mod tests {
     use state::{CleanupMode, State, Substate};
     use statedb::StateDb;
     use std::str::FromStr;
-    use storage::{StorageManager, StorageManagerTrait};
+    use storage::{
+        tests::new_state_manager_for_testing, StorageManager,
+        StorageManagerTrait,
+    };
 
     fn make_byzantium_machine(max_depth: usize) -> Machine {
         let mut machine = ::machine::new_byzantium_test_machine();
@@ -1211,7 +1212,7 @@ mod tests {
 
     fn get_state(storage_manager: &StorageManager, epoch_id: EpochId) -> State {
         State::new(
-            StateDb::new(storage_manager.get_state_at(epoch_id)),
+            StateDb::new(storage_manager.get_state_at(epoch_id).unwrap()),
             U256::from(0),
             VmFactory::default(),
         )
@@ -1221,7 +1222,7 @@ mod tests {
         storage_manager: &StorageManager, epoch_id: EpochId, factory: Factory,
     ) -> State {
         State::new(
-            StateDb::new(storage_manager.get_state_at(epoch_id)),
+            StateDb::new(storage_manager.get_state_at(epoch_id).unwrap()),
             U256::from(0),
             factory.into(),
         )
@@ -1266,7 +1267,7 @@ mod tests {
         params.gas = U256::from(100_000);
         params.code = Some(Arc::new("3331600055".from_hex().unwrap()));
         params.value = ActionValue::Transfer(U256::from(0x7));
-        let storage_manager = StorageManager::default();
+        let storage_manager = new_state_manager_for_testing();
         let mut state = get_state_with_factory(
             &storage_manager,
             H256::from(U256::from(0)),
@@ -1342,7 +1343,7 @@ mod tests {
         params.code = Some(Arc::new(code));
         params.value = ActionValue::Transfer(U256::from(100));
 
-        let storage_manager = StorageManager::default();
+        let storage_manager = new_state_manager_for_testing();
         let mut state = get_state_with_factory(
             &storage_manager,
             H256::from(U256::from(0)),
@@ -1414,7 +1415,7 @@ mod tests {
         params.value = ActionValue::Transfer(U256::from(100));
         params.call_type = CallType::Call;
 
-        let storage_manager = StorageManager::default();
+        let storage_manager = new_state_manager_for_testing();
         let mut state = get_state(&storage_manager, H256::from(U256::from(0)));
         state
             .add_balance(&sender, &U256::from(100), CleanupMode::NoEmpty)
@@ -1446,7 +1447,7 @@ mod tests {
         let code = "6c726576657274656420646174616000557f726576657274206d657373616765000000000000000000000000000000000000600052600e6000fd".from_hex().unwrap();
         let returns = "726576657274206d657373616765".from_hex().unwrap();
 
-        let storage_manager = StorageManager::default();
+        let storage_manager = new_state_manager_for_testing();
         let mut state = get_state_with_factory(
             &storage_manager,
             H256::from(U256::from(0)),
@@ -1522,7 +1523,7 @@ mod tests {
         params.value =
             ActionValue::Transfer(U256::from_str("0de0b6b3a7640000").unwrap());
 
-        let storage_manager = StorageManager::default();
+        let storage_manager = new_state_manager_for_testing();
         let mut state = get_state_with_factory(
             &storage_manager,
             H256::from(U256::from(0)),
@@ -1567,7 +1568,7 @@ mod tests {
         .sign(keypair.secret());
         let sender = t.sender();
 
-        let storage_manager = StorageManager::default();
+        let storage_manager = new_state_manager_for_testing();
         let mut state = get_state_with_factory(
             &storage_manager,
             H256::from(U256::from(0)),

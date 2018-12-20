@@ -892,24 +892,23 @@ impl CowNodeRef {
         }
     }
 
-    /// Only called on Merkle computation.
-    fn children_merkles_get_or_compute_and_commit(
+    fn commit_children(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
         commit_transaction: &mut AtomicCommitTransaction,
         cache_manager: &mut CacheManager,
-    ) -> Result<MaybeMerkleTable>
+    ) -> Result<()>
     {
         match trie_node.children_table {
-            None => Ok(None),
+            None => {}
             Some(ref mut table) => {
                 let allocator = trie.get_node_memory_manager().get_allocator();
 
                 let mut merkles = ChildrenMerkleTable::default();
                 for i in 0..CHILDREN_COUNT {
                     let maybe_child_node: Option<NodeRef> = table[i].into();
-                    merkles[i] = match maybe_child_node {
-                        None => super::merkle::MERKLE_NULL_NODE,
+                    match maybe_child_node {
+                        None => {}
                         Some(node_ref) => {
                             let mut cow_child_node =
                                 Self::new(node_ref, owned_node_set);
@@ -920,14 +919,13 @@ impl CowNodeRef {
                                     &mut cow_child_node.node_ref,
                                     cache_manager,
                                 )?;
-                            let (merkle, was_owned) = cow_child_node
-                                .get_merkle_or_compute_and_commit(
-                                    trie,
-                                    owned_node_set,
-                                    trie_node,
-                                    commit_transaction,
-                                    cache_manager,
-                                )?;
+                            let was_owned = cow_child_node.commit(
+                                trie,
+                                owned_node_set,
+                                trie_node,
+                                commit_transaction,
+                                cache_manager,
+                            )?;
 
                             // A owned child TrieNode now have a new NodeRef.
                             // Unowned child TrieNode isn't changed so it's safe
@@ -937,14 +935,12 @@ impl CowNodeRef {
                             if was_owned {
                                 table[i] = new_node_ref;
                             }
-
-                            merkle
                         }
                     }
                 }
-                Ok(Some(merkles))
             }
         }
+        Ok(())
     }
 
     fn set_merkle(
@@ -960,25 +956,84 @@ impl CowNodeRef {
         merkle
     }
 
-    /// get if unowned, compute and commit if owned.
-    pub fn get_merkle_or_compute_and_commit(
+    /// Get if unowned, compute if owned.
+    pub fn get_or_compute_merkle(
+        &mut self, trie: &MultiVersionMerklePatriciaTrie,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
+    ) -> Result<MerkleHash>
+    {
+        if self.owned {
+            let children_merkles = self.get_or_compute_children_merkles(
+                trie,
+                owned_node_set,
+                trie_node,
+            )?;
+
+            let merkle = self.set_merkle(children_merkles, trie_node);
+
+            Ok(merkle)
+        } else {
+            Ok(trie_node.merkle_hash)
+        }
+    }
+
+    fn get_or_compute_children_merkles(
+        &mut self, trie: &MultiVersionMerklePatriciaTrie,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
+    ) -> Result<MaybeMerkleTable>
+    {
+        match trie_node.children_table {
+            None => Ok(None),
+            Some(ref mut table) => {
+                let allocator = trie.get_node_memory_manager().get_allocator();
+
+                let mut merkles = ChildrenMerkleTable::default();
+                for i in 0..CHILDREN_COUNT {
+                    let maybe_child_node: Option<NodeRef> = table[i].into();
+                    merkles[i] = match maybe_child_node {
+                        None => super::merkle::MERKLE_NULL_NODE,
+                        Some(node_ref) => {
+                            let mut cow_child_node =
+                                Self::new(node_ref, owned_node_set);
+                            let mut trie_node =
+                                trie.get_node_memory_manager().node_as_mut(
+                                    &allocator,
+                                    &mut cow_child_node.node_ref,
+                                )?;
+                            let merkle = cow_child_node.get_or_compute_merkle(
+                                trie,
+                                owned_node_set,
+                                trie_node,
+                            )?;
+                            // There is no change to the child_node so the
+                            // return value is dropped.
+                            cow_child_node.into_child();
+
+                            merkle
+                        }
+                    }
+                }
+                Ok(Some(merkles))
+            }
+        }
+    }
+
+    /// Recursively commit dirty nodes.
+    pub fn commit(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
         commit_transaction: &mut AtomicCommitTransaction,
         cache_manager: &mut CacheManager,
-    ) -> Result<(MerkleHash, bool)>
+    ) -> Result<bool>
     {
         if self.owned {
-            let children_merkles = self
-                .children_merkles_get_or_compute_and_commit(
-                    trie,
-                    owned_node_set,
-                    trie_node,
-                    commit_transaction,
-                    cache_manager,
-                )?;
-
-            let merkle = self.set_merkle(children_merkles, trie_node);
+            self.commit_children(
+                trie,
+                owned_node_set,
+                trie_node,
+                commit_transaction,
+                cache_manager,
+            )?;
 
             let db_key = commit_transaction.info.row_number.value;
             commit_transaction.transaction.put(
@@ -1003,9 +1058,9 @@ impl CowNodeRef {
                 trie.get_node_memory_manager(),
             );
 
-            Ok((merkle, true))
+            Ok(true)
         } else {
-            Ok((trie_node.merkle_hash, false))
+            Ok(false)
         }
     }
 

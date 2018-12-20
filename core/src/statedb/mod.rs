@@ -66,7 +66,10 @@ impl<'a> StateDb<'a> {
         Ok(self.storage.delete_all(key_prefix)?)
     }
 
-    pub fn commit(&mut self, epoch_id: EpochId) -> MerkleHash {
-        self.storage.commit(epoch_id).unwrap()
+    pub fn commit(&mut self, epoch_id: EpochId) -> Result<MerkleHash> {
+        let merkle_hash = self.storage.compute_state_root()?;
+        self.storage.commit(epoch_id)?;
+
+        Ok(merkle_hash)
     }
 }

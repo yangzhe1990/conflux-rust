@@ -48,5 +48,10 @@ error_chain! {
             description("Too many nodes."),
             display("Too many nodes.")
         }
+
+        StateCommitWithoutMerkleHash {
+            description("State commit called before computing Merkle hash."),
+            display("State commit called before computing Merkle hash."),
+        }
     }
 }

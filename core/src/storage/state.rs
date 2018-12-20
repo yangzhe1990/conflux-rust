@@ -33,7 +33,10 @@ pub trait StateTrait {
     fn delete_all(&mut self, access_key_prefix: &[u8]) -> Result<()>;
 
     // Finalize
-    fn commit(&mut self, epoch: EpochId) -> Result<MerkleHash>;
+    /// It's costly to compute state root however it's only necessary to compute
+    /// state root once before committing.
+    fn compute_state_root(&mut self) -> Result<MerkleHash>;
+    fn commit(&mut self, epoch: EpochId) -> Result<()>;
     fn revert(&mut self);
 
     // TODO(yz): verifiable proof related methods.

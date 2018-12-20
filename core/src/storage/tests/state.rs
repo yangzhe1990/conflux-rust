@@ -60,6 +60,7 @@ fn test_set_get() {
 
     let mut epoch_id = H256::default();
     epoch_id[0] = 1;
+    state.compute_state_root().unwrap();
     state.commit(epoch_id).unwrap();
 }
 
@@ -86,6 +87,7 @@ fn test_get_set_at_second_commit() {
 
     let mut epoch_id_0 = H256::default();;
     epoch_id_0[0] = 1;
+    state_0.compute_state_root().unwrap();
     state_0.commit(epoch_id_0);
 
     let mut state_1 = state_manager.get_state_at(epoch_id_0).unwrap();
@@ -134,6 +136,7 @@ fn test_get_set_at_second_commit() {
 
     let mut epoch_id_1 = H256::default();;
     epoch_id_1[0] = 2;
+    state_1.compute_state_root().unwrap();
     state_1.commit(epoch_id_1);
 }
 
@@ -163,5 +166,6 @@ fn test_set_delete() {
 
     let mut epoch_id = H256::default();
     epoch_id[0] = 1;
+    state.compute_state_root().unwrap();
     state.commit(epoch_id).unwrap();
 }

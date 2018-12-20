@@ -1,11 +1,11 @@
 mod rlp_encode_decode;
 mod state;
 
+use super::state_manager::StateManager;
 use elastic_array::ElasticArray128;
 use ext_db::SystemDB;
 use kvdb::{DBTransaction, KeyValueDB};
 use std::{io::Result, sync::Arc};
-use StateManager;
 
 #[derive(Default)]
 pub struct FakeDbForStateTest {}

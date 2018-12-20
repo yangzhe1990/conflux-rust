@@ -62,9 +62,40 @@ impl<'a> State<'a> {
         self.get_root_node()
     }
 
+    fn compute_merkle_root(&mut self) -> Result<MerkleHash> {
+        let maybe_root_node: Option<NodeRef> = self.root_node.into();
+        match maybe_root_node {
+            None => {
+                // Don't commit empty state. Empty state shouldn't exists since
+                // genesis block.
+                Ok(MERKLE_NULL_NODE)
+            }
+            Some(root_node) => {
+                let mut cow_root = CowNodeRef::new(
+                    root_node.clone(),
+                    self.owned_node_set.as_ref().unwrap(),
+                );
+                let allocator =
+                    self.delta_trie.get_node_memory_manager().get_allocator();
+                let mut trie_node_root = self
+                    .delta_trie
+                    .get_node_memory_manager()
+                    .node_as_mut(&allocator, &mut cow_root.node_ref)?;
+                let merkle = cow_root.get_or_compute_merkle(
+                    self.delta_trie,
+                    self.owned_node_set.as_mut().unwrap(),
+                    trie_node_root,
+                )?;
+                cow_root.into_child();
+
+                Ok(merkle)
+            }
+        }
+    }
+
     fn do_db_commit(
         &mut self, epoch_id: EpochId, cache_manager: &mut CacheManager,
-    ) -> Result<MerkleHash> {
+    ) -> Result<()> {
         self.dirty = false;
 
         let maybe_root_node: Option<NodeRef> = self.root_node.into();
@@ -72,7 +103,6 @@ impl<'a> State<'a> {
             None => {
                 // Don't commit empty state. Empty state shouldn't exists since
                 // genesis block.
-                Ok(MERKLE_NULL_NODE)
             }
             Some(root_node) => {
                 // Use coarse lock to prevent row number from interleaving,
@@ -96,14 +126,13 @@ impl<'a> State<'a> {
                         &mut cow_root.node_ref,
                         cache_manager,
                     )?;
-                let merkle_and_was_dirty_flag = cow_root
-                    .get_merkle_or_compute_and_commit(
-                        self.delta_trie,
-                        self.owned_node_set.as_mut().unwrap(),
-                        trie_node_root,
-                        &mut commit_transaction,
-                        cache_manager,
-                    )?;
+                cow_root.commit(
+                    self.delta_trie,
+                    self.owned_node_set.as_mut().unwrap(),
+                    trie_node_root,
+                    &mut commit_transaction,
+                    cache_manager,
+                )?;
                 cow_root.into_child();
 
                 commit_transaction.transaction.put(
@@ -117,6 +146,7 @@ impl<'a> State<'a> {
                         NodeRef::Dirty { index } => {
                             commit_transaction.info.row_number.value - 1
                         }
+                        /// Empty block's state root points to its base state.
                         NodeRef::Committed { db_key } => db_key,
                     }
                 };
@@ -138,8 +168,24 @@ impl<'a> State<'a> {
                     .write(commit_transaction.transaction)?;
 
                 self.manager.mpt_commit_state_root(epoch_id, self.root_node);
+            }
+        }
 
-                Ok(merkle_and_was_dirty_flag.0)
+        Ok(())
+    }
+
+    fn state_root_check(&self) -> Result<()> {
+        let maybe_merkle_hash = self.get_merkle_hash()?;
+        match maybe_merkle_hash {
+            // Empty state.
+            None => (Ok(())),
+            Some(merkle_hash) => {
+                // Non-empty state
+                if merkle_hash.is_zero() {
+                    Err(ErrorKind::StateCommitWithoutMerkleHash.into())
+                } else {
+                    Ok(())
+                }
             }
         }
     }
@@ -211,18 +257,24 @@ impl<'a> StateTrait for State<'a> {
         unimplemented!()
     }
 
+    fn compute_state_root(&mut self) -> Result<MerkleHash> {
+        self.compute_merkle_root()
+    }
+
     // TODO(yz): replace coarse lock with a queue.
-    fn commit(&mut self, epoch_id: EpochId) -> Result<MerkleHash> {
+    fn commit(&mut self, epoch_id: EpochId) -> Result<()> {
+        self.state_root_check()?;
+
         // TODO(yz): Think about leaving these node dirty and only commit when
         // the dirty node is removed from cache.
-        let merkle_result = self.do_db_commit(
+        let commit_result = self.do_db_commit(
             epoch_id,
             &mut *self
                 .delta_trie
                 .get_node_memory_manager()
                 .get_cache_manager_mut(),
         );
-        if merkle_result.is_err() {
+        if commit_result.is_err() {
             self.revert();
         } else {
             // Add all nodes into cache.
@@ -233,8 +285,7 @@ impl<'a> StateTrait for State<'a> {
                     .dirty_node_committed(owned_node);
             }
         }
-
-        merkle_result
+        Ok(())
     }
 
     fn revert(&mut self) {
