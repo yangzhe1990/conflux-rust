@@ -37,13 +37,7 @@ impl<'a> State<'a> {
     }
 
     // FIXME: move to data_structure mod
-    fn get_root_node(&self) -> Result<NodeRef> {
-        let node: Option<NodeRef> = self.root_node.into();
-        match node {
-            None => Err(ErrorKind::MPTKeyNotFound.into()),
-            Some(node_ref) => Ok(node_ref),
-        }
-    }
+    fn get_root_node(&self) -> Option<NodeRef> { self.root_node.into() }
 
     fn get_or_create_root_node(&mut self) -> Result<NodeRef> {
         if self.root_node == MaybeNodeRef::NULL_NODE {
@@ -59,7 +53,8 @@ impl<'a> State<'a> {
             self.root_node = root_cow.into_child();
         }
 
-        self.get_root_node()
+        // Safe because in either branch the result is Some.
+        Ok(self.get_root_node().unwrap())
     }
 
     fn compute_merkle_root(&mut self) -> Result<MerkleHash> {
@@ -175,7 +170,7 @@ impl<'a> State<'a> {
     }
 
     fn state_root_check(&self) -> Result<()> {
-        let maybe_merkle_hash = self.get_merkle_hash()?;
+        let maybe_merkle_hash = self.get_merkle_hash(&[])?;
         match maybe_merkle_hash {
             // Empty state.
             None => (Ok(())),
@@ -200,31 +195,32 @@ impl<'a> Drop for State<'a> {
 }
 
 impl<'a> StateTrait for State<'a> {
-    fn does_exist(&self) -> bool { self.get_root_node().is_ok() }
+    fn does_exist(&self) -> bool { self.get_root_node().is_some() }
 
-    fn get_merkle_hash(&self) -> Result<Option<MerkleHash>> {
+    fn get_merkle_hash(&self, access_key: &[u8]) -> Result<Option<MerkleHash>> {
         match self.get_root_node() {
-            Err(_) => Ok(None),
-            Ok(node) => {
+            None => Ok(None),
+            Some(node) => {
                 Ok(Some(self.delta_trie.get_merkle_at_node(node.into())?))
             }
         }
     }
 
-    // FIXME: get a non-existing key shouldn't be an error.
-    fn get(&self, access_key: &[u8]) -> Result<Box<[u8]>> {
+    fn get(&self, access_key: &[u8]) -> Result<Option<Box<[u8]>>> {
         // Get won't create any new nodes so it's fine to pass an empty
         // owned_node_set.
         let mut empty_owned_node_set: Option<OwnedNodeSet> =
             Some(Default::default());
-        let value = SubTrieVisitor::new(
-            self.delta_trie,
-            self.get_root_node()?,
-            &mut empty_owned_node_set,
-        )
-        .get(access_key);
-
-        value
+        let maybe_root_node = self.get_root_node();
+        match maybe_root_node {
+            None => Ok(None),
+            Some(root_node) => SubTrieVisitor::new(
+                self.delta_trie,
+                root_node,
+                &mut empty_owned_node_set,
+            )
+            .get(access_key),
+        }
     }
 
     fn set(&mut self, access_key: &[u8], value: &[u8]) -> Result<()> {
@@ -240,17 +236,22 @@ impl<'a> StateTrait for State<'a> {
         Ok(())
     }
 
-    fn delete(&mut self, access_key: &[u8]) -> Result<Vec<u8>> {
+    fn delete(&mut self, access_key: &[u8]) -> Result<Option<Box<[u8]>>> {
         self.pre_modification();
 
-        let (old_value, _, root_node) = SubTrieVisitor::new(
-            self.delta_trie,
-            self.get_root_node()?,
-            &mut self.owned_node_set,
-        )
-        .delete(access_key)?;
-        self.root_node = root_node;
-        Ok(old_value)
+        match self.get_root_node() {
+            None => Ok(None),
+            Some(old_root_node) => {
+                let (old_value, _, root_node) = SubTrieVisitor::new(
+                    self.delta_trie,
+                    old_root_node,
+                    &mut self.owned_node_set,
+                )
+                .delete(access_key)?;
+                self.root_node = root_node;
+                Ok(old_value)
+            }
+        }
     }
 
     fn delete_all(&mut self, access_key_prefix: &[u8]) -> Result<()> {

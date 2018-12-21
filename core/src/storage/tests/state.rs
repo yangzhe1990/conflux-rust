@@ -53,7 +53,10 @@ fn test_set_get() {
     rng.shuffle(keys.as_mut());
 
     for key in &keys {
-        let value = state.get(key).expect("Failed to get key.");
+        let value = state
+            .get(key)
+            .expect("Failed to get key.")
+            .expect("Failed to get key");
         let equal = key.eq(value.as_ref());
         assert_eq!(equal, true);
     }
@@ -104,7 +107,10 @@ fn test_get_set_at_second_commit() {
         keys_1_overwritten.len(),
     );
     for key in keys_1_overwritten {
-        let old_value = state_1.get(key).expect("Failed to get key.");
+        let old_value = state_1
+            .get(key)
+            .expect("Failed to get key.")
+            .expect("Failed to get key");
         let equal = key.eq(old_value.as_ref());
         assert_eq!(equal, true);
         let value = vec![&key[..], &key[..]].concat();
@@ -118,7 +124,10 @@ fn test_get_set_at_second_commit() {
         keys_remain.len(),
     );
     for key in keys_remain {
-        let value = state_1.get(key).expect("Failed to get key.");
+        let value = state_1
+            .get(key)
+            .expect("Failed to get key.")
+            .expect("Failed to get key");
         let equal = key.eq(value.as_ref());
         assert_eq!(equal, true);
     }
@@ -128,7 +137,10 @@ fn test_get_set_at_second_commit() {
         keys_1_overwritten.len(),
     );
     for key in keys_1_overwritten {
-        let value = state_1.get(key).expect("Failed to get key.");
+        let value = state_1
+            .get(key)
+            .expect("Failed to get key.")
+            .expect("Failed to get key");
         let expected_value = vec![&key[..], &key[..]].concat();
         let equal = expected_value.eq(&value.as_ref());
         assert_eq!(equal, true);
@@ -159,8 +171,11 @@ fn test_set_delete() {
     let mut count = 0;
     for key in &keys {
         count += 1;
-        let value = state.delete(key).expect("Failed to delete key.");
-        let equal = key.eq(value.as_slice());
+        let value = state
+            .delete(key)
+            .expect("Failed to delete key.")
+            .expect("Failed to get key");
+        let equal = key.eq(value.as_ref());
         assert_eq!(equal, true);
     }
 

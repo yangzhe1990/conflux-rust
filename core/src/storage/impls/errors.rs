@@ -23,30 +23,29 @@ error_chain! {
 
         SlabKeyError {
             description("Slab: invalid position accessed"),
-            display("Slab: invalid position accessed")
+            display("Slab: invalid position accessed"),
+        }
+
+        MPTKeyNotFound {
+            description("Key not found."),
+            display("Key not found."),
         }
 
         // TODO(yz): encode key into error message.
-        MPTKeyNotFound {
-            description("Key not found."),
-            display("Key not found.")
-        }
-
-        // TODO(yz): encode value into error message.
         MPTInvalidKey {
             description("Invalid key."),
-            display("Invalid key.")
+            display("Invalid key."),
         }
 
         // TODO(yz): encode value into error message.
         MPTInvalidValue {
             description("Invalid value."),
-            display("Invalid value.")
+            display("Invalid value."),
         }
 
         MPTTooManyNodes {
             description("Too many nodes."),
-            display("Too many nodes.")
+            display("Too many nodes."),
         }
 
         StateCommitWithoutMerkleHash {

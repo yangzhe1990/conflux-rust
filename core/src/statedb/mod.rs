@@ -18,10 +18,10 @@ impl<'a> StateDb<'a> {
     pub fn get<T>(&self, key: &[u8]) -> Result<Option<T>>
     where T: ::rlp::Decodable {
         let raw = match self.storage.get(key) {
-            Ok(raw) => raw,
-            Err(StorageError(StorageErrorKind::MPTKeyNotFound, _)) => {
-                return Ok(None);
-            }
+            Ok(maybe_value) => match maybe_value {
+                None => return Ok(None),
+                Some(raw) => raw,
+            },
             Err(e) => {
                 return Err(e.into());
             }
@@ -31,16 +31,7 @@ impl<'a> StateDb<'a> {
     }
 
     pub fn get_raw(&self, key: &[u8]) -> Result<Option<Box<[u8]>>> {
-        let raw = match self.storage.get(key) {
-            Ok(raw) => raw,
-            Err(StorageError(StorageErrorKind::MPTKeyNotFound, _)) => {
-                return Ok(None);
-            }
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-        Ok(Some(raw))
+        Ok(self.storage.get(key)?)
     }
 
     pub fn set<T>(&mut self, key: &[u8], value: &T) -> Result<()>
@@ -57,7 +48,6 @@ impl<'a> StateDb<'a> {
     pub fn delete(&mut self, key: &[u8]) -> Result<()> {
         match self.storage.delete(key) {
             Ok(_) => Ok(()),
-            Err(StorageError(StorageErrorKind::MPTKeyNotFound, _)) => Ok(()),
             Err(e) => Err(e.into()),
         }
     }

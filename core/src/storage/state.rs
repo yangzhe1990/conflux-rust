@@ -20,12 +20,12 @@ pub trait StateTrait {
     /// state.
     fn does_exist(&self) -> bool;
     /// Merkle hash
-    fn get_merkle_hash(&self) -> Result<Option<MerkleHash>>;
+    fn get_merkle_hash(&self, access_key: &[u8]) -> Result<Option<MerkleHash>>;
 
     // Actions.
-    fn get(&self, access_key: &[u8]) -> Result<Box<[u8]>>;
+    fn get(&self, access_key: &[u8]) -> Result<Option<Box<[u8]>>>;
     fn set(&mut self, access_key: &[u8], value: &[u8]) -> Result<()>;
-    fn delete(&mut self, access_key: &[u8]) -> Result<Vec<u8>>;
+    fn delete(&mut self, access_key: &[u8]) -> Result<Option<Box<[u8]>>>;
     // Delete everything prefixed by access_key and return
     // Contaianer must be a container or type which ignores all inserts. So far
     // there is no standard container traits that we can directly apply.

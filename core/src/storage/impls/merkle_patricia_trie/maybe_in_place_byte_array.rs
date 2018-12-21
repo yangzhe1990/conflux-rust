@@ -58,7 +58,7 @@ impl MaybeInPlaceByteArray {
         }
     }
 
-    pub fn into_vec(&mut self, size: usize) -> Vec<u8> {
+    pub fn into_boxed_slice(&mut self, size: usize) -> Box<[u8]> {
         let is_ptr = size > Self::MAX_INPLACE_SIZE;
         unsafe {
             if is_ptr {
@@ -67,6 +67,7 @@ impl MaybeInPlaceByteArray {
                 Vec::from(&self.in_place[0..size])
             }
         }
+        .into_boxed_slice()
     }
 
     fn new(mut value: Box<[u8]>, size: usize) -> Self {

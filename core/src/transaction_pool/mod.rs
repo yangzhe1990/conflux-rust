@@ -52,8 +52,9 @@ impl<'cache, 'storage> AccountCache<'cache, 'storage> {
             let account = self
                 .storage
                 .get(sender.as_ref())
-                .map(|rlp| decode::<Account>(rlp.as_ref()).unwrap())
-                .ok();
+                .ok()
+                .and_then(|x| x)
+                .and_then(|rlp| decode::<Account>(rlp.as_ref()).ok());
             if let Some(account) = account {
                 self.accounts.insert(sender.clone(), account);
             }

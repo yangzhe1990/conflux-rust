@@ -81,6 +81,8 @@ pub struct TrieNode {
     /// manage the length and content separately.
     value_size: u32,
     value: MaybeInPlaceByteArray,
+
+    /// The merkle hash without the compressed path.
     pub merkle_hash: MerkleHash,
 
     pub cache_algo_data: LFRUHandle<LFRUPosT>,
@@ -213,11 +215,11 @@ impl TrieNode {
     /// This method can only be called by replace_value / delete_value because
     /// empty node must be removed and pass compression must be maintained.
     // FIXME: hide this method
-    fn value_into_vec(&mut self) -> Option<Vec<u8>> {
+    fn value_into_boxed_slice(&mut self) -> Option<Box<[u8]>> {
         let size = self.value_size as usize;
-        let maybe_value: Option<Vec<u8>>;
+        let maybe_value;
         if size != 0 {
-            maybe_value = Some(self.value.into_vec(size));
+            maybe_value = Some(self.value.into_boxed_slice(size));
             self.value_size = 0;
         } else {
             maybe_value = None;
@@ -225,14 +227,14 @@ impl TrieNode {
         maybe_value
     }
 
-    fn replace_value_unchecked(&mut self, value: &[u8]) -> Option<Vec<u8>> {
-        let old_value = self.value_into_vec();
+    fn replace_value_valid(&mut self, valid_value: &[u8]) -> Option<Box<[u8]>> {
+        let old_value = self.value_into_boxed_slice();
         if old_value.is_none() {
             self.number_of_children_plus_value += 1;
         }
-        let value_size = value.len();
+        let value_size = valid_value.len();
         self.value_size = value_size as u32;
-        self.value = MaybeInPlaceByteArray::copy_from(value, value_size);
+        self.value = MaybeInPlaceByteArray::copy_from(valid_value, value_size);
 
         old_value
     }
@@ -574,7 +576,7 @@ impl TrieNode {
         };
 
         ret.children_table = children_table;
-        ret.replace_value_unchecked(value);
+        ret.replace_value_valid(value);
         ret.set_compressed_path(compressed_path);
 
         ret
@@ -600,7 +602,7 @@ impl TrieNode {
         match new_value {
             Some(maybe_value) => match maybe_value {
                 Some(value) => {
-                    ret.replace_value_unchecked(value);
+                    ret.replace_value_valid(value);
                 }
                 None => {
                     ret.delete_value_unchecked();
@@ -664,8 +666,8 @@ impl TrieNode {
     }
 
     /// Delete value when we know that it already exists.
-    unsafe fn delete_value_unchecked(&mut self) -> Vec<u8> {
-        let ret = self.value_into_vec().unwrap();
+    unsafe fn delete_value_unchecked(&mut self) -> Box<[u8]> {
+        let ret = self.value_into_boxed_slice().unwrap();
 
         self.number_of_children_plus_value -= 1;
 
@@ -946,14 +948,14 @@ impl CowNodeRef {
     fn set_merkle(
         &mut self, children_merkles: MaybeMerkleTable, trie_node: &mut TrieNode,
     ) -> MerkleHash {
-        let merkle = compute_merkle(
+        let (node_merkle, path_merkle) = compute_merkle(
             trie_node.compressed_path_ref(),
             children_merkles,
             trie_node.value_as_slice(),
         );
-        trie_node.merkle_hash = merkle;
+        trie_node.merkle_hash = node_merkle;
 
-        merkle
+        path_merkle
     }
 
     /// Get if unowned, compute if owned.
@@ -973,7 +975,10 @@ impl CowNodeRef {
 
             Ok(merkle)
         } else {
-            Ok(trie_node.merkle_hash)
+            Ok(compute_path_merkle(
+                trie_node.compressed_path_ref(),
+                &trie_node.merkle_hash,
+            ))
         }
     }
 
@@ -1064,15 +1069,14 @@ impl CowNodeRef {
         }
     }
 
-    // FIXME: why mut TrieNode when Cow doesn't own it? mut self?
-    unsafe fn delete_value_if_owned(
-        &self, trie_node: &mut TrieNode,
-    ) -> Vec<u8> {
+    // FIXME: why mut TrieNode when Cow doesn't own it?
+    unsafe fn delete_value_unchecked_if_owned(
+        &mut self, trie_node: &mut TrieNode,
+    ) -> Box<[u8]> {
         if self.owned {
-            // FIXME: delete value unchecked.
             trie_node.delete_value_unchecked()
         } else {
-            trie_node.value().unwrap().into()
+            trie_node.value().unwrap()
         }
     }
 
@@ -1101,7 +1105,7 @@ impl CowNodeRef {
     fn cow_delete_value_unchecked(
         &mut self, node_memory_manager: &NodeMemoryManager,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
-    ) -> Result<Vec<u8>>
+    ) -> Result<Box<[u8]>>
     {
         let allocator = node_memory_manager.get_allocator();
         let copied =
@@ -1112,27 +1116,27 @@ impl CowNodeRef {
                 new_entry.insert(unsafe {
                     old.copy_and_replace_fields(Some(None), None, None)
                 });
-                old.value().unwrap().into()
+                old.value().unwrap()
             }
         })
     }
 
-    fn cow_replace_value_unchecked(
+    fn cow_replace_value_valid(
         &mut self, node_memory_manager: &NodeMemoryManager,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
         value: &[u8],
-    ) -> Result<Option<Vec<u8>>>
+    ) -> Result<Option<Box<[u8]>>>
     {
         let allocator = node_memory_manager.get_allocator();
         let copied =
             self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
         Ok(match copied {
-            None => trie_node.replace_value_unchecked(value),
+            None => trie_node.replace_value_valid(value),
             Some((old, new_entry)) => {
                 new_entry.insert(unsafe {
                     old.copy_and_replace_fields(Some(Some(value)), None, None)
                 });
-                old.value().map(|value| value.into_vec())
+                old.value()
             }
         })
     }
@@ -1251,20 +1255,18 @@ impl<'trie> SubTrieVisitor<'trie> {
         self.node_memory_manager().get_allocator()
     }
 
-    pub fn get(&self, key: KeyPart) -> Result<Box<[u8]>> {
-        let node_memory_manager = self.node_memory_manager();
-        let allocator = node_memory_manager.get_allocator();
+    fn get_trie_node<'a>(
+        &self, key: KeyPart, allocator_ref: AllocatorRefRef<'a>,
+    ) -> Result<Option<&'a TrieNode>> {
         let mut node_cow = self.root.clone();
         let mut key = key;
         loop {
-            let trie_node = node_memory_manager
-                .node_as_ref(&allocator, &node_cow.node_ref)?;
+            let trie_node = self
+                .node_memory_manager()
+                .node_as_ref(allocator_ref, &node_cow.node_ref)?;
             match trie_node.walk::<Read>(key) {
                 WalkStop::Arrived => {
-                    return trie_node.value().map_or_else(
-                        || Err(Error::from_kind(ErrorKind::MPTKeyNotFound)),
-                        |value| Ok(value),
-                    );
+                    return Ok(Some(trie_node));
                 }
                 WalkStop::Descent {
                     key_remaining,
@@ -1278,9 +1280,29 @@ impl<'trie> SubTrieVisitor<'trie> {
                     key = key_remaining;
                 }
                 _ => {
-                    return Err(Error::from_kind(ErrorKind::MPTKeyNotFound));
+                    return Ok(None);
                 }
             }
+        }
+    }
+
+    pub fn get(&self, key: KeyPart) -> Result<Option<Box<[u8]>>> {
+        let allocator = self.node_memory_manager().get_allocator();
+        let maybe_trie_node = self.get_trie_node(key, &allocator)?;
+
+        Ok(match maybe_trie_node {
+            None => None,
+            Some(trie_node) => trie_node.value(),
+        })
+    }
+
+    pub fn get_merkle_hash(&self, key: KeyPart) -> Result<Option<MerkleHash>> {
+        let allocator = self.node_memory_manager().get_allocator();
+        let maybe_trie_node = self.get_trie_node(key, &allocator)?;
+
+        match maybe_trie_node {
+            None => Ok(None),
+            Some(trie_node) => Ok(Some(trie_node.merkle_hash)),
         }
     }
 
@@ -1288,8 +1310,8 @@ impl<'trie> SubTrieVisitor<'trie> {
     /// Returns (deleted value, is root node replaced, the current root node for
     /// the subtree).
     pub fn delete(
-        mut self, key: KeyPart,
-    ) -> Result<(Vec<u8>, bool, MaybeNodeRef)> {
+        &mut self, key: KeyPart,
+    ) -> Result<(Option<Box<[u8]>>, bool, MaybeNodeRef)> {
         let node_memory_manager = self.node_memory_manager();
         let allocator = node_memory_manager.get_allocator();
         let mut node_cow = replace(&mut self.root, Default::default());
@@ -1303,22 +1325,22 @@ impl<'trie> SubTrieVisitor<'trie> {
                 // If value doesn't exists, returns invalid key error.
                 let result = trie_node_mut.check_delete_value();
                 if result.is_err() {
-                    node_cow.into_child();
-                    return Err(result.err().unwrap());
+                    return Ok((None, false, node_cow.into_child()));
                 }
                 let action = result.unwrap();
                 match action {
                     TrieNodeAction::Delete => {
                         // The current node is going to be dropped if owned.
                         let value = unsafe {
-                            node_cow.delete_value_if_owned(trie_node_mut)
+                            node_cow
+                                .delete_value_unchecked_if_owned(trie_node_mut)
                         };
                         // FIXME: deal with deletion while holding the
                         // trie_node_mut.
                         node_cow.delete_node(self.node_memory_manager());
                         // FIXME: maybe unify NULL_NODE into
                         // node_cow.into_child()?
-                        Ok((value, true, MaybeNodeRef::NULL_NODE))
+                        Ok((Some(value), true, MaybeNodeRef::NULL_NODE))
                     }
                     TrieNodeAction::MergePath {
                         child_index,
@@ -1326,7 +1348,8 @@ impl<'trie> SubTrieVisitor<'trie> {
                     } => {
                         // The current node is going to be dropped if owned.
                         let value = unsafe {
-                            node_cow.delete_value_if_owned(trie_node_mut)
+                            node_cow
+                                .delete_value_unchecked_if_owned(trie_node_mut)
                         };
 
                         let new_path: CompressedPathRaw;
@@ -1364,7 +1387,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                         // node_mut.
                         node_cow.delete_node(self.node_memory_manager());
 
-                        Ok((value, true, child_node_cow.into_child()))
+                        Ok((Some(value), true, child_node_cow.into_child()))
                     }
                     TrieNodeAction::Modify => {
                         let node_changed = !node_cow.owned;
@@ -1374,7 +1397,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                             trie_node_mut,
                         )?;
 
-                        Ok((value, node_changed, node_cow.into_child()))
+                        Ok((Some(value), node_changed, node_cow.into_child()))
                     }
                     _ => unsafe { unreachable_unchecked() },
                 }
@@ -1468,10 +1491,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 }
             }
 
-            _ => {
-                node_cow.into_child();
-                Err(Error::from_kind(ErrorKind::MPTKeyNotFound))
-            }
+            _ => Ok((None, false, node_cow.into_child())),
         }
     }
 
@@ -1500,7 +1520,7 @@ impl<'trie> SubTrieVisitor<'trie> {
         match trie_node_mut.walk::<Write>(key) {
             WalkStop::Arrived => {
                 let node_changed = !node_cow.owned;
-                node_cow.cow_replace_value_unchecked(
+                node_cow.cow_replace_value_valid(
                     &node_memory_manager,
                     self.owned_node_set.get_mut(),
                     trie_node_mut,
@@ -1575,7 +1595,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 match key_child_index {
                     None => {
                         // Insert value at the current node
-                        new_node.replace_value_unchecked(value);
+                        new_node.replace_value_valid(value);
                     }
                     Some(child_index) => {
                         // TODO(yz): Maybe create CowNodeRef on NULL then
@@ -1593,7 +1613,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 end_mask: 0,
                             },
                         );
-                        new_child_node.replace_value_unchecked(value);
+                        new_child_node.replace_value_valid(value);
                         child_node_entry.insert(new_child_node);
 
                         new_node.set_child(
@@ -1622,7 +1642,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     path_slice: key_remaining,
                     end_mask: 0,
                 });
-                new_child_node.replace_value_unchecked(value);
+                new_child_node.replace_value_valid(value);
                 child_node_entry.insert(new_child_node);
 
                 let node_changed = !node_cow.owned;
