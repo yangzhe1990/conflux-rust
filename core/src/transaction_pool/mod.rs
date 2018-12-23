@@ -14,7 +14,7 @@ use primitives::{
     Account, EpochId, SignedTransaction, TransactionWithSignature,
 };
 use rlp::decode;
-use state::State;
+use crate::state::State;
 use std::{
     cmp::{min, Ordering},
     collections::hash_map::{Entry, HashMap},
@@ -22,7 +22,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use storage::{Storage, StorageManager, StorageManagerTrait, StorageTrait};
+use crate::storage::{Storage, StorageManager, StorageManagerTrait, StorageTrait};
 
 pub const DEFAULT_MIN_TRANSACTION_GAS_PRICE: u64 = 1;
 pub const DEFAULT_MAX_TRANSACTION_GAS_LIMIT: u64 = 100_000;

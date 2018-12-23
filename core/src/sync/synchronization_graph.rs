@@ -1,8 +1,8 @@
-use consensus::{ConsensusGraph, SharedConsensusGraph};
-use error::{BlockError, Error};
+use crate::consensus::{ConsensusGraph, SharedConsensusGraph};
+use crate::error::{BlockError, Error};
 use ethereum_types::{H256, U256};
 use parking_lot::RwLock;
-use pow::ProofOfWorkConfig;
+use crate::pow::ProofOfWorkConfig;
 use primitives::{Block, BlockHeader};
 use slab::Slab;
 use std::{
@@ -13,7 +13,7 @@ use std::{
     time::SystemTime,
 };
 use unexpected::Mismatch;
-use verification::verification::*;
+use crate::verification::verification::*;
 
 const NULL: usize = !0;
 const BLOCK_INVALID: u8 = 0;

@@ -16,9 +16,9 @@
 
 //! Evm input params.
 use super::call_type::CallType;
-use bytes::Bytes;
+use crate::bytes::Bytes;
 use ethereum_types::{Address, H256, U256};
-use hash::{keccak, KECCAK_EMPTY};
+use crate::hash::{keccak, KECCAK_EMPTY};
 use std::sync::Arc;
 
 /// Transaction value

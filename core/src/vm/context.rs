@@ -23,7 +23,7 @@ use super::{
     return_data::ReturnData,
     spec::Spec,
 };
-use bytes::Bytes;
+use crate::bytes::Bytes;
 use ethereum_types::{Address, H256, U256};
 use std::sync::Arc;
 

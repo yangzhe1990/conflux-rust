@@ -25,10 +25,10 @@ use byteorder::{BigEndian, ByteOrder};
 use num::{BigUint, One, Zero};
 use parity_crypto::digest;
 
-use bytes::BytesRef;
+use crate::bytes::BytesRef;
 use ethereum_types::{H256, U256};
 use ethkey::{recover as ec_recover, Signature};
-use hash::keccak;
+use crate::hash::keccak;
 
 /// Execution error.
 #[derive(Debug)]
@@ -38,8 +38,8 @@ impl From<&'static str> for Error {
     fn from(val: &'static str) -> Self { Error(val) }
 }
 
-impl Into<::vm::Error> for Error {
-    fn into(self) -> ::vm::Error { ::vm::Error::BuiltIn(self.0) }
+impl Into<crate::vm::Error> for Error {
+    fn into(self) -> crate::vm::Error { crate::vm::Error::BuiltIn(self.0) }
 }
 
 /// Native implementation of a built-in contract.
@@ -663,7 +663,7 @@ mod tests {
     use super::{
         ethereum_builtin, modexp as me, Builtin, Linear, ModexpPricer, Pricer,
     };
-    use bytes::BytesRef;
+    use crate::bytes::BytesRef;
     use ethereum_types::U256;
     //    use ethjson;
     use num::{BigUint, One, Zero};

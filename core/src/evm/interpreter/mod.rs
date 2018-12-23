@@ -23,12 +23,12 @@ mod memory;
 mod shared_cache;
 mod stack;
 
-use bytes::Bytes;
+use crate::bytes::Bytes;
 use ethereum_types::{Address, H256, U256, U512};
-use hash::keccak;
+use crate::hash::keccak;
 use std::{cmp, marker::PhantomData, mem, sync::Arc};
 
-use vm::{
+use crate::vm::{
     self, ActionParams, ActionValue, CallType, Context, ContractCreateResult,
     CreateContractAddress, GasLeft, MessageCallResult, ParamsType, ReturnData,
     Spec, TrapError, TrapKind,
@@ -1511,7 +1511,7 @@ mod tests {
     use super::super::{factory::Factory, vmtype::VMType};
     use rustc_hex::FromHex;
     use std::sync::Arc;
-    use vm::{
+    use crate::vm::{
         self,
         tests::{test_finalize, MockContext},
         ActionParams, ActionValue, Exec,
@@ -1568,6 +1568,6 @@ mod tests {
                 .unwrap()
         };
 
-        assert_eq!(err, ::vm::Error::OutOfBounds);
+        assert_eq!(err, crate::vm::Error::OutOfBounds);
     }
 }

@@ -24,7 +24,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use vm::{
+use crate::vm::{
     self,
     tests::{test_finalize, MockCall, MockCallType, MockContext},
     ActionParams, ActionValue, Context,

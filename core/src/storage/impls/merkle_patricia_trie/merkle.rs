@@ -4,7 +4,7 @@ pub type ChildrenMerkleTable = [MerkleHash; CHILDREN_COUNT];
 pub type MaybeMerkleTable = Option<ChildrenMerkleTable>;
 
 use super::data_structure::*;
-use hash::{keccak, KECCAK_EMPTY};
+use crate::hash::{keccak, KECCAK_EMPTY};
 use rlp::*;
 
 pub const MERKLE_NULL_NODE: MerkleHash = KECCAK_EMPTY;

@@ -18,7 +18,7 @@
 use super::{interpreter::SharedCache, vmtype::VMType};
 use ethereum_types::U256;
 use std::sync::Arc;
-use vm::{ActionParams, Exec, Spec};
+use crate::vm::{ActionParams, Exec, Spec};
 
 /// Evm factory. Creates appropriate Evm.
 #[derive(Clone)]
@@ -80,8 +80,8 @@ impl Default for Factory {
 
 #[test]
 fn test_create_vm() {
-    use bytes::Bytes;
-    use vm::{tests::MockContext, Context};
+    use crate::bytes::Bytes;
+    use crate::vm::{tests::MockContext, Context};
 
     let mut params = ActionParams::default();
     params.code = Some(Arc::new(Bytes::default()));

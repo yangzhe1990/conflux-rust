@@ -5,6 +5,7 @@ license = "GPL-3.0"
 name = "core"
 version = "0.1.0"
 authors = ["ming wu <ming@alt-chain.io>"]
+edition = "2018"
 
 [dependencies]
 keccak-hash = { git = "https://github.com/paritytech/parity-common" }
@@ -39,7 +40,3 @@ bn = { git = "https://github.com/paritytech/bn", default-features = false }
 [dev-dependencies]
 rustc-hex = "1.0"
 criterion = "0.2"
-
-[[bench]]
-name = "core_benchmark"
-harness = false

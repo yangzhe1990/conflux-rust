@@ -1,12 +1,12 @@
 use ethereum_types::{H256, U256};
-use executive::{ExecutionError, Executive};
-use ext_db::SystemDB;
-use machine::new_byzantium_test_machine;
+use crate::executive::{ExecutionError, Executive};
+use crate::ext_db::SystemDB;
+use crate::machine::new_byzantium_test_machine;
 use parking_lot::RwLock;
 use primitives::Block;
 use slab::Slab;
-use state::State;
-use statedb::StateDb;
+use crate::state::State;
+use crate::statedb::StateDb;
 use std::{
     cell::RefCell,
     cmp::min,
@@ -14,14 +14,14 @@ use std::{
     iter::FromIterator,
     sync::Arc,
 };
-use storage::{
+use crate::storage::{
     state::StateTrait, state_manager::StateManagerTrait, StorageManager,
     StorageManagerTrait,
 };
-use sync::{SynchronizationGraphInner, SynchronizationGraphNode};
-use transaction_pool::SharedTransactionPool;
-use vm::{EnvInfo, Spec};
-use vm_factory::VmFactory;
+use crate::sync::{SynchronizationGraphInner, SynchronizationGraphNode};
+use crate::transaction_pool::SharedTransactionPool;
+use crate::vm::{EnvInfo, Spec};
+use crate::vm_factory::VmFactory;
 
 const DEFERRED_STATE_EPOCH_COUNT: u64 = 100;
 
@@ -161,7 +161,7 @@ impl ConsensusGraphInner {
             fork_total_difficulty: U256,
         }
 
-        let me_in_sync = *sync_graph
+        let _me_in_sync = *sync_graph
             .indices
             .get(&self.arena[me_in_consensus].hash)
             .unwrap();

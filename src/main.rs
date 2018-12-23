@@ -43,7 +43,7 @@ mod rpc;
 
 use blockgen::BlockGenerator;
 use clap::{App, Arg};
-use configuration::Configuration;
+use crate::configuration::Configuration;
 use core::{
     storage::StorageManager, vm_factory::VmFactory, ConsensusGraph,
     TransactionPool,

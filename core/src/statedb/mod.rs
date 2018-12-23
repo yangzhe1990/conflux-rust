@@ -1,5 +1,5 @@
 use primitives::EpochId;
-use storage::{
+use crate::storage::{
     Error as StorageError, ErrorKind as StorageErrorKind, MerkleHash, Storage,
     StorageTrait,
 };

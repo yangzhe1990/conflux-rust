@@ -53,10 +53,10 @@ pub mod verification;
 mod vm;
 pub mod vm_factory;
 
-pub use consensus::{ConsensusGraph, SharedConsensusGraph};
+pub use crate::consensus::{ConsensusGraph, SharedConsensusGraph};
 pub use network::PeerInfo;
-pub use sync::{
+pub use crate::sync::{
     BestInformation, SharedSynchronizationGraph, SharedSynchronizationService,
     SynchronizationConfiguration, SynchronizationService,
 };
-pub use transaction_pool::{SharedTransactionPool, TransactionPool};
+pub use crate::transaction_pool::{SharedTransactionPool, TransactionPool};

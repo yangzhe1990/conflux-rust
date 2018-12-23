@@ -23,7 +23,7 @@ use super::{
     instructions::{self, Instruction, InstructionInfo},
     stack::Stack,
 };
-use vm::{self, Spec};
+use crate::vm::{self, Spec};
 
 macro_rules! overflowing {
     ($x: expr) => {{

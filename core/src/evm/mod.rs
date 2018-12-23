@@ -13,7 +13,7 @@ pub use self::{
     factory::Factory,
     vmtype::VMType,
 };
-pub use vm::{
+pub use crate::vm::{
     ActionParams, CallType, CleanDustMode, Context, ContractCreateResult,
     CreateContractAddress, EnvInfo, GasLeft, MessageCallResult, ReturnData,
     Spec,

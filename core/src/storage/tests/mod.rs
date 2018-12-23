@@ -3,7 +3,7 @@ mod state;
 
 use super::state_manager::StateManager;
 use elastic_array::ElasticArray128;
-use ext_db::SystemDB;
+use crate::ext_db::SystemDB;
 use kvdb::{DBTransaction, KeyValueDB};
 use std::{io::Result, sync::Arc};
 

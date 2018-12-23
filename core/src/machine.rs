@@ -2,7 +2,7 @@ use super::builtin::Builtin;
 use ethereum_types::{Address, U256};
 use primitives::CardinalNumber;
 use std::{collections::BTreeMap, sync::Arc};
-use vm::Spec;
+use crate::vm::Spec;
 
 #[derive(Debug, PartialEq, Default)]
 pub struct CommonParams {

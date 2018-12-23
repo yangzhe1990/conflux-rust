@@ -3,8 +3,8 @@ use super::{
     SharedSynchronizationGraph, SynchronizationGraph, SynchronizationPeerState,
     SynchronizationState, MAX_INFLIGHT_REQUEST_COUNT,
 };
-use bytes::Bytes;
-use consensus::SharedConsensusGraph;
+use crate::bytes::Bytes;
+use crate::consensus::SharedConsensusGraph;
 use ethereum_types::H256;
 use io::TimerToken;
 use message::{
@@ -16,7 +16,7 @@ use network::{
     Error as NetworkError, NetworkContext, NetworkProtocolHandler, PeerId,
 };
 use parking_lot::{Mutex, RwLock};
-use pow::ProofOfWorkConfig;
+use crate::pow::ProofOfWorkConfig;
 use primitives::{Block, SignedTransaction};
 use rand::{Rng, RngCore};
 use rlp::Rlp;
@@ -30,8 +30,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use sync::synchronization_state::{RequestMessage, SynchronizationPeerRequest};
-use verification::verification::VerificationConfig;
+use crate::sync::synchronization_state::{RequestMessage, SynchronizationPeerRequest};
+use crate::verification::verification::VerificationConfig;
 
 pub const SYNCHRONIZATION_PROTOCOL_VERSION: u8 = 0x01;
 
@@ -344,7 +344,7 @@ impl SynchronizationProtocolHandler {
         debug!("on_status, msg=:{:?}", status);
         let mut requests_vec =
             Vec::with_capacity(MAX_INFLIGHT_REQUEST_COUNT as usize);
-        for i in 0..MAX_INFLIGHT_REQUEST_COUNT {
+        for _i in 0..MAX_INFLIGHT_REQUEST_COUNT {
             requests_vec.push(None);
         }
         let peer = SynchronizationPeerState {

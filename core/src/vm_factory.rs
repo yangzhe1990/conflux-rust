@@ -1,5 +1,5 @@
-use evm::{Factory as EvmFactory, VMType};
-use vm::{ActionParams, Exec, Spec};
+use crate::evm::{Factory as EvmFactory, VMType};
+use crate::vm::{ActionParams, Exec, Spec};
 
 /// Virtual machine factory
 #[derive(Default, Clone)]

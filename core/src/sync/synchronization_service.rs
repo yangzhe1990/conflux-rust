@@ -2,7 +2,7 @@ use super::{
     Error, SharedSynchronizationGraph, SynchronizationProtocolHandler,
     SYNCHRONIZATION_PROTOCOL_VERSION,
 };
-use consensus::SharedConsensusGraph;
+use crate::consensus::SharedConsensusGraph;
 use ethereum_types::H256;
 use ethkey::KeyPair;
 use network::{
@@ -10,10 +10,10 @@ use network::{
     Error as NetworkError, NetworkConfiguration, NetworkService, PeerInfo,
     ProtocolId,
 };
-use pow::ProofOfWorkConfig;
+use crate::pow::ProofOfWorkConfig;
 use primitives::Block;
 use std::sync::Arc;
-use verification::verification::VerificationConfig;
+use crate::verification::verification::VerificationConfig;
 
 pub struct SynchronizationConfiguration {
     pub network: NetworkConfiguration,

@@ -100,7 +100,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
     {
         // Not using get_mut because it borrows cache_store_util which conflicts
         // with later CacheAlgoDataAdapter calls.
-        let mut lru_handle =
+        let lru_handle =
             cache_store_util.get_most_recently_accessed(cache_index);
         let is_hit = lru_handle.is_hit();
 

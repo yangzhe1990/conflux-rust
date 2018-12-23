@@ -1,10 +1,10 @@
-use bytes::Bytes;
+use crate::bytes::Bytes;
 use ethereum_types::{Address, H256, U256, U512};
-use executive::Executive;
-use hash::{KECCAK_EMPTY, KECCAK_NULL_RLP};
-use machine::Machine;
+use crate::executive::Executive;
+use crate::hash::{KECCAK_EMPTY, KECCAK_NULL_RLP};
+use crate::machine::Machine;
 use primitives::{Account, EpochId, SignedTransaction};
-use statedb::{
+use crate::statedb::{
     Error as DbError, ErrorKind as DbErrorKind, Result as DbResult, StateDb,
 };
 use std::{
@@ -12,9 +12,9 @@ use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     sync::Arc,
 };
-use transaction_pool::SharedTransactionPool;
-use vm::{EnvInfo, Spec};
-use vm_factory::VmFactory;
+use crate::transaction_pool::SharedTransactionPool;
+use crate::vm::{EnvInfo, Spec};
+use crate::vm_factory::VmFactory;
 
 mod account_entry;
 mod substate;
@@ -242,7 +242,7 @@ impl<'a> State<'a> {
             return true;
         }
 
-        let hash = account.code_hash();
+        let _hash = account.code_hash();
         match require {
             RequireCache::None => true,
             RequireCache::Code | RequireCache::CodeSize => {
@@ -399,7 +399,7 @@ impl<'a> State<'a> {
     )
     {
         let spec = Spec::new_byzantium();
-        let vm = VmFactory::new(1024 * 1024);
+        let _vm = VmFactory::new(1024 * 1024);
 
         Executive::new(self, env_info, machine, &spec).transact(tx);
     }
@@ -495,7 +495,7 @@ impl<'a> State<'a> {
     }
 
     fn ensure_cached<F, U>(
-        &self, address: &Address, require: RequireCache, check_null: bool, f: F,
+        &self, address: &Address, require: RequireCache, _check_null: bool, f: F,
     ) -> DbResult<U>
     where F: Fn(Option<&OverlayAccount>) -> U {
         if let Some(ref mut maybe_acc) =
@@ -604,7 +604,7 @@ impl<'a> State<'a> {
 mod tests {
     use super::*;
     use ethereum_types::{Address, H256, U256};
-    use storage::{
+    use crate::storage::{
         tests::new_state_manager_for_testing, StorageManager,
         StorageManagerTrait,
     };

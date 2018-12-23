@@ -17,7 +17,7 @@
 //! Environment information for transaction execution.
 
 use ethereum_types::{Address, H256, U256};
-use hash::keccak;
+use crate::hash::keccak;
 use primitives::CardinalNumber;
 use std::{cmp, sync::Arc};
 

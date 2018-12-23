@@ -2,22 +2,22 @@ use super::{
     context::{Context, OriginInfo, OutputPolicy},
     Executed, ExecutionError, ExecutionResult,
 };
-use bytes::{Bytes, BytesRef};
+use crate::bytes::{Bytes, BytesRef};
 use ethereum_types::{Address, H256, U256, U512};
-use evm::{FinalizationResult, Finalize, VMType};
-use hash::keccak;
-use machine::Machine;
+use crate::evm::{FinalizationResult, Finalize, VMType};
+use crate::hash::keccak;
+use crate::machine::Machine;
 use primitives::{transaction::Action, Account, EpochId, SignedTransaction};
-use state::{CleanupMode, State, Substate};
+use crate::state::{CleanupMode, State, Substate};
 use std::{cmp, collections::HashMap, sync::Arc};
-use storage::{Storage, StorageTrait};
-use transaction_pool::SharedTransactionPool;
-use vm::{
+use crate::storage::{Storage, StorageTrait};
+use crate::transaction_pool::SharedTransactionPool;
+use crate::vm::{
     self, ActionParams, ActionValue, CallType, CleanDustMode,
     CreateContractAddress, EnvInfo, Exec, ResumeCall, ResumeCreate, ReturnData,
     Spec, TrapError,
 };
-use vm_factory::VmFactory;
+use crate::vm_factory::VmFactory;
 
 /// Returns new address created from address, nonce, and code hash
 pub fn contract_address(
@@ -229,10 +229,10 @@ impl<'a> CallCreateExecutive<'a> {
                 return Err(vm::Error::MutableCallInStaticContext);
             }
         } else {
-            if (static_flag
+            if static_flag
                 && (params.call_type == CallType::StaticCall
                     || params.call_type == CallType::Call)
-                && params.value.value() > U256::zero())
+                && params.value.value() > U256::zero()
             {
                 return Err(vm::Error::MutableCallInStaticContext);
             }
@@ -751,7 +751,7 @@ impl<'a> CallCreateExecutive<'a> {
                         None => panic!("When callstack only had one item and it was executed, this function would return; callstack never reaches zero item; qed"),
                     }
                 },
-                Some((is_create, gas, Ok(val))) => {
+                Some((is_create, _gas, Ok(val))) => {
                     let current = callstack.pop();
 
                     match current {
@@ -896,8 +896,8 @@ impl<'a, 'b> Executive<'a, 'b> {
         stack_depth: usize,
     ) -> vm::Result<FinalizationResult>
     {
-        let address = params.address;
-        let gas = params.gas;
+        let _address = params.address;
+        let _gas = params.gas;
 
         let vm_factory = self.state.vm_factory();
         let result = CallCreateExecutive::new_create_raw(
@@ -928,7 +928,7 @@ impl<'a, 'b> Executive<'a, 'b> {
         stack_depth: usize,
     ) -> vm::Result<FinalizationResult>
     {
-        let gas = params.gas;
+        let _gas = params.gas;
 
         let vm_factory = self.state.vm_factory();
         let result = CallCreateExecutive::new_call_raw(
@@ -1028,7 +1028,7 @@ impl<'a, 'b> Executive<'a, 'b> {
 
         let (result, output) = match tx.action {
             Action::Create => {
-                let (new_address, code_hash) = contract_address(
+                let (new_address, _code_hash) = contract_address(
                     CreateContractAddress::FromSenderAndNonce,
                     &sender,
                     &nonce,
@@ -1191,20 +1191,20 @@ mod tests {
     use super::*;
     use ethereum_types::{Address, H256, U256, U512};
     use ethkey::{Generator, Random};
-    use evm::{Factory, VMType};
-    use machine::Machine;
+    use crate::evm::{Factory, VMType};
+    use crate::machine::Machine;
     use primitives::{EpochId, Transaction};
     use rustc_hex::FromHex;
-    use state::{CleanupMode, State, Substate};
-    use statedb::StateDb;
+    use crate::state::{CleanupMode, State, Substate};
+    use crate::statedb::StateDb;
     use std::str::FromStr;
-    use storage::{
+    use crate::storage::{
         tests::new_state_manager_for_testing, StorageManager,
         StorageManagerTrait,
     };
 
     fn make_byzantium_machine(max_depth: usize) -> Machine {
-        let mut machine = ::machine::new_byzantium_test_machine();
+        let mut machine = crate::machine::new_byzantium_test_machine();
         machine.set_spec_creation_rules(Box::new(move |s, _| {
             s.max_depth = max_depth
         }));
@@ -1471,7 +1471,7 @@ mod tests {
         params.code = Some(Arc::new(code));
         params.value = ActionValue::Transfer(U256::zero());
         let info = EnvInfo::default();
-        let machine = ::machine::new_byzantium_test_machine();
+        let machine = crate::machine::new_byzantium_test_machine();
         let spec = machine.spec(info.number);
         let mut substate = Substate::new();
 

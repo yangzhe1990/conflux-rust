@@ -1,8 +1,8 @@
-use bytes::Bytes;
+use crate::bytes::Bytes;
 use ethereum_types::{Address, U256, U512};
 use primitives::LogEntry;
-use statedb::Error as DbError;
-use vm;
+use crate::statedb::Error as DbError;
+use crate::vm;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Executed {

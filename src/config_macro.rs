@@ -25,7 +25,7 @@ macro_rules! build_config{
     ) => {
         use core::pow::ProofOfWorkConfig;
         use core::verification::verification::VerificationConfig;
-        use cache_config::CacheConfig;
+        use crate::cache_config::CacheConfig;
         use clap;
         use core::db::NUM_COLUMNS;
         use db;

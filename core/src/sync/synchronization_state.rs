@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use sync::synchronization_protocol_handler::TimedSyncRequests;
+use crate::sync::synchronization_protocol_handler::TimedSyncRequests;
 
 pub const MAX_INFLIGHT_REQUEST_COUNT: u64 = 64;
 

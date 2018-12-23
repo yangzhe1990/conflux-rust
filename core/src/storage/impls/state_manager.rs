@@ -11,13 +11,13 @@ use super::{
 };
 use ethereum_types::H256;
 use ethkey::KeyPair;
-use ext_db::SystemDB;
-use hash::KECCAK_EMPTY;
+use crate::ext_db::SystemDB;
+use crate::hash::KECCAK_EMPTY;
 use kvdb::{DBTransaction, DBValue};
 use primitives::{Account, Block, BlockHeaderBuilder, EpochId};
 use rlp::encode;
 use secret_store::SecretStore;
-use snapshot::snapshot::Snapshot;
+use crate::snapshot::snapshot::Snapshot;
 use std::{
     io, str,
     sync::{Arc, Mutex, MutexGuard},
@@ -77,7 +77,7 @@ impl StateManager {
     fn get_state_root_node_ref(
         &self, epoch_id: EpochId,
     ) -> Result<MaybeNodeRef> {
-        let mut node_ref = self.delta_trie.get_root_at_epoch(epoch_id).into();
+        let node_ref = self.delta_trie.get_root_at_epoch(epoch_id).into();
         if node_ref == MaybeNodeRef::NULL_NODE {
             self.load_state_root_node_ref_from_db(epoch_id)
         } else {

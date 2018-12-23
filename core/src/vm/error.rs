@@ -18,7 +18,7 @@
 
 use super::{action_params::ActionParams, ResumeCall, ResumeCreate};
 use ethereum_types::Address;
-use statedb::Error as DbError;
+use crate::statedb::Error as DbError;
 use std::fmt;
 
 #[derive(Debug)]

@@ -1,12 +1,12 @@
 // Transaction execution environment.
 use super::executive::*;
-use bytes::Bytes;
+use crate::bytes::Bytes;
 use ethereum_types::{Address, H256, U256};
-use machine::Machine;
+use crate::machine::Machine;
 use primitives::transaction::UNSIGNED_SENDER;
-use state::{CleanupMode, State, Substate};
+use crate::state::{CleanupMode, State, Substate};
 use std::{cmp, sync::Arc};
-use vm::{
+use crate::vm::{
     self, ActionParams, ActionValue, CallType, Context as ContextTrait,
     ContractCreateResult, CreateContractAddress, EnvInfo, MessageCallResult,
     ReturnData, Spec, TrapKind,
@@ -123,7 +123,7 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
         self.state.balance(address).map_err(Into::into)
     }
 
-    fn blockhash(&mut self, number: &U256) -> H256 {
+    fn blockhash(&mut self, _number: &U256) -> H256 {
         /// TODO: I have no idea why we need this function
         H256::default()
     }
@@ -257,7 +257,7 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
         }
     }
 
-    fn log(&mut self, topics: Vec<H256>, data: &[u8]) -> vm::Result<()> {
+    fn log(&mut self, _topics: Vec<H256>, _data: &[u8]) -> vm::Result<()> {
         // TODO
         Ok(())
     }
@@ -305,23 +305,23 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
     }
 
     fn trace_next_instruction(
-        &mut self, pc: usize, instruction: u8, current_gas: U256,
+        &mut self, _pc: usize, _instruction: u8, _current_gas: U256,
     ) -> bool {
         // TODO
         false
     }
 
     fn trace_prepare_execute(
-        &mut self, pc: usize, instruction: u8, gas_cost: U256,
-        mem_written: Option<(usize, usize)>,
-        store_written: Option<(U256, U256)>,
+        &mut self, _pc: usize, _instruction: u8, _gas_cost: U256,
+        _mem_written: Option<(usize, usize)>,
+        _store_written: Option<(U256, U256)>,
     )
     {
         // TODO
     }
 
     fn trace_executed(
-        &mut self, gas_used: U256, stack_push: &[U256], mem: &[u8],
+        &mut self, _gas_used: U256, _stack_push: &[U256], _mem: &[u8],
     ) {
         // TODO
     }
