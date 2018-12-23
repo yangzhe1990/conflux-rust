@@ -58,13 +58,13 @@ pub struct SynchronizationProtocolHandler {
 pub struct TimedSyncRequests {
     pub peer_id: PeerId,
     pub timeout_time: Instant,
-    pub request_id: usize,
+    pub request_id: u64,
     pub removed: AtomicBool,
 }
 
 impl TimedSyncRequests {
     pub fn new(
-        peer_id: PeerId, timeout: Duration, request_id: usize,
+        peer_id: PeerId, timeout: Duration, request_id: u64,
     ) -> TimedSyncRequests {
         TimedSyncRequests {
             peer_id,
@@ -75,7 +75,7 @@ impl TimedSyncRequests {
     }
 
     pub fn from_request(
-        peer_id: PeerId, request_id: usize, msg: &RequestMessage,
+        peer_id: PeerId, request_id: u64, msg: &RequestMessage,
     ) -> TimedSyncRequests {
         let timeout = match *msg {
             RequestMessage::Headers(_) => HEADERS_REQUEST_TIMEOUT,
@@ -204,7 +204,7 @@ impl SynchronizationProtocolHandler {
     {
         let transactions = rlp.as_val::<Transactions>()?;
         let transactions = transactions.transactions;
-        trace!(
+        debug!(
             "Received {:?} transactions from Peer {:?}",
             transactions.len(),
             peer_id
@@ -218,7 +218,7 @@ impl SynchronizationProtocolHandler {
             self.graph.consensus.best_block_hash(),
             transactions,
         );
-        trace!("Transactions successfully inserted to transaction pool");
+        debug!("Transactions successfully inserted to transaction pool");
         Ok(())
     }
 
@@ -228,7 +228,7 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let req = rlp.as_val::<GetBlockHeaders>()?;
-        trace!("on_get_block_headers, msg=:{:?}", req);
+        debug!("on_get_block_headers, msg=:{:?}", req);
 
         let mut hash = req.hash;
         let mut block_headers_resp = GetBlockHeadersResponse::default();
@@ -246,7 +246,7 @@ impl SynchronizationProtocolHandler {
             }
             hash = header.parent_hash().clone();
         }
-        trace!(
+        debug!(
             "Returned {:?} block headers to peer {:?}",
             block_headers_resp.headers.len(),
             peer
@@ -263,7 +263,7 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let req = rlp.as_val::<GetBlocks>()?;
-        trace!("on_get_blocks, msg=:{:?}", req);
+        debug!("on_get_blocks, msg=:{:?}", req);
         if req.hashes.is_empty() {
             debug!("Received empty getblocks message: peer={:?}", peer);
         } else {
@@ -287,7 +287,7 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let req = rlp.as_val::<GetTerminalBlockHashes>()?;
-        trace!("on_get_terminal_block_hashes, msg=:{:?}", req);
+        debug!("on_get_terminal_block_hashes, msg=:{:?}", req);
         let msg: Box<dyn Message> = Box::new(GetTerminalBlockHashesResponse {
             request_id: req.request_id().into(),
             hashes: self.graph.get_best_info().terminal_block_hashes,
@@ -303,7 +303,7 @@ impl SynchronizationProtocolHandler {
     {
         let terminal_block_hashes =
             rlp.as_val::<GetTerminalBlockHashesResponse>()?;
-        trace!(
+        debug!(
             "on_terminal_block_hashes_response, msg=:{:?}",
             terminal_block_hashes
         );
@@ -341,22 +341,26 @@ impl SynchronizationProtocolHandler {
         syn.handshaking_peers.remove(&peer_id);
 
         let status = rlp.as_val::<Status>()?;
-        trace!("on_status, msg=:{:?}", status);
+        debug!("on_status, msg=:{:?}", status);
+        let mut requests_vec =
+            Vec::with_capacity(MAX_INFLIGHT_REQUEST_COUNT as usize);
+        for i in 0..MAX_INFLIGHT_REQUEST_COUNT {
+            requests_vec.push(None);
+        }
         let peer = SynchronizationPeerState {
             id: peer_id,
             protocol_version: status.protocol_version,
             genesis_hash: status.genesis_hash,
-            inflight_requests: Slab::with_capacity(
-                MAX_INFLIGHT_REQUEST_COUNT as usize,
-            ),
+            inflight_requests: requests_vec,
+            lowest_request_id: 0,
+            next_request_id: 0,
             pending_requests: VecDeque::new(),
             last_sent_transactions: HashSet::new(),
         };
 
-        trace!(
+        debug!(
             "New peer (pv={:?}, gh={:?})",
-            status.protocol_version,
-            status.genesis_hash
+            status.protocol_version, status.genesis_hash
         );
 
         let genesis_hash = self.graph.genesis_hash();
@@ -368,7 +372,7 @@ impl SynchronizationProtocolHandler {
             return Err(ErrorKind::Invalid.into());
         }
 
-        trace!("Peer {:?} connected", peer_id);
+        debug!("Peer {:?} connected", peer_id);
         syn.peers.insert(peer_id.clone(), peer);
 
         // FIXME Need better design.
@@ -394,7 +398,7 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let block_headers = rlp.as_val::<GetBlockHeadersResponse>()?;
-        trace!("on_block_headers_response, msg=:{:?}", block_headers);
+        debug!("on_block_headers_response, msg=:{:?}", block_headers);
         self.match_request(io, syn, peer_id, block_headers.request_id())?;
 
         if block_headers.headers.is_empty() {
@@ -456,10 +460,9 @@ impl SynchronizationProtocolHandler {
             .iter()
             .map(|header| header.hash())
             .collect();
-        trace!(
+        debug!(
             "get headers responce of hashes:{:?}, requesting block:{:?}",
-            header_hashes,
-            hashes
+            header_hashes, hashes
         );
 
         for past_hash in &dependent_hashes {
@@ -501,7 +504,7 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let blocks = rlp.as_val::<GetBlocksResponse>()?;
-        trace!(
+        debug!(
             "on_blocks_response, get block hashes {:?}",
             blocks
                 .blocks
@@ -516,7 +519,6 @@ impl SynchronizationProtocolHandler {
 
         for block in blocks.blocks {
             let hash = block.hash();
-            trace!("on_blocks_response, get block {:?}", block.hash());
             blocks_in_flight.remove(&hash);
 
             if self.graph.verified_invalid(&hash) {
@@ -581,7 +583,7 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let new_block = rlp.as_val::<NewBlock>()?;
-        trace!(
+        debug!(
             "on_new_block, header={:?} tx_number={}",
             new_block.block.block_header,
             new_block.block.transactions.len()
@@ -666,7 +668,7 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error>
     {
         let new_block_hashes = rlp.as_val::<NewBlockHashes>()?;
-        trace!("on_new_block_hashes, msg={:?}", new_block_hashes);
+        debug!("on_new_block_hashes, msg={:?}", new_block_hashes);
 
         for hash in new_block_hashes.block_hashes.iter() {
             if !self.graph.contains_block_header(hash) {
@@ -708,7 +710,7 @@ impl SynchronizationProtocolHandler {
     fn send_status(
         &self, io: &NetworkContext, peer: PeerId,
     ) -> Result<(), NetworkError> {
-        trace!("Sending status message to {:?}", peer);
+        debug!("Sending status message to {:?}", peer);
 
         let msg: Box<dyn Message> = Box::new(Status {
             protocol_version: SYNCHRONIZATION_PROTOCOL_VERSION,
@@ -742,7 +744,7 @@ impl SynchronizationProtocolHandler {
                 max_blocks,
             })),
         ) {
-            trace!(
+            debug!(
                 "Requesting {:?} block headers starting at {:?} from peer {:?} request_id={:?}",
                 max_blocks,
                 hash,
@@ -770,11 +772,9 @@ impl SynchronizationProtocolHandler {
                 hashes: hashes.clone(),
             })),
         ) {
-            trace!(
+            debug!(
                 "Requesting blocks {:?} from {:?} request_id={}",
-                hashes,
-                peer_id,
-                timed_req.request_id
+                hashes, peer_id, timed_req.request_id
             );
             for hash in hashes {
                 blocks_in_flight.insert(hash);
@@ -789,8 +789,8 @@ impl SynchronizationProtocolHandler {
     ) -> Option<Arc<TimedSyncRequests>>
     {
         if let Some(ref mut peer) = syn.peers.get_mut(&peer_id) {
-            if let Some(request_id) = peer.next_request_id() {
-                msg.set_request_id(request_id as u16);
+            if let Some(request_id) = peer.get_next_request_id() {
+                msg.set_request_id(request_id);
                 self.send_message(io, peer_id, msg.get_msg())
                     .unwrap_or_else(|e| {
                         warn!("Error while send_message, err={:?}", e);
@@ -816,33 +816,34 @@ impl SynchronizationProtocolHandler {
 
     fn match_request(
         &self, io: &NetworkContext, syn: &mut SynchronizationState,
-        peer_id: PeerId, request_id: u16,
+        peer_id: PeerId, request_id: u64,
     ) -> Result<Option<RequestMessage>, Error>
     {
         if let Some(ref mut peer) = syn.peers.get_mut(&peer_id) {
-            if peer.is_inflight_request(request_id) {
-                let req = if peer.has_pending_requests() {
-                    self.remove_request(peer, request_id as usize, false);
-                    let pending_req = peer.pop_pending_request().unwrap();
-                    let mut pending_msg = pending_req.message;
-                    pending_msg.set_request_id(request_id);
-                    self.send_message(io, peer_id, pending_msg.get_msg())?;
-                    let timed_req = Arc::new(TimedSyncRequests::from_request(
-                        peer_id,
-                        request_id as usize,
-                        &pending_msg,
-                    ));
-                    let req = peer.append_inflight_request(
-                        request_id as usize,
-                        pending_msg,
-                        timed_req.clone(),
-                    );
-                    self.requests_queue.lock().push(timed_req);
-                    Some(req)
-                } else {
-                    self.remove_request(peer, request_id as usize, true)
-                };
-                Ok(req)
+            if let Some(removed_req) = self.remove_request(peer, request_id) {
+                while peer.has_pending_requests() {
+                    if let Some(new_request_id) = peer.get_next_request_id() {
+                        let mut pending_msg =
+                            peer.pop_pending_request().unwrap();
+                        pending_msg.set_request_id(new_request_id);
+                        self.send_message(io, peer_id, pending_msg.get_msg())?;
+                        let timed_req =
+                            Arc::new(TimedSyncRequests::from_request(
+                                peer_id,
+                                new_request_id,
+                                &pending_msg,
+                            ));
+                        peer.append_inflight_request(
+                            new_request_id,
+                            pending_msg,
+                            timed_req.clone(),
+                        );
+                        self.requests_queue.lock().push(timed_req);
+                    } else {
+                        break;
+                    }
+                }
+                Ok(Some(removed_req))
             } else {
                 warn!(
                     "Unexpected Responce: peer={:?} request_id={:?}",
@@ -1029,7 +1030,7 @@ impl SynchronizationProtocolHandler {
                     io,
                     &mut *syn,
                     sync_req.peer_id,
-                    sync_req.request_id as u16,
+                    sync_req.request_id,
                 )
                 .unwrap_or_else(|_| {
                     warn!("Cannot get original timed-out requests");
@@ -1037,7 +1038,7 @@ impl SynchronizationProtocolHandler {
                 });
             if let Some(request) = req {
                 // TODO may have better choice than random peer
-                trace!("Timeout request: {:?}", request);
+                debug!("Timeout request: {:?}", request);
                 let chosen_peer = {
                     let peers_vec: Vec<&PeerId> = syn.peers.keys().collect();
                     let p = peers_vec
@@ -1074,11 +1075,9 @@ impl SynchronizationProtocolHandler {
     }
 
     pub fn remove_request(
-        &self, peer: &mut SynchronizationPeerState, request_id: usize,
-        remove_slab: bool,
-    ) -> Option<RequestMessage>
-    {
-        let has = if let Some(req) = peer.inflight_requests.get(request_id) {
+        &self, peer: &mut SynchronizationPeerState, request_id: u64,
+    ) -> Option<RequestMessage> {
+        peer.remove_inflight_request(request_id).map(|req| {
             match *req.message {
                 RequestMessage::Headers(ref get_headers) => {
                     self.headers_in_flight.lock().remove(&get_headers.hash);
@@ -1089,21 +1088,11 @@ impl SynchronizationProtocolHandler {
                         blocks.remove(hash);
                     }
                 }
-                _ => return None,
+                _ => {}
             }
-            // This should always be some for now
-            if let Some(ref timed_req) = req.timed_req {
-                timed_req.removed.store(true, AtomicOrdering::Relaxed);
-            }
-            true
-        } else {
-            false
-        };
-        if has && remove_slab {
-            Some(*peer.remove_inflight_request(request_id).message)
-        } else {
-            None
-        }
+            req.timed_req.removed.store(true, AtomicOrdering::Relaxed);
+            *req.message
+        })
     }
 }
 
@@ -1125,7 +1114,7 @@ impl NetworkProtocolHandler for SynchronizationProtocolHandler {
     fn on_peer_connected(&self, io: &NetworkContext, peer: PeerId) {
         let mut syn = self.syn.write();
 
-        trace!("Peer connected: peer={:?}", peer);
+        debug!("Peer connected: peer={:?}", peer);
         if let Err(e) = self.send_status(io, peer) {
             debug!("Error sending status message: {:?}", e);
             io.disconnect_peer(peer);
@@ -1135,7 +1124,7 @@ impl NetworkProtocolHandler for SynchronizationProtocolHandler {
     }
 
     fn on_peer_disconnected(&self, _io: &NetworkContext, peer: PeerId) {
-        trace!("Peer disconnected: peer={:?}", peer);
+        info!("Peer disconnected: peer={:?}", peer);
         let mut syn = self.syn.write();
         syn.peers.remove(&peer);
         syn.handshaking_peers.remove(&peer);

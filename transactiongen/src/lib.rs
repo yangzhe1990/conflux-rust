@@ -151,17 +151,18 @@ impl TransactionGenerator {
 
         let key_pair = txgen.key_pair.clone().expect("should exist");
         let secret_store = SecretStore::new();
-        let mut balance_map = HashMap::new();
-        balance_map
-            .insert(public_to_address(key_pair.public()), U256::from(10000000));
+        //        let mut balance_map = HashMap::new();
+        //        balance_map
+        //            .insert(public_to_address(key_pair.public()),
+        // U256::from(10000000));
         trace!(
             "tx_gen address={:?} pub_key={:?}",
             public_to_address(key_pair.public()),
             key_pair.public()
         );
+        trace!("{:?} {:?}", tx_config.generate_tx, tx_config.period);
         secret_store.insert(key_pair);
         loop {
-            trace!("{:?} {:?}", tx_config.generate_tx, tx_config.period);
             match *txgen.state.read() {
                 TransGenState::Stop => return Ok(()),
                 _ => {}
@@ -187,11 +188,6 @@ impl TransactionGenerator {
             sender_index %= account_count;
             let sender_kp = secret_store.get_keypair(sender_index);
 
-            let mut receiver_index: usize = random();
-            receiver_index =
-                (sender_index + (receiver_index % account_count) + 1)
-                    % account_count;
-
             // Randomly generate the to-be-transferred value
             // based on the balance of sender
             let sender_address = public_to_address(sender_kp.public());
@@ -199,20 +195,19 @@ impl TransactionGenerator {
 
             trace!(
                 "choose sender addr={:?} balance={:?}",
-                sender_address,
-                sender_balance
+                sender_address, sender_balance
             );
             if sender_balance == None {
                 thread::sleep(tx_config.period);
                 continue;
             }
-            let sender_balance = *balance_map.get(&sender_address).unwrap();
-            if sender_balance < U256::from(200) {
-                thread::sleep(tx_config.period);
+            if sender_balance.unwrap() < U256::from(200) {
                 continue;
             }
 
             let mut receiver_kp: KeyPair;
+            let mut receiver_index: usize = random();
+            receiver_index %= account_count;
             if sender_index == receiver_index {
                 // Create a new receiver account
                 loop {
@@ -233,17 +228,30 @@ impl TransactionGenerator {
             if sender_state_nonce > *entry {
                 *entry = sender_state_nonce;
             }
-
             let sender_nonce = *entry;
             *entry += U256::one();
-            let receiver_address = public_to_address(receiver_kp.public());
-            trace!(
-                "receiver={:?} value={:?} nonce={:?}",
-                receiver_address,
-                balance_to_transfer,
-                sender_nonce
-            );
 
+            let mut receiver_index: usize = random();
+            receiver_index =
+                (sender_index + (receiver_index % account_count) + 1)
+                    % account_count;
+            let mut receiver_kp: KeyPair;
+            if sender_index == receiver_index {
+                // Create a new receiver account
+                loop {
+                    receiver_kp = Random.generate()?;
+                    if secret_store.insert(receiver_kp.clone()) {
+                        break;
+                    }
+                }
+            } else {
+                receiver_kp = secret_store.get_keypair(receiver_index);
+            }
+            let receiver_address = public_to_address(receiver_kp.public());
+            debug!(
+                "receiver={:?} value={:?} nonce={:?}",
+                receiver_address, balance_to_transfer, sender_nonce
+            );
             // Generate the transaction, sign it, and push into the transaction
             // pool
             let tx = Transaction {
@@ -254,11 +262,12 @@ impl TransactionGenerator {
                 action: Action::Call(receiver_address),
                 data: Bytes::new(),
             };
-            balance_map
-                .entry(sender_address)
-                .and_modify(|b| *b -= balance_to_transfer);
-            *balance_map.entry(receiver_address).or_insert(0.into()) +=
-                balance_to_transfer;
+            //            balance_map
+            //                .entry(sender_address)
+            //                .and_modify(|b| *b -= balance_to_transfer);
+            //            
+            // *balance_map.entry(receiver_address).or_insert(0.into()) +=
+            //                balance_to_transfer;
 
             let signed_tx = tx.sign(sender_kp.secret());
             //            txgen.txpool.add_pending(signed_tx.clone());
@@ -268,7 +277,6 @@ impl TransactionGenerator {
                 txgen.consensus.best_block_hash(),
                 tx_to_insert,
             );
-
             thread::sleep(tx_config.period);
         }
     }

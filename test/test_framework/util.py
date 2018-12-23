@@ -255,8 +255,9 @@ def initialize_datadir(dirname, n, conf_parameters):
         f.write("port=" + str(p2p_port(n)) + "\n")
         f.write("jsonrpc-http-port=" + str(rpc_port(n)) + "\n")
         f.write("log-file=\"" + os.path.join(datadir, "conflux.log") + "\"\n")
-        f.write("log-level=\"trace\"\n")
         f.write("test-mode=true\n")
+        if "log-level" not in conf_parameters:
+            conf_parameters["log-level"] = "\"trace\""
         for k in conf_parameters:
             f.write("{}={}\n".format(k, conf_parameters[k]))
         os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)

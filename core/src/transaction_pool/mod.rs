@@ -20,6 +20,7 @@ use std::{
     collections::hash_map::{Entry, HashMap},
     ops::DerefMut,
     sync::Arc,
+    time::Instant,
 };
 use storage::{Storage, StorageManager, StorageManagerTrait, StorageTrait};
 
@@ -214,12 +215,15 @@ impl TransactionPool {
         let state = self.storage_manager.get_state_at(latest_epoch).unwrap();
         let mut account_cache = AccountCache::new(&state);
         for tx in transactions {
+            trace!("Start tx {:?}", Instant::now());
             if let Ok(public) = tx.recover_public() {
+                trace!("After Recover pub key {:?}", Instant::now());
                 let signed_tx = SignedTransaction::new(public, tx);
                 if !self.verify_transaction(&signed_tx) {
                     warn!("Transaction discarded due to failure of passing verification {:?}", signed_tx.hash());
                     continue;
                 }
+                trace!("After verify {:?}", Instant::now());
                 self.add_with_readiness(&mut account_cache, signed_tx);
             } else {
                 debug!(
@@ -486,25 +490,39 @@ impl TransactionPool {
     pub fn notify_ready(&self, address: &Address, account: &Account) {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
-        let nonce = &account.nonce;
+        let mut nonce = account.nonce.clone();
 
-        debug!("Notify ready {:?} with nonce {:?}", address, nonce);
+        trace!("Notify ready {:?} with nonce {:?}", address, nonce);
 
-        let mut success = false;
-        if let Some(tx) = inner.pending_transactions.get(address, nonce) {
-            debug!("We got the tx from pending_pool with hash {:?}", tx.hash());
-            if self.verify_ready_transaction(account, tx) {
-                success = true;
-                debug!("Successfully verified tx with hash {:?}", tx.hash());
-            }
-        }
-        if success {
-            if let Some(tx) = inner.pending_transactions.remove(address, nonce)
-            {
-                if !self.add_ready_without_lock(inner, tx) {
-                    warn!("Check passed but fail to insert ready transaction");
+        loop {
+            let mut success = false;
+            if let Some(tx) = inner.pending_transactions.get(address, &nonce) {
+                trace!(
+                    "We got the tx from pending_pool with hash {:?}",
+                    tx.hash()
+                );
+                if self.verify_ready_transaction(account, tx) {
+                    success = true;
+                    trace!(
+                        "Successfully verified tx with hash {:?}",
+                        tx.hash()
+                    );
                 }
             }
+            if success {
+                if let Some(tx) =
+                    inner.pending_transactions.remove(address, &nonce)
+                {
+                    if !self.add_ready_without_lock(inner, tx) {
+                        warn!(
+                            "Check passed but fail to insert ready transaction"
+                        );
+                    }
+                    nonce += 1.into();
+                    continue;
+                }
+            }
+            break;
         }
     }
 }

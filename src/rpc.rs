@@ -114,7 +114,7 @@ build_rpc_trait! {
         fn generate_one_block(&self, usize) -> RpcResult<H256>;
 
         #[rpc(name = "checktx")]
-        fn check_tx(&self, H256) -> RpcResult<bool>;
+        fn check_tx(&self, H256) -> RpcResult<(bool, bool)>;
     }
 }
 
@@ -283,13 +283,15 @@ impl Rpc for RpcImpl {
         }
     }
 
-    fn check_tx(&self, tx_hash: H256) -> RpcResult<bool> {
-        let success = match self.consensus.get_block_for_tx_execution(&tx_hash)
-        {
-            Some(_) => true,
-            None => false,
+    /// The first element is true if the tx is executed and the nonce is
+    /// increased The second element indicate the execution result (standin
+    /// for receipt)
+    fn check_tx(&self, tx_hash: H256) -> RpcResult<(bool, bool)> {
+        let result = match self.consensus.get_block_for_tx_execution(&tx_hash) {
+            Some((success, _)) => (true, success),
+            None => (false, false),
         };
-        Ok(success)
+        Ok(result)
     }
 }
 

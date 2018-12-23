@@ -99,7 +99,7 @@ fn start(
     storage_manager.initialize(genesis_block.hash(), secret_store.as_ref());
 
     let txpool = Arc::new(TransactionPool::with_capacity(
-        10000,
+        100000,
         storage_manager.clone(),
     ));
 

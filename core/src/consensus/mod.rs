@@ -48,7 +48,7 @@ pub struct ConsensusGraphInner {
     pub indices: HashMap<H256, usize>,
     pub pivot_chain: Vec<usize>,
     /// Track the block where the tx is successfully executed
-    pub block_for_transaction: HashMap<H256, usize>,
+    pub block_for_transaction: HashMap<H256, (bool, usize)>,
     genesis_block_index: usize,
     storage_manager: Arc<StorageManager>,
     vm: VmFactory,
@@ -301,7 +301,7 @@ impl ConsensusGraphInner {
                         warn!("transaction execution error: transaction={:?}, err={:?}", transaction, r);
                     } else {
                         self.block_for_transaction
-                            .insert(transaction.hash(), *index);
+                            .insert(transaction.hash(), (true, *index));
                     }
                 }
             }
@@ -321,10 +321,12 @@ impl ConsensusGraphInner {
         self.arena[*self.pivot_chain.last().unwrap()].hash
     }
 
-    pub fn get_block_for_tx_execution(&self, tx_hash: &H256) -> Option<H256> {
+    pub fn get_block_for_tx_execution(
+        &self, tx_hash: &H256,
+    ) -> Option<(bool, H256)> {
         self.block_for_transaction
             .get(tx_hash)
-            .map(|index| self.arena[*index].hash)
+            .map(|(success, index)| (*success, self.arena[*index].hash))
     }
 }
 
@@ -418,9 +420,10 @@ impl ConsensusGraph {
         let block = blocks.get(hash).unwrap();
 
         debug!(
-            "insert new block into consensus hash:{:?}, block_header:{:?}",
+            "insert new block into consensus: hash={:?}, block_header={:?} tx_count={}",
             block.hash(),
-            block.block_header
+            block.block_header,
+            block.transactions.len(),
         );
 
         for tx in block.transactions.iter() {
@@ -442,7 +445,9 @@ impl ConsensusGraph {
 
     pub fn block_count(&self) -> usize { self.blocks.read().len() }
 
-    pub fn get_block_for_tx_execution(&self, tx_hash: &H256) -> Option<H256> {
+    pub fn get_block_for_tx_execution(
+        &self, tx_hash: &H256,
+    ) -> Option<(bool, H256)> {
         self.inner.read().get_block_for_tx_execution(tx_hash)
     }
 }

@@ -42,19 +42,19 @@ pub trait Message: Send + Sync + Encodable + 'static {
 
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct RequestId {
-    request_id: u16,
+    request_id: u64,
 }
 
 impl RequestId {
-    pub fn request_id(&self) -> u16 { self.request_id }
+    pub fn request_id(&self) -> u64 { self.request_id }
 
-    pub fn set_request_id(&mut self, request_id: u16) {
+    pub fn set_request_id(&mut self, request_id: u64) {
         self.request_id = request_id;
     }
 }
 
-impl From<u16> for RequestId {
-    fn from(request_id: u16) -> Self { RequestId { request_id } }
+impl From<u64> for RequestId {
+    fn from(request_id: u64) -> Self { RequestId { request_id } }
 }
 
 impl Encodable for RequestId {

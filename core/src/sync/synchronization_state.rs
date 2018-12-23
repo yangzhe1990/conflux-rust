@@ -10,7 +10,7 @@ use std::{
 };
 use sync::synchronization_protocol_handler::TimedSyncRequests;
 
-pub const MAX_INFLIGHT_REQUEST_COUNT: usize = 64;
+pub const MAX_INFLIGHT_REQUEST_COUNT: u64 = 64;
 
 #[derive(Debug)]
 pub enum RequestMessage {
@@ -20,7 +20,7 @@ pub enum RequestMessage {
 }
 
 impl RequestMessage {
-    pub fn set_request_id(&mut self, request_id: u16) {
+    pub fn set_request_id(&mut self, request_id: u64) {
         match self {
             RequestMessage::Headers(ref mut msg) => {
                 msg.set_request_id(request_id)
@@ -46,28 +46,19 @@ impl RequestMessage {
 #[derive(Debug)]
 pub struct SynchronizationPeerRequest {
     pub message: Box<RequestMessage>,
-    pub timed_req: Option<Arc<TimedSyncRequests>>,
-}
-
-impl SynchronizationPeerRequest {
-    pub fn default() -> Self {
-        SynchronizationPeerRequest {
-            message: Box::new(RequestMessage::Headers(GetBlockHeaders {
-                request_id: 0.into(),
-                hash: H256::default(),
-                max_blocks: 0,
-            })),
-            timed_req: None,
-        }
-    }
+    pub timed_req: Arc<TimedSyncRequests>,
 }
 
 pub struct SynchronizationPeerState {
     pub id: PeerId,
     pub protocol_version: u8,
     pub genesis_hash: H256,
-    pub inflight_requests: Slab<SynchronizationPeerRequest>,
-    pub pending_requests: VecDeque<SynchronizationPeerRequest>,
+    pub inflight_requests: Vec<Option<SynchronizationPeerRequest>>,
+    /// lowest = next if there is no inflight requests
+    pub lowest_request_id: u64,
+    pub next_request_id: u64,
+
+    pub pending_requests: VecDeque<Box<RequestMessage>>,
     /// Holds a set of transactions recently sent to this peer to avoid
     /// spamming.
     pub last_sent_transactions: HashSet<H256>,
@@ -77,54 +68,76 @@ impl SynchronizationPeerState {
     /// If new request will be allowed to send, advance the request id now,
     /// otherwise, actual new request id will be given to this request
     /// when it is moved from pending to inflight queue.
-    pub fn next_request_id(&mut self) -> Option<usize> {
-        if self.inflight_requests.len() < self.inflight_requests.capacity() {
-            let request_id = self
-                .inflight_requests
-                .insert(SynchronizationPeerRequest::default());
-            assert!(request_id < MAX_INFLIGHT_REQUEST_COUNT);
-            Some(request_id)
+    pub fn get_next_request_id(&mut self) -> Option<u64> {
+        if self.next_request_id
+            < self.lowest_request_id + MAX_INFLIGHT_REQUEST_COUNT
+        {
+            let id = self.next_request_id;
+            self.next_request_id += 1;
+            Some(id)
         } else {
             None
         }
     }
 
     pub fn append_inflight_request(
-        &mut self, request_id: usize, msg: Box<RequestMessage>,
+        &mut self, request_id: u64, message: Box<RequestMessage>,
         timed_req: Arc<TimedSyncRequests>,
-    ) -> RequestMessage
+    )
     {
-        let slot = self.inflight_requests.get_mut(request_id).unwrap();
-        let req = mem::replace(&mut slot.message, msg);
-        slot.timed_req = Some(timed_req);
-        *req
+        self.inflight_requests
+            [(request_id % MAX_INFLIGHT_REQUEST_COUNT) as usize] =
+            Some(SynchronizationPeerRequest { message, timed_req });
     }
 
     pub fn append_pending_request(&mut self, msg: Box<RequestMessage>) {
-        self.pending_requests.push_back(SynchronizationPeerRequest {
-            message: msg,
-            timed_req: None,
-        });
+        self.pending_requests.push_back(msg);
     }
 
-    pub fn is_inflight_request(&self, request_id: u16) -> bool {
-        self.inflight_requests.contains(request_id as usize)
+    #[allow(unused)]
+    pub fn is_inflight_request(&self, request_id: u64) -> bool {
+        request_id < self.next_request_id
+            && request_id >= self.lowest_request_id
+            && self.inflight_requests
+                [(request_id % MAX_INFLIGHT_REQUEST_COUNT) as usize]
+                .is_some()
     }
 
     pub fn has_pending_requests(&self) -> bool {
         !self.pending_requests.is_empty()
     }
 
-    pub fn pop_pending_request(
-        &mut self,
-    ) -> Option<SynchronizationPeerRequest> {
+    pub fn pop_pending_request(&mut self) -> Option<Box<RequestMessage>> {
         self.pending_requests.pop_front()
     }
 
     pub fn remove_inflight_request(
-        &mut self, request_id: usize,
-    ) -> SynchronizationPeerRequest {
-        self.inflight_requests.remove(request_id)
+        &mut self, request_id: u64,
+    ) -> Option<SynchronizationPeerRequest> {
+        if request_id < self.next_request_id
+            && request_id >= self.lowest_request_id
+        {
+            let save_req = mem::replace(
+                &mut self.inflight_requests
+                    [(request_id % MAX_INFLIGHT_REQUEST_COUNT) as usize],
+                None,
+            );
+            // Advance lowest_request_id to the next in-flight request
+            if request_id == self.lowest_request_id {
+                while self.inflight_requests[(self.lowest_request_id
+                    % MAX_INFLIGHT_REQUEST_COUNT)
+                    as usize]
+                    .is_none()
+                    && self.lowest_request_id < self.next_request_id
+                {
+                    self.lowest_request_id += 1;
+                }
+            }
+            save_req
+        } else {
+            warn!("Remove out of bound request peer={} request_id={} low={} next={}", self.id, request_id, self.lowest_request_id, self.next_request_id);
+            None
+        }
     }
 }
 
