@@ -27,6 +27,7 @@ pub struct BestInformation {
     pub best_block_hash: H256,
     pub current_difficulty: U256,
     pub terminal_block_hashes: Vec<H256>,
+    pub deferred_state_root: H256,
 }
 
 pub struct SynchronizationGraphNode {
@@ -64,7 +65,8 @@ pub struct SynchronizationGraphInner {
     pow_config: ProofOfWorkConfig,
     current_difficulty: U256,
     best_block_hash: H256,
-    terminal_block_hashes: HashSet<H256>,
+    pub terminal_block_hashes: HashSet<H256>,
+    pub deferred_state_root: H256,
 }
 
 impl SynchronizationGraphInner {
@@ -81,9 +83,16 @@ impl SynchronizationGraphInner {
             current_difficulty: pow_config.initial_difficulty.into(),
             best_block_hash: genesis_header.hash(),
             terminal_block_hashes: HashSet::new(),
+            deferred_state_root: H256::default(),
         };
+        inner.deferred_state_root =
+            genesis_header.deferred_state_root().clone();
         inner.genesis_block_index = inner.insert(genesis_header);
         inner.terminal_block_hashes.insert(inner.best_block_hash);
+        debug!(
+            "genesis_block_index in sync graph: {}",
+            inner.genesis_block_index
+        );
 
         inner
     }
@@ -270,9 +279,10 @@ impl SynchronizationGraphInner {
                 {
                     break;
                 }
-                if parent == index || self.arena[parent]
-                    .blockset_in_own_view_of_epoch
-                    .contains(&index)
+                if parent == index
+                    || self.arena[parent]
+                        .blockset_in_own_view_of_epoch
+                        .contains(&index)
                 {
                     in_old_epoch = true;
                     break;
@@ -347,19 +357,17 @@ impl SynchronizationGraphInner {
             })));
         }
 
-        let expected_difficulty: U256 = if epoch <= self
-            .pow_config
-            .difficulty_adjustment_epoch_period
+        let expected_difficulty: U256 = if epoch
+            <= self.pow_config.difficulty_adjustment_epoch_period
         {
             self.pow_config.initial_difficulty.into()
         } else {
-            let mut last_period_upper =
-                (epoch / self.pow_config.difficulty_adjustment_epoch_period)
-                    * self.pow_config.difficulty_adjustment_epoch_period;
+            let mut last_period_upper = (epoch
+                / self.pow_config.difficulty_adjustment_epoch_period)
+                * self.pow_config.difficulty_adjustment_epoch_period;
             if last_period_upper == epoch {
-                last_period_upper = last_period_upper - self
-                    .pow_config
-                    .difficulty_adjustment_epoch_period;
+                last_period_upper = last_period_upper
+                    - self.pow_config.difficulty_adjustment_epoch_period;
             }
             let mut cur = index;
             while self.arena[cur].block_header.height() > last_period_upper {
@@ -383,7 +391,7 @@ impl SynchronizationGraphInner {
         Ok(())
     }
 
-    pub fn adjust_difficulty_and_best_hash(&mut self, new_best_hash: &H256) {
+    pub fn adjust_difficulty(&mut self, new_best_hash: &H256) {
         let old_best_index = *self.indices.get(&self.best_block_hash).unwrap();
         let new_best_index = *self.indices.get(new_best_hash).unwrap();
         if self.arena[old_best_index].block_header.hash()
@@ -397,8 +405,11 @@ impl SynchronizationGraphInner {
         }
 
         let epoch = self.arena[new_best_index].block_header.height();
-        assert_ne!(epoch, 0);
-        if epoch
+        if epoch == 0 {
+            // This may happen since the block at height 1 may have wrong
+            // state root and do not update the pivot chain.
+            self.current_difficulty = self.pow_config.initial_difficulty.into();
+        } else if epoch
             == (epoch / self.pow_config.difficulty_adjustment_epoch_period)
                 * self.pow_config.difficulty_adjustment_epoch_period
         {
@@ -407,8 +418,27 @@ impl SynchronizationGraphInner {
             self.current_difficulty =
                 *self.arena[new_best_index].block_header.difficulty();
         }
+    }
 
-        self.best_block_hash = new_best_hash.clone();
+    pub fn is_in_past(&self, index: usize, pivot: usize) -> bool {
+        let mut cur_pivot = pivot;
+        loop {
+            debug_assert!(cur_pivot != NULL);
+            if self.arena[cur_pivot].block_header.height()
+                < self.arena[index].min_epoch_in_other_views
+            {
+                break;
+            }
+            if cur_pivot == index
+                || self.arena[cur_pivot]
+                    .blockset_in_own_view_of_epoch
+                    .contains(&index)
+            {
+                return true;
+            }
+            cur_pivot = self.arena[cur_pivot].parent;
+        }
+        false
     }
 }
 
@@ -472,10 +502,11 @@ impl SynchronizationGraph {
     }
 
     fn parent_or_referees_invalid(&self, header: &BlockHeader) -> bool {
-        self.consensus.verified_invalid(header.parent_hash()) || header
-            .referee_hashes()
-            .iter()
-            .any(|referee| self.consensus.verified_invalid(referee))
+        self.consensus.verified_invalid(header.parent_hash())
+            || header
+                .referee_hashes()
+                .iter()
+                .any(|referee| self.consensus.verified_invalid(referee))
     }
 
     fn set_and_propagate_invalid(
@@ -569,10 +600,11 @@ impl SynchronizationGraph {
         let mut inner = self.inner.write();
         let header = Arc::new(header);
         let me = if need_to_verify {
-            if self.parent_or_referees_invalid(&*header) || self
-                .verification_config
-                .verify_header_params(&*header)
-                .is_err()
+            if self.parent_or_referees_invalid(&*header)
+                || self
+                    .verification_config
+                    .verify_header_params(&*header)
+                    .is_err()
             {
                 inner.insert_invalid(header.clone())
             } else {
@@ -714,15 +746,15 @@ impl SynchronizationGraph {
                 inner.arena[index].graph_status = BLOCK_GRAPH_READY;
                 if me == index {
                     self.blocks.write().insert(hash, block.clone());
+                    need_to_relay = true;
                 }
                 let h = inner.arena[index].block_header.hash();
-                let new_best_hash = self
-                    .consensus
-                    .on_new_block(&h, &mut inner.terminal_block_hashes);
-                if me == index {
-                    need_to_relay = true
-                }
-                inner.adjust_difficulty_and_best_hash(&new_best_hash);
+                let (new_best_hash, deferred_state_root) =
+                    self.consensus.on_new_block(&h, inner.deref_mut());
+                inner.adjust_difficulty(&new_best_hash);
+                inner.best_block_hash = new_best_hash;
+                inner.deferred_state_root = deferred_state_root;
+
                 for child in &inner.arena[index].children {
                     debug_assert!(
                         inner.arena[*child].graph_status < BLOCK_GRAPH_READY
@@ -736,7 +768,20 @@ impl SynchronizationGraph {
                     queue.push_back(*referrer);
                 }
             } else {
+                // There are two possible cases at this point.
+                // 1. Not block-graph-ready;
+                //    In this case, should check whether current block is
+                // header-graph-ready.    If true, need to relay
+                // the current block.    For other blocks, do
+                // nothing. 2. Not new to be block-graph-ready;
+                //    In this case, do nothing.
                 if me == index {
+                    // Impossible to be case 2.
+                    if inner.arena[index].graph_status
+                        >= BLOCK_HEADER_GRAPH_READY
+                    {
+                        need_to_relay = true;
+                    }
                     self.blocks.write().insert(hash, block.clone());
                 }
             }
@@ -754,6 +799,7 @@ impl SynchronizationGraph {
             best_block_hash: inner.best_block_hash.clone(),
             current_difficulty: inner.current_difficulty,
             terminal_block_hashes: inner.terminal_block_hashes(),
+            deferred_state_root: inner.deferred_state_root.clone(),
         }
     }
 

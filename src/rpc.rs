@@ -3,7 +3,6 @@ use conflux_rpc::types::{
     Block as RpcBlock, Status as RpcStatus, H256 as RpcH256,
 };
 use core::{
-    self,
     state::State,
     statedb::StateDb,
     storage::{StorageManager, StorageManagerTrait},

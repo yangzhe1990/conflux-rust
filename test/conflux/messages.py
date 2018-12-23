@@ -324,6 +324,15 @@ class Blocks(rlp.Serializable):
     ]
 
 
+class Account(rlp.Serializable):
+    fields = [
+        ("balance", big_endian_int),
+        ("nonce", big_endian_int),
+        ("storage_root", hash32),
+        ("code_hash", hash32),
+    ]
+
+
 msg_id_dict = {
     Status: STATUS,
     NewBlockHashes: NEW_BLOCK_HASHES,

@@ -40,7 +40,7 @@ class P2PTest(ConfluxTestFramework):
 
         for i in range(1, block_number):
             chosen_peer = random.randint(0, self.num_nodes - 1)
-            block_hash = self.nodes[chosen_peer].generate(1, 10)
+            block_hash = self.nodes[chosen_peer].generate(1, 0)
             self.log.info("generate block %s", block_hash)
         wait_for_block_count(self.nodes[0], block_number, timeout=30)
         sync_blocks(self.nodes, timeout=30)
@@ -48,7 +48,7 @@ class P2PTest(ConfluxTestFramework):
 
         self.stop_node(0, kill=True)
         self.log.info("node 0 stopped")
-        block_hash = self.nodes[-1].generate(1, 10)
+        block_hash = self.nodes[-1].generate(1, 0)
         self.log.info("generate block %s", block_hash)
         wait_for_block_count(self.nodes[1], block_number + 1)
         sync_blocks(self.nodes[1:], timeout=30)

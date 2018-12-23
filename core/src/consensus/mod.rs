@@ -9,19 +9,28 @@ use state::State;
 use statedb::StateDb;
 use std::{
     cell::RefCell,
+    cmp::min,
     collections::{HashMap, HashSet, VecDeque},
     iter::FromIterator,
     sync::Arc,
 };
-use storage::{StorageManager, StorageManagerTrait};
+use storage::{
+    state::StateTrait, state_manager::StateManagerTrait, StorageManager,
+    StorageManagerTrait,
+};
+use sync::{SynchronizationGraphInner, SynchronizationGraphNode};
 use transaction_pool::SharedTransactionPool;
 use vm::{EnvInfo, Spec};
 use vm_factory::VmFactory;
+
+const DEFERRED_STATE_EPOCH_COUNT: u64 = 100;
 
 const NULL: usize = !0;
 
 pub struct ConsensusGraphNodeData {
     pub epoch_number: RefCell<usize>,
+    pub partial_invalid: bool,
+    pub anticone: HashSet<usize>,
 }
 
 unsafe impl Sync for ConsensusGraphNodeData {}
@@ -30,15 +39,20 @@ impl ConsensusGraphNodeData {
     pub fn new(epoch_number: usize) -> Self {
         ConsensusGraphNodeData {
             epoch_number: RefCell::new(epoch_number),
+            partial_invalid: false,
+            anticone: HashSet::new(),
         }
     }
 }
 
 pub struct ConsensusGraphNode {
     pub hash: H256,
+    pub height: u64,
+    pub difficulty: U256,
     pub total_difficulty: U256,
     pub parent: usize,
     pub children: Vec<usize>,
+    pub referrers: Vec<usize>,
     pub referees: Vec<usize>,
     pub data: ConsensusGraphNodeData,
 }
@@ -50,6 +64,8 @@ pub struct ConsensusGraphInner {
     /// Track the block where the tx is successfully executed
     pub block_for_transaction: HashMap<H256, (bool, usize)>,
     genesis_block_index: usize,
+    genesis_block_state_root: H256,
+    parental_terminals: HashSet<usize>,
     storage_manager: Arc<StorageManager>,
     vm: VmFactory,
 }
@@ -66,6 +82,11 @@ impl ConsensusGraphInner {
             pivot_chain: Vec::new(),
             block_for_transaction: HashMap::new(),
             genesis_block_index: NULL,
+            genesis_block_state_root: genesis_block
+                .block_header
+                .deferred_state_root()
+                .clone(),
+            parental_terminals: HashSet::new(),
             storage_manager,
             vm,
         };
@@ -104,30 +125,265 @@ impl ConsensusGraphInner {
         }
         let index = self.arena.insert(ConsensusGraphNode {
             hash,
+            height: block.block_header.height(),
+            difficulty: *block.block_header.difficulty(),
             total_difficulty: block.block_header.difficulty().clone(),
             parent,
             children: Vec::new(),
             referees,
+            referrers: Vec::new(),
             data: ConsensusGraphNodeData::new(NULL),
         });
         self.indices.insert(hash, index);
 
         if parent != NULL {
+            self.parental_terminals.remove(&parent);
+            self.parental_terminals.insert(index);
             terminal_hashes.remove(&self.arena[parent].hash);
             terminal_hashes.insert(hash);
             self.arena[parent].children.push(index);
+            let referees = self.arena[index].referees.clone();
+            for referee in referees {
+                self.arena[referee].referrers.push(index);
+            }
         }
 
         index
     }
 
+    fn check_correct_parent(
+        &self, me_in_consensus: usize,
+        sync_graph: &mut SynchronizationGraphInner,
+    ) -> bool
+    {
+        struct ForkPointInfo {
+            pivot_index: usize,
+            fork_total_difficulty: U256,
+        }
+
+        let me_in_sync = *sync_graph
+            .indices
+            .get(&self.arena[me_in_consensus].hash)
+            .unwrap();
+
+        let mut fork_points: HashMap<usize, ForkPointInfo> = HashMap::new();
+        let mut pivot_points: HashMap<usize, U256> = HashMap::new();
+        let mut min_fork_height = u64::max_value();
+
+        let anticone = &self.arena[me_in_consensus].data.anticone;
+        let mut anticone_parents = HashSet::new();
+        for index in anticone {
+            let parent = self.arena[*index].parent;
+            debug_assert!(parent != NULL);
+            if !anticone_parents.contains(&parent) {
+                anticone_parents.insert(parent);
+            }
+        }
+
+        let terminal_anticone_parent = anticone_parents
+            .union(&self.parental_terminals)
+            .cloned()
+            .collect::<HashSet<_>>();
+        let fork_terminals = terminal_anticone_parent
+            .difference(anticone)
+            .cloned()
+            .collect::<HashSet<_>>();
+
+        for terminal in fork_terminals {
+            let mut me = me_in_consensus;
+            let mut fork = terminal;
+            while self.arena[me].height > self.arena[fork].height {
+                me = self.arena[me].parent;
+            }
+            if me == fork {
+                //FIXME: Maybe we should treat this as invalid block.
+                continue;
+            }
+            while self.arena[fork].height > self.arena[me].height {
+                fork = self.arena[fork].parent;
+            }
+            debug_assert!(fork != me);
+            let mut prev_fork = NULL;
+            let mut prev_me = NULL;
+            while fork != me {
+                prev_fork = fork;
+                prev_me = me;
+                debug_assert!(self.arena[fork].height == self.arena[me].height);
+                fork = self.arena[fork].parent;
+                me = self.arena[me].parent;
+            }
+            fork_points.entry(prev_fork).or_insert(ForkPointInfo {
+                pivot_index: prev_me,
+                fork_total_difficulty: self.arena[prev_fork].total_difficulty,
+            });
+            pivot_points
+                .entry(prev_me)
+                .or_insert(self.arena[prev_me].total_difficulty);
+
+            min_fork_height = min(min_fork_height, self.arena[prev_me].height);
+        }
+
+        if fork_points.is_empty() {
+            debug_assert!(pivot_points.is_empty());
+            return true;
+        }
+
+        // Remove difficulty contribution of anticone for fork points
+        for index in anticone {
+            let difficulty = self.arena[*index].difficulty;
+            let mut upper = self.arena[*index].parent;
+            debug_assert!(upper != NULL);
+            loop {
+                if self.arena[upper].height < min_fork_height {
+                    break;
+                }
+
+                if let Some(fork_info) = fork_points.get_mut(&upper) {
+                    debug_assert!(!pivot_points.contains_key(&upper));
+                    fork_info.fork_total_difficulty -= difficulty;
+                    break;
+                } else if pivot_points.contains_key(&upper) {
+                    let height = self.arena[upper].height;
+                    for (pivot_index, pivot_total_difficulty) in
+                        pivot_points.iter_mut()
+                    {
+                        if self.arena[*pivot_index].height <= height {
+                            *pivot_total_difficulty -= difficulty;
+                        }
+                    }
+                    break;
+                }
+                upper = self.arena[upper].parent;
+            }
+        }
+
+        // Check the pivot selection decision.
+        for (index, fork_info) in fork_points {
+            if (fork_info.fork_total_difficulty, self.arena[index].hash)
+                > (
+                    pivot_points.get(&fork_info.pivot_index).unwrap().clone(),
+                    self.arena[fork_info.pivot_index].hash,
+                )
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub fn compute_anticone(&mut self, me: usize) {
+        let parent = self.arena[me].parent;
+        debug_assert!(parent != NULL);
+        debug_assert!(self.arena[me].children.is_empty());
+        debug_assert!(self.arena[me].referrers.is_empty());
+
+        // Compute future set of parent
+        let mut parent_futures: HashSet<usize> = HashSet::new();
+        let mut queue: VecDeque<usize> = VecDeque::new();
+        let mut visited: HashSet<usize> = HashSet::new();
+        queue.push_back(parent);
+        while let Some(index) = queue.pop_front() {
+            if visited.contains(&index) {
+                continue;
+            }
+            if index != parent && index != me {
+                parent_futures.insert(index);
+            }
+
+            visited.insert(index);
+            for child in &self.arena[index].children {
+                queue.push_back(*child);
+            }
+            for referrer in &self.arena[index].referrers {
+                queue.push_back(*referrer);
+            }
+        }
+
+        let anticone = {
+            let parent_anticone = &self.arena[parent].data.anticone;
+            let mut my_past: HashSet<usize> = HashSet::new();
+            debug_assert!(queue.is_empty());
+            queue.push_back(me);
+            while let Some(index) = queue.pop_front() {
+                if my_past.contains(&index) {
+                    continue;
+                }
+
+                debug_assert!(index != parent);
+                if index != me {
+                    my_past.insert(index);
+                }
+
+                let idx_parent = self.arena[index].parent;
+                debug_assert!(idx_parent != NULL);
+                if parent_anticone.contains(&idx_parent)
+                    || parent_futures.contains(&idx_parent)
+                {
+                    queue.push_back(idx_parent);
+                }
+
+                for referee in &self.arena[index].referees {
+                    if parent_anticone.contains(referee)
+                        || parent_futures.contains(referee)
+                    {
+                        queue.push_back(*referee);
+                    }
+                }
+            }
+            parent_futures
+                .union(parent_anticone)
+                .cloned()
+                .collect::<HashSet<_>>()
+                .difference(&my_past)
+                .cloned()
+                .collect::<HashSet<_>>()
+        };
+
+        for index in &anticone {
+            self.arena[*index].data.anticone.insert(me);
+        }
+
+        self.arena[me].data.anticone = anticone;
+    }
+
     pub fn on_new_block(
         &mut self, txpool: &SharedTransactionPool, block: &Block,
         block_by_hash: &HashMap<H256, Block>,
-        terminal_hashes: &mut HashSet<H256>,
-    ) -> H256
+        sync_graph: &mut SynchronizationGraphInner,
+    ) -> (H256, H256)
     {
-        let mut me = self.insert(block, terminal_hashes);
+        let new = self.insert(block, &mut sync_graph.terminal_block_hashes);
+        self.compute_anticone(new);
+
+        if self.arena[self.arena[new].parent].data.partial_invalid {
+            self.arena[new].data.partial_invalid = true;
+            trace!(
+                "Partially invalid due to partially invalid parent. {:?}",
+                block.block_header.clone()
+            );
+            return (
+                self.best_block_hash(),
+                self.deferred_state_root_following_best_block(),
+            );
+        }
+
+        // Check whether the new block select the correct parent block
+        if self.arena[new].parent != *self.pivot_chain.last().unwrap() {
+            if !self.check_correct_parent(new, sync_graph) {
+                self.arena[new].data.partial_invalid = true;
+                trace!(
+                    "Partially invalid due to picking incorrect parent. {:?}",
+                    block.block_header.clone()
+                );
+                return (
+                    self.best_block_hash(),
+                    self.deferred_state_root_following_best_block(),
+                );
+            }
+        }
+
+        let mut me = new;
         loop {
             me = self.arena[me].parent;
             self.arena[me].total_difficulty += *block.block_header.difficulty();
@@ -140,12 +396,10 @@ impl ConsensusGraphInner {
         me = self.genesis_block_index;
         loop {
             new_pivot_chain.push(me);
-            if self.arena[me].children.len() == 0 {
-                break;
-            }
-            let heaviest = self.arena[me]
+            if let Some(heaviest) = self.arena[me]
                 .children
                 .iter()
+                .filter(|&index| !self.arena[*index].data.partial_invalid)
                 .max_by_key(|index| {
                     (
                         self.arena[**index].total_difficulty,
@@ -153,8 +407,11 @@ impl ConsensusGraphInner {
                     )
                 })
                 .cloned()
-                .unwrap();
-            me = heaviest;
+            {
+                me = heaviest;
+            } else {
+                break;
+            }
         }
 
         let mut fork_at = 0;
@@ -329,12 +586,118 @@ impl ConsensusGraphInner {
             fork_at += 1;
         }
 
+        if *new_pivot_chain.last().unwrap() == new {
+            debug_assert!(new_pivot_chain.len() >= 2);
+            let expected_state_root = self
+                .deferred_state_root(
+                    &new_pivot_chain[0..new_pivot_chain.len() - 1],
+                )
+                .unwrap();
+            let actual_state_root = *block.block_header.deferred_state_root();
+            if expected_state_root != actual_state_root {
+                let difficulty = *block.block_header.difficulty();
+                self.arena[new].data.partial_invalid = true;
+                let mut me = new;
+                loop {
+                    me = self.arena[me].parent;
+                    self.arena[me].total_difficulty -= difficulty;
+                    if me == self.genesis_block_index {
+                        break;
+                    }
+                }
+                trace!("Partially invalid in pivot chain due to incorrect state root. {:?}", block.block_header.clone());
+                return (
+                    self.best_block_hash(),
+                    self.deferred_state_root_following_best_block(),
+                );
+            }
+        } else {
+            debug_assert!(
+                block.block_header.height() == self.arena[new].height
+            );
+            let state_root_valid = if block.block_header.height()
+                < DEFERRED_STATE_EPOCH_COUNT
+            {
+                *block.block_header.deferred_state_root()
+                    == self.genesis_block_state_root
+            } else {
+                let mut deferred = new;
+                for _ in 0..DEFERRED_STATE_EPOCH_COUNT {
+                    deferred = self.arena[deferred].parent;
+                }
+                debug_assert!(
+                    block.block_header.height() - DEFERRED_STATE_EPOCH_COUNT
+                        == self.arena[deferred].height
+                );
+
+                let height = self.arena[deferred].height as usize;
+                if height < new_pivot_chain.len()
+                    && new_pivot_chain[height] == deferred
+                {
+                    *block.block_header.deferred_state_root()
+                        == self
+                            .storage_manager
+                            .get_state_at(self.arena[deferred].hash)
+                            .unwrap()
+                            .get_merkle_hash(&[])
+                            .unwrap()
+                            .unwrap()
+                } else {
+                    //FIXME: Verify the deferred state root in this costly
+                    // case.
+                    true
+                }
+            };
+
+            if !state_root_valid {
+                let difficulty = *block.block_header.difficulty();
+                self.arena[new].data.partial_invalid = true;
+                let mut me = new;
+                loop {
+                    me = self.arena[me].parent;
+                    self.arena[me].total_difficulty -= difficulty;
+                    if me == self.genesis_block_index {
+                        break;
+                    }
+                }
+                trace!(
+                    "Partially invalid in fork due to incorrect parent. {:?}",
+                    block.block_header.clone()
+                );
+                return (
+                    self.best_block_hash(),
+                    self.deferred_state_root_following_best_block(),
+                );
+            }
+        }
+
         self.pivot_chain = new_pivot_chain;
-        self.best_block_hash()
+        (
+            self.best_block_hash(),
+            self.deferred_state_root_following_best_block(),
+        )
     }
 
     pub fn best_block_hash(&self) -> H256 {
         self.arena[*self.pivot_chain.last().unwrap()].hash
+    }
+
+    pub fn deferred_state_root(&self, chain: &[usize]) -> Option<H256> {
+        let chain_len = chain.len();
+        let index = if chain_len < DEFERRED_STATE_EPOCH_COUNT as usize {
+            0
+        } else {
+            chain_len - DEFERRED_STATE_EPOCH_COUNT as usize
+        };
+        let state = self
+            .storage_manager
+            .get_state_at(self.arena[chain[index]].hash)
+            .unwrap();
+        state.get_merkle_hash(&[]).unwrap()
+    }
+
+    pub fn deferred_state_root_following_best_block(&self) -> H256 {
+        self.deferred_state_root(&self.pivot_chain).unwrap()
     }
 
     pub fn get_block_for_tx_execution(
@@ -430,8 +793,8 @@ impl ConsensusGraph {
     }
 
     pub fn on_new_block(
-        &self, hash: &H256, terminal_hashes: &mut HashSet<H256>,
-    ) -> H256 {
+        &self, hash: &H256, sync_graph: &mut SynchronizationGraphInner,
+    ) -> (H256, H256) {
         let blocks = self.blocks.read();
         let block = blocks.get(hash).unwrap();
 
@@ -451,7 +814,7 @@ impl ConsensusGraph {
             &self.txpool,
             block,
             &*blocks,
-            terminal_hashes,
+            sync_graph,
         )
     }
 

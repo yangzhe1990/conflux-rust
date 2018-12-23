@@ -59,7 +59,6 @@ use log4rs::{
 };
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
-use primitives::{Block, BlockHeaderBuilder};
 use secret_store::SecretStore;
 use std::{
     any::Any,
@@ -70,13 +69,6 @@ use std::{
     time::{Duration, Instant},
 };
 use txgen::TransactionGenerator;
-
-fn make_genesis() -> Block {
-    Block {
-        block_header: BlockHeaderBuilder::new().build(),
-        transactions: Vec::new(),
-    }
-}
 
 // Start all key components of Conflux and pass out their handles
 fn start(
@@ -93,10 +85,9 @@ fn start(
             .map_err(|e| format!("Failed to open database {:?}", e))?;
 
     let secret_store = Arc::new(SecretStore::new());
-    let genesis_block = make_genesis();
-
     let storage_manager = Arc::new(StorageManager::new(ledger_db.clone()));
-    storage_manager.initialize(genesis_block.hash(), secret_store.as_ref());
+    let genesis_block = storage_manager.initialize(secret_store.as_ref());
+    debug!("Initialize genesis_block={:?}", genesis_block);
 
     let txpool = Arc::new(TransactionPool::with_capacity(
         100000,
@@ -373,7 +364,7 @@ fn main() {
                 "blockgen", "core", "conflux", "db", "eth_key", "network",
                 "rpc", "txgen",
             ]
-                .iter()
+            .iter()
             {
                 conf_builder = conf_builder.logger(
                     Logger::builder()

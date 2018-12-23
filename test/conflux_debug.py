@@ -69,7 +69,7 @@ class MessageTest(ConfluxTestFramework):
             block_time += 1
 
         wait_for_block_count(rpc, block_number)
-        rpc.generate(1, 10)
+        rpc.generate(1, 0)
         wait_for_block_count(rpc, block_number+1)
         print("pass")
         while True:

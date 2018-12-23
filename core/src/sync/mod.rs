@@ -8,6 +8,7 @@ pub use self::{
     error::{Error, ErrorKind},
     synchronization_graph::{
         BestInformation, SharedSynchronizationGraph, SynchronizationGraph,
+        SynchronizationGraphInner, SynchronizationGraphNode,
     },
     synchronization_protocol_handler::{
         SynchronizationProtocolHandler, SYNCHRONIZATION_PROTOCOL_VERSION,

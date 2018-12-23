@@ -16,7 +16,7 @@ use txgen::TransactionGeneratorConfig;
 /// `RawConfiguration`, and it will be assigned to the value passed through
 /// commandline argument or configuration file. Commandline argument will
 /// override the configuration file if the parameter is given in both.
-build_config!{
+build_config! {
     {
         (port, (Option<u16>), None)
         (udp_port, (Option<u16>), None)

@@ -16,22 +16,20 @@ extern crate log;
 mod tests;
 
 use core::{
-    pow::*, SharedSynchronizationGraph, SharedSynchronizationService,
+    pow::*, transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT,
+    SharedSynchronizationGraph, SharedSynchronizationService,
     SharedTransactionPool,
 };
 use ethereum_types::{Address, H256};
-use hash::KECCAK_NULL_RLP;
 use parking_lot::RwLock;
 use primitives::*;
 use rlp::encode;
 use std::{
-    collections::HashSet,
     sync::{mpsc, Arc, Mutex},
     thread, time,
 };
 use triehash::ordered_trie_root;
 use txgen::SharedTransactionGenerator;
-use core::transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT;
 
 enum MiningState {
     Start,
@@ -193,7 +191,7 @@ impl BlockGenerator {
             .with_height(parent_height + 1)
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
-            .with_deferred_state_root(KECCAK_NULL_RLP) //TODO: get deferred state root
+            .with_deferred_state_root(best_info.deferred_state_root) //TODO: get deferred state root
             .with_difficulty(self.pow_config.initial_difficulty.into()) //TODO: adjust difficulty
             .with_referee_hashes(referee) //TODO: get referee hashes
             .with_nonce(0) // TODO: gen nonce from pow
@@ -327,7 +325,8 @@ impl BlockGenerator {
                         && !validate(
                             &current_problem.unwrap(),
                             &new_solution.unwrap(),
-                        ) {
+                        )
+                    {
                         new_solution = receiver.try_recv();
                     } else {
                         break;

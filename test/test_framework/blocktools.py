@@ -5,7 +5,7 @@ from rlp.sedes import CountableList
 
 from conflux import utils, trie
 from conflux.config import default_config
-from conflux.messages import BlockHeader, Block, Transactions
+from conflux.messages import BlockHeader, Block, Transactions, Account
 from conflux.transactions import Transaction
 from conflux.utils import *
 from trie import HexaryTrie
@@ -15,20 +15,20 @@ HASH_MAX = 1 << 256
 
 
 def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, timestamp=0, difficulty=TEST_DIFFICULTY, transactions=[],
-                 gas_limit=0, gas_used=0, referee_hashes=[], author=default_config["GENESIS_COINBASE"]):
+                 gas_limit=0, gas_used=0, referee_hashes=[], author=default_config["GENESIS_COINBASE"], deferred_state_root=default_config["GENESIS_STATE_ROOT"]):
     if len(transactions) != 0:
         # tx_root = utils.sha3(rlp.encode(Transactions(transactions)))
-        trie_tree = HexaryTrie(db={})
+        tx_trie_tree = HexaryTrie(db={})
         for i in range(len(transactions)):
-            trie_tree[rlp.encode(i)] = rlp.encode(transactions[i])
-        tx_root = trie_tree.root_hash
+            tx_trie_tree[rlp.encode(i)] = rlp.encode(transactions[i])
+        tx_root = tx_trie_tree.root_hash
     else:
         tx_root = trie.BLANK_ROOT
     nonce = 0
     while True:
         header = BlockHeader(parent_hash=parent_hash, height=height, difficulty=difficulty, timestamp=timestamp,
                              author=author, transactions_root=tx_root, gas_limit=gas_limit, gas_used=gas_used,
-                             referee_hashes=referee_hashes, nonce=nonce)
+                             referee_hashes=referee_hashes, nonce=nonce, deferred_state_root=deferred_state_root)
         if header.pow_decimal() * difficulty < HASH_MAX:
             break
         nonce += 1
@@ -50,5 +50,9 @@ def make_genesis():
 #         tx = create_transaction(0, 10**15, 200, 10**9, addr)
 #         signed_tx = tx.sign(sp)
 #         txs.append(signed_tx)
+#     sp = default_config["GENESIS_PRI_KEY"]
+#     addr = privtoaddr(sp)
+#     state_trie = HexaryTrie(db={})
+#     state_trie[addr] = rlp.encode(Account(balance=10**9, nonce=0, storage_root=b'\x00' * 32, code_hash=trie.BLANK_ROOT))
     genesis = create_block(difficulty=0)
     return genesis

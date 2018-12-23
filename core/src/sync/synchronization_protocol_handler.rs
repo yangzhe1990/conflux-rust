@@ -679,16 +679,6 @@ impl SynchronizationProtocolHandler {
                     hash,
                     DEFAULT_GET_HEADERS_NUM,
                 );
-                // FIXME: This might need better design.
-                // The current rationale is that newblockhashes message
-                // are only produced in 2 cases.
-                // 1. After seeing a new block, the newblockhashes only
-                // contains 1 hash value of the new block;
-                // 2. After getting a series of blocks from getblockresponse
-                // message, those blocks are in a same parental chain and in
-                // reverse order, so we only need to fetch the first header
-                // backward following the parental chain.
-                break;
             }
         }
         Ok(())
