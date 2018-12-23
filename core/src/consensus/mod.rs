@@ -1,5 +1,5 @@
 use ethereum_types::{H256, U256};
-use executive::Executive;
+use executive::{ExecutionError, Executive};
 use ext_db::SystemDB;
 use machine::new_byzantium_test_machine;
 use parking_lot::RwLock;
@@ -297,11 +297,27 @@ impl ConsensusGraphInner {
                     let mut ex =
                         Executive::new(&mut state, &env, &machine, &spec);
                     let r = ex.transact(transaction);
-                    if r.is_err() {
-                        warn!("transaction execution error: transaction={:?}, err={:?}", transaction, r);
-                    } else {
-                        self.block_for_transaction
-                            .insert(transaction.hash(), (true, *index));
+                    match r {
+                        Err(ExecutionError::NotEnoughBaseGas {
+                            required: _,
+                            got: _,
+                        })
+                        | Err(ExecutionError::SenderMustExist {})
+                        | Err(ExecutionError::InvalidNonce {
+                            expected: _,
+                            got: _,
+                        })
+                        | Err(ExecutionError::NotEnoughBaseGas {
+                            required: _,
+                            got: _,
+                        }) => {
+                            warn!("transaction execution error without inc_nonce: transaction={:?}, err={:?}", transaction, r);
+                        }
+                        _ => {
+                            trace!("transaction executed: transaction={:?}, result={:?}", transaction, r);
+                            self.block_for_transaction
+                                .insert(transaction.hash(), (true, *index));
+                        }
                     }
                 }
             }

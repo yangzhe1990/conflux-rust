@@ -22,6 +22,7 @@ class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 5
+        self.conf_parameters = {"log-level":"\"error\""}
 
     def setup_network(self):
         self.setup_nodes()
@@ -91,22 +92,22 @@ class P2PTest(ConfluxTestFramework):
 
         '''Test Random Transactions'''
         all_txs = []
-        tx_n = 100
+        tx_n = 500
         self.log.info("start to generate %d transactions with about %d seconds", tx_n, tx_n/10/2)
         for i in range(tx_n):
             sender_key = random.choice(list(balance_map))
-            value = int(balance_map[sender_key] * random.random())
-            # not enough transaction fee (gas_price * gas_limit)
-            if balance_map[sender_key] < value + gas_price * 21000:
-                continue
             nonce = nonce_map[sender_key]
-            if random.random() < 0.1:
+            if random.random() < 0.1 and balance_map[sender_key] > 21000 * 4 * tx_n:
+                value = int(balance_map[sender_key] * 0.5)
                 receiver_sk, _ = ec_random_keys()
                 nonce_map[receiver_sk] = 0
                 balance_map[receiver_sk] = value
             else:
+                value = 21000
                 receiver_sk = random.choice(list(balance_map))
                 balance_map[receiver_sk] += value
+            # not enough transaction fee (gas_price * gas_limit) should not happen for now
+            assert balance_map[sender_key] >= value + gas_price * 21000
             tx = create_transaction(pri_key=sender_key, receiver=privtoaddr(receiver_sk), value=value, nonce=nonce,
                                     gas_price=gas_price)
             r = random.randint(0, self.num_nodes - 1)

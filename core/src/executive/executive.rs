@@ -1005,6 +1005,11 @@ impl<'a, 'b> Executive<'a, 'b> {
         let gas_cost = tx.gas.full_mul(tx.gas_price);
         let total_cost = U512::from(tx.value) + gas_cost;
 
+        // Increase nonce even sender does not have enough balance
+        if !spec.keep_unsigned_nonce || !tx.is_unsigned() {
+            self.state.inc_nonce(&sender)?;
+        }
+
         // Avoid unaffordable transactions
         let balance512 = U512::from(balance);
         if balance512 < total_cost {
@@ -1015,10 +1020,6 @@ impl<'a, 'b> Executive<'a, 'b> {
         }
 
         let mut substate = Substate::new();
-
-        if !spec.keep_unsigned_nonce || !tx.is_unsigned() {
-            self.state.inc_nonce(&sender)?;
-        }
         self.state.sub_balance(
             &sender,
             &U256::from(gas_cost),
