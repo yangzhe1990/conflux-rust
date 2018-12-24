@@ -10,15 +10,14 @@ pub use self::impls::TreapMap;
 use self::ready::Readiness;
 use crate::{
     state::State,
-    statedb::{StateDb, StorageKey},
-    storage::{Storage, StorageManager, StorageManagerTrait, StorageTrait},
+    statedb::StateDb,
+    storage::{Storage, StorageManager, StorageManagerTrait},
 };
 use ethereum_types::{Address, H256, H512, U256, U512};
 use parking_lot::RwLock;
 use primitives::{
     Account, EpochId, SignedTransaction, TransactionWithSignature,
 };
-use rlp::decode;
 use std::{
     cmp::{min, Ordering},
     collections::hash_map::HashMap,
