@@ -2,15 +2,13 @@
 
 extern crate clap;
 extern crate ctrlc;
+extern crate error_chain;
+extern crate io;
 extern crate jsonrpc_core;
 extern crate serde;
 extern crate serde_json;
-#[macro_use]
-extern crate jsonrpc_macros;
-extern crate error_chain;
-extern crate io;
-extern crate jsonrpc_http_server as http;
-extern crate jsonrpc_tcp_server as tcp;
+use jsonrpc_http_server as http;
+use jsonrpc_tcp_server as tcp;
 extern crate mio;
 extern crate parity_reactor;
 extern crate parking_lot;
@@ -43,14 +41,13 @@ mod rpc;
 #[cfg(test)]
 mod tests;
 
+use self::{http::Server as HttpServer, tcp::Server as TcpServer};
 use blockgen::BlockGenerator;
 use core::{
     storage::StorageManager, vm_factory::VmFactory, ConsensusGraph,
     SynchronizationService, TransactionPool,
 };
 pub use crate::configuration::Configuration;
-use http::Server as HttpServer;
-use tcp::Server as TcpServer;
 
 use ctrlc::CtrlC;
 use db::SystemDB;

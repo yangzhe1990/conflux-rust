@@ -15,6 +15,7 @@ use crate::{
 };
 use ethereum_types::{Address, H256, U256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
+use jsonrpc_macros::build_rpc_trait;
 use network::node_table::{NodeEndpoint, NodeEntry, NodeId};
 use parity_reactor::TokioRemote;
 use parking_lot::{Condvar, Mutex};

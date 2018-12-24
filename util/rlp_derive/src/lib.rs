@@ -23,7 +23,7 @@ extern crate quote;
 mod en;
 mod de;
 
-use proc_macro::TokenStream;
+use crate::proc_macro::TokenStream;
 use crate::en::{impl_encodable, impl_encodable_wrapper};
 use crate::de::{impl_decodable, impl_decodable_wrapper};
 
