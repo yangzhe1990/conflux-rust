@@ -10,7 +10,7 @@ from test_framework.util import *
 class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 5
+        self.num_nodes = 2
 
     def setup_network(self):
         self.add_nodes(self.num_nodes)
@@ -41,6 +41,7 @@ class P2PTest(ConfluxTestFramework):
         connect_nodes(self.nodes, 0, 1)
         sync_blocks(self.nodes, timeout=5)
         best_block = self.nodes[0].getbestblockhash()
+        print("best from rust: %s \nbest from local: %s\n" % (best_block, encode_hex(block3.hash)))
         assert_equal(best_block, encode_hex(block3.hash))
         self.log.info("Pass 1")
 

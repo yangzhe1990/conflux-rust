@@ -195,7 +195,8 @@ impl TransactionGenerator {
 
             trace!(
                 "choose sender addr={:?} balance={:?}",
-                sender_address, sender_balance
+                sender_address,
+                sender_balance
             );
             if sender_balance == None {
                 thread::sleep(tx_config.period);
@@ -231,22 +232,6 @@ impl TransactionGenerator {
             let sender_nonce = *entry;
             *entry += U256::one();
 
-            let mut receiver_index: usize = random();
-            receiver_index =
-                (sender_index + (receiver_index % account_count) + 1)
-                    % account_count;
-            let mut receiver_kp: KeyPair;
-            if sender_index == receiver_index {
-                // Create a new receiver account
-                loop {
-                    receiver_kp = Random.generate()?;
-                    if secret_store.insert(receiver_kp.clone()) {
-                        break;
-                    }
-                }
-            } else {
-                receiver_kp = secret_store.get_keypair(receiver_index);
-            }
             let receiver_address = public_to_address(receiver_kp.public());
             debug!(
                 "receiver={:?} value={:?} nonce={:?}",
@@ -265,7 +250,7 @@ impl TransactionGenerator {
             //            balance_map
             //                .entry(sender_address)
             //                .and_modify(|b| *b -= balance_to_transfer);
-            //            
+            //
             // *balance_map.entry(receiver_address).or_insert(0.into()) +=
             //                balance_to_transfer;
 

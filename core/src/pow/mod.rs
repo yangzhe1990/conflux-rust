@@ -30,7 +30,7 @@ impl ProofOfWorkConfig {
     pub fn new(test_mode: bool) -> Self {
         if test_mode {
             ProofOfWorkConfig {
-                initial_difficulty: 4,
+                initial_difficulty: 10000,
                 block_generation_period: 1000000,
                 difficulty_adjustment_epoch_period: 20,
             }

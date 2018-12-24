@@ -12,9 +12,6 @@ extern crate txgen;
 #[macro_use]
 extern crate log;
 
-#[cfg(test)]
-mod tests;
-
 use core::{
     pow::*, transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT,
     SharedSynchronizationGraph, SharedSynchronizationService,
@@ -63,10 +60,6 @@ impl Worker {
         let thread = thread::Builder::new()
             .name("blockgen".into())
             .spawn(move || {
-                #[cfg(test)]
-                {
-                    println!("A new worker start mining!");
-                }
                 let sleep_duration = time::Duration::from_millis(100);
                 let mut problem: Option<ProofOfWorkProblem> = None;
 
@@ -89,12 +82,8 @@ impl Worker {
                         #[cfg(test)]
                         {
                             let difficulty = problem.unwrap().difficulty;
-                            println!(
-                                "Start a new round with difficulty {}!",
-                                difficulty
-                            );
                             if difficulty > 500000.into() {
-                                println!("Difficulty is too high to mine!");
+                                warn!("Difficulty is too high to mine!");
                             }
                         }
 
@@ -109,12 +98,6 @@ impl Worker {
                                     .expect("Failed to send the PoW solution.");
                                 problem = None;
                                 break;
-                            }
-                        }
-                        #[cfg(test)]
-                        {
-                            if problem.is_some() {
-                                println!("Sad, we failed in this round.");
                             }
                         }
                     } else {
@@ -206,11 +189,6 @@ impl BlockGenerator {
 
     /// Update and sync a new block
     pub fn on_mined_block(&self, block: Block) {
-        #[cfg(test)]
-        {
-            println!("Mined a block!");
-            return;
-        }
         self.sync.on_mined_block(block);
     }
 
@@ -260,7 +238,7 @@ impl BlockGenerator {
                 break;
             }
         }
-        let hash = block.hash();
+        let hash = block.block_header.compute_hash();
         debug!(
             "generate_block with block header:{:?} tx_number:{}",
             block.block_header,
@@ -268,6 +246,10 @@ impl BlockGenerator {
         );
         self.on_mined_block(block);
         hash
+    }
+
+    pub fn pow_config(&self) -> ProofOfWorkConfig {
+        return self.pow_config.clone();
     }
 
     /// Start num_worker new workers

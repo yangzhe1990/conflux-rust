@@ -1,7 +1,11 @@
-use blockgen::BlockGenerator;
-use crate::conflux_rpc::types::{
-    Block as RpcBlock, Status as RpcStatus, H256 as RpcH256,
+use crate::{
+    conflux_rpc::types::{
+        Block as RpcBlock, Status as RpcStatus, H256 as RpcH256,
+    },
+    http::{Server as HttpServer, ServerBuilder as HttpServerBuilder},
+    tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder},
 };
+use blockgen::BlockGenerator;
 use core::{
     state::State,
     statedb::StateDb,
@@ -10,7 +14,6 @@ use core::{
     SharedTransactionPool,
 };
 use ethereum_types::{Address, H256, U256};
-use crate::http::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
 use network::node_table::{NodeEndpoint, NodeEntry, NodeId};
 use parity_reactor::TokioRemote;
@@ -19,7 +22,6 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     sync::Arc,
 };
-use crate::tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder};
 
 pub struct Dependencies {
     pub remote: TokioRemote,
@@ -266,8 +268,8 @@ impl Rpc for RpcImpl {
         {
             Ok(RpcStatus {
                 best_hash: RpcH256::from(best_hash),
-                epoch_number: epoch_number,
-                block_number: block_number,
+                epoch_number,
+                block_number,
                 pending_tx_number: tx_count,
             })
         } else {
