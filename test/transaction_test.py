@@ -22,7 +22,7 @@ class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 5
-        self.conf_parameters = {"log-level":"\"trace\""}
+        self.conf_parameters = {"log-level":"\"error\""}
 
     def setup_network(self):
         self.setup_nodes()
@@ -92,7 +92,7 @@ class P2PTest(ConfluxTestFramework):
 
         '''Test Random Transactions'''
         all_txs = []
-        tx_n = 200
+        tx_n = 1000
         self.log.info("start to generate %d transactions with about %d seconds", tx_n, tx_n/10/2)
         for i in range(tx_n):
             sender_key = random.choice(list(balance_map))
