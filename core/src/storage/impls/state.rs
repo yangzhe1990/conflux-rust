@@ -209,7 +209,7 @@ impl<'a> StateTrait for State<'a> {
                 root_node,
                 &mut empty_owned_node_set,
             )
-            .get_merkle_hash(access_key),
+            .get_merkle_hash_wo_compressed_path(access_key),
         }
     }
 

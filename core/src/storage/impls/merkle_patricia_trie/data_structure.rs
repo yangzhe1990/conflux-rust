@@ -202,7 +202,7 @@ impl TrieNode {
         }
     }
 
-    fn value(&self) -> Option<Box<[u8]>> {
+    fn value_clone(&self) -> Option<Box<[u8]>> {
         let size = self.value_size as usize;
         if size != 0 {
             Option::Some(self.value.get_slice(size).into())
@@ -946,14 +946,16 @@ impl CowNodeRef {
     }
 
     fn set_merkle(
-        &mut self, children_merkles: MaybeMerkleTable, trie_node: &mut TrieNode,
-    ) -> MerkleHash {
-        let (node_merkle, path_merkle) = compute_merkle(
+        &mut self, children_merkles: MaybeMerkleTableRef,
+        trie_node: &mut TrieNode,
+    ) -> MerkleHash
+    {
+        let path_merkle = compute_merkle(
             trie_node.compressed_path_ref(),
             children_merkles,
             trie_node.value_as_slice(),
         );
-        trie_node.merkle_hash = node_merkle;
+        trie_node.merkle_hash = path_merkle;
 
         path_merkle
     }
@@ -971,14 +973,11 @@ impl CowNodeRef {
                 trie_node,
             )?;
 
-            let merkle = self.set_merkle(children_merkles, trie_node);
+            let merkle = self.set_merkle(children_merkles.as_ref(), trie_node);
 
             Ok(merkle)
         } else {
-            Ok(compute_path_merkle(
-                trie_node.compressed_path_ref(),
-                &trie_node.merkle_hash,
-            ))
+            Ok(trie_node.merkle_hash)
         }
     }
 
@@ -1076,7 +1075,7 @@ impl CowNodeRef {
         if self.owned {
             trie_node.delete_value_unchecked()
         } else {
-            trie_node.value().unwrap()
+            trie_node.value_clone().unwrap()
         }
     }
 
@@ -1116,7 +1115,7 @@ impl CowNodeRef {
                 new_entry.insert(unsafe {
                     old.copy_and_replace_fields(Some(None), None, None)
                 });
-                old.value().unwrap()
+                old.value_clone().unwrap()
             }
         })
     }
@@ -1136,7 +1135,7 @@ impl CowNodeRef {
                 new_entry.insert(unsafe {
                     old.copy_and_replace_fields(Some(Some(value)), None, None)
                 });
-                old.value()
+                old.value_clone()
             }
         })
     }
@@ -1292,17 +1291,44 @@ impl<'trie> SubTrieVisitor<'trie> {
 
         Ok(match maybe_trie_node {
             None => None,
-            Some(trie_node) => trie_node.value(),
+            Some(trie_node) => trie_node.value_clone(),
         })
     }
 
-    pub fn get_merkle_hash(&self, key: KeyPart) -> Result<Option<MerkleHash>> {
+    pub fn get_merkle_hash_wo_compressed_path(
+        &self, key: KeyPart,
+    ) -> Result<Option<MerkleHash>> {
         let allocator = self.node_memory_manager().get_allocator();
         let maybe_trie_node = self.get_trie_node(key, &allocator)?;
 
         match maybe_trie_node {
             None => Ok(None),
-            Some(trie_node) => Ok(Some(trie_node.merkle_hash)),
+            Some(trie_node) => {
+                if trie_node.get_compressed_path_size() == 0 {
+                    Ok(Some(trie_node.merkle_hash))
+                } else {
+                    let merkles = match trie_node.children_table {
+                        None => None,
+                        Some(ref table) => {
+                            let mut merkles = ChildrenMerkleTable::default();
+                            for i in 0..CHILDREN_COUNT {
+                                merkles[i] =
+                                    match self.trie_ref.get_merkle(table[i])? {
+                                        None => super::merkle::MERKLE_NULL_NODE,
+                                        Some(merkle) => merkle,
+                                    };
+                            }
+
+                            Some(merkles)
+                        }
+                    };
+
+                    Ok(Some(compute_node_merkle(
+                        merkles.as_ref(),
+                        trie_node.value_as_slice(),
+                    )))
+                }
+            }
         }
     }
 
