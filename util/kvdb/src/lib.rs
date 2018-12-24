@@ -25,7 +25,7 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 use elastic_array::{ElasticArray128, ElasticArray32};
-use bytes::Bytes;
+use crate::bytes::Bytes;
 
 /// Required length of prefixes.
 pub const PREFIX_LEN: usize = 12;

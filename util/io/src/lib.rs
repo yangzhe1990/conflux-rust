@@ -163,7 +163,7 @@ where Message: Send + Sync + 'static
     }
 }
 
-pub use service_mio::{
+pub use crate::service_mio::{
     IoChannel, IoContext, IoManager, IoService, StreamToken, TimerToken,
     TOKENS_PER_HANDLER,
 };

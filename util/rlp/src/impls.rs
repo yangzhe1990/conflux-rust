@@ -8,10 +8,10 @@
 
 use std::{cmp, mem, str};
 use byteorder::{ByteOrder, BigEndian};
-use bigint::{U128, U256, H64, H128, H160, H256, H512, H520, Bloom};
-use traits::{Encodable, Decodable};
-use stream::RlpStream;
-use {Rlp, DecoderError};
+use crate::bigint::{U128, U256, H64, H128, H160, H256, H512, H520, Bloom};
+use crate::traits::{Encodable, Decodable};
+use crate::stream::RlpStream;
+use crate::{Rlp, DecoderError};
 
 pub fn decode_usize(bytes: &[u8]) -> Result<usize, DecoderError> {
 	match bytes.len() {

@@ -21,7 +21,7 @@ extern crate ethcore_bytes as bytes;
 extern crate rlp;
 
 use target_info::Target;
-use bytes::Bytes;
+use crate::bytes::Bytes;
 use rlp::RlpStream;
 
 mod vergen {

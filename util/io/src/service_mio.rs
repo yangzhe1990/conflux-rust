@@ -31,9 +31,9 @@ use std::{
     thread::{self, JoinHandle},
     time::Duration,
 };
-use worker::{SocketWorker, Work, WorkType, Worker};
-use IoError;
-use IoHandler;
+use crate::worker::{SocketWorker, Work, WorkType, Worker};
+use crate::IoError;
+use crate::IoHandler;
 
 /// Timer ID
 pub type TimerToken = usize;

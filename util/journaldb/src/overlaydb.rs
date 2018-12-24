@@ -19,7 +19,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use error::{Result, BaseDataError};
+use crate::error::{Result, BaseDataError};
 use ethereum_types::H256;
 use rlp::{Rlp, RlpStream, Encodable, DecoderError, Decodable, encode, decode};
 use hashdb::*;

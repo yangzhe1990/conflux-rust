@@ -15,14 +15,14 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 use crossbeam::sync::chase_lev;
-use service_mio::{HandlerId, IoChannel, IoContext};
+use crate::service_mio::{HandlerId, IoChannel, IoContext};
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
-use IoHandler;
-use LOCAL_STACK_SIZE;
+use crate::IoHandler;
+use crate::LOCAL_STACK_SIZE;
 
 use std::sync::{Condvar as SCondvar, Mutex as SMutex};
 

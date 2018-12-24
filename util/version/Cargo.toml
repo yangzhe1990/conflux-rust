@@ -6,6 +6,7 @@ name = "parity-version"
 version = "1.12.0"
 authors = ["Parity Technologies <admin@parity.io>"]
 build = "build.rs"
+edition = "2018"
 
 [package.metadata]
 # This versions track. Should be changed to `stable` or `beta` when on respective branches.

@@ -20,8 +20,8 @@ use std::sync::Arc;
 use hashdb::*;
 use kvdb::{self, DBTransaction};
 use ethereum_types::H256;
-use error::UtilError;
-use bytes::Bytes;
+use crate::error::UtilError;
+use crate::bytes::Bytes;
 
 /// A `HashDB` which can manage a short-term journal potentially containing many forks of mutually
 /// exclusive actions.

@@ -29,9 +29,9 @@ use kvdb::{KeyValueDB, DBTransaction};
 use super::JournalDB;
 use ethereum_types::H256;
 use plain_hasher::H256FastMap;
-use error::{BaseDataError, UtilError};
-use bytes::Bytes;
-use util::DatabaseKey;
+use crate::error::{BaseDataError, UtilError};
+use crate::bytes::Bytes;
+use crate::util::DatabaseKey;
 
 /// Implementation of the `JournalDB` trait for a disk-backed database with a memory overlay
 /// and, possibly, latent-removal semantics.

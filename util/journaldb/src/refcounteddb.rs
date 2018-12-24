@@ -21,15 +21,15 @@ use std::sync::Arc;
 use heapsize::HeapSizeOf;
 use rlp::{encode, decode};
 use hashdb::*;
-use overlaydb::OverlayDB;
+use crate::overlaydb::OverlayDB;
 use memorydb::MemoryDB;
 use super::{DB_PREFIX_LEN, LATEST_ERA_KEY};
 use super::traits::JournalDB;
 use kvdb::{KeyValueDB, DBTransaction};
 use ethereum_types::H256;
-use error::UtilError;
-use bytes::Bytes;
-use util::{DatabaseKey, DatabaseValueView, DatabaseValueRef};
+use crate::error::UtilError;
+use crate::bytes::Bytes;
+use crate::util::{DatabaseKey, DatabaseValueView, DatabaseValueRef};
 
 /// Implementation of the `HashDB` trait for a disk-backed database with a memory overlay
 /// and latent-removal semantics.

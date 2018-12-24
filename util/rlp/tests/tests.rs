@@ -10,7 +10,7 @@ extern crate ethereum_types as bigint;
 extern crate rlp;
 
 use std::{fmt, cmp};
-use bigint::{U256, H160};
+use crate::bigint::{U256, H160};
 use rlp::{Encodable, Decodable, Rlp, RlpStream, DecoderError};
 
 #[test]

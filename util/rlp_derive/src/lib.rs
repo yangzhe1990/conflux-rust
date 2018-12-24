@@ -24,8 +24,8 @@ mod en;
 mod de;
 
 use proc_macro::TokenStream;
-use en::{impl_encodable, impl_encodable_wrapper};
-use de::{impl_decodable, impl_decodable_wrapper};
+use crate::en::{impl_encodable, impl_encodable_wrapper};
+use crate::de::{impl_decodable, impl_decodable_wrapper};
 
 #[proc_macro_derive(RlpEncodable)]
 pub fn encodable(input: TokenStream) -> TokenStream {

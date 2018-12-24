@@ -29,7 +29,7 @@ use std::collections::hash_map::Entry;
 use heapsize::HeapSizeOf;
 use ethereum_types::H256;
 use hashdb::{HashDB, DBValue};
-use keccak::{KECCAK_NULL_RLP, keccak};
+use crate::keccak::{KECCAK_NULL_RLP, keccak};
 use plain_hasher::H256FastMap;
 use rlp::NULL_RLP;
 /// Reference-counted memory-based `HashDB` implementation.
@@ -268,7 +268,7 @@ impl HashDB for MemoryDB {
 
 #[cfg(test)]
 mod tests {
-	use keccak::keccak;
+	use crate::keccak::keccak;
 	use super::*;
 
 	#[test]

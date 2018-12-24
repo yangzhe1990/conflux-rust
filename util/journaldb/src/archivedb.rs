@@ -23,11 +23,11 @@ use rlp::{encode, decode};
 use hashdb::*;
 use super::memorydb::*;
 use super::{DB_PREFIX_LEN, LATEST_ERA_KEY};
-use traits::JournalDB;
+use crate::traits::JournalDB;
 use kvdb::{KeyValueDB, DBTransaction};
 use ethereum_types::H256;
-use error::{BaseDataError, UtilError};
-use bytes::Bytes;
+use crate::error::{BaseDataError, UtilError};
+use crate::bytes::Bytes;
 
 /// Implementation of the `HashDB` trait for a disk-backed database with a memory overlay
 /// and latent-removal semantics.
