@@ -12,12 +12,12 @@ extern crate txgen;
 #[macro_use]
 extern crate log;
 
+use crate::triehash::ordered_trie_root;
 use core::{
     pow::*, transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT,
     SharedSynchronizationGraph, SharedSynchronizationService,
     SharedTransactionPool,
 };
-use crate::triehash::ordered_trie_root;
 use ethereum_types::{Address, H256};
 use parking_lot::RwLock;
 use primitives::*;
@@ -307,7 +307,8 @@ impl BlockGenerator {
                         && !validate(
                             &current_problem.unwrap(),
                             &new_solution.unwrap(),
-                        ) {
+                        )
+                    {
                         new_solution = receiver.try_recv();
                     } else {
                         break;

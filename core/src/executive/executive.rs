@@ -737,10 +737,8 @@ impl<'a> CallCreateExecutive<'a> {
         let mut last_res =
             Some((false, self.gas, self.exec(state, top_substate)));
 
-        let mut callstack: Vec<(
-            Option<Address>,
-            CallCreateExecutive<'a>,
-        )> = Vec::new();
+        let mut callstack: Vec<(Option<Address>, CallCreateExecutive<'a>)> =
+            Vec::new();
         loop {
             match last_res {
                 None => {

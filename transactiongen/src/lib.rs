@@ -198,18 +198,17 @@ impl TransactionGenerator {
                 sender_address,
                 sender_balance
             );
-            if sender_balance == None {
+            if sender_balance.is_none() {
                 thread::sleep(tx_config.period);
                 continue;
             }
-            if sender_balance.unwrap() < U256::from(200) {
-                continue;
-            }
 
+            let mut balance_to_transfer = U256::from(0);
             let mut receiver_kp: KeyPair;
             let mut receiver_index: usize = random();
             receiver_index %= account_count;
             if sender_index == receiver_index {
+                balance_to_transfer = sender_balance.unwrap() / 2;
                 // Create a new receiver account
                 loop {
                     receiver_kp = Random.generate()?;
@@ -220,7 +219,6 @@ impl TransactionGenerator {
             } else {
                 receiver_kp = secret_store.get_keypair(receiver_index);
             }
-            let balance_to_transfer = U256::from(100);
             // Generate nonce for the transaction
             let sender_state_nonce = state.nonce(&sender_address).unwrap();
             let entry = nonce_map
@@ -247,12 +245,6 @@ impl TransactionGenerator {
                 action: Action::Call(receiver_address),
                 data: Bytes::new(),
             };
-            //            balance_map
-            //                .entry(sender_address)
-            //                .and_modify(|b| *b -= balance_to_transfer);
-            //
-            // *balance_map.entry(receiver_address).or_insert(0.into()) +=
-            //                balance_to_transfer;
 
             let signed_tx = tx.sign(sender_kp.secret());
             //            txgen.txpool.add_pending(signed_tx.clone());

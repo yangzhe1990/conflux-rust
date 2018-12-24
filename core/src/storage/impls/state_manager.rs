@@ -12,7 +12,7 @@ use super::{
 use crate::{
     ext_db::SystemDB, snapshot::snapshot::Snapshot, statedb::StorageKey,
 };
-use ethereum_types::H256;
+use ethereum_types::{H256, U256};
 use ethkey::KeyPair;
 use kvdb::{DBTransaction, DBValue};
 use primitives::{Account, Block, BlockHeaderBuilder, EpochId};
@@ -144,7 +144,7 @@ impl StateManager {
         let addr = kp.address();
         let account = Account::new_empty_with_balance(
             &addr,
-            &1_000_000_000.into(),
+            &U256::from_dec_str("1000000000000000000").expect("Not overflow"),
             &0.into(),
         );
         state
@@ -160,6 +160,7 @@ impl StateManager {
                 .build(),
             transactions: Vec::new(),
         };
+        trace!("Genesis Block:{:?}", genesis);
         state.commit(genesis.block_header.hash()).unwrap();
         secret_store.insert(kp);
         genesis

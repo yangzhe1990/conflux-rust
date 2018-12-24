@@ -1,3 +1,10 @@
+use crate::{
+    conflux_rpc::types::{
+        Block as RpcBlock, Status as RpcStatus, H256 as RpcH256,
+    },
+    http::{Server as HttpServer, ServerBuilder as HttpServerBuilder},
+    tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder},
+};
 use blockgen::BlockGenerator;
 use core::{
     state::State,
@@ -5,13 +12,6 @@ use core::{
     storage::{StorageManager, StorageManagerTrait},
     PeerInfo, SharedConsensusGraph, SharedSynchronizationService,
     SharedTransactionPool,
-};
-use crate::{
-    conflux_rpc::types::{
-        Block as RpcBlock, Status as RpcStatus, H256 as RpcH256,
-    },
-    http::{Server as HttpServer, ServerBuilder as HttpServerBuilder},
-    tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder},
 };
 use ethereum_types::{Address, H256, U256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
@@ -285,12 +285,18 @@ impl Rpc for RpcImpl {
         }
     }
 
-    /// The first element is true if the tx is executed and the nonce is
-    /// increased The second element indicate the execution result (standin
+    /// The first element is true if the tx is executed in a confirmed block.
+    /// The second element indicate the execution result (standin
     /// for receipt)
     fn check_tx(&self, tx_hash: H256) -> RpcResult<(bool, bool)> {
         let result = match self.consensus.get_block_for_tx_execution(&tx_hash) {
-            Some((success, _)) => (true, success),
+            Some((success, ref block_hash)) => {
+                if self.consensus.check_block_confirmation(block_hash) {
+                    (true, success)
+                } else {
+                    (false, false)
+                }
+            }
             None => (false, false),
         };
         Ok(result)

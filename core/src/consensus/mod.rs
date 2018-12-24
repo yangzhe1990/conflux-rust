@@ -262,7 +262,8 @@ impl ConsensusGraphInner {
                 > (
                     pivot_points.get(&fork_info.pivot_index).unwrap().clone(),
                     self.arena[fork_info.pivot_index].hash,
-                ) {
+                )
+            {
                 return false;
             }
         }
@@ -704,6 +705,11 @@ impl ConsensusGraphInner {
             .get(tx_hash)
             .map(|(success, index)| (*success, self.arena[*index].hash))
     }
+
+    pub fn check_block_confirmation(&self, _block_hash: &H256) -> bool {
+        // TODO check if the block is confirmed safely
+        true
+    }
 }
 
 pub struct ConsensusGraph {
@@ -825,5 +831,9 @@ impl ConsensusGraph {
         &self, tx_hash: &H256,
     ) -> Option<(bool, H256)> {
         self.inner.read().get_block_for_tx_execution(tx_hash)
+    }
+
+    pub fn check_block_confirmation(&self, block_hash: &H256) -> bool {
+        self.inner.read().check_block_confirmation(block_hash)
     }
 }

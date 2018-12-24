@@ -430,12 +430,16 @@ impl TransactionPool {
                 .get_by_weight(rand_value)
                 .expect("Failed to pick transaction by weight")
                 .clone();
+            inner.ready_transactions.remove(&tx.hash());
             let sender = tx.sender;
             let nonce_entry = nonce_map.entry(sender);
-            let nonce = nonce_entry.or_insert_with(|| {
-                state.nonce(&sender).unwrap_or(U256::zero())
-            });
-            inner.ready_transactions.remove(&tx.hash());
+            let state_nonce = state.nonce(&sender);
+            if state_nonce.is_err() {
+                inner.pending_transactions.insert(tx);
+                continue;
+            }
+            let nonce =
+                nonce_entry.or_insert(state_nonce.expect("Not err here"));
             if tx.nonce > *nonce {
                 future_txs
                     .entry(sender)

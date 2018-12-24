@@ -1,5 +1,5 @@
-use bytes::Bytes;
 use crate::io::{IoContext, StreamToken};
+use bytes::Bytes;
 use mio::{deprecated::*, tcp::*, *};
 use std::{
     collections::VecDeque,

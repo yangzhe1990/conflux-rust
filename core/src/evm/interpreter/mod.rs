@@ -383,7 +383,7 @@ impl<Cost: CostType> Interpreter<Cost> {
                             vm::Error::BadInstruction {
                                 instruction: opcode,
                             },
-                        )))
+                        )));
                     }
                 };
 

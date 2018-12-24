@@ -383,7 +383,8 @@ impl<'a> State<'a> {
                                                 acc.balance() < b
                                             })
                                 })
-                            }))) {
+                            })))
+                    {
                         Some(address.clone())
                     } else {
                         None

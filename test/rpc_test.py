@@ -55,7 +55,7 @@ class RpcTest(ConfluxTestFramework):
         addr = eth_utils.encode_hex(privtoaddr(eth_utils.decode_hex("46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f")))
         res = self.nodes[0].getbalance(addr)
         balance = int(res, 0)
-        assert_equal(10 ** 9, balance)
+        assert_equal(default_config["TOTAL_COIN"], balance)
 
     def _test_getbestblockhash(self):
         self.log.info("Test getbestblockhash")

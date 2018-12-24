@@ -19,11 +19,11 @@ from test_framework.util import *
 class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 30
-        self.conf_parameters = {"generate-tx":"true", "generate-tx-period-ms":"50", "log-level":"\"debug\""}
+        self.num_nodes = 15
+        self.conf_parameters = {"generate-tx":"true", "generate-tx-period-ms":"30", "log-level":"\"debug\""}
 
     def setup_network(self):
-        node_per_host = 2
+        node_per_host = 1
         with open("ips", 'r') as ip_file:
             for line in ip_file.readlines():
                 line = line[:-1]
@@ -64,12 +64,12 @@ class P2PTest(ConfluxTestFramework):
             pub_key = self.nodes[i].key
             addr = self.nodes[i].addr
             self.log.info("%d has addr=%s pubkey=%s", i, encode_hex(addr), pub_key)
-            init_tx = create_transaction(value=int(1000000000/self.num_nodes), receiver=addr, nonce=i)
+            init_tx = create_transaction(value=int(default_config["TOTAL_COIN"]/self.num_nodes), receiver=addr, nonce=i)
             self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[init_tx]))
         block_number = 10000000
         threads = {}
         generate_period = 2
-        tx_n = 4000
+        tx_n = 10000
         for i in range(1, block_number):
             wait_sec = random.expovariate(1 / generate_period)
             p = random.randint(0, self.num_nodes - 1)

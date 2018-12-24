@@ -58,7 +58,7 @@ impl Decodable for CallType {
                 _ => {
                     return Err(DecoderError::Custom(
                         "Invalid value of CallType item",
-                    ))
+                    ));
                 }
             })
         })

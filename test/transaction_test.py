@@ -22,7 +22,7 @@ class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 5
-        self.conf_parameters = {"log-level":"\"error\""}
+        self.conf_parameters = {"log-level":"\"trace\""}
 
     def setup_network(self):
         self.setup_nodes()
@@ -57,7 +57,7 @@ class P2PTest(ConfluxTestFramework):
             node.p2p.wait_for_status()
 
         genesis_key = default_config["GENESIS_PRI_KEY"]
-        balance_map = {genesis_key: 1000000000}
+        balance_map = {genesis_key: default_config["TOTAL_COIN"]}
         self.log.info("Initial State: (sk:%d, addr:%s, balance:%d)", bytes_to_int(genesis_key),
                       eth_utils.encode_hex(privtoaddr(genesis_key)), balance_map[genesis_key])
         nonce_map = {genesis_key: 0}
@@ -92,7 +92,7 @@ class P2PTest(ConfluxTestFramework):
 
         '''Test Random Transactions'''
         all_txs = []
-        tx_n = 500
+        tx_n = 200
         self.log.info("start to generate %d transactions with about %d seconds", tx_n, tx_n/10/2)
         for i in range(tx_n):
             sender_key = random.choice(list(balance_map))
@@ -103,7 +103,7 @@ class P2PTest(ConfluxTestFramework):
                 nonce_map[receiver_sk] = 0
                 balance_map[receiver_sk] = value
             else:
-                value = 21000
+                value = 1
                 receiver_sk = random.choice(list(balance_map))
                 balance_map[receiver_sk] += value
             # not enough transaction fee (gas_price * gas_limit) should not happen for now

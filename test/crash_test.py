@@ -6,7 +6,7 @@ from rlp.sedes import Binary, BigEndianInt
 
 from conflux import utils
 from conflux.utils import encode_hex, bytes_to_int, privtoaddr, parse_as_int
-from test_framework.blocktools import create_block
+from test_framework.blocktools import create_block, create_transaction
 from test_framework.test_framework import ConfluxTestFramework
 # from test_framework.mininode import (
 #     P2PInterface,
@@ -55,7 +55,38 @@ class P2PTest(ConfluxTestFramework):
         self.log.info("blocks sync success among running nodes")
         self.start_node(0)
         sync_blocks(self.nodes, timeout=30)
-        self.log.info("Pass")
+        self.log.info("Pass 1")
+
+        '''Check if transaction from uncommitted new address can be accepted'''
+        self.nodes[0].add_p2p_connection(P2PInterface())
+        network_thread_start()
+        self.nodes[0].p2p.wait_for_status()
+        gas_price = 1
+        value = 1
+        receiver_sk, _ = ec_random_keys()
+        sender_key = default_config["GENESIS_PRI_KEY"]
+        tx = create_transaction(pri_key=sender_key, receiver=privtoaddr(receiver_sk), value=value, nonce=0,
+                                gas_price=gas_price)
+        self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
+        self.log.debug("New tx %s: %s send value %d to %s", encode_hex(tx.hash), eth_utils.encode_hex(privtoaddr(sender_key))[-4:],
+                       value, eth_utils.encode_hex(privtoaddr(receiver_sk))[-4:])
+        def check_packed():
+            block = self.nodes[0].generateoneblock(1)
+            if len(self.nodes[0].getblock(block)["transactions"]) == 1:
+                return True
+            else:
+                return False
+        wait_until(lambda: check_packed())
+        sender_addr = eth_utils.encode_hex(privtoaddr(sender_key))
+        receiver_addr = eth_utils.encode_hex(privtoaddr(receiver_sk))
+        sender_balance = default_config["TOTAL_COIN"] - value - gas_price * 21000
+        assert_equal(parse_as_int(self.nodes[0].getbalance(sender_addr)), sender_balance)
+        assert_equal(parse_as_int(self.nodes[0].getbalance(receiver_addr)), value)
+        self.stop_node(0)
+        self.start_node(0)
+        wait_until(lambda: parse_as_int(self.nodes[0].getbalance(sender_addr)) == sender_balance)
+        wait_until(lambda: parse_as_int(self.nodes[0].getbalance(receiver_addr)) == value)
+        self.log.info("Pass 2")
 
 
 class DefaultNode(P2PInterface):
