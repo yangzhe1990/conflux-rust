@@ -35,10 +35,9 @@ impl<'a, T> ReturnAfterUse<'a, T> {
         ret
     }
 
-    pub fn new_from_origin<'b>(
-        origin: &'b mut ReturnAfterUse<'a, T>,
-    ) -> ReturnAfterUse<'b, T>
-    where 'a: 'b {
+    pub fn new_from_origin<'b: 'a>(
+        origin: &'a mut ReturnAfterUse<'b, T>,
+    ) -> ReturnAfterUse<'a, T> {
         Self::new(&mut origin.current)
     }
 
