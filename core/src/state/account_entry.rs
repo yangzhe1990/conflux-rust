@@ -1,11 +1,11 @@
 use crate::{
     bytes::{Bytes, ToPretty},
     hash::{keccak, KECCAK_EMPTY},
-    statedb::{Result as DbResult, StateDb},
+    statedb::{Result as DbResult, StateDb, StorageKey},
 };
 use ethereum_types::{Address, H256, U256};
 use primitives::Account;
-use std::{cell::RefCell, collections::HashMap, convert::AsRef, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 #[derive(Debug)]
 /// Single account in the system.
@@ -79,9 +79,10 @@ impl OverlayAccount {
 
     pub fn as_account(&self) -> Account {
         Account {
+            address: self.address.clone(),
             balance: self.balance.clone(),
             nonce: self.nonce.clone(),
-            storage_root: KECCAK_EMPTY,
+            original_storage_root: KECCAK_EMPTY,
             code_hash: self.code_hash.clone(),
         }
     }
@@ -138,12 +139,9 @@ impl OverlayAccount {
             return Some(self.code_cache.clone());
         }
 
-        let mut access_key = Vec::new();
-        access_key.extend_from_slice(self.address.as_ref());
-        access_key.extend_from_slice("code".as_ref());
-        access_key.extend_from_slice(self.code_hash.as_ref());
-
-        match db.get_raw(access_key.as_ref()) {
+        match db
+            .get_raw(&StorageKey::new_code_key(&self.address, &self.code_hash))
+        {
             Ok(Some(code)) => {
                 self.code_size = Some(code.len());
                 self.code_cache = Arc::new(code.into_vec());
@@ -228,13 +226,8 @@ impl OverlayAccount {
         address: &Address, key: &H256,
     ) -> DbResult<H256>
     {
-        let mut access_key = Vec::new();
-        access_key.extend_from_slice(address.as_ref());
-        access_key.extend_from_slice("data".as_ref());
-        access_key.extend_from_slice(key.as_ref());
-
         let value = db
-            .get::<H256>(access_key.as_ref())
+            .get::<H256>(&StorageKey::new_storage_key(address, key))
             .expect("get_and_cache_storage failed")
             .unwrap_or_else(|| H256::zero());
         storage_cache.insert(key.clone(), value.clone());
@@ -261,31 +254,24 @@ impl OverlayAccount {
 
     pub fn commit<'a>(&mut self, db: &mut StateDb<'a>) -> DbResult<()> {
         if self.reset_storage {
-            let mut access_key = Vec::new();
-            access_key.extend_from_slice(self.address.as_ref());
-            access_key.extend_from_slice("data".as_ref());
-            db.delete_all(access_key.as_ref())?;
-
-            access_key = Vec::new();
-            access_key.extend_from_slice(self.address.as_ref());
-            access_key.extend_from_slice("code".as_ref());
-            db.delete_all(access_key.as_ref())?;
+            db.delete_all(&StorageKey::new_storage_root_key(&self.address))?;
+            db.delete_all(&StorageKey::new_code_root_key(&self.address))?;
         }
 
         for (k, v) in self.storage_changes.drain() {
-            let mut access_key = Vec::new();
-            access_key.extend_from_slice(self.address.as_ref());
-            access_key.extend_from_slice("data".as_ref());
-            access_key.extend_from_slice(k.as_ref());
+            let access_key = StorageKey::new_storage_key(&self.address, &k);
+
             match v.is_zero() {
-                true => db.delete(access_key.as_ref())?,
-                false => db.set::<H256>(
-                    access_key.as_ref(),
-                    &H256::from(U256::from(v)),
-                )?,
+                true => {
+                    db.delete(&StorageKey::new_account_key(&self.address))?
+                }
+                false => {
+                    db.set::<H256>(&access_key, &H256::from(U256::from(v)))?
+                }
             }
             self.storage_cache.borrow_mut().insert(k, v);
         }
+
         Ok(())
     }
 }

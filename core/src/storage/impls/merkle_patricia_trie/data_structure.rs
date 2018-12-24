@@ -531,7 +531,7 @@ impl TrieNode {
                         key_remaining: key_remaining,
                         child_node: child_node,
                         child_index: child_index,
-                    }
+                    };
                 }
             }
         }
@@ -1234,7 +1234,7 @@ impl<'trie> SubTrieVisitor<'trie> {
         let trie_ref = self.trie_ref;
         let cow_child_node =
             CowNodeRef::new(child_node, self.owned_node_set.get_ref());
-        SubTrieVisitor{
+        SubTrieVisitor {
             trie_ref: trie_ref,
             root: cow_child_node,
             owned_node_set: ReturnAfterUse::new_from_origin(

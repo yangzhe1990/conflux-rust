@@ -3,7 +3,9 @@ use crate::{
     executive::Executive,
     hash::KECCAK_EMPTY,
     machine::Machine,
-    statedb::{ErrorKind as DbErrorKind, Result as DbResult, StateDb},
+    statedb::{
+        ErrorKind as DbErrorKind, Result as DbResult, StateDb, StorageKey,
+    },
     transaction_pool::SharedTransactionPool,
     vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
@@ -262,10 +264,12 @@ impl<'a> State<'a> {
             entry.state = AccountState::Committed;
             if let Some(ref mut account) = entry.account {
                 account.commit(&mut self.db)?;
-                self.db
-                    .set::<Account>(address.as_ref(), &account.as_account())?;
+                self.db.set::<Account>(
+                    &StorageKey::new_account_key(address),
+                    &account.as_account(),
+                )?;
             } else {
-                self.db.delete(address.as_ref())?;
+                self.db.delete(&StorageKey::new_account_key(address))?;
             }
         }
         self.db.commit(epoch_id)?;
@@ -286,10 +290,12 @@ impl<'a> State<'a> {
             if let Some(ref mut account) = entry.account {
                 txpool.notify_ready(address, &account.as_account());
                 account.commit(&mut self.db)?;
-                self.db
-                    .set::<Account>(address.as_ref(), &account.as_account())?;
+                self.db.set::<Account>(
+                    &StorageKey::new_account_key(address),
+                    &account.as_account(),
+                )?;
             } else {
-                self.db.delete(address.as_ref())?;
+                self.db.delete(&StorageKey::new_account_key(address))?;
             }
         }
         self.db.commit(epoch_id)?;
@@ -520,7 +526,7 @@ impl<'a> State<'a> {
 
         let mut maybe_acc = self
             .db
-            .get::<Account>(address.as_ref())?
+            .get_account(address, false)?
             .map(|acc| OverlayAccount::new(address, acc));
         if let Some(ref mut account) = maybe_acc.as_mut() {
             if !Self::update_account_cache(require, account, &self.db) {
@@ -565,7 +571,7 @@ impl<'a> State<'a> {
         if !contains_key {
             let account = self
                 .db
-                .get::<Account>(address.as_ref())?
+                .get_account(address, false)?
                 .map(|acc| OverlayAccount::new(address, acc));
             self.insert_cache(address, AccountEntry::new_clean(account));
         }

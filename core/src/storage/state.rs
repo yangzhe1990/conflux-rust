@@ -36,6 +36,7 @@ pub trait StateTrait {
     /// It's costly to compute state root however it's only necessary to compute
     /// state root once before committing.
     fn compute_state_root(&mut self) -> Result<MerkleHash>;
+    fn get_state_root(&self) -> Result<Option<MerkleHash>>;
     fn commit(&mut self, epoch: EpochId) -> Result<()>;
     fn revert(&mut self);
 

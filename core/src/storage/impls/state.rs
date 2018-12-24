@@ -198,11 +198,18 @@ impl<'a> StateTrait for State<'a> {
     fn does_exist(&self) -> bool { self.get_root_node().is_some() }
 
     fn get_merkle_hash(&self, access_key: &[u8]) -> Result<Option<MerkleHash>> {
+        // Get won't create any new nodes so it's fine to pass an empty
+        // owned_node_set.
+        let mut empty_owned_node_set: Option<OwnedNodeSet> =
+            Some(Default::default());
         match self.get_root_node() {
             None => Ok(None),
-            Some(node) => {
-                Ok(Some(self.delta_trie.get_merkle_at_node(node.into())?))
-            }
+            Some(root_node) => SubTrieVisitor::new(
+                self.delta_trie,
+                root_node,
+                &mut empty_owned_node_set,
+            )
+            .get_merkle_hash(access_key),
         }
     }
 
@@ -260,6 +267,10 @@ impl<'a> StateTrait for State<'a> {
 
     fn compute_state_root(&mut self) -> Result<MerkleHash> {
         self.compute_merkle_root()
+    }
+
+    fn get_state_root(&self) -> Result<Option<MerkleHash>> {
+        self.delta_trie.get_merkle(self.root_node)
     }
 
     // TODO(yz): replace coarse lock with a queue.

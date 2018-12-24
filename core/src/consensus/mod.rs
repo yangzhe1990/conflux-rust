@@ -636,7 +636,7 @@ impl ConsensusGraphInner {
                             .storage_manager
                             .get_state_at(self.arena[deferred].hash)
                             .unwrap()
-                            .get_merkle_hash(&[])
+                            .get_state_root()
                             .unwrap()
                             .unwrap()
                 } else {
@@ -690,7 +690,7 @@ impl ConsensusGraphInner {
             .storage_manager
             .get_state_at(self.arena[chain[index]].hash)
             .unwrap();
-        state.get_merkle_hash(&[]).unwrap()
+        state.get_state_root().unwrap()
     }
 
     pub fn deferred_state_root_following_best_block(&self) -> H256 {

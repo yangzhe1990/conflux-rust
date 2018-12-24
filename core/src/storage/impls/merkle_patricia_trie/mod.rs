@@ -64,14 +64,7 @@ impl MultiVersionMerklePatriciaTrie {
         &self.node_memory_manager
     }
 
-    pub fn get_merkle_at_node(&self, node: MaybeNodeRef) -> Result<MerkleHash> {
-        match self.get_merkle(node)? {
-            Some(hash) => Ok(hash),
-            None => Ok(MERKLE_NULL_NODE),
-        }
-    }
-
-    fn get_merkle(
+    pub fn get_merkle(
         &self, maybe_node: MaybeNodeRef,
     ) -> Result<Option<MerkleHash>> {
         let maybe_node: Option<NodeRef> = maybe_node.into();

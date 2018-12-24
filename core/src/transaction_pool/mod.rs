@@ -10,6 +10,7 @@ pub use self::impls::TreapMap;
 use self::ready::Readiness;
 use crate::{
     state::State,
+    statedb::{StateDb, StorageKey},
     storage::{Storage, StorageManager, StorageManagerTrait, StorageTrait},
 };
 use ethereum_types::{Address, H256, H512, U256, U512};
@@ -32,16 +33,16 @@ pub const DEFAULT_MAX_BLOCK_GAS_LIMIT: u64 = 30_000 * 100_000;
 
 pub const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 2000;
 
-pub struct AccountCache<'cache, 'storage: 'cache> {
+pub struct AccountCache<'storage> {
     pub accounts: HashMap<Address, Account>,
-    pub storage: &'cache Storage<'storage>,
+    pub storage: StateDb<'storage>,
 }
 
-impl<'cache, 'storage> AccountCache<'cache, 'storage> {
-    pub fn new(storage: &'cache Storage<'storage>) -> Self {
+impl<'storage> AccountCache<'storage> {
+    pub fn new(storage: Storage<'storage>) -> Self {
         AccountCache {
             accounts: HashMap::new(),
-            storage,
+            storage: StateDb::new(storage),
         }
     }
 
@@ -54,10 +55,9 @@ impl<'cache, 'storage> AccountCache<'cache, 'storage> {
         if !self.accounts.contains_key(&sender) {
             let account = self
                 .storage
-                .get(sender.as_ref())
+                .get_account(&sender, false)
                 .ok()
-                .and_then(|x| x)
-                .and_then(|rlp| decode::<Account>(rlp.as_ref()).ok());
+                .and_then(|x| x);
             if let Some(account) = account {
                 self.accounts.insert(sender.clone(), account);
             }
@@ -214,8 +214,10 @@ impl TransactionPool {
         transactions: Vec<TransactionWithSignature>,
     )
     {
-        let state = self.storage_manager.get_state_at(latest_epoch).unwrap();
-        let mut account_cache = AccountCache::new(&state);
+        // FIXME: do not unwrap.
+        let mut account_cache = AccountCache::new(
+            self.storage_manager.get_state_at(latest_epoch).unwrap(),
+        );
         for tx in transactions {
             trace!("Start tx {:?}", Instant::now());
             if let Ok(public) = tx.recover_public() {

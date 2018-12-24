@@ -10,7 +10,7 @@ use super::{
     },
 };
 use crate::{
-    ext_db::SystemDB, hash::KECCAK_EMPTY, snapshot::snapshot::Snapshot,
+    ext_db::SystemDB, snapshot::snapshot::Snapshot, statedb::StorageKey,
 };
 use ethereum_types::H256;
 use ethkey::KeyPair;
@@ -142,13 +142,17 @@ impl StateManager {
         )
         .unwrap();
         let addr = kp.address();
-        let account = Account {
-            balance: 1_000_000_000.into(),
-            nonce: 0.into(),
-            storage_root: H256::zero(),
-            code_hash: KECCAK_EMPTY,
-        };
-        state.set(addr.as_ref(), encode(&account).as_ref()).unwrap();
+        let account = Account::new_empty_with_balance(
+            &addr,
+            &1_000_000_000.into(),
+            &0.into(),
+        );
+        state
+            .set(
+                StorageKey::new_account_key(&addr).as_ref(),
+                encode(&account).as_ref(),
+            )
+            .unwrap();
         let root = state.compute_state_root().unwrap();
         let genesis = Block {
             block_header: BlockHeaderBuilder::new()

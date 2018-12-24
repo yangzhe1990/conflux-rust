@@ -1,12 +1,20 @@
-use crate::storage::{
-    Error as StorageError, ErrorKind as StorageErrorKind, MerkleHash, Storage,
-    StorageTrait,
+use crate::{
+    hash::KECCAK_EMPTY,
+    storage::{
+        Error as StorageError, ErrorKind as StorageErrorKind, MerkleHash,
+        Storage, StorageTrait,
+    },
 };
-use primitives::EpochId;
+use ethereum_types::Address;
+use primitives::{Account, EpochId};
 
 mod error;
+mod storage_key;
 
-pub use self::error::{Error, ErrorKind, Result};
+pub use self::{
+    error::{Error, ErrorKind, Result},
+    storage_key::StorageKey,
+};
 
 pub struct StateDb<'a> {
     storage: Storage<'a>,
@@ -15,9 +23,9 @@ pub struct StateDb<'a> {
 impl<'a> StateDb<'a> {
     pub fn new(storage: Storage<'a>) -> Self { StateDb { storage } }
 
-    pub fn get<T>(&self, key: &[u8]) -> Result<Option<T>>
+    pub fn get<T>(&self, key: &StorageKey) -> Result<Option<T>>
     where T: ::rlp::Decodable {
-        let raw = match self.storage.get(key) {
+        let raw = match self.storage.get(key.as_ref()) {
             Ok(maybe_value) => match maybe_value {
                 None => return Ok(None),
                 Some(raw) => raw,
@@ -30,30 +38,62 @@ impl<'a> StateDb<'a> {
         Ok(Some(::rlp::decode::<T>(raw.as_ref())?))
     }
 
-    pub fn get_raw(&self, key: &[u8]) -> Result<Option<Box<[u8]>>> {
-        Ok(self.storage.get(key)?)
+    pub fn get_account(
+        &self, address: &Address, with_storage_root: bool,
+    ) -> Result<Option<Account>> {
+        let key = StorageKey::new_account_key(address);
+        let raw = match self.storage.get(key.as_ref()) {
+            Ok(maybe_value) => match maybe_value {
+                None => return Ok(None),
+                Some(raw) => raw,
+            },
+            Err(e) => {
+                return Err(e.into());
+            }
+        };
+        //        println!("get key={:?} value={:?}", key, raw);
+        let storage_root;
+        if with_storage_root {
+            let storage_root_key = StorageKey::new_storage_root_key(address);
+            storage_root = self
+                .storage
+                .get_merkle_hash(storage_root_key.as_ref())?
+                .unwrap();
+        } else {
+            storage_root = KECCAK_EMPTY;
+        }
+        let account =
+            Account::new_from_rlp(address, raw.as_ref(), &storage_root)?;
+        Ok(Some(account))
     }
 
-    pub fn set<T>(&mut self, key: &[u8], value: &T) -> Result<()>
+    pub fn get_raw(&self, key: &StorageKey) -> Result<Option<Box<[u8]>>> {
+        Ok(self.storage.get(key.as_ref())?)
+    }
+
+    pub fn set<T>(&mut self, key: &StorageKey, value: &T) -> Result<()>
     where T: ::rlp::Encodable {
         //        println!("set key={:?} value={:?}", key,
         // ::rlp::encode(value));
-        match self.storage.set(key, ::rlp::encode(value).as_ref()) {
+        match self
+            .storage
+            .set(key.as_ref(), ::rlp::encode(value).as_ref())
+        {
             Ok(_) => Ok(()),
             Err(StorageError(StorageErrorKind::MPTKeyNotFound, _)) => Ok(()),
             Err(e) => Err(e.into()),
         }
     }
 
-    pub fn delete(&mut self, key: &[u8]) -> Result<()> {
-        match self.storage.delete(key) {
+    pub fn delete(&mut self, key: &StorageKey) -> Result<()> {
+        match self.storage.delete(key.as_ref()) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }
     }
 
-    pub fn delete_all(&mut self, key_prefix: &[u8]) -> Result<()> {
-        Ok(self.storage.delete_all(key_prefix)?)
+    pub fn delete_all(&mut self, key_prefix: &StorageKey) -> Result<()> {
+        Ok(self.storage.delete_all(key_prefix.as_ref())?)
     }
 
     pub fn commit(&mut self, epoch_id: EpochId) -> Result<MerkleHash> {
