@@ -1,6 +1,6 @@
 use serde::{Serialize, Serializer};
 
-use types::{H160, H256, U256, Transaction};
+use crate::types::{H160, H256, U256, Transaction};
 
 use primitives::Block as PrimitiveBlock;
 use ethereum_types::U256 as Eth256;
@@ -91,7 +91,7 @@ impl Block {
 mod tests {
     use std::collections::BTreeMap;
     use serde_json;
-    use types::{Transaction, H64, H160, H256, H2048, U256};
+    use crate::types::{Transaction, H64, H160, H256, H2048, U256};
     use super::{Block, BlockTransactions};
 
     #[test]
@@ -114,7 +114,7 @@ mod tests {
             author: H160::default(),
             deferred_state_root: H256::default(),
             transactions_root: H256::default(),
-            number: Some(U256::default()),
+            number: Some(0),
             gas_used: U256::default(),
             gas_limit: U256::default(),
             timestamp: U256::default(),

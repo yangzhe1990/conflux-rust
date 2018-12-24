@@ -41,15 +41,15 @@ pub mod node_table;
 mod service;
 mod session;
 
-pub use error::{DisconnectReason, Error, ErrorKind};
+pub use crate::error::{DisconnectReason, Error, ErrorKind};
 pub use io::TimerToken;
-pub use service::NetworkService;
+pub use crate::service::NetworkService;
 
 use ethkey::Secret;
 use ipnetwork::{IpNetwork, IpNetworkError};
-use node_table::NodeId;
+use crate::node_table::NodeId;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use service::{
+use crate::service::{
     DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION,
     DEFAULT_DISCOVERY_REFRESH_TIMEOUT, DEFAULT_DISCOVERY_ROUND_TIMEOUT,
     DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT, DEFAULT_HOUSEKEEPING_TIMEOUT,

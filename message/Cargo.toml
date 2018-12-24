@@ -2,6 +2,7 @@
 name = "message"
 version = "0.1.0"
 authors = ["Dong Zhou <dongz@conflux-chain.org>"]
+edition = "2018"
 
 [dependencies]
 rlp = { git = "https://github.com/paritytech/parity-common" }

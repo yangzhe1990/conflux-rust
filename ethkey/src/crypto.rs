@@ -45,7 +45,7 @@ quick_error! {
 pub mod ecdh {
     use super::Error;
     use secp256k1::{self, ecdh, key};
-    use {Public, SECP256K1, Secret};
+    use crate::{Public, SECP256K1, Secret};
 
     /// Agree on a shared secret
     pub fn agree(secret: &Secret, public: &Public) -> Result<Secret, Error> {
@@ -70,7 +70,7 @@ pub mod ecies {
     use super::{ecdh, Error};
     use ethcore_crypto::{aes, digest, hmac, is_equal};
     use ethereum_types::H128;
-    use {Generator, Public, Random, Secret};
+    use crate::{Generator, Public, Random, Secret};
 
     /// Encrypt a message with a public key, writing an HMAC covering both
     /// the plaintext and authenticated data.
@@ -178,7 +178,7 @@ pub mod ecies {
 #[cfg(test)]
 mod tests {
     use super::ecies;
-    use {Generator, Random};
+    use crate::{Generator, Random};
 
     #[test]
     fn ecies_shared() {

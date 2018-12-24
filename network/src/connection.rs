@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use io::{IoContext, StreamToken};
+use crate::io::{IoContext, StreamToken};
 use mio::{deprecated::*, tcp::*, *};
 use std::{
     collections::VecDeque,
@@ -8,7 +8,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering as AtomicOrdering},
 };
 
-use Error;
+use crate::Error;
 
 #[derive(PartialEq, Eq)]
 pub enum WriteStatus {
@@ -23,7 +23,7 @@ pub trait GenericSocket: Read + Write {}
 impl GenericSocket for TcpStream {}
 
 pub trait PacketSizer {
-    fn packet_size(&Bytes) -> usize;
+    fn packet_size(_: &Bytes) -> usize;
 }
 
 /// This information is to measure the congestion situation of network.

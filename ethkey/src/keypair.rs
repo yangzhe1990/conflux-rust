@@ -15,7 +15,7 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 use super::{Address, Error, Public, SECP256K1, Secret};
-use keccak::Keccak256;
+use crate::keccak::Keccak256;
 use rustc_hex::ToHex;
 use secp256k1::key;
 use std::fmt;
@@ -89,7 +89,7 @@ impl KeyPair {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
-    use {KeyPair, Secret};
+    use crate::{KeyPair, Secret};
 
     #[test]
     fn from_secret() {

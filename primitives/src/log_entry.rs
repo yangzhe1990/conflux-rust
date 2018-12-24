@@ -1,6 +1,6 @@
 //! Log entry type definition.
 
-use bytes::Bytes;
+use crate::bytes::Bytes;
 use ethereum_types::{Address, Bloom, BloomInput, H256};
 use heapsize::HeapSizeOf;
 use std::ops::Deref;

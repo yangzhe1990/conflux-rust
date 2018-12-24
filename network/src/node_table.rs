@@ -1,7 +1,7 @@
 use enum_map::EnumMap;
 use ethereum_types::H512;
 use io::*;
-use ip_utils::*;
+use crate::ip_utils::*;
 use rand::{self, Rng};
 use rlp::{DecoderError, Rlp, RlpStream};
 use serde_json;
@@ -20,10 +20,10 @@ use std::{
     time::{self, Duration, SystemTime},
 };
 use strum::IntoEnumIterator;
-use AllowIP;
-use Error;
-use ErrorKind;
-use IpFilter;
+use crate::AllowIP;
+use crate::Error;
+use crate::ErrorKind;
+use crate::IpFilter;
 
 /// Node public key
 pub type NodeId = H512;
@@ -381,7 +381,7 @@ impl NodeTable {
             Ok(table) => {
                 for n in table.nodes {
                     let node = n.into_node();
-                    if let Some(mut node) = node {
+                    if let Some(node) = node {
                         if !self.node_index.contains_key(&node.id) {
                             let node_rep =
                                 Self::node_reputation(&node.last_contact);

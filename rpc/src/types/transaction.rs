@@ -1,6 +1,6 @@
 use primitives::{transaction::Action, SignedTransaction};
 
-use types::{H160, H256, U256};
+use crate::types::{H160, H256, U256};
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize)]
 pub struct Transaction {

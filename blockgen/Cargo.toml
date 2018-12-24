@@ -5,6 +5,7 @@ license = "GPL-3.0"
 name = "blockgen"
 version = "0.1.0"
 authors = ["ming wu <ming@alt-chain.io>"]
+edition = "2018"
 
 [dependencies]
 clap = "2"

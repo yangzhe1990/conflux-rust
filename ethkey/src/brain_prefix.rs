@@ -57,7 +57,7 @@ impl Generator for BrainPrefix {
 
 #[cfg(test)]
 mod tests {
-    use {BrainPrefix, Generator};
+    use crate::{BrainPrefix, Generator};
 
     #[test]
     fn prefix_generator() {

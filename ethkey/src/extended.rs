@@ -18,8 +18,8 @@
 
 pub use self::derivation::Error as DerivationError;
 use ethereum_types::H256;
-use secret::Secret;
-use Public;
+use crate::secret::Secret;
+use crate::Public;
 
 /// Represents label that can be stored as a part of key derivation
 pub trait Label {
@@ -212,10 +212,10 @@ mod derivation {
     use super::{Derivation, Label};
     use ethcore_crypto::hmac;
     use ethereum_types::{H256, H512, U256, U512};
-    use keccak;
-    use math::curve_order;
+    use crate::keccak;
+    use crate::math::curve_order;
     use secp256k1::key::{PublicKey, SecretKey};
-    use SECP256K1;
+    use crate::SECP256K1;
 
     #[derive(Debug)]
     pub enum Error {
@@ -402,7 +402,7 @@ mod tests {
     use super::{derivation, Derivation};
     use super::{ExtendedKeyPair, ExtendedPublic, ExtendedSecret};
     use ethereum_types::{H128, H256};
-    use secret::Secret;
+    use crate::secret::Secret;
     use std::str::FromStr;
 
     fn master_chain_basic() -> (H256, H256) {

@@ -1,18 +1,18 @@
 use ethcore_bytes::Bytes;
 use ethereum_types::{H256, H520};
 use ethkey::{recover, sign, KeyPair, Secret};
-use hash::keccak;
-use node_table::{NodeId, *};
+use crate::hash::keccak;
+use crate::node_table::{NodeId, *};
 use rlp::{Rlp, RlpStream};
-use service::{UdpIoContext, MAX_DATAGRAM_SIZE, UDP_PROTOCOL_DISCOVERY};
+use crate::service::{UdpIoContext, MAX_DATAGRAM_SIZE, UDP_PROTOCOL_DISCOVERY};
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     net::SocketAddr,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use Error;
-use ErrorKind;
-use IpFilter;
+use crate::Error;
+use crate::ErrorKind;
+use crate::IpFilter;
 
 const DISCOVER_PROTOCOL_VERSION: u32 = 1;
 

@@ -28,7 +28,7 @@ use std::{
     sync::{mpsc, Arc, Mutex},
     thread, time,
 };
-use triehash::ordered_trie_root;
+use crate::triehash::ordered_trie_root;
 use txgen::SharedTransactionGenerator;
 
 enum MiningState {

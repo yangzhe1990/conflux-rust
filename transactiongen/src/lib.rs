@@ -10,7 +10,7 @@ extern crate secret_store;
 #[macro_use]
 extern crate log;
 
-use bytes::Bytes;
+use crate::bytes::Bytes;
 use core::{
     state::State,
     statedb::StateDb,

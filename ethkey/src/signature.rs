@@ -26,7 +26,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
-use {public_to_address, Address, Error, Message, Public, SECP256K1, Secret};
+use crate::{public_to_address, Address, Error, Message, Public, SECP256K1, Secret};
 
 /// Signature encoded as RSV components
 #[repr(C)]
@@ -233,7 +233,7 @@ pub fn recover(
 mod tests {
     use super::{recover, sign, verify_address, verify_public, Signature};
     use std::str::FromStr;
-    use {Generator, Message, Random};
+    use crate::{Generator, Message, Random};
 
     #[test]
     fn vrs_conversion() {

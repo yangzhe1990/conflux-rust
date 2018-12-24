@@ -1,4 +1,4 @@
-use types::H256;
+use crate::types::H256;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

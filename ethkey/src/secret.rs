@@ -22,7 +22,7 @@ use secp256k1::key;
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
-use {Error, SECP256K1};
+use crate::{Error, SECP256K1};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Secret {

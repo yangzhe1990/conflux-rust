@@ -1,7 +1,7 @@
 use ethereum_types::H256;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use Message;
-use MsgId;
+use crate::Message;
+use crate::MsgId;
 
 #[allow(dead_code)]
 pub const MAINNET_ID: u8 = 0x0;

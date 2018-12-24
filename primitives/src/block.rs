@@ -1,8 +1,8 @@
 use ethereum_types::{H256, U256};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use BlockHeader;
-use SignedTransaction;
-use TransactionWithSignature;
+use crate::BlockHeader;
+use crate::SignedTransaction;
+use crate::TransactionWithSignature;
 
 /// A block, encoded as it is on the block chain.
 #[derive(Default, Debug, Clone, PartialEq)]

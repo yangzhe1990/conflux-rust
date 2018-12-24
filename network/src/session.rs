@@ -1,24 +1,24 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
-use connection::{
+use crate::connection::{
     Connection as TcpConnection, PacketSizer as PacketSizerTrait,
     SendQueueStatus, MAX_PAYLOAD_SIZE,
 };
 use ethcore_bytes;
 use ethereum_types::H520;
 use ethkey::{recover, sign};
-use hash::keccak;
+use crate::hash::keccak;
 use io::*;
 use mio::{deprecated::*, tcp::*, *};
-use node_table::{Node, NodeContact, NodeEndpoint, NodeEntry, NodeId};
+use crate::node_table::{Node, NodeContact, NodeEndpoint, NodeEntry, NodeId};
 use rlp::{Rlp, RlpStream};
-use service::NetworkServiceInner;
+use crate::service::NetworkServiceInner;
 use std::{net::SocketAddr, str};
-use Capability;
-use DisconnectReason;
-use Error;
-use ErrorKind;
-use ProtocolId;
-use SessionMetadata;
+use crate::Capability;
+use crate::DisconnectReason;
+use crate::Error;
+use crate::ErrorKind;
+use crate::ProtocolId;
+use crate::SessionMetadata;
 
 struct PacketSizer;
 
