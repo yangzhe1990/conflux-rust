@@ -15,7 +15,6 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Disk-backed `HashDB` implementation.
-
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;

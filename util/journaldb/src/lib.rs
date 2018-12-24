@@ -15,7 +15,7 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 //! `JournalDB` interface and implementation.
-
+#![allow(deprecated)]
 extern crate heapsize;
 #[macro_use]
 extern crate log;

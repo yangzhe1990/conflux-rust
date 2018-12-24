@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 extern crate core;
 extern crate elastic_array;
 extern crate ethcore_bytes as bytes;
