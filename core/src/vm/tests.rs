@@ -24,9 +24,8 @@ use super::{
     CreateContractAddress, EnvInfo, GasLeft, MessageCallResult, Result,
     ReturnData, Spec,
 };
-use crate::bytes::Bytes;
+use crate::{bytes::Bytes, hash::keccak};
 use ethereum_types::{Address, H256, U256};
-use crate::hash::keccak;
 
 pub struct MockLogEntry {
     pub topics: Vec<H256>,
@@ -72,6 +71,7 @@ pub struct MockContext {
 }
 
 // similar to the normal `finalize` function, but ignoring NeedsReturn.
+#[allow(dead_code)]
 pub fn test_finalize(res: Result<GasLeft>) -> Result<U256> {
     match res {
         Ok(GasLeft::Known(gas)) => Ok(gas),
@@ -83,9 +83,11 @@ pub fn test_finalize(res: Result<GasLeft>) -> Result<U256> {
 
 impl MockContext {
     /// New mock context
+    #[allow(dead_code)]
     pub fn new() -> Self { MockContext::default() }
 
     /// New mock context with byzantium spec rules
+    #[allow(dead_code)]
     pub fn new_byzantium() -> Self {
         let mut context = MockContext::default();
         context.spec = Spec::new_byzantium();
@@ -93,6 +95,7 @@ impl MockContext {
     }
 
     /// New mock context with constantinople spec rules
+    #[allow(dead_code)]
     pub fn new_constantinople() -> Self {
         let mut context = MockContext::default();
         context.spec = Spec::new_constantinople();
@@ -100,6 +103,7 @@ impl MockContext {
     }
 
     /// Alter mock context to allow wasm
+    #[allow(dead_code)]
     pub fn with_wasm(mut self) -> Self {
         self.spec.wasm = Some(Default::default());
         self

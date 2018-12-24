@@ -14,15 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::{Error, SECP256K1};
 use ethereum_types::H256;
 use mem::Memzero;
 use rustc_hex::ToHex;
-use secp256k1::constants::SECRET_KEY_SIZE as SECP256K1_SECRET_KEY_SIZE;
-use secp256k1::key;
-use std::fmt;
-use std::ops::Deref;
-use std::str::FromStr;
-use crate::{Error, SECP256K1};
+use secp256k1::{constants::SECRET_KEY_SIZE as SECP256K1_SECRET_KEY_SIZE, key};
+use std::{fmt, ops::Deref, str::FromStr};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Secret {
@@ -56,7 +53,8 @@ impl fmt::Display for Secret {
 }
 
 impl Secret {
-    /// Creates a `Secret` from the given slice, returning `None` if the slice length != 32.
+    /// Creates a `Secret` from the given slice, returning `None` if the slice
+    /// length != 32.
     pub fn from_slice(key: &[u8]) -> Option<Self> {
         if key.len() != 32 {
             return None;
@@ -68,7 +66,8 @@ impl Secret {
         })
     }
 
-    /// Creates zero key, which is invalid for crypto operations, but valid for math operation.
+    /// Creates zero key, which is invalid for crypto operations, but valid for
+    /// math operation.
     pub fn zero() -> Self {
         Secret {
             inner: Memzero::from(H256::default()),
@@ -213,6 +212,7 @@ impl Secret {
 
 impl FromStr for Secret {
     type Err = Error;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(H256::from_str(s)
             .map_err(|e| Error::Custom(format!("{:?}", e)))?
@@ -258,8 +258,10 @@ impl Deref for Secret {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Generator, Random};
-    use super::Secret;
+    use super::{
+        super::{Generator, Random},
+        Secret,
+    };
     use std::str::FromStr;
 
     #[test]

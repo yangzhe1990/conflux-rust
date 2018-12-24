@@ -2,7 +2,10 @@ use super::{
     Error, SharedSynchronizationGraph, SynchronizationProtocolHandler,
     SYNCHRONIZATION_PROTOCOL_VERSION,
 };
-use crate::consensus::SharedConsensusGraph;
+use crate::{
+    consensus::SharedConsensusGraph, pow::ProofOfWorkConfig,
+    verification::verification::VerificationConfig,
+};
 use ethereum_types::H256;
 use ethkey::KeyPair;
 use network::{
@@ -10,10 +13,8 @@ use network::{
     Error as NetworkError, NetworkConfiguration, NetworkService, PeerInfo,
     ProtocolId,
 };
-use crate::pow::ProofOfWorkConfig;
 use primitives::Block;
 use std::sync::Arc;
-use crate::verification::verification::VerificationConfig;
 
 pub struct SynchronizationConfiguration {
     pub network: NetworkConfiguration,
@@ -65,7 +66,10 @@ impl SynchronizationService {
 
     pub fn relay_blocks(&self, need_to_relay: Vec<H256>) {
         self.network.with_context(self.protocol, |io| {
-            self.protocol_handler.relay_blocks(io, need_to_relay);
+            // FIXME: We may need to propagate the error up
+            self.protocol_handler
+                .relay_blocks(io, need_to_relay)
+                .unwrap();
         });
     }
 

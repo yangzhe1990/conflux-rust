@@ -17,11 +17,13 @@ pub mod epoch;
 pub mod log_entry;
 pub mod transaction;
 
-pub use crate::account::Account;
-pub use crate::block::Block;
-pub use crate::block_header::{BlockHeader, BlockHeaderBuilder};
-pub use crate::epoch::EpochId;
-pub use crate::log_entry::LogEntry;
-pub use crate::transaction::{
-    Action, SignedTransaction, Transaction, TransactionWithSignature,
+pub use crate::{
+    account::Account,
+    block::Block,
+    block_header::{BlockHeader, BlockHeaderBuilder},
+    epoch::EpochId,
+    log_entry::LogEntry,
+    transaction::{
+        Action, SignedTransaction, Transaction, TransactionWithSignature,
+    },
 };

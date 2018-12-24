@@ -1,20 +1,20 @@
-use crate::bytes::Bytes;
-use ethereum_types::{Address, H256, U256, U512};
-use crate::executive::Executive;
-use crate::hash::{KECCAK_EMPTY, KECCAK_NULL_RLP};
-use crate::machine::Machine;
-use primitives::{Account, EpochId, SignedTransaction};
-use crate::statedb::{
-    Error as DbError, ErrorKind as DbErrorKind, Result as DbResult, StateDb,
+use crate::{
+    bytes::Bytes,
+    executive::Executive,
+    hash::KECCAK_EMPTY,
+    machine::Machine,
+    statedb::{ErrorKind as DbErrorKind, Result as DbResult, StateDb},
+    transaction_pool::SharedTransactionPool,
+    vm::{EnvInfo, Spec},
+    vm_factory::VmFactory,
 };
+use ethereum_types::{Address, H256, U256};
+use primitives::{Account, EpochId, SignedTransaction};
 use std::{
     cell::{RefCell, RefMut},
     collections::{hash_map::Entry, HashMap, HashSet},
     sync::Arc,
 };
-use crate::transaction_pool::SharedTransactionPool;
-use crate::vm::{EnvInfo, Spec};
-use crate::vm_factory::VmFactory;
 
 mod account_entry;
 mod substate;
@@ -261,7 +261,7 @@ impl<'a> State<'a> {
         {
             entry.state = AccountState::Committed;
             if let Some(ref mut account) = entry.account {
-                account.commit(&mut self.db);
+                account.commit(&mut self.db)?;
                 self.db
                     .set::<Account>(address.as_ref(), &account.as_account())?;
             } else {
@@ -285,7 +285,7 @@ impl<'a> State<'a> {
             entry.state = AccountState::Committed;
             if let Some(ref mut account) = entry.account {
                 txpool.notify_ready(address, &account.as_account());
-                account.commit(&mut self.db);
+                account.commit(&mut self.db)?;
                 self.db
                     .set::<Account>(address.as_ref(), &account.as_account())?;
             } else {
@@ -377,8 +377,7 @@ impl<'a> State<'a> {
                                                 acc.balance() < b
                                             })
                                 })
-                            })))
-                    {
+                            }))) {
                         Some(address.clone())
                     } else {
                         None
@@ -401,7 +400,10 @@ impl<'a> State<'a> {
         let spec = Spec::new_byzantium();
         let _vm = VmFactory::new(1024 * 1024);
 
-        Executive::new(self, env_info, machine, &spec).transact(tx);
+        // FIXME: We may need to propagate the error up
+        Executive::new(self, env_info, machine, &spec)
+            .transact(tx)
+            .unwrap();
     }
 
     pub fn storage_at(&self, address: &Address, key: &H256) -> DbResult<H256> {
@@ -495,9 +497,12 @@ impl<'a> State<'a> {
     }
 
     fn ensure_cached<F, U>(
-        &self, address: &Address, require: RequireCache, _check_null: bool, f: F,
+        &self, address: &Address, require: RequireCache, _check_null: bool,
+        f: F,
     ) -> DbResult<U>
-    where F: Fn(Option<&OverlayAccount>) -> U {
+    where
+        F: Fn(Option<&OverlayAccount>) -> U,
+    {
         if let Some(ref mut maybe_acc) =
             self.cache.borrow_mut().get_mut(address)
         {
@@ -603,11 +608,11 @@ impl<'a> State<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethereum_types::{Address, H256, U256};
     use crate::storage::{
         tests::new_state_manager_for_testing, StorageManager,
         StorageManagerTrait,
     };
+    use ethereum_types::{Address, H256, U256};
 
     fn get_state(storage_manager: &StorageManager, epoch_id: EpochId) -> State {
         State::new(

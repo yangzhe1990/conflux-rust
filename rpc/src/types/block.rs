@@ -1,9 +1,9 @@
 use serde::{Serialize, Serializer};
 
-use crate::types::{H160, H256, U256, Transaction};
+use crate::types::{Transaction, H160, H256, U256};
 
-use primitives::Block as PrimitiveBlock;
 use ethereum_types::U256 as Eth256;
+use primitives::Block as PrimitiveBlock;
 
 #[derive(Debug)]
 pub enum BlockTransactions {
@@ -14,10 +14,14 @@ pub enum BlockTransactions {
 }
 
 impl Serialize for BlockTransactions {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: Serializer>(
+        &self, serializer: S,
+    ) -> Result<S::Ok, S::Error> {
         match *self {
-            BlockTransactions::Hashes(ref hashes) => hashes.serialize(serializer),
-            BlockTransactions::Full(ref txs) => txs.serialize(serializer)
+            BlockTransactions::Hashes(ref hashes) => {
+                hashes.serialize(serializer)
+            }
+            BlockTransactions::Full(ref txs) => txs.serialize(serializer),
         }
     }
 }
@@ -60,28 +64,45 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn new(b: &PrimitiveBlock, epoch_number: Option<usize>, tot_diff: Option<Eth256>) -> Self {
+    pub fn new(
+        b: &PrimitiveBlock, epoch_number: Option<usize>,
+        tot_diff: Option<Eth256>,
+    ) -> Self
+    {
         Block {
             hash: H256::from(b.block_header.hash().clone()),
             parent_hash: H256::from(b.block_header.parent_hash().clone()),
             height: U256::from(b.block_header.height()),
             author: H160::from(b.block_header.author().clone()),
-            deferred_state_root: H256::from(b.block_header.deferred_state_root().clone()),
-            transactions_root: H256::from(b.block_header.transactions_root().clone()),
+            deferred_state_root: H256::from(
+                b.block_header.deferred_state_root().clone(),
+            ),
+            transactions_root: H256::from(
+                b.block_header.transactions_root().clone(),
+            ),
             // PrimitiveBlock does not contain this information
             number: epoch_number,
             gas_used: U256::from(b.total_gas()),
-            // FIXME: Change the field after we figured out the gas limit and fee system
+            // FIXME: Change the field after we figured out the gas limit and
+            // fee system
             gas_limit: U256::from(100000),
             timestamp: U256::from(b.block_header.timestamp()),
             difficulty: U256::from(b.block_header.difficulty().clone()),
             // PrimitiveBlock does not contain this information
             total_difficulty: tot_diff.map(|x| U256::from(x)),
-            referee_hashes: b.block_header.referee_hashes().iter().map(|x|H256::from(*x)).collect(),
+            referee_hashes: b
+                .block_header
+                .referee_hashes()
+                .iter()
+                .map(|x| H256::from(*x))
+                .collect(),
             nonce: b.block_header.nonce(),
-            transactions: BlockTransactions::Hashes(b.transactions.iter().map(
-                |x| H256::from(x.hash())
-            ).collect()),
+            transactions: BlockTransactions::Hashes(
+                b.transactions
+                    .iter()
+                    .map(|x| H256::from(x.hash()))
+                    .collect(),
+            ),
             size: Some(U256::from(b.size())),
         }
     }
@@ -89,10 +110,10 @@ impl Block {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use serde_json;
-    use crate::types::{Transaction, H64, H160, H256, H2048, U256};
     use super::{Block, BlockTransactions};
+    use crate::types::{Transaction, H160, H2048, H256, H64, U256};
+    use serde_json;
+    use std::collections::BTreeMap;
 
     #[test]
     fn test_serialize_block_transactions() {

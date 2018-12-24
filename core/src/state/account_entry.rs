@@ -1,11 +1,11 @@
-use crate::bytes::{Bytes, ToPretty};
-use ethereum_types::{Address, H256, U256};
-use crate::hash::{keccak, KECCAK_EMPTY, KECCAK_NULL_RLP};
-use primitives::Account;
-use crate::statedb::{Result as DbResult, StateDb};
-use std::{
-    cell::RefCell, collections::HashMap, convert::AsRef, ops::Deref, sync::Arc,
+use crate::{
+    bytes::{Bytes, ToPretty},
+    hash::{keccak, KECCAK_EMPTY},
+    statedb::{Result as DbResult, StateDb},
 };
+use ethereum_types::{Address, H256, U256};
+use primitives::Account;
+use std::{cell::RefCell, collections::HashMap, convert::AsRef, sync::Arc};
 
 #[derive(Debug)]
 /// Single account in the system.
@@ -104,6 +104,7 @@ impl OverlayAccount {
         }
     }
 
+    #[allow(dead_code)]
     pub fn reset_storage(&mut self) { self.reset_storage = true; }
 
     pub fn is_cached(&self) -> bool {
@@ -263,12 +264,12 @@ impl OverlayAccount {
             let mut access_key = Vec::new();
             access_key.extend_from_slice(self.address.as_ref());
             access_key.extend_from_slice("data".as_ref());
-            db.delete_all(access_key.as_ref());
+            db.delete_all(access_key.as_ref())?;
 
             access_key = Vec::new();
             access_key.extend_from_slice(self.address.as_ref());
             access_key.extend_from_slice("code".as_ref());
-            db.delete_all(access_key.as_ref());
+            db.delete_all(access_key.as_ref())?;
         }
 
         for (k, v) in self.storage_changes.drain() {
@@ -292,6 +293,7 @@ impl OverlayAccount {
 #[derive(Eq, PartialEq, Clone, Copy, Debug)]
 /// Account modification state. Used to check if the account was
 /// Modified in between commits and overall.
+#[allow(dead_code)]
 pub enum AccountState {
     /// Account was loaded from disk and never modified in this state object.
     CleanFresh,
@@ -339,6 +341,7 @@ impl AccountEntry {
     /// Clone dirty data into new `AccountEntry`. This includes
     /// basic account data and modified storage keys.
     /// Returns None if clean.
+    #[allow(dead_code)]
     pub fn clone_if_dirty(&self) -> Option<AccountEntry> {
         match self.is_dirty() {
             true => Some(self.clone_dirty()),

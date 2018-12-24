@@ -3,8 +3,9 @@ use super::{
     SharedSynchronizationGraph, SynchronizationGraph, SynchronizationPeerState,
     SynchronizationState, MAX_INFLIGHT_REQUEST_COUNT,
 };
-use crate::bytes::Bytes;
-use crate::consensus::SharedConsensusGraph;
+use crate::{
+    bytes::Bytes, consensus::SharedConsensusGraph, pow::ProofOfWorkConfig,
+};
 use ethereum_types::H256;
 use io::TimerToken;
 use message::{
@@ -16,22 +17,23 @@ use network::{
     Error as NetworkError, NetworkContext, NetworkProtocolHandler, PeerId,
 };
 use parking_lot::{Mutex, RwLock};
-use crate::pow::ProofOfWorkConfig;
 use primitives::{Block, SignedTransaction};
 use rand::{Rng, RngCore};
 use rlp::Rlp;
-use slab::Slab;
+//use slab::Slab;
+use crate::{
+    sync::synchronization_state::RequestMessage,
+    verification::verification::VerificationConfig,
+};
 use std::{
     cmp::{self, Ordering},
-    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
+    collections::{BinaryHeap, HashSet, VecDeque},
     sync::{
         atomic::{AtomicBool, Ordering as AtomicOrdering},
         Arc,
     },
     time::{Duration, Instant},
 };
-use crate::sync::synchronization_state::{RequestMessage, SynchronizationPeerRequest};
-use crate::verification::verification::VerificationConfig;
 
 pub const SYNCHRONIZATION_PROTOCOL_VERSION: u8 = 0x01;
 
@@ -140,7 +142,7 @@ impl SynchronizationProtocolHandler {
             debug!("Error sending message: {:?}", e);
             io.disconnect_peer(peer);
             e
-        });
+        })?;
         // FIXME return error after we implement error handling
         debug!(
             "Send message({}) to {:?}",

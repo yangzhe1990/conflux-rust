@@ -2,22 +2,26 @@ use super::{
     context::{Context, OriginInfo, OutputPolicy},
     Executed, ExecutionError, ExecutionResult,
 };
-use crate::bytes::{Bytes, BytesRef};
-use ethereum_types::{Address, H256, U256, U512};
-use crate::evm::{FinalizationResult, Finalize, VMType};
-use crate::hash::keccak;
-use crate::machine::Machine;
-use primitives::{transaction::Action, Account, EpochId, SignedTransaction};
-use crate::state::{CleanupMode, State, Substate};
-use std::{cmp, collections::HashMap, sync::Arc};
-use crate::storage::{Storage, StorageTrait};
-use crate::transaction_pool::SharedTransactionPool;
-use crate::vm::{
-    self, ActionParams, ActionValue, CallType, CleanDustMode,
-    CreateContractAddress, EnvInfo, Exec, ResumeCall, ResumeCreate, ReturnData,
-    Spec, TrapError,
+use crate::{
+    bytes::{Bytes, BytesRef},
+    evm::{FinalizationResult, Finalize},
+    hash::keccak,
+    machine::Machine,
+    state::{CleanupMode, State, Substate},
 };
-use crate::vm_factory::VmFactory;
+use ethereum_types::{Address, H256, U256, U512};
+use primitives::{transaction::Action, SignedTransaction};
+use std::{cmp, sync::Arc};
+//use crate::storage::{Storage, StorageTrait};
+//use crate::transaction_pool::SharedTransactionPool;
+use crate::{
+    vm::{
+        self, ActionParams, ActionValue, CallType, CleanDustMode,
+        CreateContractAddress, EnvInfo, ResumeCall, ResumeCreate, ReturnData,
+        Spec, TrapError,
+    },
+    vm_factory::VmFactory,
+};
 
 /// Returns new address created from address, nonce, and code hash
 pub fn contract_address(
@@ -344,10 +348,10 @@ impl<'a> CallCreateExecutive<'a> {
                         params,
                         self.static_flag,
                         self.is_create,
-                    );
+                    )?;
                     Self::transfer_exec_balance(
                         params, self.spec, state, substate,
-                    );
+                    )?;
 
                     Ok(FinalizationResult {
                         gas_left: params.gas,
@@ -733,8 +737,10 @@ impl<'a> CallCreateExecutive<'a> {
         let mut last_res =
             Some((false, self.gas, self.exec(state, top_substate)));
 
-        let mut callstack: Vec<(Option<Address>, CallCreateExecutive<'a>)> =
-            Vec::new();
+        let mut callstack: Vec<(
+            Option<Address>,
+            CallCreateExecutive<'a>,
+        )> = Vec::new();
         loop {
             match last_res {
                 None => {
@@ -829,8 +835,8 @@ impl<'a> CallCreateExecutive<'a> {
 pub type ExecutiveTrapResult<'a, T> =
     vm::TrapResult<T, CallCreateExecutive<'a>, CallCreateExecutive<'a>>;
 /// Trap error for executive.
-pub type ExecutiveTrapError<'a> =
-    vm::TrapError<CallCreateExecutive<'a>, CallCreateExecutive<'a>>;
+//pub type ExecutiveTrapError<'a> =
+//    vm::TrapError<CallCreateExecutive<'a>, CallCreateExecutive<'a>>;
 
 /// Transaction executor.
 pub struct Executive<'a, 'b: 'a> {
@@ -860,6 +866,7 @@ impl<'a, 'b> Executive<'a, 'b> {
     }
 
     /// Populates executive from parent properties. Increments executive depth.
+    #[allow(dead_code)]
     pub fn from_parent(
         state: &'a mut State<'b>, env: &'a EnvInfo, machine: &'a Machine,
         spec: &'a Spec, parent_depth: usize, static_flag: bool,
@@ -1189,19 +1196,21 @@ impl<'a, 'b> Executive<'a, 'b> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        evm::{Factory, VMType},
+        machine::Machine,
+        state::{CleanupMode, State, Substate},
+        statedb::StateDb,
+        storage::{
+            tests::new_state_manager_for_testing, StorageManager,
+            StorageManagerTrait,
+        },
+    };
     use ethereum_types::{Address, H256, U256, U512};
     use ethkey::{Generator, Random};
-    use crate::evm::{Factory, VMType};
-    use crate::machine::Machine;
     use primitives::{EpochId, Transaction};
     use rustc_hex::FromHex;
-    use crate::state::{CleanupMode, State, Substate};
-    use crate::statedb::StateDb;
     use std::str::FromStr;
-    use crate::storage::{
-        tests::new_state_manager_for_testing, StorageManager,
-        StorageManagerTrait,
-    };
 
     fn make_byzantium_machine(max_depth: usize) -> Machine {
         let mut machine = crate::machine::new_byzantium_test_machine();

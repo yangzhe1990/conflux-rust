@@ -14,19 +14,23 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::{
+    public_to_address, Address, Error, Message, Public, Secret, SECP256K1,
+};
 use ethereum_types::{H256, H520};
 use rustc_hex::{FromHex, ToHex};
-use secp256k1::key::{PublicKey, SecretKey};
 use secp256k1::{
+    key::{PublicKey, SecretKey},
     Error as SecpError, Message as SecpMessage, RecoverableSignature,
     RecoveryId,
 };
-use std::cmp::PartialEq;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut};
-use std::str::FromStr;
-use crate::{public_to_address, Address, Error, Message, Public, SECP256K1, Secret};
+use std::{
+    cmp::PartialEq,
+    fmt,
+    hash::{Hash, Hasher},
+    ops::{Deref, DerefMut},
+    str::FromStr,
+};
 
 /// Signature encoded as RSV components
 #[repr(C)]
@@ -42,7 +46,8 @@ impl Signature {
     /// Get the recovery byte.
     pub fn v(&self) -> u8 { self.0[64] }
 
-    /// Encode the signature into RSV array (V altered to be in "Electrum" notation).
+    /// Encode the signature into RSV array (V altered to be in "Electrum"
+    /// notation).
     pub fn into_electrum(mut self) -> [u8; 65] {
         self.0[64] += 27;
         self.0
@@ -92,7 +97,8 @@ impl PartialEq for Signature {
     fn eq(&self, other: &Self) -> bool { &self.0[..] == &other.0[..] }
 }
 
-// manual implementation required in Rust 1.13+, see `std::cmp::AssertParamIsEq`.
+// manual implementation required in Rust 1.13+, see
+// `std::cmp::AssertParamIsEq`.
 impl Eq for Signature {}
 
 // also manual for the same reason, but the pretty printing might be useful.
@@ -232,8 +238,8 @@ pub fn recover(
 #[cfg(test)]
 mod tests {
     use super::{recover, sign, verify_address, verify_public, Signature};
-    use std::str::FromStr;
     use crate::{Generator, Message, Random};
+    use std::str::FromStr;
 
     #[test]
     fn vrs_conversion() {

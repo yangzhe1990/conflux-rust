@@ -1,6 +1,8 @@
-use crate::bytes::Bytes;
+use crate::{
+    bytes::Bytes,
+    hash::{keccak, KECCAK_NULL_RLP},
+};
 use ethereum_types::{Address, H256, U256};
-use crate::hash::{keccak, KECCAK_NULL_RLP};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 
 /// A block header.

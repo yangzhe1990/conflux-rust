@@ -1,7 +1,7 @@
+use crate::{ip_utils::*, AllowIP, Error, ErrorKind, IpFilter};
 use enum_map::EnumMap;
 use ethereum_types::H512;
 use io::*;
-use crate::ip_utils::*;
 use rand::{self, Rng};
 use rlp::{DecoderError, Rlp, RlpStream};
 use serde_json;
@@ -20,10 +20,6 @@ use std::{
     time::{self, Duration, SystemTime},
 };
 use strum::IntoEnumIterator;
-use crate::AllowIP;
-use crate::Error;
-use crate::ErrorKind;
-use crate::IpFilter;
 
 /// Node public key
 pub type NodeId = H512;

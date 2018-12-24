@@ -23,13 +23,12 @@ mod memory;
 mod shared_cache;
 mod stack;
 
-use crate::bytes::Bytes;
+use crate::{bytes::Bytes, hash::keccak};
 use ethereum_types::{Address, H256, U256, U512};
-use crate::hash::keccak;
 use std::{cmp, marker::PhantomData, mem, sync::Arc};
 
 use crate::vm::{
-    self, ActionParams, ActionValue, CallType, Context, ContractCreateResult,
+    self, ActionParams, ActionValue, CallType, ContractCreateResult,
     CreateContractAddress, GasLeft, MessageCallResult, ParamsType, ReturnData,
     Spec, TrapError, TrapKind,
 };
@@ -366,8 +365,8 @@ impl<Cost: CostType> Interpreter<Cost> {
 
                 // TODO: make compile-time removable if too much of a
                 // performance hit.
-                self.do_trace = self.do_trace && context
-                    .trace_next_instruction(
+                self.do_trace = self.do_trace
+                    && context.trace_next_instruction(
                         self.reader.position - 1,
                         opcode,
                         self.gasometer
@@ -729,13 +728,14 @@ impl<Cost: CostType> Interpreter<Cost> {
                 let out_size = self.stack.pop_back();
 
                 // Add stipend (only CALL|CALLCODE when value > 0)
-                let call_gas = call_gas + value.map_or_else(
-                    || Cost::from(0),
-                    |val| match val.is_zero() {
-                        false => Cost::from(context.spec().call_stipend),
-                        true => Cost::from(0),
-                    },
-                );
+                let call_gas = call_gas
+                    + value.map_or_else(
+                        || Cost::from(0),
+                        |val| match val.is_zero() {
+                            false => Cost::from(context.spec().call_stipend),
+                            true => Cost::from(0),
+                        },
+                    );
 
                 // Get sender & receive addresses, check if we have balance
                 let (sender_address, receive_address, has_balance, call_type) =
@@ -1509,13 +1509,13 @@ fn address_to_u256(value: Address) -> U256 { U256::from(&*H256::from(value)) }
 #[cfg(test)]
 mod tests {
     use super::super::{factory::Factory, vmtype::VMType};
-    use rustc_hex::FromHex;
-    use std::sync::Arc;
     use crate::vm::{
         self,
         tests::{test_finalize, MockContext},
         ActionParams, ActionValue, Exec,
     };
+    use rustc_hex::FromHex;
+    use std::sync::Arc;
 
     fn interpreter(params: ActionParams, context: &vm::Context) -> Box<Exec> {
         Factory::new(VMType::Interpreter, 1).create(

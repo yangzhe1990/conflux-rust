@@ -1,18 +1,19 @@
 use ethereum_types::H256;
 use message::{GetBlockHeaders, GetBlocks, GetTerminalBlockHashes, Message};
 use network::PeerId;
-use slab::Slab;
+//use slab::Slab;
+use crate::sync::synchronization_protocol_handler::TimedSyncRequests;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     mem,
     sync::Arc,
     time::Instant,
 };
-use crate::sync::synchronization_protocol_handler::TimedSyncRequests;
 
 pub const MAX_INFLIGHT_REQUEST_COUNT: u64 = 64;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum RequestMessage {
     Headers(GetBlockHeaders),
     Blocks(GetBlocks),

@@ -41,20 +41,24 @@ pub mod node_table;
 mod service;
 mod session;
 
-pub use crate::error::{DisconnectReason, Error, ErrorKind};
+pub use crate::{
+    error::{DisconnectReason, Error, ErrorKind},
+    service::NetworkService,
+};
 pub use io::TimerToken;
-pub use crate::service::NetworkService;
 
+use crate::{
+    node_table::NodeId,
+    service::{
+        DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION,
+        DEFAULT_DISCOVERY_REFRESH_TIMEOUT, DEFAULT_DISCOVERY_ROUND_TIMEOUT,
+        DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT, DEFAULT_HOUSEKEEPING_TIMEOUT,
+        DEFAULT_NODE_TABLE_TIMEOUT,
+    },
+};
 use ethkey::Secret;
 use ipnetwork::{IpNetwork, IpNetworkError};
-use crate::node_table::NodeId;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use crate::service::{
-    DEFAULT_CONNECTION_LIFETIME_FOR_PROMOTION,
-    DEFAULT_DISCOVERY_REFRESH_TIMEOUT, DEFAULT_DISCOVERY_ROUND_TIMEOUT,
-    DEFAULT_FAST_DISCOVERY_REFRESH_TIMEOUT, DEFAULT_HOUSEKEEPING_TIMEOUT,
-    DEFAULT_NODE_TABLE_TIMEOUT,
-};
 use std::{
     cmp::Ordering,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},

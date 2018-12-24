@@ -1,6 +1,6 @@
+use crate::storage::Error as StorageError;
 use ethereum_types::Address;
 use rlp::DecoderError;
-use crate::storage::Error as StorageError;
 
 error_chain! {
     links {

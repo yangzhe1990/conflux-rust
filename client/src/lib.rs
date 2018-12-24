@@ -43,12 +43,12 @@ mod rpc;
 #[cfg(test)]
 mod tests;
 
-pub use crate::configuration::Configuration;
 use blockgen::BlockGenerator;
 use core::{
     storage::StorageManager, vm_factory::VmFactory, ConsensusGraph,
     SynchronizationService, TransactionPool,
 };
+pub use crate::configuration::Configuration;
 use http::Server as HttpServer;
 use tcp::Server as TcpServer;
 

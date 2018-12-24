@@ -17,9 +17,8 @@
 //! Extended keys
 
 pub use self::derivation::Error as DerivationError;
+use crate::{secret::Secret, Public};
 use ethereum_types::H256;
-use crate::secret::Secret;
-use crate::Public;
 
 /// Represents label that can be stored as a part of key derivation
 pub trait Label {
@@ -86,7 +85,8 @@ impl ExtendedSecret {
     }
 
     /// New extended key from given secret.
-    /// Chain code will be derived from the secret itself (in a deterministic way).
+    /// Chain code will be derived from the secret itself (in a deterministic
+    /// way).
     pub fn new(secret: Secret) -> ExtendedSecret {
         let chain_code = derivation::chain_code(*secret);
         ExtendedSecret::with_code(secret, chain_code)
@@ -210,12 +210,10 @@ impl ExtendedKeyPair {
 // https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki
 mod derivation {
     use super::{Derivation, Label};
+    use crate::{keccak, math::curve_order, SECP256K1};
     use ethcore_crypto::hmac;
     use ethereum_types::{H256, H512, U256, U512};
-    use crate::keccak;
-    use crate::math::curve_order;
     use secp256k1::key::{PublicKey, SecretKey};
-    use crate::SECP256K1;
 
     #[derive(Debug)]
     pub enum Error {
@@ -227,7 +225,8 @@ mod derivation {
 
     // Deterministic derivation of the key using secp256k1 elliptic curve.
     // Derivation can be either hardened or not.
-    // For hardened derivation, pass u32 index at least 2^31 or custom Derivation::Hard(T) enum
+    // For hardened derivation, pass u32 index at least 2^31 or custom
+    // Derivation::Hard(T) enum
     //
     // Can panic if passed `private_key` is not a valid secp256k1 private key
     // (outside of (0..curve_order()]) field
@@ -346,7 +345,8 @@ mod derivation {
         let new_private = H256::from(&i_512[0..32]);
         let new_chain_code = H256::from(&i_512[32..64]);
 
-        // Generated private key can (extremely rarely) be out of secp256k1 key field
+        // Generated private key can (extremely rarely) be out of secp256k1 key
+        // field
         if curve_order() <= new_private.clone().into() {
             return Err(Error::MissingIndex);
         }
@@ -399,10 +399,11 @@ mod derivation {
 
 #[cfg(test)]
 mod tests {
-    use super::{derivation, Derivation};
-    use super::{ExtendedKeyPair, ExtendedPublic, ExtendedSecret};
-    use ethereum_types::{H128, H256};
+    use super::{
+        derivation, Derivation, ExtendedKeyPair, ExtendedPublic, ExtendedSecret,
+    };
     use crate::secret::Secret;
+    use ethereum_types::{H128, H256};
     use std::str::FromStr;
 
     fn master_chain_basic() -> (H256, H256) {
@@ -426,7 +427,8 @@ mod tests {
     fn smoky() {
         let secret = Secret::from_str(
             "a100df7a048e50ed308ea696dc600215098141cb391e9527329df289f9383f65",
-        ).unwrap();
+        )
+        .unwrap();
         let extended_secret =
             ExtendedSecret::with_code(secret.clone(), 0u64.into());
 
@@ -486,10 +488,12 @@ mod tests {
     fn h256_soft_match() {
         let secret = Secret::from_str(
             "a100df7a048e50ed308ea696dc600215098141cb391e9527329df289f9383f65",
-        ).unwrap();
+        )
+        .unwrap();
         let derivation_secret = H256::from_str(
             "51eaf04f9dbbc1417dc97e789edd0c37ecda88bac490434e367ea81b71b7b015",
-        ).unwrap();
+        )
+        .unwrap();
 
         let extended_secret =
             ExtendedSecret::with_code(secret.clone(), 0u64.into());
@@ -512,10 +516,12 @@ mod tests {
     fn h256_hard() {
         let secret = Secret::from_str(
             "a100df7a048e50ed308ea696dc600215098141cb391e9527329df289f9383f65",
-        ).unwrap();
+        )
+        .unwrap();
         let derivation_secret = H256::from_str(
             "51eaf04f9dbbc1417dc97e789edd0c37ecda88bac490434e367ea81b71b7b015",
-        ).unwrap();
+        )
+        .unwrap();
         let extended_secret =
             ExtendedSecret::with_code(secret.clone(), 1u64.into());
 
@@ -532,7 +538,8 @@ mod tests {
     fn match_() {
         let secret = Secret::from_str(
             "a100df7a048e50ed308ea696dc600215098141cb391e9527329df289f9383f65",
-        ).unwrap();
+        )
+        .unwrap();
         let extended_secret =
             ExtendedSecret::with_code(secret.clone(), 1.into());
         let extended_public = ExtendedPublic::from_secret(&extended_secret)
@@ -559,7 +566,8 @@ mod tests {
         // xprv9wTYmMFdV23N2TdNG573QoEsfRrWKQgWeibmLntzniatZvR9BmLnvSxqu53Kw1UmYPxLgboyZQaXwTCg8MSY3H2EU4pWcQDnRnrVA1xe8fs
         let test_private = H256::from_str(
             "e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35",
-        ).expect("Private should be decoded ok");
+        )
+        .expect("Private should be decoded ok");
 
         let (private_seed, _) = derivation::seed_pair(&*seed);
 

@@ -72,7 +72,7 @@ impl<'a> State<'a> {
                 );
                 let allocator =
                     self.delta_trie.get_node_memory_manager().get_allocator();
-                let mut trie_node_root = self
+                let trie_node_root = self
                     .delta_trie
                     .get_node_memory_manager()
                     .node_as_mut(&allocator, &mut cow_root.node_ref)?;
@@ -113,7 +113,7 @@ impl<'a> State<'a> {
                 );
                 let allocator =
                     self.delta_trie.get_node_memory_manager().get_allocator();
-                let mut trie_node_root = self
+                let trie_node_root = self
                     .delta_trie
                     .get_node_memory_manager()
                     .node_as_mut_with_cache_manager(
@@ -141,7 +141,7 @@ impl<'a> State<'a> {
                         NodeRef::Dirty { index } => {
                             commit_transaction.info.row_number.value - 1
                         }
-                        /// Empty block's state root points to its base state.
+                        // Empty block's state root points to its base state.
                         NodeRef::Committed { db_key } => db_key,
                     }
                 };

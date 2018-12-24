@@ -16,14 +16,14 @@
 
 //! Environment information for transaction execution.
 
-use ethereum_types::{Address, H256, U256};
-use crate::hash::keccak;
+use ethereum_types::{Address, U256};
+//use crate::hash::keccak;
 use primitives::CardinalNumber;
-use std::{cmp, sync::Arc};
+//use std::{cmp, sync::Arc};
 
 /// Simple vector of hashes, should be at most 256 items large, can be smaller
 /// if being used for a block whose number is less than 257.
-pub type LastHashes = Vec<H256>;
+//pub type LastHashes = Vec<H256>;
 
 /// Information concerning the execution environment for a
 /// message-call/contract-creation.

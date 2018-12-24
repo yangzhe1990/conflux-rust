@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-use ethereum_types::U256;
 use crate::vm::ReturnData;
+use ethereum_types::U256;
 
 const MAX_RETURN_WASTE_BYTES: usize = 16384;
 

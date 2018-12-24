@@ -15,6 +15,11 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 use super::{factory::Factory, vmtype::VMType};
+use crate::vm::{
+    self,
+    tests::{test_finalize, MockCall, MockCallType, MockContext},
+    ActionParams, ActionValue, Context,
+};
 use ethereum_types::{Address, H256, U256};
 use rustc_hex::FromHex;
 use std::{
@@ -23,11 +28,6 @@ use std::{
     hash::Hash,
     str::FromStr,
     sync::Arc,
-};
-use crate::vm::{
-    self,
-    tests::{test_finalize, MockCall, MockCallType, MockContext},
-    ActionParams, ActionValue, Context,
 };
 
 evm_test!{test_add: test_add_int}

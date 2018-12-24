@@ -1,19 +1,20 @@
-use crate::consensus::{ConsensusGraph, SharedConsensusGraph};
-use crate::error::{BlockError, Error};
+use crate::{
+    consensus::SharedConsensusGraph,
+    error::{BlockError, Error},
+    pow::ProofOfWorkConfig,
+    verification::verification::*,
+};
 use ethereum_types::{H256, U256};
 use parking_lot::RwLock;
-use crate::pow::ProofOfWorkConfig;
 use primitives::{Block, BlockHeader};
 use slab::Slab;
 use std::{
     cmp::{max, min},
     collections::{HashMap, HashSet, VecDeque},
-    ops::{Deref, DerefMut},
+    ops::DerefMut,
     sync::Arc,
-    time::SystemTime,
 };
 use unexpected::Mismatch;
-use crate::verification::verification::*;
 
 const NULL: usize = !0;
 const BLOCK_INVALID: u8 = 0;

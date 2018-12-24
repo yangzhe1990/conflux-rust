@@ -1,8 +1,8 @@
 use super::builtin::Builtin;
+use crate::vm::Spec;
 use ethereum_types::{Address, U256};
 use primitives::CardinalNumber;
 use std::{collections::BTreeMap, sync::Arc};
-use crate::vm::Spec;
 
 #[derive(Debug, PartialEq, Default)]
 pub struct CommonParams {

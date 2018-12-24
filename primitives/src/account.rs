@@ -1,5 +1,5 @@
-use ethereum_types::{H256, U256};
 use crate::hash::KECCAK_EMPTY;
+use ethereum_types::{H256, U256};
 use rlp::*;
 
 pub struct Account {

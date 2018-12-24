@@ -1,7 +1,6 @@
-use crate::bytes::Bytes;
+use crate::{bytes::Bytes, hash::keccak};
 use ethereum_types::{Address, H160, H256, U256};
 use ethkey::{self, public_to_address, recover, Public, Secret, Signature};
-use crate::hash::keccak;
 use rlp::{self, Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::{error, fmt, ops::Deref};
 use unexpected::OutOfBounds;

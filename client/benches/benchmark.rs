@@ -3,8 +3,8 @@ extern crate parking_lot;
 #[macro_use]
 extern crate criterion;
 
-use criterion::Criterion;
 use client::{Client, ClientHandle, Configuration};
+use criterion::Criterion;
 use parking_lot::{Condvar, Mutex};
 use std::sync::Arc;
 

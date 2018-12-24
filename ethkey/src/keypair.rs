@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-use super::{Address, Error, Public, SECP256K1, Secret};
+use super::{Address, Error, Public, Secret, SECP256K1};
 use crate::keccak::Keccak256;
 use rustc_hex::ToHex;
 use secp256k1::key;
@@ -88,14 +88,15 @@ impl KeyPair {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
     use crate::{KeyPair, Secret};
+    use std::str::FromStr;
 
     #[test]
     fn from_secret() {
         let secret = Secret::from_str(
             "a100df7a048e50ed308ea696dc600215098141cb391e9527329df289f9383f65",
-        ).unwrap();
+        )
+        .unwrap();
         let _ = KeyPair::from_secret(secret).unwrap();
     }
 
@@ -107,7 +108,8 @@ public:  8ce0db0b0359ffc5866ba61903cc2518c3675ef2cf380a7e54bde7ea20e6fa1ab45b761
 address: 5b073e9233944b5e729e46d618f0d8edf3d9c34a".to_owned();
         let secret = Secret::from_str(
             "a100df7a048e50ed308ea696dc600215098141cb391e9527329df289f9383f65",
-        ).unwrap();
+        )
+        .unwrap();
         let kp = KeyPair::from_secret(secret).unwrap();
         assert_eq!(format!("{}", kp), expected);
     }

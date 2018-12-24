@@ -1,12 +1,19 @@
+use crate::{
+    executive::{ExecutionError, Executive},
+    ext_db::SystemDB,
+    machine::new_byzantium_test_machine,
+    state::State,
+    statedb::StateDb,
+    storage::{state::StateTrait, StorageManager, StorageManagerTrait},
+    sync::SynchronizationGraphInner,
+    transaction_pool::SharedTransactionPool,
+    vm::{EnvInfo, Spec},
+    vm_factory::VmFactory,
+};
 use ethereum_types::{H256, U256};
-use crate::executive::{ExecutionError, Executive};
-use crate::ext_db::SystemDB;
-use crate::machine::new_byzantium_test_machine;
 use parking_lot::RwLock;
 use primitives::Block;
 use slab::Slab;
-use crate::state::State;
-use crate::statedb::StateDb;
 use std::{
     cell::RefCell,
     cmp::min,
@@ -14,14 +21,6 @@ use std::{
     iter::FromIterator,
     sync::Arc,
 };
-use crate::storage::{
-    state::StateTrait, state_manager::StateManagerTrait, StorageManager,
-    StorageManagerTrait,
-};
-use crate::sync::{SynchronizationGraphInner, SynchronizationGraphNode};
-use crate::transaction_pool::SharedTransactionPool;
-use crate::vm::{EnvInfo, Spec};
-use crate::vm_factory::VmFactory;
 
 const DEFERRED_STATE_EPOCH_COUNT: u64 = 100;
 
@@ -263,8 +262,7 @@ impl ConsensusGraphInner {
                 > (
                     pivot_points.get(&fork_info.pivot_index).unwrap().clone(),
                     self.arena[fork_info.pivot_index].hash,
-                )
-            {
+                ) {
                 return false;
             }
         }
@@ -563,10 +561,6 @@ impl ConsensusGraphInner {
                         | Err(ExecutionError::InvalidNonce {
                             expected: _,
                             got: _,
-                        })
-                        | Err(ExecutionError::NotEnoughBaseGas {
-                            required: _,
-                            got: _,
                         }) => {
                             warn!("transaction execution error without inc_nonce: transaction={:?}, err={:?}", transaction, r);
                         }
@@ -578,10 +572,13 @@ impl ConsensusGraphInner {
                     }
                 }
             }
-            state.commit_and_notify(
-                self.arena[new_pivot_chain[fork_at]].hash,
-                txpool,
-            );
+            // FIXME: We may want to propagate the error up
+            state
+                .commit_and_notify(
+                    self.arena[new_pivot_chain[fork_at]].hash,
+                    txpool,
+                )
+                .unwrap();
 
             fork_at += 1;
         }

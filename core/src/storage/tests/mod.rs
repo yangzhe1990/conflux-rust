@@ -2,8 +2,8 @@ mod rlp_encode_decode;
 mod state;
 
 use super::state_manager::StateManager;
-use elastic_array::ElasticArray128;
 use crate::ext_db::SystemDB;
+use elastic_array::ElasticArray128;
 use kvdb::{DBTransaction, KeyValueDB};
 use std::{io::Result, sync::Arc};
 

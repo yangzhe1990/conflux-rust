@@ -9,7 +9,7 @@ function check_build {
     pushd $ROOT_DIR > /dev/null
 
     local result
-    result=`CARGO_TARGET_DIR=$ROOT_DIR/build cargo build -v`
+    result=`CARGO_TARGET_DIR=$ROOT_DIR/build RUSTFLAGS="-D warnings" cargo build -v`
     local exit_code=$?
 
     popd > /dev/null

@@ -17,6 +17,7 @@ use core::{
     SharedSynchronizationGraph, SharedSynchronizationService,
     SharedTransactionPool,
 };
+use crate::triehash::ordered_trie_root;
 use ethereum_types::{Address, H256};
 use parking_lot::RwLock;
 use primitives::*;
@@ -25,7 +26,6 @@ use std::{
     sync::{mpsc, Arc, Mutex},
     thread, time,
 };
-use crate::triehash::ordered_trie_root;
 use txgen::SharedTransactionGenerator;
 
 enum MiningState {
@@ -307,8 +307,7 @@ impl BlockGenerator {
                         && !validate(
                             &current_problem.unwrap(),
                             &new_solution.unwrap(),
-                        )
-                    {
+                        ) {
                         new_solution = receiver.try_recv();
                     } else {
                         break;

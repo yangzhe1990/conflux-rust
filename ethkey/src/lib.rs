@@ -49,21 +49,21 @@ pub mod brain_recover;
 pub mod crypto;
 pub mod math;
 
-pub use self::brain::Brain;
-pub use self::brain_prefix::BrainPrefix;
-pub use self::error::Error;
-pub use self::extended::{
-    Derivation, DerivationError, ExtendedKeyPair, ExtendedPublic,
-    ExtendedSecret,
-};
-pub use self::keypair::{public_to_address, KeyPair};
-pub use self::math::public_is_valid;
-pub use self::parity_wordlist::Error as WordlistError;
-pub use self::prefix::Prefix;
-pub use self::random::Random;
-pub use self::secret::Secret;
-pub use self::signature::{
-    recover, sign, verify_address, verify_public, Signature,
+pub use self::{
+    brain::Brain,
+    brain_prefix::BrainPrefix,
+    error::Error,
+    extended::{
+        Derivation, DerivationError, ExtendedKeyPair, ExtendedPublic,
+        ExtendedSecret,
+    },
+    keypair::{public_to_address, KeyPair},
+    math::public_is_valid,
+    parity_wordlist::Error as WordlistError,
+    prefix::Prefix,
+    random::Random,
+    secret::Secret,
+    signature::{recover, sign, verify_address, verify_public, Signature},
 };
 
 use ethereum_types::H256;

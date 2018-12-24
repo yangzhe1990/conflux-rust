@@ -1,10 +1,3 @@
-use crate::{
-    conflux_rpc::types::{
-        Block as RpcBlock, Status as RpcStatus, H256 as RpcH256,
-    },
-    http::{Server as HttpServer, ServerBuilder as HttpServerBuilder},
-    tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder},
-};
 use blockgen::BlockGenerator;
 use core::{
     state::State,
@@ -12,6 +5,13 @@ use core::{
     storage::{StorageManager, StorageManagerTrait},
     PeerInfo, SharedConsensusGraph, SharedSynchronizationService,
     SharedTransactionPool,
+};
+use crate::{
+    conflux_rpc::types::{
+        Block as RpcBlock, Status as RpcStatus, H256 as RpcH256,
+    },
+    http::{Server as HttpServer, ServerBuilder as HttpServerBuilder},
+    tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder},
 };
 use ethereum_types::{Address, H256, U256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};

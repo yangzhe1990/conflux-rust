@@ -164,10 +164,8 @@ impl<Gas: evm::CostType> Gasometer<Gas> {
                         && is_value_transfer
                         && !context.exists_and_not_null(&address)?)
                 {
-                    gas =
-                        overflowing!(gas.overflow_add(
-                            spec.suicide_to_new_account_cost.into()
-                        ));
+                    gas = overflowing!(gas
+                        .overflow_add(spec.suicide_to_new_account_cost.into()));
                 }
 
                 Request::Gas(gas)
@@ -216,10 +214,8 @@ impl<Gas: evm::CostType> Gasometer<Gas> {
                 );
                 let log_gas = spec.log_gas + spec.log_topic_gas * no_of_topics;
 
-                let data_gas = overflowing!(
-                    Gas::from_u256(*stack.peek(1))?
-                        .overflow_mul(Gas::from(spec.log_data_gas))
-                );
+                let data_gas = overflowing!(Gas::from_u256(*stack.peek(1))?
+                    .overflow_mul(Gas::from(spec.log_data_gas)));
                 let gas =
                     overflowing!(data_gas.overflow_add(Gas::from(log_gas)));
                 Request::GasMem(gas, mem_needed(stack.peek(0), stack.peek(1))?)
@@ -246,9 +242,9 @@ impl<Gas: evm::CostType> Gasometer<Gas> {
                 }
 
                 if is_value_transfer {
-                    gas = overflowing!(
-                        gas.overflow_add(spec.call_value_transfer_gas.into())
-                    );
+                    gas =
+                        overflowing!(gas
+                            .overflow_add(spec.call_value_transfer_gas.into()));
                 }
 
                 let requested = *stack.peek(0);

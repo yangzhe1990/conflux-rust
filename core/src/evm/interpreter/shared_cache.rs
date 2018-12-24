@@ -16,8 +16,8 @@
 
 use super::super::instructions::{self, Instruction};
 use bit_set::BitSet;
-use ethereum_types::H256;
 use crate::hash::KECCAK_EMPTY;
+use ethereum_types::H256;
 use heapsize::HeapSizeOf;
 use memory_cache::MemoryLruCache;
 use parking_lot::Mutex;

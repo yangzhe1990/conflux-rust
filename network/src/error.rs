@@ -1,5 +1,5 @@
-use ethkey;
 use crate::io::IoError;
+use ethkey;
 use rlp;
 use std::{fmt, io, net};
 

@@ -1,8 +1,8 @@
-use primitives::EpochId;
 use crate::storage::{
     Error as StorageError, ErrorKind as StorageErrorKind, MerkleHash, Storage,
     StorageTrait,
 };
+use primitives::EpochId;
 
 mod error;
 

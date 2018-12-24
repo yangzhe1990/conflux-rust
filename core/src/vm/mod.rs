@@ -14,11 +14,8 @@ pub use self::{
     context::{
         Context, ContractCreateResult, CreateContractAddress, MessageCallResult,
     },
-    env_info::{EnvInfo, LastHashes},
-    error::{
-        Error, ExecTrapError, ExecTrapResult, Result, TrapError, TrapKind,
-        TrapResult,
-    },
+    env_info::EnvInfo,
+    error::{Error, ExecTrapResult, Result, TrapError, TrapKind, TrapResult},
     return_data::{GasLeft, ReturnData},
     spec::{CleanDustMode, Spec, WasmCosts},
 };

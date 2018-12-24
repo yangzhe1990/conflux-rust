@@ -25,10 +25,9 @@ use byteorder::{BigEndian, ByteOrder};
 use num::{BigUint, One, Zero};
 use parity_crypto::digest;
 
-use crate::bytes::BytesRef;
+use crate::{bytes::BytesRef, hash::keccak};
 use ethereum_types::{H256, U256};
 use ethkey::{recover as ec_recover, Signature};
-use crate::hash::keccak;
 
 /// Execution error.
 #[derive(Debug)]
@@ -57,6 +56,7 @@ pub trait Pricer: Send + Sync {
 
 /// A linear pricing model. This computes a price using a base cost and a cost
 /// per-word.
+#[allow(dead_code)]
 struct Linear {
     base: usize,
     word: usize,
@@ -76,6 +76,7 @@ impl Pricer for Linear {
 
 /// A alt_bn128_parinig pricing model. This computes a price using a base cost
 /// and a cost per pair.
+#[allow(dead_code)]
 struct AltBn128PairingPricer {
     base: usize,
     pair: usize,
@@ -226,6 +227,7 @@ impl Builtin {
 //}
 //
 /// Ethereum built-in factory.
+#[allow(dead_code)]
 pub fn ethereum_builtin(name: &str) -> Box<Impl> {
     match name {
         "identity" => Box::new(Identity) as Box<Impl>,
@@ -249,27 +251,35 @@ pub fn ethereum_builtin(name: &str) -> Box<Impl> {
 // - modexp (EIP198)
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Identity;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct EcRecover;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Sha256;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Ripemd160;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ModexpImpl;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Bn128AddImpl;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Bn128MulImpl;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Bn128PairingImpl;
 
 impl Impl for Identity {

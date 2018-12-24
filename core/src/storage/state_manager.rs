@@ -1,6 +1,6 @@
 use super::{impls::errors::*, state::State};
-use primitives::EpochId;
 use crate::snapshot::snapshot::Snapshot;
+use primitives::EpochId;
 use std::sync::Arc;
 
 // StateManager is the single entry-point to access State for any epoch.

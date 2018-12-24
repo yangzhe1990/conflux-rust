@@ -906,7 +906,7 @@ impl CowNodeRef {
             Some(ref mut table) => {
                 let allocator = trie.get_node_memory_manager().get_allocator();
 
-                let mut merkles = ChildrenMerkleTable::default();
+                let merkles = ChildrenMerkleTable::default();
                 for i in 0..CHILDREN_COUNT {
                     let maybe_child_node: Option<NodeRef> = table[i].into();
                     match maybe_child_node {
@@ -914,7 +914,7 @@ impl CowNodeRef {
                         Some(node_ref) => {
                             let mut cow_child_node =
                                 Self::new(node_ref, owned_node_set);
-                            let mut trie_node = trie
+                            let trie_node = trie
                                 .get_node_memory_manager()
                                 .node_as_mut_with_cache_manager(
                                     &allocator,
@@ -1000,7 +1000,7 @@ impl CowNodeRef {
                         Some(node_ref) => {
                             let mut cow_child_node =
                                 Self::new(node_ref, owned_node_set);
-                            let mut trie_node =
+                            let trie_node =
                                 trie.get_node_memory_manager().node_as_mut(
                                     &allocator,
                                     &mut cow_child_node.node_ref,
@@ -1414,8 +1414,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     node_cow.into_child();
                     return result;
                 }
-                let (value, mut child_replaced, mut new_child_node) =
-                    result.unwrap();
+                let (value, child_replaced, new_child_node) = result.unwrap();
                 if child_replaced {
                     let action = trie_node_mut
                         .check_replace_child(child_index, new_child_node);
@@ -1541,7 +1540,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     node_cow.into_child();
                     return result;
                 }
-                let (mut child_changed, mut new_child_node) = result.unwrap();
+                let (child_changed, new_child_node) = result.unwrap();
 
                 // No node deletion can happen
                 if child_changed {
@@ -1572,7 +1571,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 // replacement node create a new node for
                 // insertion (if key_remaining is non-empty), set it to child,
                 // with key_remaining.
-                let (mut new_node_cow, mut new_node_entry) =
+                let (mut new_node_cow, new_node_entry) =
                     CowNodeRef::new_uninitialized_node(
                         &allocator,
                         self.owned_node_set.get_mut(),

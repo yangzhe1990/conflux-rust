@@ -1,16 +1,18 @@
 // Transaction execution environment.
 use super::executive::*;
-use crate::bytes::Bytes;
-use ethereum_types::{Address, H256, U256};
-use crate::machine::Machine;
-use primitives::transaction::UNSIGNED_SENDER;
-use crate::state::{CleanupMode, State, Substate};
-use std::{cmp, sync::Arc};
-use crate::vm::{
-    self, ActionParams, ActionValue, CallType, Context as ContextTrait,
-    ContractCreateResult, CreateContractAddress, EnvInfo, MessageCallResult,
-    ReturnData, Spec, TrapKind,
+use crate::{
+    bytes::Bytes,
+    machine::Machine,
+    state::{CleanupMode, State, Substate},
+    vm::{
+        self, ActionParams, ActionValue, CallType, Context as ContextTrait,
+        ContractCreateResult, CreateContractAddress, EnvInfo,
+        MessageCallResult, ReturnData, Spec, TrapKind,
+    },
 };
+use ethereum_types::{Address, H256, U256};
+use primitives::transaction::UNSIGNED_SENDER;
+use std::sync::Arc;
 
 /// Policy for handling output data on `RETURN` opcode.
 pub enum OutputPolicy {
@@ -44,6 +46,7 @@ impl OriginInfo {
 }
 
 /// Implementation of evm context.
+#[allow(dead_code)]
 pub struct Context<'a, 'b: 'a> {
     state: &'a mut State<'b>,
     env: &'a EnvInfo,
@@ -124,7 +127,7 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
     }
 
     fn blockhash(&mut self, _number: &U256) -> H256 {
-        /// TODO: I have no idea why we need this function
+        // TODO: I have no idea why we need this function
         H256::default()
     }
 

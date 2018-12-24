@@ -1,8 +1,6 @@
-use crate::bytes::Bytes;
+use crate::{bytes::Bytes, statedb::Error as DbError, vm};
 use ethereum_types::{Address, U256, U512};
 use primitives::LogEntry;
-use crate::statedb::Error as DbError;
-use crate::vm;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Executed {
@@ -42,6 +40,7 @@ pub struct Executed {
 
 /// Result of executing the transaction.
 #[derive(PartialEq, Debug, Clone)]
+#[allow(dead_code)]
 pub enum ExecutionError {
     /// Returned when there gas paid for transaction execution is
     /// lower than base gas required.

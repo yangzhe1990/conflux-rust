@@ -9,15 +9,15 @@ use super::{
         *,
     },
 };
+use crate::{
+    ext_db::SystemDB, hash::KECCAK_EMPTY, snapshot::snapshot::Snapshot,
+};
 use ethereum_types::H256;
 use ethkey::KeyPair;
-use crate::ext_db::SystemDB;
-use crate::hash::KECCAK_EMPTY;
 use kvdb::{DBTransaction, DBValue};
 use primitives::{Account, Block, BlockHeaderBuilder, EpochId};
 use rlp::encode;
 use secret_store::SecretStore;
-use crate::snapshot::snapshot::Snapshot;
 use std::{
     io, str,
     sync::{Arc, Mutex, MutexGuard},

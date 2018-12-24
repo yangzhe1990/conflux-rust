@@ -1,13 +1,12 @@
 use crate::error::{BlockError, Error};
-use ethereum_types::{H256, U256};
-use crate::pow;
-use primitives::{Block, BlockHeader, SignedTransaction};
-use rlp::{encode, RlpStream};
+//use ethereum_types::{H256, U256};
+use crate::{pow, triehash::ordered_trie_root};
+use primitives::{Block, BlockHeader};
+use rlp::encode;
 use std::{
     collections::HashSet,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use crate::triehash::ordered_trie_root;
 use unexpected::{Mismatch, OutOfBounds};
 
 #[derive(Debug, Copy, Clone)]

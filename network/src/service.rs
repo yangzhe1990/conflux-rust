@@ -1,14 +1,19 @@
-use crate::discovery::{Discovery, DISCOVER_NODES_COUNT};
+use crate::{
+    discovery::{Discovery, DISCOVER_NODES_COUNT},
+    io::*,
+    ip_utils::{map_external_address, select_public_address},
+    node_table::*,
+    session::{self, Session, SessionData},
+    Capability, DisconnectReason, Error, IpFilter, NetworkConfiguration,
+    NetworkContext as NetworkContextTrait, NetworkIoMessage,
+    NetworkProtocolHandler, PeerId, PeerInfo, ProtocolId,
+};
 use ethcore_bytes::Bytes;
 use ethkey::{sign, Generator, KeyPair, Random, Secret};
-use crate::io::*;
-use crate::ip_utils::{map_external_address, select_public_address};
 use keccak_hash::keccak;
 use mio::{deprecated::EventLoop, tcp::*, udp::*, *};
-use crate::node_table::*;
 use parity_path::restrict_permissions_owner;
 use parking_lot::{Mutex, RwLock};
-use crate::session::{self, Session, SessionData};
 use std::{
     cmp::{min, Ordering},
     collections::{BinaryHeap, HashMap, HashSet, VecDeque},
@@ -20,17 +25,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use crate::Capability;
-use crate::DisconnectReason;
-use crate::Error;
-use crate::IpFilter;
-use crate::NetworkConfiguration;
-use crate::NetworkContext as NetworkContextTrait;
-use crate::NetworkIoMessage;
-use crate::NetworkProtocolHandler;
-use crate::PeerId;
-use crate::PeerInfo;
-use crate::ProtocolId;
 
 type Slab<T> = ::slab::Slab<T, usize>;
 

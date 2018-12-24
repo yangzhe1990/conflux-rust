@@ -16,9 +16,9 @@
 
 // Based on original work by David Levy https://raw.githubusercontent.com/dlevy47/rust-interfaces
 
+use crate::node_table::NodeEndpoint;
 use igd::{search_gateway_from_timeout, PortMappingProtocol};
 use ipnetwork::IpNetwork;
-use crate::node_table::NodeEndpoint;
 use std::{
     io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},

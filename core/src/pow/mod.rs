@@ -1,5 +1,5 @@
-use ethereum_types::{H256, U256, U512};
 use crate::hash::keccak;
+use ethereum_types::{H256, U256, U512};
 use rlp::RlpStream;
 
 pub const DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD: u64 = 200;

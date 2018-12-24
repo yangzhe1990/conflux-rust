@@ -14,10 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-use super::{Error, Public, SECP256K1, Secret};
+use super::{Error, Public, Secret, SECP256K1};
 use ethereum_types::{H256, U256};
-use secp256k1::constants::{CURVE_ORDER, GENERATOR_X, GENERATOR_Y};
-use secp256k1::key;
+use secp256k1::{
+    constants::{CURVE_ORDER, GENERATOR_X, GENERATOR_Y},
+    key,
+};
 
 /// Whether the public key is valid.
 pub fn public_is_valid(public: &Public) -> bool {
@@ -99,8 +101,10 @@ fn set_public(public: &mut Public, key_public: &key::PublicKey) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Generator, Random};
-    use super::{public_add, public_sub};
+    use super::{
+        super::{Generator, Random},
+        public_add, public_sub,
+    };
 
     #[test]
     fn public_addition_is_commutative() {

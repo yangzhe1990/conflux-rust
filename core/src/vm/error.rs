@@ -17,8 +17,8 @@
 //! VM errors module
 
 use super::{action_params::ActionParams, ResumeCall, ResumeCreate};
-use ethereum_types::Address;
 use crate::statedb::Error as DbError;
+use ethereum_types::Address;
 use std::fmt;
 
 #[derive(Debug)]
@@ -133,4 +133,4 @@ pub type TrapResult<T, Call, Create> =
     ::std::result::Result<Result<T>, TrapError<Call, Create>>;
 
 pub type ExecTrapResult<T> = TrapResult<T, Box<ResumeCall>, Box<ResumeCreate>>;
-pub type ExecTrapError = TrapError<Box<ResumeCall>, Box<ResumeCreate>>;
+//pub type ExecTrapError = TrapError<Box<ResumeCall>, Box<ResumeCreate>>;

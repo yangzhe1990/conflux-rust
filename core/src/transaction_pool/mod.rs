@@ -8,21 +8,23 @@ extern crate rand;
 
 pub use self::impls::TreapMap;
 use self::ready::Readiness;
+use crate::{
+    state::State,
+    storage::{Storage, StorageManager, StorageManagerTrait, StorageTrait},
+};
 use ethereum_types::{Address, H256, H512, U256, U512};
 use parking_lot::RwLock;
 use primitives::{
     Account, EpochId, SignedTransaction, TransactionWithSignature,
 };
 use rlp::decode;
-use crate::state::State;
 use std::{
     cmp::{min, Ordering},
-    collections::hash_map::{Entry, HashMap},
+    collections::hash_map::HashMap,
     ops::DerefMut,
     sync::Arc,
     time::Instant,
 };
-use crate::storage::{Storage, StorageManager, StorageManagerTrait, StorageTrait};
 
 pub const DEFAULT_MIN_TRANSACTION_GAS_PRICE: u64 = 1;
 pub const DEFAULT_MAX_TRANSACTION_GAS_LIMIT: u64 = 100_000;
@@ -295,7 +297,7 @@ impl TransactionPool {
 
         match account_cache.is_ready(&transaction) {
             Readiness::Ready => {
-                let mut account =
+                let account =
                     account_cache.accounts.get_mut(&transaction.sender);
                 if let Some(mut account) = account {
                     if self.verify_ready_transaction(account, &transaction) {
@@ -416,7 +418,7 @@ impl TransactionPool {
         let mut future_txs = HashMap::new();
 
         for _ in 0..num_txs {
-            let mut sum_gas_price = inner.ready_transactions.sum_weight();
+            let sum_gas_price = inner.ready_transactions.sum_weight();
             let mut rand_value: U512 = U512::from(H512::random());
             assert_ne!(inner.ready_transactions.len(), 0);
             assert_ne!(sum_gas_price, 0.into());
@@ -441,7 +443,7 @@ impl TransactionPool {
             } else if tx.nonce == *nonce {
                 *nonce += 1.into();
                 packed_transactions.push(tx);
-                if let Some(mut tx_map) = future_txs.get_mut(&sender) {
+                if let Some(tx_map) = future_txs.get_mut(&sender) {
                     loop {
                         if tx_map.is_empty() {
                             break;

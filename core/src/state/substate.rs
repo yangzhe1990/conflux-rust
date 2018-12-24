@@ -1,6 +1,6 @@
 use super::CleanupMode;
-use ethereum_types::Address;
 use crate::evm::{CleanDustMode, Spec};
+use ethereum_types::Address;
 use primitives::LogEntry;
 use std::collections::HashSet;
 
