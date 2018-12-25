@@ -24,6 +24,7 @@ if os.name == 'posix':
     GREY = ('\033[0m', '\033[1;30m')
 
 TEST_SCRIPTS = [
+    "example_test.py",
     "rpc_test.py",
     "peer_test.py",
     "message_test.py",

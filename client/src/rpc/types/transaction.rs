@@ -21,6 +21,7 @@ pub struct Transaction {
 }
 
 impl Transaction {
+    #[allow(dead_code)]
     pub fn from_signed(t: &SignedTransaction) -> Transaction {
         Transaction {
             hash: t.transaction.hash().into(),

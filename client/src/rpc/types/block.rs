@@ -5,6 +5,7 @@ use serde::{Serialize, Serializer};
 use serde_derive::Serialize;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum BlockTransactions {
     /// Only hashes
     Hashes(Vec<H256>),
@@ -110,7 +111,7 @@ impl Block {
 #[cfg(test)]
 mod tests {
     use super::{Block, BlockTransactions};
-    use crate::types::{Transaction, H160, H2048, H256, H64, U256};
+    use crate::rpc::types::{Transaction, H160, H2048, H256, H64, U256};
     use serde_json;
     use std::collections::BTreeMap;
 
@@ -147,6 +148,6 @@ mod tests {
         };
         let serialized_block = serde_json::to_string(&block).unwrap();
 
-        assert_eq!(serialized_block, r#"{"hash":"0x0000000000000000000000000000000000000000000000000000000000000000","parentHash":"0x0000000000000000000000000000000000000000000000000000000000000000","author":"0x0000000000000000000000000000000000000000","stateRoot":"0x0000000000000000000000000000000000000000000000000000000000000000","transactionsRoot":"0x0000000000000000000000000000000000000000000000000000000000000000","number":"0x0","gasUsed":"0x0","gasLimit":"0x0","timestamp":"0x0","difficulty":"0x0","totalDifficulty":"0x0","transactions":[],"size":"0x45"}"#);
+        assert_eq!(serialized_block, "{\"hash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"height\":\"0x0\",\"author\":\"0x0000000000000000000000000000000000000000\",\"deferredStateRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"transactionsRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"number\":0,\"gasUsed\":\"0x0\",\"gasLimit\":\"0x0\",\"timestamp\":\"0x0\",\"difficulty\":\"0x0\",\"totalDifficulty\":\"0x0\",\"refereeHashes\":[],\"nonce\":0,\"transactions\":[],\"size\":\"0x45\"}");
     }
 }

@@ -4,7 +4,6 @@ use jsonrpc_http_server as http;
 use jsonrpc_tcp_server as tcp;
 #[macro_use]
 extern crate log;
-use keccak_hash as hash;
 
 #[macro_use]
 mod config_macro;
