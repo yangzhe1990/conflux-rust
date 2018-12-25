@@ -1,4 +1,5 @@
-use crate::types::H256;
+use crate::rpc::types::H256;
+use serde_derive::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

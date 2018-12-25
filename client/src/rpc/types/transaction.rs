@@ -1,6 +1,6 @@
+use crate::rpc::types::{H160, H256, U256};
 use primitives::{transaction::Action, SignedTransaction};
-
-use crate::types::{H160, H256, U256};
+use serde_derive::Serialize;
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize)]
 pub struct Transaction {

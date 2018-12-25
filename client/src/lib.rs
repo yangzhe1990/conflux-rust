@@ -1,37 +1,10 @@
 #![allow(deprecated)]
 
-extern crate clap;
-extern crate ctrlc;
-extern crate error_chain;
-extern crate io;
-extern crate jsonrpc_core;
-extern crate serde;
-extern crate serde_json;
 use jsonrpc_http_server as http;
 use jsonrpc_tcp_server as tcp;
-extern crate mio;
-extern crate parity_reactor;
-extern crate parking_lot;
 #[macro_use]
 extern crate log;
-extern crate ethereum_types;
-extern crate keccak_hash as hash;
-extern crate log4rs;
-extern crate network;
-extern crate rlp;
-extern crate slab;
-extern crate toml;
-
-extern crate blockgen;
-extern crate core;
-extern crate db;
-extern crate ethkey;
-extern crate kvdb_rocksdb;
-extern crate primitives;
-extern crate rand;
-extern crate rpc as conflux_rpc;
-extern crate secret_store;
-extern crate txgen;
+use keccak_hash as hash;
 
 #[macro_use]
 mod config_macro;

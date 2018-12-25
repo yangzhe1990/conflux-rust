@@ -1,9 +1,8 @@
-use serde::{Serialize, Serializer};
-
-use crate::types::{Transaction, H160, H256, U256};
-
+use crate::rpc::types::{Transaction, H160, H256, U256};
 use ethereum_types::U256 as Eth256;
 use primitives::Block as PrimitiveBlock;
+use serde::{Serialize, Serializer};
+use serde_derive::Serialize;
 
 #[derive(Debug)]
 pub enum BlockTransactions {
