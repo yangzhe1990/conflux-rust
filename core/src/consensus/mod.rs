@@ -2,7 +2,7 @@ use crate::{
     executive::{ExecutionError, Executive},
     ext_db::SystemDB,
     machine::new_byzantium_test_machine,
-    state::State,
+    state::{CleanupMode, State},
     statedb::StateDb,
     storage::{state::StateTrait, StorageManager, StorageManagerTrait},
     sync::SynchronizationGraphInner,
@@ -10,7 +10,7 @@ use crate::{
     vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
 };
-use ethereum_types::{H256, U256};
+use ethereum_types::{H256, U256, U512};
 use parking_lot::RwLock;
 use primitives::Block;
 use slab::Slab;
@@ -22,7 +22,11 @@ use std::{
     sync::Arc,
 };
 
-const DEFERRED_STATE_EPOCH_COUNT: u64 = 100;
+const DEFERRED_STATE_EPOCH_COUNT: u64 = 5;
+const REWARD_EPOCH_COUNT: u64 = 100;
+const ANTICONE_PENALTY_UPPER_EPOCH_COUNT: u64 = 10;
+const ANTICONE_PENALTY_RATIO: u64 = 100;
+const BASE_MINING_REWARD: u64 = 1000000;
 
 const NULL: usize = !0;
 
@@ -573,6 +577,85 @@ impl ConsensusGraphInner {
                     }
                 }
             }
+
+            let mut rewards = HashMap::new();
+            if fork_at > REWARD_EPOCH_COUNT as usize {
+                let epoch_num = fork_at - REWARD_EPOCH_COUNT as usize;
+                let anticone_penalty_epoch_upper =
+                    epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
+                let penalty_upper_anticone = &self.arena
+                    [new_pivot_chain[anticone_penalty_epoch_upper]]
+                    .data
+                    .anticone;
+                let pivot_index = new_pivot_chain[epoch_num];
+                debug_assert!(
+                    epoch_num == self.arena[pivot_index].height as usize
+                );
+                debug_assert!(
+                    epoch_num
+                        == *self.arena[pivot_index].data.epoch_number.borrow()
+                );
+                let difficulty = self.arena[pivot_index].difficulty;
+
+                let mut queue = VecDeque::new();
+                let mut visited = HashSet::new();
+                queue.push_back(pivot_index);
+                while let Some(index) = queue.pop_front() {
+                    if visited.contains(&index) {
+                        continue;
+                    }
+                    visited.insert(index);
+
+                    let mut reward: U512 =
+                        if self.arena[index].difficulty == difficulty {
+                            BASE_MINING_REWARD.into()
+                        } else {
+                            0.into()
+                        };
+
+                    if reward > 0.into() {
+                        let anticone_size = self.arena[index]
+                            .data
+                            .anticone
+                            .difference(penalty_upper_anticone)
+                            .cloned()
+                            .collect::<HashSet<_>>()
+                            .len();
+                        let penalty = (reward * U512::from(anticone_size))
+                            / U512::from(ANTICONE_PENALTY_RATIO);
+                        if penalty > reward {
+                            reward = 0.into();
+                        } else {
+                            reward -= penalty;
+                        }
+                    }
+
+                    debug_assert!(reward <= U512::from(U256::max_value()));
+                    let reward = U256::from(reward);
+                    let author = block_by_hash
+                        .get(&self.arena[index].hash)
+                        .unwrap()
+                        .block_header
+                        .author()
+                        .clone();
+                    rewards.insert(author, reward);
+
+                    for referee in &self.arena[index].referees {
+                        if *self.arena[*referee].data.epoch_number.borrow()
+                            == epoch_num
+                        {
+                            queue.push_back(*referee);
+                        }
+                    }
+                }
+            }
+
+            for (address, reward) in rewards {
+                state
+                    .add_balance(&address, &reward, CleanupMode::ForceCreate)
+                    .unwrap();
+            }
+
             // FIXME: We may want to propagate the error up
             state
                 .commit_and_notify(
