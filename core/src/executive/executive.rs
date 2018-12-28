@@ -1089,7 +1089,7 @@ impl<'a, 'b> Executive<'a, 'b> {
 
     /// Finalizes the transaction (does refunds and suicides).
     fn finalize(
-        &mut self, tx: &SignedTransaction, mut substate: Substate,
+        &mut self, tx: &SignedTransaction, substate: Substate,
         result: vm::Result<FinalizationResult>, output: Bytes,
     ) -> ExecutionResult<Executed>
     {
@@ -1137,11 +1137,11 @@ impl<'a, 'b> Executive<'a, 'b> {
             fees_value,
             &self.env.author
         );
-        self.state.add_balance(
-            &self.env.author,
-            &fees_value,
-            substate.to_cleanup_mode(&spec),
-        )?;
+        //self.state.add_balance(
+        //    &self.env.author,
+        //    &fees_value,
+        //    substate.to_cleanup_mode(&spec),
+        //)?;
 
         // perform suicides
         for address in &substate.suicides {
@@ -1168,6 +1168,7 @@ impl<'a, 'b> Executive<'a, 'b> {
                 gas: tx.gas,
                 gas_used: tx.gas,
                 refunded: U256::zero(),
+                fee: fees_value,
                 cumulative_gas_used: self.env.gas_used + tx.gas,
                 logs: vec![],
                 contracts_created: vec![],
@@ -1182,6 +1183,7 @@ impl<'a, 'b> Executive<'a, 'b> {
                 gas: tx.gas,
                 gas_used: gas_used,
                 refunded: refunded,
+                fee: fees_value,
                 cumulative_gas_used: self.env.gas_used + gas_used,
                 logs: substate.logs,
                 contracts_created: substate.contracts_created,

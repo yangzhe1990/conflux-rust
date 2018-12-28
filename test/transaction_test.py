@@ -128,7 +128,7 @@ class P2PTest(ConfluxTestFramework):
                     retry = True
                     while retry:
                         try:
-                            wait_until(lambda: self.nodes[0].checktx(tx.hash_hex())[0], timeout=10)
+                            wait_until(lambda: self.nodes[0].checktx(tx.hash_hex())[0], timeout=120)
                             retry = False
                         except CannotSendRequest:
                             time.sleep(0.01)

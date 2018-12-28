@@ -430,11 +430,17 @@ impl TransactionPool {
                 .get_by_weight(rand_value)
                 .expect("Failed to pick transaction by weight")
                 .clone();
+            debug!("Get transaction from ready pool. tx: {:?}", tx.clone());
             inner.ready_transactions.remove(&tx.hash());
             let sender = tx.sender;
             let nonce_entry = nonce_map.entry(sender);
             let state_nonce = state.nonce(&sender);
             if state_nonce.is_err() {
+                debug!(
+                    "state nonce error: {:?}, tx: {:?}",
+                    state_nonce,
+                    tx.clone()
+                );
                 inner.pending_transactions.insert(tx);
                 continue;
             }
@@ -463,6 +469,8 @@ impl TransactionPool {
                 }
             }
         }
+
+        assert!(inner.ready_transactions.is_empty());
 
         for tx in packed_transactions.iter() {
             inner.ready_transactions.insert(

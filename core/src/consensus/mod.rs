@@ -10,7 +10,7 @@ use crate::{
     vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
 };
-use ethereum_types::{H256, U256, U512};
+use ethereum_types::{Address, H256, U256, U512};
 use parking_lot::RwLock;
 use primitives::Block;
 use slab::Slab;
@@ -69,6 +69,8 @@ pub struct ConsensusGraphInner {
     genesis_block_index: usize,
     genesis_block_state_root: H256,
     parental_terminals: HashSet<usize>,
+    indices_in_epochs: HashMap<usize, Vec<usize>>,
+    block_fees: HashMap<usize, U256>,
     storage_manager: Arc<StorageManager>,
     vm: VmFactory,
 }
@@ -90,6 +92,8 @@ impl ConsensusGraphInner {
                 .deferred_state_root()
                 .clone(),
             parental_terminals: HashSet::new(),
+            indices_in_epochs: HashMap::new(),
+            block_fees: HashMap::new(),
             storage_manager,
             vm,
         };
@@ -553,6 +557,7 @@ impl ConsensusGraphInner {
                     gas_used: U256::zero(),
                     gas_limit: U256::from(block.block_header.gas_limit()),
                 };
+                let mut accumulated_fee: U256 = 0.into();
                 for transaction in &block.transactions {
                     let mut ex =
                         Executive::new(&mut state, &env, &machine, &spec);
@@ -569,16 +574,27 @@ impl ConsensusGraphInner {
                         }) => {
                             warn!("transaction execution error without inc_nonce: transaction={:?}, err={:?}", transaction, r);
                         }
+                        Ok(executed) => {
+                            trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, executed, self.arena[*index].hash.clone());
+                            accumulated_fee += executed.fee;
+                            self.block_for_transaction
+                                .insert(transaction.hash(), (true, *index));
+                        }
                         _ => {
-                            trace!("transaction executed: transaction={:?}, result={:?}", transaction, r);
+                            trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, self.arena[*index].hash.clone());
                             self.block_for_transaction
                                 .insert(transaction.hash(), (true, *index));
                         }
                     }
                 }
+                self.block_fees.insert(*index, accumulated_fee);
             }
 
-            let mut rewards = HashMap::new();
+            self.indices_in_epochs
+                .insert(new_pivot_chain[fork_at], reversed_indices);
+
+            let mut epoch_accum_fee: U256 = 0.into();
+            let mut rewards: Vec<(Address, U256)> = Vec::new();
             if fork_at > REWARD_EPOCH_COUNT as usize {
                 let epoch_num = fork_at - REWARD_EPOCH_COUNT as usize;
                 let anticone_penalty_epoch_upper =
@@ -597,24 +613,23 @@ impl ConsensusGraphInner {
                 );
                 let difficulty = self.arena[pivot_index].difficulty;
 
-                let mut queue = VecDeque::new();
-                let mut visited = HashSet::new();
-                queue.push_back(pivot_index);
-                while let Some(index) = queue.pop_front() {
-                    if visited.contains(&index) {
-                        continue;
-                    }
-                    visited.insert(index);
+                let indices_in_epoch =
+                    self.indices_in_epochs.get(&pivot_index).unwrap();
+
+                for index in indices_in_epoch {
+                    let block_fee = *self.block_fees.get(index).unwrap();
+                    assert!(U256::max_value() - epoch_accum_fee > block_fee);
+                    epoch_accum_fee += block_fee;
 
                     let mut reward: U512 =
-                        if self.arena[index].difficulty == difficulty {
+                        if self.arena[*index].difficulty == difficulty {
                             BASE_MINING_REWARD.into()
                         } else {
                             0.into()
                         };
 
                     if reward > 0.into() {
-                        let anticone_size = self.arena[index]
+                        let anticone_size = self.arena[*index]
                             .data
                             .anticone
                             .difference(penalty_upper_anticone)
@@ -633,27 +648,37 @@ impl ConsensusGraphInner {
                     debug_assert!(reward <= U512::from(U256::max_value()));
                     let reward = U256::from(reward);
                     let author = block_by_hash
-                        .get(&self.arena[index].hash)
+                        .get(&self.arena[*index].hash)
                         .unwrap()
                         .block_header
                         .author()
                         .clone();
-                    rewards.insert(author, reward);
-
-                    for referee in &self.arena[index].referees {
-                        if *self.arena[*referee].data.epoch_number.borrow()
-                            == epoch_num
-                        {
-                            queue.push_back(*referee);
-                        }
-                    }
+                    rewards.push((author, reward));
                 }
             }
 
-            for (address, reward) in rewards {
-                state
-                    .add_balance(&address, &reward, CleanupMode::ForceCreate)
-                    .unwrap();
+            if !rewards.is_empty() {
+                let block_count = U256::from(rewards.len());
+                let quotient: U256 = epoch_accum_fee / block_count;
+                let mut remainder: U256 =
+                    epoch_accum_fee - (block_count * quotient);
+                for (_, reward) in &mut rewards {
+                    *reward += quotient;
+                    if !remainder.is_zero() {
+                        *reward += 1.into();
+                        remainder -= 1.into();
+                    }
+                }
+
+                for (address, reward) in rewards {
+                    state
+                        .add_balance(
+                            &address,
+                            &reward,
+                            CleanupMode::ForceCreate,
+                        )
+                        .unwrap();
+                }
             }
 
             // FIXME: We may want to propagate the error up

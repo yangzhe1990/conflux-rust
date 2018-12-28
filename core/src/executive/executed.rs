@@ -17,6 +17,9 @@ pub struct Executed {
     /// To get gas that was required up front, add `refunded` and `gas_used`.
     pub refunded: U256,
 
+    /// Fee that need to be paid by execution of this transaction.
+    pub fee: U256,
+
     /// Cumulative gas used in current block so far.
     ///
     /// `cumulative_gas_used = gas_used(t0) + gas_used(t1) + ... gas_used(tn)`
