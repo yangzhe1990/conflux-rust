@@ -10,7 +10,7 @@ from conflux.transactions import Transaction
 from conflux.utils import *
 from trie import HexaryTrie
 
-TEST_DIFFICULTY = 10000
+TEST_DIFFICULTY = 4
 HASH_MAX = 1 << 256
 
 

@@ -27,6 +27,7 @@ fn test_mining_10_epochs_inner(handle: &ClientHandle) {
         let new_best_block_hash = sync_graph.get_best_info().best_block_hash;
         let end_height =
             sync_graph.get_block_height(&new_best_block_hash).unwrap();
+        info!("{}", end_height - start_height);
         if end_height - start_height >= 10 {
             BlockGenerator::stop(handle.blockgen.clone());
             return;
@@ -45,7 +46,7 @@ fn test_mining_10_epochs_inner(handle: &ClientHandle) {
 #[test]
 fn test_mining_10_epochs() {
     let mut conf = Configuration::default();
-    conf.raw_conf.test_mode = true;
+    conf.raw_conf.test_mode = false;
     let tmp_dir = TempDir::new("conflux-test").unwrap();
     conf.raw_conf.db_dir = Some(
         tmp_dir

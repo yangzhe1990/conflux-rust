@@ -5,7 +5,7 @@ use rlp::RlpStream;
 pub const DIFFICULTY_ADJUSTMENT_EPOCH_PERIOD: u64 = 200;
 // Time unit is micro-second (usec)
 pub const TARGET_AVERAGE_BLOCK_GENERATION_PERIOD: u64 = 5000000;
-pub const INITIAL_DIFFICULTY: u64 = 200000;
+pub const INITIAL_DIFFICULTY: u64 = 10000;
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
 pub struct ProofOfWorkProblem {
@@ -30,7 +30,7 @@ impl ProofOfWorkConfig {
     pub fn new(test_mode: bool) -> Self {
         if test_mode {
             ProofOfWorkConfig {
-                initial_difficulty: 10000,
+                initial_difficulty: 4,
                 block_generation_period: 1000000,
                 difficulty_adjustment_epoch_period: 20,
             }

@@ -93,9 +93,13 @@ impl Worker {
                             let hash = compute(nonce, &block_hash);
                             if hash < boundary {
                                 // problem solved
-                                sender
-                                    .send(ProofOfWorkSolution { nonce })
-                                    .expect("Failed to send the PoW solution.");
+                                match sender.send(ProofOfWorkSolution { nonce })
+                                {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        warn!("{}", e);
+                                    }
+                                }
                                 problem = None;
                                 break;
                             }
