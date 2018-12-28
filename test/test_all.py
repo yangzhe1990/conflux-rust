@@ -31,7 +31,8 @@ TEST_SCRIPTS = [
     "p2p_test.py",
     "sync_test.py",
     "crash_test.py",
-    "transaction_test.py"
+    "transaction_test.py",
+    "reorg_test.py",
 ]
 
 test_dir = os.path.dirname(os.path.realpath(__file__))
