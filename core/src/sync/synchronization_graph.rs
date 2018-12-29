@@ -599,6 +599,16 @@ impl SynchronizationGraph {
         &self, header: BlockHeader, need_to_verify: bool,
     ) -> (bool, Vec<H256>) {
         let mut inner = self.inner.write();
+        let hash = header.hash();
+
+        if self.verified_invalid(&hash) {
+            return (false, Vec::new());
+        }
+
+        if self.contains_block_header(&hash) {
+            return (true, Vec::new());
+        }
+
         let header = Arc::new(header);
         let me = if need_to_verify {
             if self.parent_or_referees_invalid(&*header)
@@ -711,9 +721,20 @@ impl SynchronizationGraph {
         let mut need_to_relay = false;
 
         let hash = block.hash();
-        debug_assert!(!self.verified_invalid(&hash));
 
         let mut inner = self.inner.write();
+
+        if self.verified_invalid(&hash) {
+            insert_success = false;
+            // (false, false)
+            return (insert_success, need_to_relay);
+        }
+
+        if self.contains_block(&hash) {
+            // (true, false)
+            return (insert_success, need_to_relay);
+        }
+
         let me = *inner.indices.get(&hash).unwrap();
         debug_assert!(hash == inner.arena[me].block_header.hash());
         debug_assert!(!inner.arena[me].block_ready);
