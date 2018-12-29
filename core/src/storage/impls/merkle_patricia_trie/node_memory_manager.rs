@@ -215,7 +215,7 @@ impl NodeMemoryManager {
         }
     }
 
-    pub fn get_allocator(&self) -> AllocatorRef { self.allocator.read() }
+    pub fn get_allocator(&self) -> AllocatorRef { self.allocator.read_recursive() }
 
     pub fn get_cache_manager_mut(&self) -> CacheManagerMut {
         self.cache.write()
@@ -264,7 +264,7 @@ impl NodeMemoryManager {
         let rlp = Rlp::new(rlp_bytes.as_ref());
         let trie_node = TrieNode::decode(&rlp)?;
         // Insert into slab as temporary, then insert into node_ref_map.
-        let slot = self.allocator.read().insert(trie_node)? as ActualSlabIndex;
+        let slot = self.get_allocator().insert(trie_node)? as ActualSlabIndex;
         cache_mut.node_ref_map.insert(
             db_key,
             slot,
@@ -301,7 +301,7 @@ impl NodeMemoryManager {
         cache_algorithm
             .delete(db_key, &mut NodeCacheUtil::new(self, node_ref_map));
 
-        self.allocator.read().remove(slot as usize).unwrap();
+        self.get_allocator().remove(slot as usize).unwrap();
     }
 
     unsafe fn delete_cache_evicted_unchecked(
@@ -309,7 +309,7 @@ impl NodeMemoryManager {
     ) {
         // Remove evicted content from cache.
         let slot = cache_mut.node_ref_map.delete(evicted_db_key).unwrap();
-        self.allocator.read().remove(slot as usize).unwrap();
+        self.get_allocator().remove(slot as usize).unwrap();
     }
 
     // TODO(yz): special thread local batching logic for access_hit?
@@ -444,7 +444,7 @@ impl NodeMemoryManager {
         };
 
         // This unwrap is fine because we return early if slot doesn't exist.
-        self.allocator.read().remove(slot as usize).unwrap();
+        self.get_allocator().remove(slot as usize).unwrap();
     }
 }
 
