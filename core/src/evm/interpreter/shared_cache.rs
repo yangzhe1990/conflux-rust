@@ -15,8 +15,8 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 use super::super::instructions::{self, Instruction};
-use crate::hash::KECCAK_EMPTY;
 use bit_set::BitSet;
+use crate::hash::KECCAK_EMPTY;
 use ethereum_types::H256;
 use heapsize::HeapSizeOf;
 use memory_cache::MemoryLruCache;

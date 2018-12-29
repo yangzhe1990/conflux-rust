@@ -14,12 +14,12 @@ mod rpc;
 mod tests;
 
 use self::{http::Server as HttpServer, tcp::Server as TcpServer};
-pub use crate::configuration::Configuration;
 use blockgen::BlockGenerator;
 use core::{
     storage::StorageManager, vm_factory::VmFactory, ConsensusGraph,
     SynchronizationService, TransactionPool,
 };
+pub use crate::configuration::Configuration;
 
 use ctrlc::CtrlC;
 use db::SystemDB;

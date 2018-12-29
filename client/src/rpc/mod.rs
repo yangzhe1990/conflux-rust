@@ -92,6 +92,9 @@ build_rpc_trait! {
         #[rpc(name = "generate")]
         fn generate(&self, usize, usize) -> RpcResult<Vec<H256>>;
 
+        #[rpc(name = "generatefixedblock")]
+        fn generate_fixed_block(&self, H256, Vec<H256>, usize) -> RpcResult<H256>;
+
         #[rpc(name = "addnode")]
         fn add_peer(&self, NodeId, SocketAddr) -> RpcResult<()>;
 
@@ -233,6 +236,19 @@ impl Rpc for RpcImpl {
                 .push(self.block_gen.generate_block_with_transactions(num_txs));
         }
         Ok(hashes)
+    }
+
+    fn generate_fixed_block(
+        &self, parent_hash: H256, referee: Vec<H256>, num_txs: usize,
+    ) -> RpcResult<H256> {
+        info!(
+            "RPC Request: generate_fixed_block({:?}, {:?}, {:?})",
+            parent_hash, referee, num_txs
+        );
+        let hash =
+            self.block_gen
+                .generate_fixed_block(parent_hash, referee, num_txs);
+        Ok(hash)
     }
 
     fn generate_one_block(&self, num_txs: usize) -> RpcResult<H256> {

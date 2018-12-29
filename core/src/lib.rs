@@ -37,7 +37,7 @@ extern crate unexpected;
 
 mod builtin;
 mod cache_manager;
-mod consensus;
+pub mod consensus;
 pub mod db;
 pub mod error;
 mod evm;

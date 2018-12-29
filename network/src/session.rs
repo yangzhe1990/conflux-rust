@@ -1,3 +1,4 @@
+use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
 use crate::{
     connection::{
         Connection as TcpConnection, PacketSizer as PacketSizerTrait,
@@ -9,7 +10,6 @@ use crate::{
     Capability, DisconnectReason, Error, ErrorKind, ProtocolId,
     SessionMetadata,
 };
-use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
 use ethcore_bytes;
 use ethereum_types::H520;
 use ethkey::{recover, sign};

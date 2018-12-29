@@ -50,18 +50,18 @@ impl Decodable for Block {
         }
 
         let transactions = rlp.list_at::<TransactionWithSignature>(1)?;
-        let signed_transactions: Result<Vec<SignedTransaction>, DecoderError> =
-            transactions
-                .into_iter()
-                .map(|transaction| match transaction.recover_public() {
-                    Ok(public) => {
-                        Ok(SignedTransaction::new(public, transaction))
-                    }
-                    Err(_) => {
-                        Err(DecoderError::Custom("Cannot recover public key"))
-                    }
-                })
-                .collect();
+        let signed_transactions: Result<
+            Vec<SignedTransaction>,
+            DecoderError,
+        > = transactions
+            .into_iter()
+            .map(|transaction| match transaction.recover_public() {
+                Ok(public) => Ok(SignedTransaction::new(public, transaction)),
+                Err(_) => {
+                    Err(DecoderError::Custom("Cannot recover public key"))
+                }
+            })
+            .collect();
 
         Ok(Block {
             block_header: rlp.val_at(0)?,

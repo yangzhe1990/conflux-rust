@@ -12,12 +12,12 @@ extern crate txgen;
 #[macro_use]
 extern crate log;
 
-use crate::triehash::ordered_trie_root;
 use core::{
-    pow::*, transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT,
-    SharedSynchronizationGraph, SharedSynchronizationService,
-    SharedTransactionPool,
+    consensus::DEFERRED_STATE_EPOCH_COUNT, pow::*,
+    transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT, SharedSynchronizationGraph,
+    SharedSynchronizationService, SharedTransactionPool,
 };
+use crate::triehash::ordered_trie_root;
 use ethereum_types::{Address, H256};
 use parking_lot::RwLock;
 use primitives::*;
@@ -147,17 +147,12 @@ impl BlockGenerator {
         }
     }
 
-    /// Assemble a new block without nonce
-    pub fn assemble_new_block(&self, num_txs: usize) -> Block {
-        // get the best block
-        let best_info = self.graph.get_best_info();
-        let best_block_hash = best_info.best_block_hash;
-        debug_assert_eq!(
-            best_block_hash,
-            self.txgen.consensus.best_block_hash()
-        );
-        let parent_height =
-            self.graph.get_block_height(&best_block_hash).unwrap();
+    fn assemble_new_block_impl(
+        &self, parent_hash: H256, referee: Vec<H256>,
+        deferred_state_root: H256, num_txs: usize,
+    ) -> Block
+    {
+        let parent_height = self.graph.get_block_height(&parent_hash).unwrap();
         let transactions = self
             .txpool
             .pack_transactions(num_txs, self.txgen.get_best_state());
@@ -168,17 +163,15 @@ impl BlockGenerator {
             tx_rlps.push(t_rlp);
         }
 
-        let mut referee = best_info.terminal_block_hashes;
-        referee.retain(|r| *r != best_block_hash);
         let block_header = BlockHeaderBuilder::new()
             .with_transactions_root(ordered_trie_root(
                 tx_rlps.iter().map(|r| r.as_slice()),
             ))
-            .with_parent_hash(best_block_hash)
+            .with_parent_hash(parent_hash)
             .with_height(parent_height + 1)
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
-            .with_deferred_state_root(best_info.deferred_state_root) //TODO: get deferred state root
+            .with_deferred_state_root(deferred_state_root) //TODO: get deferred state root
             .with_difficulty(self.pow_config.initial_difficulty.into()) //TODO: adjust difficulty
             .with_referee_hashes(referee) //TODO: get referee hashes
             .with_nonce(0) // TODO: gen nonce from pow
@@ -189,6 +182,42 @@ impl BlockGenerator {
             block_header,
             transactions,
         }
+    }
+
+    /// Assemble a new block with specified parent and referee, this is for test
+    /// only
+    pub fn assemble_new_fixed_block(
+        &self, parent_hash: H256, referee: Vec<H256>, num_txs: usize,
+    ) -> Block {
+        self.assemble_new_block_impl(
+            parent_hash,
+            referee,
+            self.graph.consensus.compute_deferred_state_for_block(
+                &parent_hash,
+                DEFERRED_STATE_EPOCH_COUNT as usize - 1,
+            ),
+            num_txs,
+        )
+    }
+
+    /// Assemble a new block without nonce
+    pub fn assemble_new_block(&self, num_txs: usize) -> Block {
+        // get the best block
+        let best_info = self.graph.get_best_info();
+        let best_block_hash = best_info.best_block_hash;
+        let mut referee = best_info.terminal_block_hashes;
+        referee.retain(|r| *r != best_block_hash);
+
+        debug_assert_eq!(
+            best_block_hash,
+            self.txgen.consensus.best_block_hash()
+        );
+        self.assemble_new_block_impl(
+            best_block_hash,
+            referee,
+            best_info.deferred_state_root,
+            num_txs,
+        )
     }
 
     /// Update and sync a new block
@@ -226,9 +255,22 @@ impl BlockGenerator {
         self.generate_block(num_txs)
     }
 
+    pub fn generate_fixed_block(
+        &self, parent_hash: H256, referee: Vec<H256>, num_txs: usize,
+    ) -> H256 {
+        let block =
+            self.assemble_new_fixed_block(parent_hash, referee, num_txs);
+        self.generate_block_impl(block)
+    }
+
     /// Generate a block with transactions in the pool
     pub fn generate_block(&self, num_txs: usize) -> H256 {
-        let mut block = self.assemble_new_block(num_txs);
+        let block = self.assemble_new_block(num_txs);
+        self.generate_block_impl(block)
+    }
+
+    fn generate_block_impl(&self, block_init: Block) -> H256 {
+        let mut block = block_init;
         let test_diff = self.pow_config.initial_difficulty.into();
         let problem = ProofOfWorkProblem {
             block_hash: block.block_header.problem_hash(),
@@ -311,8 +353,7 @@ impl BlockGenerator {
                         && !validate(
                             &current_problem.unwrap(),
                             &new_solution.unwrap(),
-                        )
-                    {
+                        ) {
                         new_solution = receiver.try_recv();
                     } else {
                         break;

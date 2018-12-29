@@ -727,8 +727,7 @@ impl NetworkServiceInner {
             .take(min(
                 max_handshakes_per_round as usize,
                 max_handshakes as usize - handshake_count,
-            ))
-        {
+            )) {
             self.connect_peer(&id, io);
             started += 1;
         }
