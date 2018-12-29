@@ -82,7 +82,7 @@ fn test_get_set_at_second_commit() {
 
     let parent_epoch_0 = H256::default();
     let mut state_0 = state_manager.get_state_at(parent_epoch_0).unwrap();
-    println!("Setting state_0 0 with {} keys.", keys_0.len());
+    println!("Setting state_0 with {} keys.", keys_0.len());
 
     for key in keys_0 {
         state_0.set(key, key).expect("Failed to insert key.");
@@ -183,4 +183,59 @@ fn test_set_delete() {
     epoch_id[0] = 1;
     state.compute_state_root().unwrap();
     state.commit(epoch_id).unwrap();
+}
+
+fn print(key: &[u8]) {
+    print!("key = (");
+    for char in key {
+        // FIXME: use byte order defined in data_structure.rs
+        print!("{}, {}, ", char & 0x0f, char >> 4);
+    }
+    println!(")");
+}
+
+#[test]
+fn test_set_order() {
+    let mut rng = get_rng_for_test();
+    let state_manager = new_state_manager_for_testing();
+    let keys: Vec<[u8; 4]> = generate_keys()
+        .iter()
+        .filter(|_| rng.gen_bool(0.5))
+        .cloned()
+        .collect();
+
+    let parent_epoch_0 = H256::default();
+    let mut epoch_id = H256::default();
+    let mut state_0 = state_manager.get_state_at(parent_epoch_0).unwrap();
+    println!("Setting state_0 with {} keys.", keys.len());
+    for key in &keys {
+        state_0.set(key, key).expect("Failed to insert key.");
+    }
+    let merkle_0 = state_0.compute_state_root().unwrap();
+    epoch_id[0] = 1;
+    state_0.commit(epoch_id).unwrap();
+
+    let mut state_1 = state_manager.get_state_at(parent_epoch_0).unwrap();
+    println!("Setting state_1 with {} keys.", keys.len());
+    for key in &keys {
+        state_1.set(key, key).expect("Failed to insert key.");
+    }
+    let merkle_1 = state_1.compute_state_root().unwrap();
+    epoch_id[0] = 2;
+    state_1.commit(epoch_id).unwrap();
+
+    let mut state_2 = state_manager.get_state_at(parent_epoch_0).unwrap();
+    println!("Setting state_2 with {} keys.", keys.len());
+    for key in keys.iter().rev() {
+        state_2.set(key, key).expect("Failed to insert key.");
+    }
+    for key in &keys {
+        assert_eq!(*state_2.get(key).expect("Failed to insert key.").unwrap(), *key);
+    }
+    let merkle_2 = state_2.compute_state_root().unwrap();
+    epoch_id[0] = 3;
+    state_2.commit(epoch_id).unwrap();
+
+    assert_eq!(merkle_0, merkle_1);
+    assert_eq!(merkle_0, merkle_2);
 }

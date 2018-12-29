@@ -288,6 +288,18 @@ impl CompressedPathRaw {
         }
     }
 
+    fn new_and_apply_mask(path_slice: &[u8], end_mask: u8) -> Self {
+        let path_size = path_slice.len();
+        let mut ret = Self {
+            path_size: path_size as u16,
+            path: MaybeInPlaceByteArray::copy_from(path_slice, path_size),
+            end_mask: end_mask,
+        };
+        ret.path.get_slice_mut(path_size)[path_size - 1] &= end_mask;
+
+        ret
+    }
+
     fn new_zeroed(path_size: u16, end_mask: u8) -> Self {
         Self {
             path_size: path_size,
@@ -407,7 +419,7 @@ impl TrieNode {
 
                     if Self::first_nibble(path_slice[i] ^ key[i]) == 0 {
                         // "First half" matched
-                        matched_path = CompressedPathRaw::new(
+                        matched_path = CompressedPathRaw::new_and_apply_mask(
                             &path_slice[0..i + 1],
                             Self::first_nibble(!0),
                         );
