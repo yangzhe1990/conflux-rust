@@ -215,7 +215,9 @@ impl NodeMemoryManager {
         }
     }
 
-    pub fn get_allocator(&self) -> AllocatorRef { self.allocator.read_recursive() }
+    pub fn get_allocator(&self) -> AllocatorRef {
+        self.allocator.read_recursive()
+    }
 
     pub fn get_cache_manager_mut(&self) -> CacheManagerMut {
         self.cache.write()

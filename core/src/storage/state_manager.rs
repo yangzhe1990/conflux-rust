@@ -21,5 +21,6 @@ pub trait StateManagerTrait {
     /// epoch_id to create the genesis State.
     //  TODO(yz): special epoch_id for empty state.
     fn get_state_at(&self, epoch_id: EpochId) -> Result<State>;
+    fn contains_state(&self, epoch_id: EpochId) -> bool;
     fn drop_state_outside(&self, epoch_id: EpochId);
 }

@@ -48,7 +48,8 @@ pub struct TrieNode {
     /// path, and if there is only one child left, path compression
     /// should apply. Path compression can only happen when
     /// number_of_children_plus_value drop from 2 to 1.
-    // TODO(yz): refactor out this value. Move the number_of_children counter to children_table.
+    // TODO(yz): refactor out this value. Move the number_of_children counter
+    // to children_table.
     number_of_children_plus_value: u8,
 
     /// CompactPath section. The CompactPath if defined as separate struct

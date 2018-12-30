@@ -176,5 +176,9 @@ impl StateManagerTrait for StateManager {
         Ok(State::new(self, self.get_state_root_node_ref(epoch_id)?))
     }
 
+    fn contains_state(&self, epoch_id: EpochId) -> bool {
+        self.get_state_at(epoch_id).unwrap().does_exist()
+    }
+
     fn drop_state_outside(&self, epoch_id: EpochId) { unimplemented!() }
 }

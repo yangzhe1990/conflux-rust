@@ -720,6 +720,82 @@ impl ConsensusGraphInner {
         self.compute_state_for_block(&self.arena[idx].hash, block_by_hash)
     }
 
+    fn check_block_full_validity(
+        &self, new: usize, block: &Block, block_by_hash: &HashMap<H256, Block>,
+        sync_graph: &mut SynchronizationGraphInner,
+    ) -> bool
+    {
+        if self.arena[self.arena[new].parent].data.partial_invalid {
+            trace!(
+                "Partially invalid due to partially invalid parent. {:?}",
+                block.block_header.clone()
+            );
+            return false;
+        }
+
+        // Check whether the new block select the correct parent block
+        if self.arena[new].parent != *self.pivot_chain.last().unwrap() {
+            if !self.check_correct_parent(new, sync_graph) {
+                trace!(
+                    "Partially invalid due to picking incorrect parent. {:?}",
+                    block.block_header.clone()
+                );
+                return false;
+            }
+        }
+
+        // Check if the state root is correct or not
+        // TODO: We may want to optimize this because now on the chain switch we
+        // are going to compute state twice
+        let state_root_valid =
+            if block.block_header.height() < DEFERRED_STATE_EPOCH_COUNT {
+                *block.block_header.deferred_state_root()
+                    == self.genesis_block_state_root
+            } else {
+                let mut deferred = new;
+                for _ in 0..DEFERRED_STATE_EPOCH_COUNT {
+                    deferred = self.arena[deferred].parent;
+                }
+                debug_assert!(
+                    block.block_header.height() - DEFERRED_STATE_EPOCH_COUNT
+                        == self.arena[deferred].height
+                );
+
+                /*let height = self.arena[deferred].height as usize;
+                if height < self.pivot_chain.len()
+                    && self.pivot_chain[height] == deferred*/
+                if self
+                    .storage_manager
+                    .contains_state(self.arena[deferred].hash)
+                {
+                    *block.block_header.deferred_state_root()
+                        == self
+                            .storage_manager
+                            .get_state_at(self.arena[deferred].hash)
+                            .unwrap()
+                            .get_state_root()
+                            .unwrap()
+                            .unwrap()
+                } else {
+                    // Call the expensive function to check this state root
+                    *block.block_header.deferred_state_root()
+                        == self.compute_state_for_block(
+                            &self.arena[deferred].hash,
+                            block_by_hash,
+                        )
+                }
+            };
+
+        if !state_root_valid {
+            trace!(
+                "Partially invalid in fork due to incorrect state root. {:?}",
+                block.block_header.clone()
+            );
+            return false;
+        }
+        return true;
+    }
+
     pub fn on_new_block(
         &mut self, txpool: &SharedTransactionPool, block: &Block,
         block_by_hash: &HashMap<H256, Block>,
@@ -729,33 +805,21 @@ impl ConsensusGraphInner {
         let new = self.insert(block, &mut sync_graph.terminal_block_hashes);
         self.compute_anticone(new);
 
-        if self.arena[self.arena[new].parent].data.partial_invalid {
+        let fully_valid = self.check_block_full_validity(
+            new,
+            block,
+            block_by_hash,
+            sync_graph,
+        );
+        if !fully_valid {
             self.arena[new].data.partial_invalid = true;
-            trace!(
-                "Partially invalid due to partially invalid parent. {:?}",
-                block.block_header.clone()
-            );
             return (
                 self.best_block_hash(),
                 self.deferred_state_root_following_best_block(),
             );
         }
 
-        // Check whether the new block select the correct parent block
-        if self.arena[new].parent != *self.pivot_chain.last().unwrap() {
-            if !self.check_correct_parent(new, sync_graph) {
-                self.arena[new].data.partial_invalid = true;
-                trace!(
-                    "Partially invalid due to picking incorrect parent. {:?}",
-                    block.block_header.clone()
-                );
-                return (
-                    self.best_block_hash(),
-                    self.deferred_state_root_following_best_block(),
-                );
-            }
-        }
-
+        // Update the total difficulty for the new block
         let mut me = new;
         loop {
             me = self.arena[me].parent;
@@ -765,6 +829,7 @@ impl ConsensusGraphInner {
             }
         }
 
+        // Compute the new pivot chain
         let mut new_pivot_chain = Vec::new();
         me = self.genesis_block_index;
         loop {
@@ -867,7 +932,6 @@ impl ConsensusGraphInner {
                 &mut self.block_fees,
                 Some(&mut self.block_for_transaction),
             );
-
             self.indices_in_epochs
                 .insert(new_pivot_chain[fork_at], reversed_indices);
 
@@ -910,94 +974,6 @@ impl ConsensusGraphInner {
                 .unwrap();
 
             fork_at += 1;
-        }
-
-        if *new_pivot_chain.last().unwrap() == new {
-            debug_assert!(new_pivot_chain.len() >= 2);
-            let expected_state_root = self
-                .deferred_state_root(
-                    &new_pivot_chain[0..new_pivot_chain.len() - 1],
-                )
-                .unwrap();
-            let actual_state_root = *block.block_header.deferred_state_root();
-            if expected_state_root != actual_state_root {
-                let difficulty = *block.block_header.difficulty();
-                self.arena[new].data.partial_invalid = true;
-                let mut me = new;
-                loop {
-                    me = self.arena[me].parent;
-                    self.arena[me].total_difficulty -= difficulty;
-                    if me == self.genesis_block_index {
-                        break;
-                    }
-                }
-                trace!("Partially invalid in pivot chain due to incorrect state root. {:?}", block.block_header.clone());
-                return (
-                    self.best_block_hash(),
-                    self.deferred_state_root_following_best_block(),
-                );
-            }
-        } else {
-            debug_assert!(
-                block.block_header.height() == self.arena[new].height
-            );
-            let state_root_valid = if block.block_header.height()
-                < DEFERRED_STATE_EPOCH_COUNT
-            {
-                *block.block_header.deferred_state_root()
-                    == self.genesis_block_state_root
-            } else {
-                let mut deferred = new;
-                for _ in 0..DEFERRED_STATE_EPOCH_COUNT {
-                    deferred = self.arena[deferred].parent;
-                }
-                debug_assert!(
-                    block.block_header.height() - DEFERRED_STATE_EPOCH_COUNT
-                        == self.arena[deferred].height
-                );
-
-                let height = self.arena[deferred].height as usize;
-                if height < new_pivot_chain.len()
-                    && new_pivot_chain[height] == deferred
-                {
-                    *block.block_header.deferred_state_root()
-                        == self
-                            .storage_manager
-                            .get_state_at(self.arena[deferred].hash)
-                            .unwrap()
-                            .get_state_root()
-                            .unwrap()
-                            .unwrap()
-                } else {
-                    // Call the expensive function to check this state root
-                    *block.block_header.deferred_state_root()
-                        == self.compute_state_for_block(
-                            &self.arena[deferred].hash,
-                            block_by_hash,
-                        )
-                }
-            };
-
-            if !state_root_valid {
-                let difficulty = *block.block_header.difficulty();
-                self.arena[new].data.partial_invalid = true;
-                let mut me = new;
-                loop {
-                    me = self.arena[me].parent;
-                    self.arena[me].total_difficulty -= difficulty;
-                    if me == self.genesis_block_index {
-                        break;
-                    }
-                }
-                trace!(
-                    "Partially invalid in fork due to incorrect state root. {:?}",
-                    block.block_header.clone()
-                );
-                return (
-                    self.best_block_hash(),
-                    self.deferred_state_root_following_best_block(),
-                );
-            }
         }
 
         self.pivot_chain = new_pivot_chain;
