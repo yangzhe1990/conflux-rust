@@ -230,7 +230,10 @@ fn test_set_order() {
         state_2.set(key, key).expect("Failed to insert key.");
     }
     for key in &keys {
-        assert_eq!(*state_2.get(key).expect("Failed to insert key.").unwrap(), *key);
+        assert_eq!(
+            *state_2.get(key).expect("Failed to insert key.").unwrap(),
+            *key
+        );
     }
     let merkle_2 = state_2.compute_state_root().unwrap();
     epoch_id[0] = 3;

@@ -353,6 +353,193 @@ impl ConsensusGraphInner {
         self.arena[me].data.anticone = anticone;
     }
 
+    fn topological_sort(&self, queue: &Vec<usize>) -> Vec<usize> {
+        let index_set: HashSet<usize> =
+            HashSet::from_iter(queue.iter().cloned());
+        let mut num_incoming_edges = HashMap::new();
+
+        for me in queue {
+            num_incoming_edges.entry(*me).or_insert(0);
+            let parent = self.arena[*me].parent;
+            if index_set.contains(&parent) {
+                *num_incoming_edges.entry(parent).or_insert(0) += 1;
+            }
+            for referee in &self.arena[*me].referees {
+                if index_set.contains(referee) {
+                    *num_incoming_edges.entry(*referee).or_insert(0) += 1;
+                }
+            }
+        }
+
+        let mut candidates = HashSet::new();
+        let mut reversed_indices = Vec::new();
+
+        for me in queue {
+            if num_incoming_edges[me] == 0 {
+                candidates.insert(*me);
+            }
+        }
+        while !candidates.is_empty() {
+            let me = candidates
+                .iter()
+                .max_by_key(|index| self.arena[**index].hash)
+                .cloned()
+                .unwrap();
+            candidates.remove(&me);
+            reversed_indices.push(me);
+
+            let parent = self.arena[me].parent;
+            if index_set.contains(&parent) {
+                num_incoming_edges.entry(parent).and_modify(|e| *e -= 1);
+                if num_incoming_edges[&parent] == 0 {
+                    candidates.insert(parent);
+                }
+            }
+            for referee in &self.arena[me].referees {
+                if index_set.contains(referee) {
+                    num_incoming_edges.entry(*referee).and_modify(|e| *e -= 1);
+                    if num_incoming_edges[referee] == 0 {
+                        candidates.insert(*referee);
+                    }
+                }
+            }
+        }
+        reversed_indices.reverse();
+        reversed_indices
+    }
+
+    fn process_epoch_transactions(
+        state: &mut State, arena: &Slab<ConsensusGraphNode>,
+        epoch_blocks: &Vec<usize>, block_by_hash: &HashMap<H256, Block>,
+        block_fees: &mut HashMap<usize, U256>,
+        mut block_for_transaction: Option<&mut HashMap<H256, (bool, usize)>>,
+    )
+    {
+        let spec = Spec::new_byzantium();
+        let machine = new_byzantium_test_machine();
+        for index in epoch_blocks.iter() {
+            let block = block_by_hash.get(&arena[*index].hash).unwrap();
+            let env = EnvInfo {
+                number: 0, // TODO: replace 0 with correct cardinal number
+                author: block.block_header.author().clone(),
+                timestamp: block.block_header.timestamp(),
+                difficulty: block.block_header.difficulty().clone(),
+                gas_used: U256::zero(),
+                gas_limit: U256::from(block.block_header.gas_limit()),
+            };
+            let mut accumulated_fee: U256 = 0.into();
+            for transaction in &block.transactions {
+                let mut ex = Executive::new(state, &env, &machine, &spec);
+                let r = ex.transact(transaction);
+                match r {
+                    Err(ExecutionError::NotEnoughBaseGas {
+                        required: _,
+                        got: _,
+                    })
+                    | Err(ExecutionError::SenderMustExist {})
+                    | Err(ExecutionError::InvalidNonce {
+                        expected: _,
+                        got: _,
+                    }) => {
+                        warn!("transaction execution error without inc_nonce: transaction={:?}, err={:?}", transaction, r);
+                    }
+                    Ok(executed) => {
+                        trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, executed, arena[*index].hash.clone());
+                        accumulated_fee += executed.fee;
+                        if let Some(ref mut block_for_transaction) =
+                            block_for_transaction
+                        {
+                            block_for_transaction
+                                .insert(transaction.hash(), (true, *index));
+                        }
+                    }
+                    _ => {
+                        trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, arena[*index].hash.clone());
+                        if let Some(ref mut block_for_transaction) =
+                            block_for_transaction
+                        {
+                            block_for_transaction
+                                .insert(transaction.hash(), (true, *index));
+                        }
+                    }
+                }
+            }
+            block_fees.insert(*index, accumulated_fee);
+        }
+    }
+
+    fn process_rewards_and_fees<F>(
+        &self, state: &mut State, indices_in_epoch: &Vec<usize>,
+        pivot_index: usize, penalty_upper_anticone: &HashSet<usize>,
+        block_by_hash: &HashMap<H256, Block>, block_fee_fn: F,
+    ) where
+        F: Fn(usize) -> U256,
+    {
+        let difficulty = self.arena[pivot_index].difficulty;
+        let mut epoch_accum_fee: U256 = 0.into();
+        let mut rewards: Vec<(Address, U256)> = Vec::new();
+
+        for index in indices_in_epoch {
+            let block_fee = block_fee_fn(*index);
+            assert!(U256::max_value() - epoch_accum_fee > block_fee);
+            epoch_accum_fee += block_fee;
+
+            let mut reward: U512 =
+                if self.arena[*index].difficulty == difficulty {
+                    BASE_MINING_REWARD.into()
+                } else {
+                    0.into()
+                };
+
+            if reward > 0.into() {
+                let anticone_size = self.arena[*index]
+                    .data
+                    .anticone
+                    .difference(penalty_upper_anticone)
+                    .cloned()
+                    .collect::<HashSet<_>>()
+                    .len();
+                let penalty = (reward * U512::from(anticone_size))
+                    / U512::from(ANTICONE_PENALTY_RATIO);
+                if penalty > reward {
+                    reward = 0.into();
+                } else {
+                    reward -= penalty;
+                }
+            }
+
+            debug_assert!(reward <= U512::from(U256::max_value()));
+            let reward = U256::from(reward);
+            let author = block_by_hash
+                .get(&self.arena[*index].hash)
+                .unwrap()
+                .block_header
+                .author()
+                .clone();
+            rewards.push((author, reward));
+        }
+
+        if !rewards.is_empty() {
+            let block_count = U256::from(rewards.len());
+            let quotient: U256 = epoch_accum_fee / block_count;
+            let mut remainder: U256 =
+                epoch_accum_fee - (block_count * quotient);
+            for (_, reward) in &mut rewards {
+                *reward += quotient;
+                if !remainder.is_zero() {
+                    *reward += 1.into();
+                    remainder -= 1.into();
+                }
+            }
+
+            for (address, reward) in rewards {
+                state
+                    .add_balance(&address, &reward, CleanupMode::ForceCreate)
+                    .unwrap();
+            }
+        }
+    }
+
     /// This is a very expensive call to force the engine to recompute the state
     /// root of a given block
     pub fn compute_state_for_block(
@@ -436,58 +623,7 @@ impl ConsensusGraphInner {
 
             // Second, sort all the blocks based on their topological order
             // and break ties with block hash
-            let index_set: HashSet<usize> =
-                HashSet::from_iter(queue.iter().cloned());
-            let mut num_incoming_edges = HashMap::new();
-
-            for me in &queue {
-                num_incoming_edges.entry(*me).or_insert(0);
-                let parent = self.arena[*me].parent;
-                if index_set.contains(&parent) {
-                    *num_incoming_edges.entry(parent).or_insert(0) += 1;
-                }
-                for referee in &self.arena[*me].referees {
-                    if index_set.contains(referee) {
-                        *num_incoming_edges.entry(*referee).or_insert(0) += 1;
-                    }
-                }
-            }
-
-            let mut candidates = HashSet::new();
-            let mut reversed_indices = Vec::new();
-
-            for me in &queue {
-                if num_incoming_edges[me] == 0 {
-                    candidates.insert(*me);
-                }
-            }
-            while !candidates.is_empty() {
-                let me = candidates
-                    .iter()
-                    .max_by_key(|index| self.arena[**index].hash)
-                    .cloned()
-                    .unwrap();
-                candidates.remove(&me);
-                reversed_indices.push(me);
-
-                let parent = self.arena[me].parent;
-                if index_set.contains(&parent) {
-                    num_incoming_edges.entry(parent).and_modify(|e| *e -= 1);
-                    if num_incoming_edges[&parent] == 0 {
-                        candidates.insert(parent);
-                    }
-                }
-                for referee in &self.arena[me].referees {
-                    if index_set.contains(referee) {
-                        num_incoming_edges
-                            .entry(*referee)
-                            .and_modify(|e| *e -= 1);
-                        if num_incoming_edges[referee] == 0 {
-                            candidates.insert(*referee);
-                        }
-                    }
-                }
-            }
+            let reversed_indices = self.topological_sort(&queue);
 
             // Third, apply transactions in the determined total order
             let mut state = State::new(
@@ -499,58 +635,19 @@ impl ConsensusGraphInner {
                 0.into(),
                 self.vm.clone(),
             );
-            let spec = Spec::new_byzantium();
-            let machine = new_byzantium_test_machine();
-            for index in reversed_indices.iter().rev() {
-                let block =
-                    block_by_hash.get(&self.arena[*index].hash).unwrap();
-                let env = EnvInfo {
-                    number: 0, // TODO: replace 0 with correct cardinal number
-                    author: block.block_header.author().clone(),
-                    timestamp: block.block_header.timestamp(),
-                    difficulty: block.block_header.difficulty().clone(),
-                    gas_used: U256::zero(),
-                    gas_limit: U256::from(block.block_header.gas_limit()),
-                };
-                let mut accumulated_fee: U256 = 0.into();
-                for transaction in &block.transactions {
-                    let mut ex =
-                        Executive::new(&mut state, &env, &machine, &spec);
-                    let r = ex.transact(transaction);
-                    match r {
-                        Err(ExecutionError::NotEnoughBaseGas {
-                            required: _,
-                            got: _,
-                        })
-                        | Err(ExecutionError::SenderMustExist {})
-                        | Err(ExecutionError::InvalidNonce {
-                            expected: _,
-                            got: _,
-                        }) => {
-                            warn!("transaction execution error without inc_nonce: transaction={:?}, err={:?}", transaction, r);
-                        }
-                        Ok(executed) => {
-                            trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, executed, self.arena[*index].hash.clone());
-                            accumulated_fee += executed.fee;
-                            //self.block_for_transaction
-                            //    .insert(transaction.hash(), (true, *index));
-                        }
-                        _ => {
-                            trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, self.arena[*index].hash.clone());
-                            //self.block_for_transaction
-                            //    .insert(transaction.hash(), (true, *index));
-                        }
-                    }
-                }
-                block_fees.insert(*index, accumulated_fee);
-            }
+            ConsensusGraphInner::process_epoch_transactions(
+                &mut state,
+                &self.arena,
+                &reversed_indices,
+                block_by_hash,
+                &mut block_fees,
+                None,
+            );
 
             indices_in_epochs.insert(chain[fork_at], reversed_indices);
 
             // Calculate the block reward for blocks inside the epoch
             // All transaction fees are shared among blocks inside one epoch
-            let mut epoch_accum_fee: U256 = 0.into();
-            let mut rewards: Vec<(Address, U256)> = Vec::new();
             if fork_height + fork_at > REWARD_EPOCH_COUNT as usize {
                 let epoch_num =
                     fork_height + fork_at - REWARD_EPOCH_COUNT as usize;
@@ -573,78 +670,25 @@ impl ConsensusGraphInner {
                 debug_assert!(
                     epoch_num == self.arena[pivot_index].height as usize
                 );
-                let difficulty = self.arena[pivot_index].difficulty;
-
+                let block_fee_closure = |index: usize| -> U256 {
+                    match in_branch {
+                        true => block_fees.get(&index).unwrap(),
+                        false => self.block_fees.get(&index).unwrap(),
+                    }
+                    .clone()
+                };
                 let indices_in_epoch = match in_branch {
                     true => indices_in_epochs.get(&pivot_index).unwrap(),
                     false => self.indices_in_epochs.get(&pivot_index).unwrap(),
                 };
-                for index in indices_in_epoch {
-                    let block_fee = match in_branch {
-                        true => block_fees.get(index).unwrap(),
-                        false => self.block_fees.get(index).unwrap(),
-                    };
-                    assert!(U256::max_value() - epoch_accum_fee > *block_fee);
-                    epoch_accum_fee += *block_fee;
-
-                    let mut reward: U512 =
-                        if self.arena[*index].difficulty == difficulty {
-                            BASE_MINING_REWARD.into()
-                        } else {
-                            0.into()
-                        };
-
-                    if reward > 0.into() {
-                        let anticone_size = self.arena[*index]
-                            .data
-                            .anticone
-                            .difference(penalty_upper_anticone)
-                            .cloned()
-                            .collect::<HashSet<_>>()
-                            .len();
-                        let penalty = (reward * U512::from(anticone_size))
-                            / U512::from(ANTICONE_PENALTY_RATIO);
-                        if penalty > reward {
-                            reward = 0.into();
-                        } else {
-                            reward -= penalty;
-                        }
-                    }
-
-                    debug_assert!(reward <= U512::from(U256::max_value()));
-                    let reward = U256::from(reward);
-                    let author = block_by_hash
-                        .get(&self.arena[*index].hash)
-                        .unwrap()
-                        .block_header
-                        .author()
-                        .clone();
-                    rewards.push((author, reward));
-                }
-            }
-
-            if !rewards.is_empty() {
-                let block_count = U256::from(rewards.len());
-                let quotient: U256 = epoch_accum_fee / block_count;
-                let mut remainder: U256 =
-                    epoch_accum_fee - (block_count * quotient);
-                for (_, reward) in &mut rewards {
-                    *reward += quotient;
-                    if !remainder.is_zero() {
-                        *reward += 1.into();
-                        remainder -= 1.into();
-                    }
-                }
-
-                for (address, reward) in rewards {
-                    state
-                        .add_balance(
-                            &address,
-                            &reward,
-                            CleanupMode::ForceCreate,
-                        )
-                        .unwrap();
-                }
+                self.process_rewards_and_fees(
+                    &mut state,
+                    indices_in_epoch,
+                    pivot_index,
+                    penalty_upper_anticone,
+                    block_by_hash,
+                    block_fee_closure,
+                );
             }
 
             // FIXME: We may want to propagate the error up
@@ -801,58 +845,7 @@ impl ConsensusGraphInner {
 
             // Second, sort all the blocks based on their topological order
             // and break ties with block hash
-            let index_set: HashSet<usize> =
-                HashSet::from_iter(queue.iter().cloned());
-            let mut num_incoming_edges = HashMap::new();
-
-            for me in &queue {
-                num_incoming_edges.entry(*me).or_insert(0);
-                let parent = self.arena[*me].parent;
-                if index_set.contains(&parent) {
-                    *num_incoming_edges.entry(parent).or_insert(0) += 1;
-                }
-                for referee in &self.arena[*me].referees {
-                    if index_set.contains(referee) {
-                        *num_incoming_edges.entry(*referee).or_insert(0) += 1;
-                    }
-                }
-            }
-
-            let mut candidates = HashSet::new();
-            let mut reversed_indices = Vec::new();
-
-            for me in &queue {
-                if num_incoming_edges[me] == 0 {
-                    candidates.insert(*me);
-                }
-            }
-            while !candidates.is_empty() {
-                let me = candidates
-                    .iter()
-                    .max_by_key(|index| self.arena[**index].hash)
-                    .cloned()
-                    .unwrap();
-                candidates.remove(&me);
-                reversed_indices.push(me);
-
-                let parent = self.arena[me].parent;
-                if index_set.contains(&parent) {
-                    num_incoming_edges.entry(parent).and_modify(|e| *e -= 1);
-                    if num_incoming_edges[&parent] == 0 {
-                        candidates.insert(parent);
-                    }
-                }
-                for referee in &self.arena[me].referees {
-                    if index_set.contains(referee) {
-                        num_incoming_edges
-                            .entry(*referee)
-                            .and_modify(|e| *e -= 1);
-                        if num_incoming_edges[referee] == 0 {
-                            candidates.insert(*referee);
-                        }
-                    }
-                }
-            }
+            let reversed_indices = self.topological_sort(&queue);
 
             // Third, apply transactions in the determined total order
             let mut state = State::new(
@@ -866,59 +859,20 @@ impl ConsensusGraphInner {
                 0.into(),
                 self.vm.clone(),
             );
-            let spec = Spec::new_byzantium();
-            let machine = new_byzantium_test_machine();
-            for index in reversed_indices.iter().rev() {
-                let block =
-                    block_by_hash.get(&self.arena[*index].hash).unwrap();
-                let env = EnvInfo {
-                    number: 0, // TODO: replace 0 with correct cardinal number
-                    author: block.block_header.author().clone(),
-                    timestamp: block.block_header.timestamp(),
-                    difficulty: block.block_header.difficulty().clone(),
-                    gas_used: U256::zero(),
-                    gas_limit: U256::from(block.block_header.gas_limit()),
-                };
-                let mut accumulated_fee: U256 = 0.into();
-                for transaction in &block.transactions {
-                    let mut ex =
-                        Executive::new(&mut state, &env, &machine, &spec);
-                    let r = ex.transact(transaction);
-                    match r {
-                        Err(ExecutionError::NotEnoughBaseGas {
-                            required: _,
-                            got: _,
-                        })
-                        | Err(ExecutionError::SenderMustExist {})
-                        | Err(ExecutionError::InvalidNonce {
-                            expected: _,
-                            got: _,
-                        }) => {
-                            warn!("transaction execution error without inc_nonce: transaction={:?}, err={:?}", transaction, r);
-                        }
-                        Ok(executed) => {
-                            trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, executed, self.arena[*index].hash.clone());
-                            accumulated_fee += executed.fee;
-                            self.block_for_transaction
-                                .insert(transaction.hash(), (true, *index));
-                        }
-                        _ => {
-                            trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, self.arena[*index].hash.clone());
-                            self.block_for_transaction
-                                .insert(transaction.hash(), (true, *index));
-                        }
-                    }
-                }
-                self.block_fees.insert(*index, accumulated_fee);
-            }
+            ConsensusGraphInner::process_epoch_transactions(
+                &mut state,
+                &self.arena,
+                &reversed_indices,
+                block_by_hash,
+                &mut self.block_fees,
+                Some(&mut self.block_for_transaction),
+            );
 
             self.indices_in_epochs
                 .insert(new_pivot_chain[fork_at], reversed_indices);
 
             // Calculate the block reward for blocks inside the epoch
             // All transaction fees are shared among blocks inside one epoch
-            let mut epoch_accum_fee: U256 = 0.into();
-            let mut rewards: Vec<(Address, U256)> = Vec::new();
             if fork_at > REWARD_EPOCH_COUNT as usize {
                 let epoch_num = fork_at - REWARD_EPOCH_COUNT as usize;
                 let anticone_penalty_epoch_upper =
@@ -935,74 +889,16 @@ impl ConsensusGraphInner {
                     epoch_num
                         == *self.arena[pivot_index].data.epoch_number.borrow()
                 );
-                let difficulty = self.arena[pivot_index].difficulty;
-
                 let indices_in_epoch =
                     self.indices_in_epochs.get(&pivot_index).unwrap();
-
-                for index in indices_in_epoch {
-                    let block_fee = *self.block_fees.get(index).unwrap();
-                    assert!(U256::max_value() - epoch_accum_fee > block_fee);
-                    epoch_accum_fee += block_fee;
-
-                    let mut reward: U512 =
-                        if self.arena[*index].difficulty == difficulty {
-                            BASE_MINING_REWARD.into()
-                        } else {
-                            0.into()
-                        };
-
-                    if reward > 0.into() {
-                        let anticone_size = self.arena[*index]
-                            .data
-                            .anticone
-                            .difference(penalty_upper_anticone)
-                            .cloned()
-                            .collect::<HashSet<_>>()
-                            .len();
-                        let penalty = (reward * U512::from(anticone_size))
-                            / U512::from(ANTICONE_PENALTY_RATIO);
-                        if penalty > reward {
-                            reward = 0.into();
-                        } else {
-                            reward -= penalty;
-                        }
-                    }
-
-                    debug_assert!(reward <= U512::from(U256::max_value()));
-                    let reward = U256::from(reward);
-                    let author = block_by_hash
-                        .get(&self.arena[*index].hash)
-                        .unwrap()
-                        .block_header
-                        .author()
-                        .clone();
-                    rewards.push((author, reward));
-                }
-            }
-
-            if !rewards.is_empty() {
-                let block_count = U256::from(rewards.len());
-                let quotient: U256 = epoch_accum_fee / block_count;
-                let mut remainder: U256 =
-                    epoch_accum_fee - (block_count * quotient);
-                for (_, reward) in &mut rewards {
-                    *reward += quotient;
-                    if !remainder.is_zero() {
-                        *reward += 1.into();
-                        remainder -= 1.into();
-                    }
-                }
-
-                for (address, reward) in rewards {
-                    state
-                        .add_balance(
-                            &address,
-                            &reward,
-                            CleanupMode::ForceCreate,
-                        )
-                        .unwrap();
-                }
+                self.process_rewards_and_fees(
+                    &mut state,
+                    indices_in_epoch,
+                    pivot_index,
+                    penalty_upper_anticone,
+                    block_by_hash,
+                    |index| -> U256 { *self.block_fees.get(&index).unwrap() },
+                );
             }
 
             // FIXME: We may want to propagate the error up
@@ -1094,7 +990,7 @@ impl ConsensusGraphInner {
                     }
                 }
                 trace!(
-                    "Partially invalid in fork due to incorrect parent. {:?}",
+                    "Partially invalid in fork due to incorrect state root. {:?}",
                     block.block_header.clone()
                 );
                 return (
