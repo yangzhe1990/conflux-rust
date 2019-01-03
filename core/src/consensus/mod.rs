@@ -270,7 +270,8 @@ impl ConsensusGraphInner {
                 > (
                     pivot_points.get(&fork_info.pivot_index).unwrap().clone(),
                     self.arena[fork_info.pivot_index].hash,
-                ) {
+                )
+            {
                 return false;
             }
         }
@@ -483,6 +484,10 @@ impl ConsensusGraphInner {
             let block_fee = block_fee_fn(*index);
             assert!(U256::max_value() - epoch_accum_fee > block_fee);
             epoch_accum_fee += block_fee;
+
+            if self.arena[*index].data.partial_invalid {
+                continue;
+            }
 
             let mut reward: U512 =
                 if self.arena[*index].difficulty == difficulty {

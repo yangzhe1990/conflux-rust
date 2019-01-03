@@ -9,12 +9,13 @@ extern crate rand;
 pub use self::impls::TreapMap;
 use self::ready::Readiness;
 use crate::{
+    pow::WORKER_COMPUTATION_PARALLELISM,
     state::State,
     statedb::StateDb,
     storage::{Storage, StorageManager, StorageManagerTrait},
 };
 use ethereum_types::{Address, H256, H512, U256, U512};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use primitives::{
     Account, EpochId, SignedTransaction, TransactionWithSignature,
 };
@@ -22,9 +23,9 @@ use std::{
     cmp::{min, Ordering},
     collections::hash_map::HashMap,
     ops::DerefMut,
-    sync::Arc,
-    time::Instant,
+    sync::{mpsc::channel, Arc},
 };
+use threadpool::ThreadPool;
 
 pub const DEFAULT_MIN_TRANSACTION_GAS_PRICE: u64 = 1;
 pub const DEFAULT_MAX_TRANSACTION_GAS_LIMIT: u64 = 100_000;
@@ -191,6 +192,7 @@ pub struct TransactionPool {
     capacity: usize,
     inner: RwLock<TransactionPoolInner>,
     storage_manager: Arc<StorageManager>,
+    worker_pool: Mutex<ThreadPool>,
 }
 
 pub type SharedTransactionPool = Arc<TransactionPool>;
@@ -198,11 +200,14 @@ pub type SharedTransactionPool = Arc<TransactionPool>;
 impl TransactionPool {
     pub fn with_capacity(
         capacity: usize, storage_manager: Arc<StorageManager>,
-    ) -> Self {
+        worker_pool: ThreadPool,
+    ) -> Self
+    {
         TransactionPool {
             capacity,
             inner: RwLock::new(TransactionPoolInner::new()),
             storage_manager,
+            worker_pool: Mutex::new(worker_pool),
         }
     }
 
@@ -214,25 +219,89 @@ impl TransactionPool {
     )
     {
         // FIXME: do not unwrap.
+
+        let mut signed_trans = Vec::new();
+        if transactions.len() < WORKER_COMPUTATION_PARALLELISM * 8 {
+            let mut signed_txes = Vec::new();
+            for tx in transactions {
+                if let Ok(public) = tx.recover_public() {
+                    let signed_tx = SignedTransaction::new(public, tx);
+                    signed_txes.push(signed_tx);
+                } else {
+                    debug!(
+                        "Unable to recover the public key of transaction {:?}",
+                        tx.hash()
+                    );
+                }
+            }
+            signed_trans.push(signed_txes);
+        } else {
+            let tx_num = transactions.len();
+            let tx_num_per_worker = tx_num / WORKER_COMPUTATION_PARALLELISM;
+            let mut remainder =
+                tx_num - (tx_num_per_worker * WORKER_COMPUTATION_PARALLELISM);
+            let mut start_idx = 0;
+            let mut end_idx = 0;
+            let mut unsigned_trans = Vec::new();
+
+            for tx in transactions {
+                if start_idx == end_idx {
+                    // a new segment of transactions
+                    end_idx = start_idx + tx_num_per_worker;
+                    if remainder > 0 {
+                        end_idx += 1;
+                        remainder -= 1;
+                    }
+                    let unsigned_txes = Vec::new();
+                    unsigned_trans.push(unsigned_txes);
+                }
+
+                unsigned_trans.last_mut().unwrap().push(tx);
+
+                start_idx += 1;
+            }
+
+            signed_trans.resize(unsigned_trans.len(), Vec::new());
+            let (sender, receiver) = channel();
+            let worker_pool = self.worker_pool.lock().clone();
+            let mut idx = 0;
+            for unsigned_txes in unsigned_trans {
+                let sender = sender.clone();
+                worker_pool.execute(move || {
+                    let mut signed_txes = Vec::new();
+                    for tx in unsigned_txes {
+                        if let Ok(public) = tx.recover_public() {
+                            let signed_tx = SignedTransaction::new(public, tx);
+                            signed_txes.push(signed_tx);
+                        } else {
+                            debug!(
+                                "Unable to recover the public key of transaction {:?}",
+                                tx.hash()
+                            );
+                        }
+                    }
+                    sender.send((idx, signed_txes)).unwrap();
+                });
+                idx += 1;
+            }
+            worker_pool.join();
+
+            for (idx, signed_txes) in receiver.iter() {
+                signed_trans[idx] = signed_txes;
+            }
+        }
+
         let mut account_cache = AccountCache::new(
             self.storage_manager.get_state_at(latest_epoch).unwrap(),
         );
-        for tx in transactions {
-            trace!("Start tx {:?}", Instant::now());
-            if let Ok(public) = tx.recover_public() {
-                trace!("After Recover pub key {:?}", Instant::now());
-                let signed_tx = SignedTransaction::new(public, tx);
-                if !self.verify_transaction(&signed_tx) {
-                    warn!("Transaction discarded due to failure of passing verification {:?}", signed_tx.hash());
+
+        for txes in signed_trans {
+            for tx in txes {
+                if !self.verify_transaction(&tx) {
+                    warn!("Transaction discarded due to failure of passing verification {:?}", tx.hash());
                     continue;
                 }
-                trace!("After verify {:?}", Instant::now());
-                self.add_with_readiness(&mut account_cache, signed_tx);
-            } else {
-                debug!(
-                    "Unable to recover the public key of transaction {:?}",
-                    tx.hash()
-                );
+                self.add_with_readiness(&mut account_cache, tx);
             }
         }
     }

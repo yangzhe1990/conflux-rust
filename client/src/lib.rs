@@ -14,12 +14,13 @@ mod rpc;
 mod tests;
 
 use self::{http::Server as HttpServer, tcp::Server as TcpServer};
+pub use crate::configuration::Configuration;
 use blockgen::BlockGenerator;
 use core::{
-    storage::StorageManager, vm_factory::VmFactory, ConsensusGraph,
-    SynchronizationService, TransactionPool,
+    pow::WORKER_COMPUTATION_PARALLELISM, storage::StorageManager,
+    vm_factory::VmFactory, ConsensusGraph, SynchronizationService,
+    TransactionPool,
 };
-pub use crate::configuration::Configuration;
 
 use ctrlc::CtrlC;
 use db::SystemDB;
@@ -32,6 +33,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use threadpool::ThreadPool;
 use txgen::TransactionGenerator;
 
 pub struct ClientHandle {
@@ -77,6 +79,9 @@ impl Client {
     ) -> Result<ClientHandle, String> {
         info!("Working directory: {:?}", std::env::current_dir());
 
+        let worker_thread_pool =
+            ThreadPool::new(WORKER_COMPUTATION_PARALLELISM);
+
         let network_config = conf.net_config();
         let _cache_config = conf.cache_config();
 
@@ -95,6 +100,7 @@ impl Client {
         let txpool = Arc::new(TransactionPool::with_capacity(
             100000,
             storage_manager.clone(),
+            worker_thread_pool.clone(),
         ));
 
         let vm = VmFactory::new(1024 * 32);
