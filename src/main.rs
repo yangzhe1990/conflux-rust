@@ -169,7 +169,7 @@ fn main() {
                     conf_builder.appender(Appender::builder().build(
                         "logfile",
                         Box::new(
-                            FileAppender::builder().encoder(Box::new(PatternEncoder::new("{d:23.23} {h({l}):5.5} {T:<20.20} {t:12.12} - {m}{n}"))).build(log_file).unwrap(),
+                            FileAppender::builder().encoder(Box::new(PatternEncoder::new("{d} {h({l}):5.5} {T:<20.20} {t:12.12} - {m}{n}"))).build(log_file).unwrap(),
                         ),
                     ));
                 root_builder = root_builder.appender("logfile");

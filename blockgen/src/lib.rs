@@ -244,7 +244,6 @@ impl BlockGenerator {
             let tx = self.txgen.generate_transaction();
             txs.push(tx);
         }
-        trace!("finish generating txs");
         for tx in txs.clone() {
             self.txpool.add_pending(tx);
         }

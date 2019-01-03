@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from http.client import CannotSendRequest
+
 from eth_utils import decode_hex
 from rlp.sedes import Binary, BigEndianInt
 
@@ -19,8 +21,8 @@ from test_framework.util import *
 class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 15
-        self.conf_parameters = {"generate-tx":"true", "generate-tx-period-ms":"30", "log-level":"\"debug\""}
+        self.num_nodes = 40
+        self.conf_parameters = {"generate-tx":"true", "generate-tx-period-ms":"40", "log-level":"\"debug\""}
 
     def setup_network(self):
         node_per_host = 1
@@ -66,10 +68,11 @@ class P2PTest(ConfluxTestFramework):
             self.log.info("%d has addr=%s pubkey=%s", i, encode_hex(addr), pub_key)
             init_tx = create_transaction(value=int(default_config["TOTAL_COIN"]/self.num_nodes), receiver=addr, nonce=i)
             self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[init_tx]))
+        self.nodes[0].disconnect_p2ps()
         block_number = 10000000
         threads = {}
         generate_period = 2
-        tx_n = 10000
+        tx_n = 100000
         for i in range(1, block_number):
             wait_sec = random.expovariate(1 / generate_period)
             p = random.randint(0, self.num_nodes - 1)
@@ -88,9 +91,16 @@ class P2PTest(ConfluxTestFramework):
                 self.log.debug("%d generating block slowly %s", p, str(end-start))
             if i % 1000 == 0:
                 for t in threads.values():
-                    t.join(30)
+                    t.join(60)
                 # wait_for_block_count(self.nodes[0], i)
-                sync_blocks(self.nodes, timeout=60)
+                while True:
+                    try:
+                        sync_blocks(self.nodes, timeout=60)
+                        break
+                    except CannotSendRequest as e:
+                        time.sleep(1)
+                        self.log.warn(e)
+                        continue
                 self.log.info("%d blocks generated and synced", self.nodes[0].getblockcount())
         self.log.info("Pass")
 
@@ -104,7 +114,7 @@ class RemoteNode(P2PInterface):
 
 class ConnectThread(threading.Thread):
     def __init__(self, nodes, a, peers, latencies):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.nodes = nodes
         self.a = a
         self.peers = peers
@@ -129,7 +139,7 @@ class ConnectThread(threading.Thread):
 
 class GenerateThread(threading.Thread):
     def __init__(self, nodes, i, tx_n, log):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.nodes = nodes
         self.i = i
         self.tx_n = tx_n

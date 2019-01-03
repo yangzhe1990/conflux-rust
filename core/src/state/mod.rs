@@ -254,6 +254,7 @@ impl<'a> State<'a> {
     }
 
     pub fn commit(&mut self, epoch_id: EpochId) -> DbResult<()> {
+        debug!("Commit epoch {}", epoch_id);
         assert!(self.checkpoints.borrow().is_empty());
 
         let mut accounts = self.cache.borrow_mut();
@@ -282,6 +283,7 @@ impl<'a> State<'a> {
         assert!(self.checkpoints.borrow().is_empty());
 
         let mut accounts = self.cache.borrow_mut();
+        debug!("Notify for epoch {}", epoch_id);
         for (address, ref mut entry) in accounts
             .iter_mut()
             .filter(|&(_, ref entry)| entry.is_dirty())
@@ -383,7 +385,8 @@ impl<'a> State<'a> {
                                                 acc.balance() < b
                                             })
                                 })
-                            }))) {
+                            })))
+                    {
                         Some(address.clone())
                     } else {
                         None

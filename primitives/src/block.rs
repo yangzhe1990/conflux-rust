@@ -1,5 +1,6 @@
 use crate::{BlockHeader, SignedTransaction, TransactionWithSignature};
-use ethereum_types::{H256, U256};
+use ethereum_types::{Public, H256, U256};
+use lru::LruCache;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 
 /// A block, encoded as it is on the block chain.
@@ -31,7 +32,60 @@ impl Block {
     }
 }
 
-impl Encodable for Block {
+impl From<Block> for RawBlock {
+    fn from(block: Block) -> RawBlock {
+        RawBlock {
+            block_header: block.block_header,
+            transactions: block
+                .transactions
+                .into_iter()
+                .map(|tx| tx.transaction)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct RawBlock {
+    /// The header hash of this block.
+    pub block_header: BlockHeader,
+    /// The¡ transactions in this block.
+    pub transactions: Vec<TransactionWithSignature>,
+}
+
+impl RawBlock {
+    pub fn into_block_with_signed_tx(
+        self, tx_pub_cache: &mut LruCache<H256, Public>,
+    ) -> Result<Block, DecoderError> {
+        let signed_transactions: Result<Vec<SignedTransaction>, DecoderError> =
+            self.transactions
+                .into_iter()
+                .map(|transaction| {
+                    match tx_pub_cache.get(&transaction.hash()) {
+                        Some(public) => {
+                            Ok(SignedTransaction::new(*public, transaction))
+                        }
+                        None => match transaction.recover_public() {
+                            Ok(public) => {
+                                tx_pub_cache
+                                    .put(transaction.hash(), public.clone());
+                                Ok(SignedTransaction::new(public, transaction))
+                            }
+                            Err(_) => Err(DecoderError::Custom(
+                                "Cannot recover public key",
+                            )),
+                        },
+                    }
+                })
+                .collect();
+        Ok(Block {
+            block_header: self.block_header,
+            transactions: signed_transactions?,
+        })
+    }
+}
+
+impl Encodable for RawBlock {
     fn rlp_append(&self, stream: &mut RlpStream) {
         stream
             .begin_list(2)
@@ -40,7 +94,7 @@ impl Encodable for Block {
     }
 }
 
-impl Decodable for Block {
+impl Decodable for RawBlock {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         if rlp.as_raw().len() != rlp.payload_info()?.total() {
             return Err(DecoderError::RlpIsTooBig);
@@ -50,22 +104,10 @@ impl Decodable for Block {
         }
 
         let transactions = rlp.list_at::<TransactionWithSignature>(1)?;
-        let signed_transactions: Result<
-            Vec<SignedTransaction>,
-            DecoderError,
-        > = transactions
-            .into_iter()
-            .map(|transaction| match transaction.recover_public() {
-                Ok(public) => Ok(SignedTransaction::new(public, transaction)),
-                Err(_) => {
-                    Err(DecoderError::Custom("Cannot recover public key"))
-                }
-            })
-            .collect();
 
-        Ok(Block {
+        Ok(RawBlock {
             block_header: rlp.val_at(0)?,
-            transactions: signed_transactions?,
+            transactions,
         })
     }
 }

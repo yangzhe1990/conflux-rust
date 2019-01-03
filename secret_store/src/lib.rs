@@ -37,6 +37,12 @@ impl StoreInner {
     pub fn get_keypair(&self, index: usize) -> KeyPair {
         self.account_vec[index].clone()
     }
+
+    pub fn remove_keypair(&mut self, index: usize) {
+        let secret_string = self.account_vec[index].secret().to_hex();
+        self.secret_map.remove(&secret_string);
+        self.account_vec.remove(index);
+    }
 }
 
 pub struct SecretStore {
@@ -58,5 +64,9 @@ impl SecretStore {
 
     pub fn get_keypair(&self, index: usize) -> KeyPair {
         self.store.read().get_keypair(index)
+    }
+
+    pub fn remove_keypair(&self, index: usize) {
+        self.store.write().remove_keypair(index);
     }
 }

@@ -369,6 +369,19 @@ impl SignedTransaction {
         }
     }
 
+    pub fn new_unsigned(transaction: TransactionWithSignature) -> Self {
+        SignedTransaction {
+            transaction,
+            sender: UNSIGNED_SENDER,
+            public: None,
+        }
+    }
+
+    pub fn set_public(&mut self, public: Public) {
+        self.sender = public_to_address(&public);
+        self.public = Some(public);
+    }
+
     /// Returns transaction sender.
     pub fn sender(&self) -> Address { self.sender }
 
@@ -388,4 +401,6 @@ impl SignedTransaction {
         // the persistent storage part
         0
     }
+
+    pub fn public(&self) -> &Option<Public> { &self.public }
 }

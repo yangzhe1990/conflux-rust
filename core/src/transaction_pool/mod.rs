@@ -14,7 +14,8 @@ use crate::{
     statedb::StateDb,
     storage::{Storage, StorageManager, StorageManagerTrait},
 };
-use ethereum_types::{Address, H256, H512, U256, U512};
+use ethereum_types::{Address, Public, H256, H512, U256, U512};
+use lru::LruCache;
 use parking_lot::{Mutex, RwLock};
 use primitives::{
     Account, EpochId, SignedTransaction, TransactionWithSignature,
@@ -192,6 +193,7 @@ pub struct TransactionPool {
     capacity: usize,
     inner: RwLock<TransactionPoolInner>,
     storage_manager: Arc<StorageManager>,
+    pub transaction_pubkey_cache: RwLock<LruCache<H256, Public>>,
     worker_pool: Mutex<ThreadPool>,
 }
 
@@ -207,6 +209,8 @@ impl TransactionPool {
             capacity,
             inner: RwLock::new(TransactionPoolInner::new()),
             storage_manager,
+            // TODO Cache capacity should be set seperately
+            transaction_pubkey_cache: RwLock::new(LruCache::new(capacity * 2)),
             worker_pool: Mutex::new(worker_pool),
         }
     }
@@ -219,11 +223,16 @@ impl TransactionPool {
     )
     {
         // FIXME: do not unwrap.
-
         let mut signed_trans = Vec::new();
-        if transactions.len() < WORKER_COMPUTATION_PARALLELISM * 8 {
+
+        let uncached_trans:Vec<TransactionWithSignature>;
+        {
+            let mut tx_cache = self.transaction_pubkey_cache.write();
+            uncached_trans = transactions.into_iter().filter(|tx| tx_cache.get(&tx.hash()).is_none()).collect();
+        }
+        if uncached_trans.len() < WORKER_COMPUTATION_PARALLELISM * 8 {
             let mut signed_txes = Vec::new();
-            for tx in transactions {
+            for tx in uncached_trans {
                 if let Ok(public) = tx.recover_public() {
                     let signed_tx = SignedTransaction::new(public, tx);
                     signed_txes.push(signed_tx);
@@ -236,7 +245,7 @@ impl TransactionPool {
             }
             signed_trans.push(signed_txes);
         } else {
-            let tx_num = transactions.len();
+            let tx_num = uncached_trans.len();
             let tx_num_per_worker = tx_num / WORKER_COMPUTATION_PARALLELISM;
             let mut remainder =
                 tx_num - (tx_num_per_worker * WORKER_COMPUTATION_PARALLELISM);
@@ -244,7 +253,7 @@ impl TransactionPool {
             let mut end_idx = 0;
             let mut unsigned_trans = Vec::new();
 
-            for tx in transactions {
+            for tx in uncached_trans {
                 if start_idx == end_idx {
                     // a new segment of transactions
                     end_idx = start_idx + tx_num_per_worker;
@@ -294,14 +303,17 @@ impl TransactionPool {
         let mut account_cache = AccountCache::new(
             self.storage_manager.get_state_at(latest_epoch).unwrap(),
         );
-
-        for txes in signed_trans {
-            for tx in txes {
-                if !self.verify_transaction(&tx) {
-                    warn!("Transaction discarded due to failure of passing verification {:?}", tx.hash());
-                    continue;
+        {
+            let mut tx_cache = self.transaction_pubkey_cache.write();
+            for txes in signed_trans {
+                for tx in txes {
+                    tx_cache.put(tx.hash(), tx.public().expect("all signed_trans are recovered").clone());
+                    if !self.verify_transaction(&tx) {
+                        warn!("Transaction discarded due to failure of passing verification {:?}", tx.hash());
+                        continue;
+                    }
+                    self.add_with_readiness(&mut account_cache, tx);
                 }
-                self.add_with_readiness(&mut account_cache, tx);
             }
         }
     }
@@ -486,6 +498,11 @@ impl TransactionPool {
         let num_txs = min(num_txs, inner.ready_transactions.len());
         let mut nonce_map = HashMap::new();
         let mut future_txs = HashMap::new();
+        debug!(
+            "Before packing ready pool size:{}, pending pool size:{}",
+            inner.ready_transactions.len(),
+            inner.pending_transactions.len()
+        );
 
         for _ in 0..num_txs {
             let sum_gas_price = inner.ready_transactions.sum_weight();
@@ -499,7 +516,7 @@ impl TransactionPool {
                 .get_by_weight(rand_value)
                 .expect("Failed to pick transaction by weight")
                 .clone();
-            debug!("Get transaction from ready pool. tx: {:?}", tx.clone());
+            trace!("Get transaction from ready pool. tx: {:?}", tx.clone());
             inner.ready_transactions.remove(&tx.hash());
             let sender = tx.sender;
             let nonce_entry = nonce_map.entry(sender);
@@ -539,8 +556,6 @@ impl TransactionPool {
             }
         }
 
-        assert!(inner.ready_transactions.is_empty());
-
         for tx in packed_transactions.iter() {
             inner.ready_transactions.insert(
                 tx.hash(),
@@ -555,6 +570,11 @@ impl TransactionPool {
                 inner.ready_transactions.insert(tx.hash(), tx, gas_price);
             }
         }
+        debug!(
+            "After packing ready pool size:{}, pending pool size:{}",
+            inner.ready_transactions.len(),
+            inner.pending_transactions.len()
+        );
 
         packed_transactions
     }

@@ -21,8 +21,8 @@ from test_framework.util import *
 class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 5
-        self.conf_parameters = {"log-level":"\"error\""}
+        self.num_nodes = 8
+        self.conf_parameters = {"log-level":"\"debug\""}
 
     def setup_network(self):
         self.setup_nodes()
@@ -143,6 +143,7 @@ class P2PTest(ConfluxTestFramework):
             wait_until(lambda: self.check_account(k, balance_map))
         block_gen_thread.stop()
         block_gen_thread.join()
+        sync_blocks(self.nodes)
         self.log.info("Pass")
 
     def check_account(self, k, balance_map):

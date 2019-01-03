@@ -46,40 +46,15 @@ class P2PTest(ConfluxTestFramework):
         sync_blocks(self.nodes)
 
     def run_test(self):
-        block_number = 10
+        block_number = 1000
 
         for i in range(1, block_number):
             chosen_peer = random.randint(0, self.num_nodes - 1)
             block_hash = self.nodes[chosen_peer].generate(1, 0)
             self.log.info("%d generate block %s", chosen_peer, block_hash)
-            time.sleep(random.random())
+            time.sleep(random.random()/2)
         wait_for_block_count(self.nodes[0], block_number)
-        sync_blocks(self.nodes, timeout=10)
-        # assert_equal(len(self.nodes[0].getblock(block_hash[0])["transactions"]), 10)
-        self.log.info("remotely generated blocks received by all")
-
-        """Start Some P2P Message Test From Here"""
-        default_node = self.nodes[0].add_p2p_connection(DefaultNode())
-        network_thread_start()
-        self.nodes[0].p2p.wait_for_status()
-        tip = default_node.genesis.block_header.hash
-        height = 1
-        for i in range(block_number):
-            # Use the mininode and blocktools functionality to manually build a block
-            # Calling the generate() rpc is easier, but this allows us to exactly
-            # control the blocks and transactions.
-            block = create_block(tip, height)
-            self.nodes[0].p2p.send_protocol_msg(NewBlock(block=block))
-            tip = block.block_header.hash
-            self.log.info("generate block %s", encode_hex(tip))
-            height += 1
-        wait_for_block_count(self.nodes[0], block_number * 2)
-        sync_blocks(self.nodes, timeout=10)
-        balance = self.nodes[0].getbalance(eth_utils.encode_hex(privtoaddr(decode_hex("0x46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"))))
-        self.log.info("Balance %s", parse_as_int(balance))
-        # assert_equal(self.nodes[0].getbestblockhash()[2:], encode_hex(tip))
-        # self.nodes[0].generate(1)
-        # wait_for_block_count(self.nodes[0], self.block_number+1)
+        sync_blocks(self.nodes, timeout=30)
         self.log.info("Pass")
 
 

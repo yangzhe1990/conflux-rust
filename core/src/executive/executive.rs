@@ -733,14 +733,11 @@ impl<'a> CallCreateExecutive<'a> {
     pub fn consume<'b: 'a>(
         self, state: &mut State<'b>, top_substate: &mut Substate,
     ) -> vm::Result<FinalizationResult> {
-        println!("self.gas={:?}", self.gas);
         let mut last_res =
             Some((false, self.gas, self.exec(state, top_substate)));
 
-        let mut callstack: Vec<(
-            Option<Address>,
-            CallCreateExecutive<'a>,
-        )> = Vec::new();
+        let mut callstack: Vec<(Option<Address>, CallCreateExecutive<'a>)> =
+            Vec::new();
         loop {
             match last_res {
                 None => {

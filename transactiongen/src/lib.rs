@@ -48,7 +48,7 @@ impl TransactionGeneratorConfig {
 
 pub struct TransactionGenerator {
     pub consensus: SharedConsensusGraph,
-    storage_manager: Arc<StorageManager>,
+    pub storage_manager: Arc<StorageManager>,
     txpool: SharedTransactionPool,
     secret_store: SharedSecretStore,
     state: RwLock<TransGenState>,
@@ -88,7 +88,6 @@ impl TransactionGenerator {
 
     pub fn generate_transaction(&self) -> SignedTransaction {
         // Generate new address with 10% probability
-        trace!("start generating");
         let is_send_to_new_address = (rand::thread_rng().gen_range(0, 10) == 0)
             || (self.secret_store.count() < 10);
         let receiver_address = match is_send_to_new_address {
@@ -105,7 +104,6 @@ impl TransactionGenerator {
             }
         };
 
-        trace!("try to get state");
         let account_count = self.secret_store.count();
         let sender_index: usize = random::<usize>() % account_count;
         let sender_kp = self.secret_store.get_keypair(sender_index);
@@ -129,7 +127,6 @@ impl TransactionGenerator {
                 U512::from(H512::random()) % U512::from(sender_balance),
             );
         }
-        trace!("before signing");
 
         let tx = Transaction {
             nonce: sender_nonce,
@@ -140,7 +137,6 @@ impl TransactionGenerator {
             data: Bytes::new(),
         };
         let r = tx.sign(sender_kp.secret());
-        trace!("after signing");
         r
     }
 
@@ -148,6 +144,7 @@ impl TransactionGenerator {
         txgen: Arc<TransactionGenerator>, tx_config: TransactionGeneratorConfig,
     ) -> Result<(), Error> {
         let mut nonce_map: HashMap<Address, U256> = HashMap::new();
+        let mut balance_map: HashMap<Address, U256> = HashMap::new();
 
         let key_pair = txgen.key_pair.clone().expect("should exist");
         let secret_store = SecretStore::new();
@@ -155,13 +152,14 @@ impl TransactionGenerator {
         //        balance_map
         //            .insert(public_to_address(key_pair.public()),
         // U256::from(10000000));
-        trace!(
+        debug!(
             "tx_gen address={:?} pub_key={:?}",
             public_to_address(key_pair.public()),
             key_pair.public()
         );
-        trace!("{:?} {:?}", tx_config.generate_tx, tx_config.period);
+        debug!("{:?} {:?}", tx_config.generate_tx, tx_config.period);
         secret_store.insert(key_pair);
+        let mut tx_n = 0;
         loop {
             match *txgen.state.read() {
                 TransGenState::Stop => return Ok(()),
@@ -198,8 +196,17 @@ impl TransactionGenerator {
                 sender_address,
                 sender_balance
             );
-            if sender_balance.is_none() {
+            if sender_balance.is_none()
+                || sender_balance.clone().unwrap() == 0.into()
+            {
                 thread::sleep(tx_config.period);
+                continue;
+            }
+            let sender_balance = balance_map
+                .entry(sender_address)
+                .or_insert(sender_balance.unwrap());
+            if *sender_balance < 42000.into() {
+                secret_store.remove_keypair(sender_index);
                 continue;
             }
 
@@ -208,7 +215,7 @@ impl TransactionGenerator {
             let mut receiver_index: usize = random();
             receiver_index %= account_count;
             if sender_index == receiver_index {
-                balance_to_transfer = sender_balance.unwrap() / 2;
+                balance_to_transfer = *sender_balance / 2;
                 // Create a new receiver account
                 loop {
                     receiver_kp = Random.generate()?;
@@ -219,6 +226,7 @@ impl TransactionGenerator {
             } else {
                 receiver_kp = secret_store.get_keypair(receiver_index);
             }
+            *sender_balance -= balance_to_transfer + 21000;
             // Generate nonce for the transaction
             let sender_state_nonce = state.nonce(&sender_address).unwrap();
             let entry = nonce_map
@@ -231,16 +239,18 @@ impl TransactionGenerator {
             *entry += U256::one();
 
             let receiver_address = public_to_address(receiver_kp.public());
-            debug!(
+            trace!(
                 "receiver={:?} value={:?} nonce={:?}",
                 receiver_address, balance_to_transfer, sender_nonce
             );
+            *balance_map.entry(receiver_address).or_insert(0.into()) +=
+                balance_to_transfer;
             // Generate the transaction, sign it, and push into the transaction
             // pool
             let tx = Transaction {
                 nonce: sender_nonce,
-                gas_price: U256::from(100u64),
-                gas: U256::from(1u64),
+                gas_price: U256::from(1u64),
+                gas: U256::from(21000u64),
                 value: balance_to_transfer,
                 action: Action::Call(receiver_address),
                 data: Bytes::new(),
@@ -254,6 +264,10 @@ impl TransactionGenerator {
                 txgen.consensus.best_block_hash(),
                 tx_to_insert,
             );
+            tx_n += 1;
+            if tx_n % 100 == 0 {
+                info!("Generated {} transactions", tx_n);
+            }
             thread::sleep(tx_config.period);
         }
     }

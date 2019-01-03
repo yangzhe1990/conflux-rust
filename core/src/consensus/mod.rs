@@ -351,6 +351,7 @@ impl ConsensusGraphInner {
             self.arena[*index].data.anticone.insert(me);
         }
 
+        debug!("Block {} anticone size {}", self.arena[me].hash, anticone.len());
         self.arena[me].data.anticone = anticone;
     }
 
@@ -438,14 +439,17 @@ impl ConsensusGraphInner {
                         got: _,
                     })
                     | Err(ExecutionError::SenderMustExist {})
-                    | Err(ExecutionError::InvalidNonce {
-                        expected: _,
-                        got: _,
-                    }) => {
-                        warn!("transaction execution error without inc_nonce: transaction={:?}, err={:?}", transaction, r);
+                    | Err(ExecutionError::Internal(_)) => {
+                        warn!("tx execution error: transaction={:?}, err={:?}", transaction, r);
+                    }
+                    Err(ExecutionError::InvalidNonce {
+                              expected: _,
+                              got: _,
+                          }) => {
+                        trace!("tx execution InvalidNonce without inc_nonce: transaction={:?}, err={:?}", transaction, r);
                     }
                     Ok(executed) => {
-                        trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, executed, arena[*index].hash.clone());
+                        trace!("tx executed successfully: transaction={:?}, result={:?}, in block {:?}", transaction, executed, arena[*index].hash.clone());
                         accumulated_fee += executed.fee;
                         if let Some(ref mut block_for_transaction) =
                             block_for_transaction
@@ -455,7 +459,7 @@ impl ConsensusGraphInner {
                         }
                     }
                     _ => {
-                        trace!("transaction executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, arena[*index].hash.clone());
+                        trace!("tx executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, arena[*index].hash.clone());
                         if let Some(ref mut block_for_transaction) =
                             block_for_transaction
                         {
@@ -640,6 +644,7 @@ impl ConsensusGraphInner {
                 0.into(),
                 self.vm.clone(),
             );
+            debug!("Process tx epoch_id={}, block_count={}", self.arena[chain[fork_at]].hash, reversed_indices.len());
             ConsensusGraphInner::process_epoch_transactions(
                 &mut state,
                 &self.arena,
@@ -731,7 +736,7 @@ impl ConsensusGraphInner {
     ) -> bool
     {
         if self.arena[self.arena[new].parent].data.partial_invalid {
-            trace!(
+            warn!(
                 "Partially invalid due to partially invalid parent. {:?}",
                 block.block_header.clone()
             );
@@ -741,7 +746,7 @@ impl ConsensusGraphInner {
         // Check whether the new block select the correct parent block
         if self.arena[new].parent != *self.pivot_chain.last().unwrap() {
             if !self.check_correct_parent(new, sync_graph) {
-                trace!(
+                warn!(
                     "Partially invalid due to picking incorrect parent. {:?}",
                     block.block_header.clone()
                 );
@@ -792,7 +797,7 @@ impl ConsensusGraphInner {
             };
 
         if !state_root_valid {
-            trace!(
+            warn!(
                 "Partially invalid in fork due to incorrect state root. {:?}",
                 block.block_header.clone()
             );
@@ -823,6 +828,7 @@ impl ConsensusGraphInner {
                 self.deferred_state_root_following_best_block(),
             );
         }
+        debug!("Block {} is fully valid", self.arena[new].hash);
 
         // Update the total difficulty for the new block
         let mut me = new;
@@ -929,6 +935,8 @@ impl ConsensusGraphInner {
                 0.into(),
                 self.vm.clone(),
             );
+
+            debug!("Process tx epoch_id={}, block_count={}", self.arena[new_pivot_chain[fork_at]].hash, reversed_indices.len());
             ConsensusGraphInner::process_epoch_transactions(
                 &mut state,
                 &self.arena,
@@ -1129,9 +1137,8 @@ impl ConsensusGraph {
         let blocks = self.blocks.read();
         let block = blocks.get(hash).unwrap();
 
-        debug!(
-            "insert new block into consensus: hash={:?}, block_header={:?} tx_count={}",
-            block.hash(),
+        info!(
+            "insert new block into consensus: block_header={:?} tx_count={}",
             block.block_header,
             block.transactions.len(),
         );
@@ -1140,6 +1147,7 @@ impl ConsensusGraph {
             self.txpool.remove_pending(&tx);
             self.txpool.remove_ready(tx.clone());
         }
+        info!("Transaction pool size={}", self.txpool.len());
 
         self.inner.write().on_new_block(
             &self.txpool,

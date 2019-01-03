@@ -41,8 +41,8 @@ pub const MAX_HEADERS_TO_SEND: u64 = 512;
 pub const MAX_BLOCKS_TO_SEND: u64 = 256;
 const MIN_PEERS_PROPAGATION: usize = 4;
 const MAX_PEERS_PROPAGATION: usize = 128;
-const HEADERS_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
-const BLOCKS_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const HEADERS_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const BLOCKS_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_GET_HEADERS_NUM: u64 = 1;
 
 const TX_TIMER: TimerToken = 0;
@@ -138,12 +138,12 @@ impl SynchronizationProtocolHandler {
         let mut raw = Bytes::new();
         raw.push(msg.msg_id().into());
         raw.extend(msg.rlp_bytes().iter());
-        io.send(peer, raw).map_err(|e| {
+        if let Err(e) = io.send(peer, raw) {
             debug!("Error sending message: {:?}", e);
             io.disconnect_peer(peer);
-            e
-        })?;
-        // FIXME return error after we implement error handling
+            // FIXME return error after we implement error handling
+            return Ok(());
+        };
         debug!(
             "Send message({}) to {:?}",
             msg.msg_id(),
@@ -277,7 +277,9 @@ impl SynchronizationProtocolHandler {
                     .hashes
                     .iter()
                     .take(MAX_BLOCKS_TO_SEND as usize)
-                    .filter_map(|hash| self.graph.block_by_hash(hash))
+                    .filter_map(|hash| {
+                        self.graph.block_by_hash(hash).map(|b| b.into())
+                    })
                     .collect(),
             });
             self.send_message(io, peer, msg.as_ref())?;
@@ -511,7 +513,7 @@ impl SynchronizationProtocolHandler {
             blocks
                 .blocks
                 .iter()
-                .map(|b| b.hash())
+                .map(|b| b.block_header.hash())
                 .collect::<Vec<H256>>()
         );
         self.match_request(io, peer, blocks.request_id())?;
@@ -520,7 +522,13 @@ impl SynchronizationProtocolHandler {
         {
             let mut blocks_in_flight = self.blocks_in_flight.lock();
 
-            for block in blocks.blocks {
+            for raw_block in blocks.blocks {
+                let block = raw_block.into_block_with_signed_tx(
+                    &mut *self
+                        .get_transaction_pool()
+                        .transaction_pubkey_cache
+                        .write(),
+                )?;
                 let hash = block.hash();
                 blocks_in_flight.remove(&hash);
 
@@ -582,12 +590,15 @@ impl SynchronizationProtocolHandler {
         }
 
         let new_block = rlp.as_val::<NewBlock>()?;
+        let block = new_block.block.into_block_with_signed_tx(
+            &mut *self.get_transaction_pool().transaction_pubkey_cache.write(),
+        )?;
         debug!(
             "on_new_block, header={:?} tx_number={}",
-            new_block.block.block_header,
-            new_block.block.transactions.len()
+            block.block_header,
+            block.transactions.len()
         );
-        let hash = new_block.block.block_header.hash();
+        let hash = block.block_header.hash();
 
         self.headers_in_flight.lock().remove(&hash);
         self.blocks_in_flight.lock().remove(&hash);
@@ -596,21 +607,20 @@ impl SynchronizationProtocolHandler {
 
         let res = self
             .graph
-            .insert_block_header(new_block.block.block_header.clone(), true);
+            .insert_block_header(block.block_header.clone(), true);
         if res.0 {
             need_to_relay.extend(res.1);
         } else {
             return Err(Error::from_kind(ErrorKind::Invalid));
         }
 
-        let (_, to_relay) =
-            self.graph.insert_block(new_block.block.clone(), true);
+        let (_, to_relay) = self.graph.insert_block(block.clone(), true);
         if to_relay {
             need_to_relay.push(hash);
         }
 
-        let parent_hash = new_block.block.block_header.parent_hash();
-        let referee_hashes = new_block.block.block_header.referee_hashes();
+        let parent_hash = block.block_header.parent_hash();
+        let referee_hashes = block.block_header.referee_hashes();
 
         debug_assert!(!self.graph.verified_invalid(parent_hash));
         if !self.graph.contains_block_header(parent_hash) {
@@ -838,10 +848,14 @@ impl SynchronizationProtocolHandler {
         let syn = self.syn.read();
         for hash in hashes {
             let block = self.graph.block_by_hash(hash).unwrap();
-            let msg: Box<dyn Message> = Box::new(NewBlock { block });
+            let msg: Box<dyn Message> = Box::new(NewBlock {
+                block: block.into(),
+            });
             for (id, _) in syn.peers.iter() {
                 self.send_message(io, *id, msg.as_ref())
-                    .expect("Error sending new blocks!");
+                    .unwrap_or_else(|e| {
+                        warn!("Error sending new blocks, err={:?}", e);
+                    });
             }
         }
     }
@@ -1034,8 +1048,8 @@ impl SynchronizationProtocolHandler {
                 warn!("Request is None");
             }
         }
-        trace!("headers_in_flight: {:?}", *self.headers_in_flight.lock());
-        trace!("blocks_in_flight: {:?}", *self.blocks_in_flight.lock());
+        debug!("headers_in_flight: {:?}", *self.headers_in_flight.lock());
+        debug!("blocks_in_flight: {:?}", *self.blocks_in_flight.lock());
     }
 
     pub fn remove_request(

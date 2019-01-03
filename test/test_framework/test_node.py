@@ -127,9 +127,9 @@ class TestNode:
                 ssh_args, self.user, self.ip, self.datadir)
             cli_conf = "scp {3} -r {0}/. {1}@{2}:{0};".format(
                 self.datadir, self.user, self.ip, ssh_args)
-            self.args[0] = "~/conflux"
+            self.args[0] = "heaptrack ~/conflux"
             cli_exe = "ssh {} {}@{} \"{} > /dev/null\"".format(
-                ssh_args, self.user, self.ip, "cd {} && ".format(self.datadir) + " ".join(self.args))
+                ssh_args, self.user, self.ip, "cd {} && export RUST_BACKTRACE=full && ".format(self.datadir) + " ".join(self.args))
             print(cli_mkdir + cli_conf + cli_exe)
             self.process = subprocess.Popen(cli_mkdir + cli_conf + cli_exe,
                                             stdout=stdout, stderr=stderr, cwd=self.datadir, shell=True, **kwargs)

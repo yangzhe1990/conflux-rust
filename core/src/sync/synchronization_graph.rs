@@ -739,7 +739,7 @@ impl SynchronizationGraph {
         debug_assert!(hash == inner.arena[me].block_header.hash());
         debug_assert!(!inner.arena[me].block_ready);
         inner.arena[me].block_ready = true;
-        warn!("block_ready {}", hash);
+        trace!("block_ready {}", hash);
 
         if need_to_verify {
             let r = self.verification_config.verify_block_basic(&block);
@@ -753,11 +753,13 @@ impl SynchronizationGraph {
         let mut queue = VecDeque::new();
         queue.push_back(me);
 
+        if inner.arena[me].graph_status != BLOCK_INVALID {
+            self.blocks.write().insert(hash, block.clone());
+        } else {
+            insert_success = false;
+        }
         while let Some(index) = queue.pop_front() {
             if inner.arena[index].graph_status == BLOCK_INVALID {
-                if me == index {
-                    insert_success = false;
-                }
                 Self::set_and_propagate_invalid(
                     inner.deref_mut(),
                     &mut queue,
@@ -766,10 +768,6 @@ impl SynchronizationGraph {
                 );
             } else if inner.new_to_be_block_graph_ready(index) {
                 inner.arena[index].graph_status = BLOCK_GRAPH_READY;
-                if me == index {
-                    self.blocks.write().insert(hash, block.clone());
-                    need_to_relay = true;
-                }
                 let h = inner.arena[index].block_header.hash();
                 let (new_best_hash, deferred_state_root) =
                     self.consensus.on_new_block(&h, inner.deref_mut());
@@ -789,24 +787,10 @@ impl SynchronizationGraph {
                     );
                     queue.push_back(*referrer);
                 }
-            } else {
-                // There are two possible cases at this point.
-                // 1. Not block-graph-ready;
-                //    In this case, should check whether current block is
-                // header-graph-ready.    If true, need to relay
-                // the current block.    For other blocks, do
-                // nothing. 2. Not new to be block-graph-ready;
-                //    In this case, do nothing.
-                if me == index {
-                    // Impossible to be case 2.
-                    if inner.arena[index].graph_status
-                        >= BLOCK_HEADER_GRAPH_READY
-                    {
-                        need_to_relay = true;
-                    }
-                    self.blocks.write().insert(hash, block.clone());
-                }
             }
+        }
+        if inner.arena[me].graph_status >= BLOCK_HEADER_GRAPH_READY {
+            need_to_relay = true;
         }
 
         // Post-processing invalid blocks.

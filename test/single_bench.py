@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import datetime
+from http.client import CannotSendRequest
 
 from conflux.utils import convert_to_nodeid, privtoaddr, parse_as_int
 from test_framework.blocktools import  create_transaction
@@ -10,36 +12,24 @@ from test_framework.util import *
 class MessageTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 0
+        self.num_nodes = 1
         self.conf_parameters = {"log-level":"\"error\""}
 
     def setup_network(self):
-        self.setup_nodes()
+        self.setup_nodes(binary=[os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            "../target/release/conflux")])
 
     def run_test(self):
 
         # Start mininode connection
         default_node = DefaultNode()
-        self.node = default_node
-        kwargs = {}
-        args = {}
-        kwargs['dstport'] = 32323
-        kwargs['dstaddr'] = '127.0.0.1'
-        default_node.peer_connect(*args, **kwargs)
+        self.node = self.nodes[0]
+        self.node.add_p2p_connection(default_node)
         network_thread_start()
         default_node.wait_for_status()
 
-        # Start rpc connection
-        self.rpc = get_rpc_proxy(
-            "http://127.0.0.1:11000",
-            1,
-            timeout=10)
-        challenge = random.randint(0, 2**32-1)
-        signature = self.rpc.getnodeid(list(int_to_bytes(challenge)))
-        node_id, x, y = convert_to_nodeid(signature, challenge)
-        self.log.info("get nodeid %s", eth_utils.encode_hex(node_id))
-
-        block_gen_thread = BlockGenThread(self.rpc, self.log, random.random())
+        block_gen_thread = BlockGenThread(self.node, self.log, random.random())
         block_gen_thread.start()
         genesis_key = default_config["GENESIS_PRI_KEY"]
         balance_map = {genesis_key: default_config["TOTAL_COIN"]}
@@ -50,10 +40,10 @@ class MessageTest(ConfluxTestFramework):
         all_txs = []
         tx_n = 20000
         gas_price = 1
-        self.log.info("start to generate %d transactions with about %d seconds", tx_n, tx_n/10/2)
+        self.log.info("start to generate %d transactions", tx_n)
         for i in range(tx_n):
             if i % 1000 == 0:
-                self.log.info("generated %d tx", i)
+                self.log.debug("generated %d tx", i)
             sender_key = random.choice(list(balance_map))
             nonce = nonce_map[sender_key]
             if random.random() < 0.1 and balance_map[sender_key] > 21000 * 4 * tx_n:
@@ -72,27 +62,26 @@ class MessageTest(ConfluxTestFramework):
             all_txs.append(tx)
             nonce_map[sender_key] = nonce + 1
             balance_map[sender_key] -= value + gas_price * 21000
+        start_time = datetime.datetime.now()
         i = 0
         for tx in all_txs:
             i += 1
             if i % 1000 == 0:
-                self.log.info("Sent %d tx", i)
-            self.node.send_protocol_msg(Transactions(transactions=[tx]))
+                self.log.debug("Sent %d tx", i)
+            self.node.p2p.send_protocol_msg(Transactions(transactions=[tx]))
         for k in balance_map:
-            wait_until(lambda: self.check_account(k, balance_map))
+                wait_until(lambda: self.check_account(k, balance_map))
+        end_time = datetime.datetime.now()
+        time_used = (end_time - start_time).total_seconds()
         block_gen_thread.stop()
         block_gen_thread.join()
-        self.log.info("Pass")
-        while True:
-            pass
-
-    def send_msg(self, msg):
-        self.node.send_protocol_msg(msg)
+        self.log.info("Time used: %f seconds", time_used)
+        self.log.info("Tx per second: %f", tx_n / time_used)
 
     def check_account(self, k, balance_map):
         addr = eth_utils.encode_hex(privtoaddr(k))
         try:
-            balance = parse_as_int(self.rpc.getbalance(addr))
+            balance = parse_as_int(self.node.getbalance(addr))
         except Exception as e:
             self.log.info("Fail to get balance, error=%s", str(e))
             return False
