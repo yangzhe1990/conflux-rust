@@ -225,10 +225,13 @@ impl TransactionPool {
         // FIXME: do not unwrap.
         let mut signed_trans = Vec::new();
 
-        let uncached_trans:Vec<TransactionWithSignature>;
+        let uncached_trans: Vec<TransactionWithSignature>;
         {
             let mut tx_cache = self.transaction_pubkey_cache.write();
-            uncached_trans = transactions.into_iter().filter(|tx| tx_cache.get(&tx.hash()).is_none()).collect();
+            uncached_trans = transactions
+                .into_iter()
+                .filter(|tx| tx_cache.get(&tx.hash()).is_none())
+                .collect();
         }
         if uncached_trans.len() < WORKER_COMPUTATION_PARALLELISM * 8 {
             let mut signed_txes = Vec::new();
@@ -307,7 +310,12 @@ impl TransactionPool {
             let mut tx_cache = self.transaction_pubkey_cache.write();
             for txes in signed_trans {
                 for tx in txes {
-                    tx_cache.put(tx.hash(), tx.public().expect("all signed_trans are recovered").clone());
+                    tx_cache.put(
+                        tx.hash(),
+                        tx.public()
+                            .expect("all signed_trans are recovered")
+                            .clone(),
+                    );
                     if !self.verify_transaction(&tx) {
                         warn!("Transaction discarded due to failure of passing verification {:?}", tx.hash());
                         continue;
@@ -436,6 +444,15 @@ impl TransactionPool {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
         self.add_pending_without_lock(inner, transaction)
+    }
+
+    pub fn recycle_future_transactions(
+        &self, transactions: Vec<SignedTransaction>, state: Storage,
+    ) {
+        let mut account_cache = AccountCache::new(state);
+        for tx in transactions {
+            self.add_with_readiness(&mut account_cache, tx);
+        }
     }
 
     pub fn add_pending_without_lock(

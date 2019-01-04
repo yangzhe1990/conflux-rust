@@ -12,7 +12,7 @@ use crate::{
 };
 use ethereum_types::{Address, H256, U256, U512};
 use parking_lot::RwLock;
-use primitives::Block;
+use primitives::{Block, SignedTransaction};
 use slab::Slab;
 use std::{
     cell::RefCell,
@@ -351,7 +351,11 @@ impl ConsensusGraphInner {
             self.arena[*index].data.anticone.insert(me);
         }
 
-        debug!("Block {} anticone size {}", self.arena[me].hash, anticone.len());
+        debug!(
+            "Block {} anticone size {}",
+            self.arena[me].hash,
+            anticone.len()
+        );
         self.arena[me].data.anticone = anticone;
     }
 
@@ -415,6 +419,7 @@ impl ConsensusGraphInner {
         epoch_blocks: &Vec<usize>, block_by_hash: &HashMap<H256, Block>,
         block_fees: &mut HashMap<usize, U256>,
         mut block_for_transaction: Option<&mut HashMap<H256, (bool, usize)>>,
+        re_pending: bool, to_pending: &mut Vec<SignedTransaction>,
     )
     {
         let spec = Spec::new_byzantium();
@@ -440,13 +445,20 @@ impl ConsensusGraphInner {
                     })
                     | Err(ExecutionError::SenderMustExist {})
                     | Err(ExecutionError::Internal(_)) => {
-                        warn!("tx execution error: transaction={:?}, err={:?}", transaction, r);
+                        warn!(
+                            "tx execution error: transaction={:?}, err={:?}",
+                            transaction, r
+                        );
                     }
-                    Err(ExecutionError::InvalidNonce {
-                              expected: _,
-                              got: _,
-                          }) => {
-                        trace!("tx execution InvalidNonce without inc_nonce: transaction={:?}, err={:?}", transaction, r);
+                    Err(ExecutionError::InvalidNonce { expected, got }) => {
+                        trace!("tx execution InvalidNonce without inc_nonce: transaction={:?}, err={:?}", transaction.clone(), r);
+                        if re_pending && got > expected {
+                            trace!(
+                                "To re-add transaction ({:?}) to pending pool",
+                                transaction.clone()
+                            );
+                            to_pending.push(transaction.clone());
+                        }
                     }
                     Ok(executed) => {
                         trace!("tx executed successfully: transaction={:?}, result={:?}, in block {:?}", transaction, executed, arena[*index].hash.clone());
@@ -644,7 +656,11 @@ impl ConsensusGraphInner {
                 0.into(),
                 self.vm.clone(),
             );
-            debug!("Process tx epoch_id={}, block_count={}", self.arena[chain[fork_at]].hash, reversed_indices.len());
+            debug!(
+                "Process tx epoch_id={}, block_count={}",
+                self.arena[chain[fork_at]].hash,
+                reversed_indices.len()
+            );
             ConsensusGraphInner::process_epoch_transactions(
                 &mut state,
                 &self.arena,
@@ -652,6 +668,8 @@ impl ConsensusGraphInner {
                 block_by_hash,
                 &mut block_fees,
                 None,
+                false,
+                &mut Vec::new(),
             );
 
             indices_in_epochs.insert(chain[fork_at], reversed_indices);
@@ -893,6 +911,7 @@ impl ConsensusGraphInner {
             }
         }
 
+        let mut to_pending = Vec::new();
         while fork_at < new_pivot_chain.len() {
             // First, identify all the blocks in the current epoch
             let mut queue = Vec::new();
@@ -936,7 +955,11 @@ impl ConsensusGraphInner {
                 self.vm.clone(),
             );
 
-            debug!("Process tx epoch_id={}, block_count={}", self.arena[new_pivot_chain[fork_at]].hash, reversed_indices.len());
+            debug!(
+                "Process tx epoch_id={}, block_count={}",
+                self.arena[new_pivot_chain[fork_at]].hash,
+                reversed_indices.len()
+            );
             ConsensusGraphInner::process_epoch_transactions(
                 &mut state,
                 &self.arena,
@@ -944,7 +967,10 @@ impl ConsensusGraphInner {
                 block_by_hash,
                 &mut self.block_fees,
                 Some(&mut self.block_for_transaction),
+                true,
+                &mut to_pending,
             );
+
             self.indices_in_epochs
                 .insert(new_pivot_chain[fork_at], reversed_indices);
 
@@ -988,6 +1014,12 @@ impl ConsensusGraphInner {
 
             fork_at += 1;
         }
+
+        let state = self
+            .storage_manager
+            .get_state_at(self.arena[*new_pivot_chain.last().unwrap()].hash)
+            .unwrap();
+        txpool.recycle_future_transactions(to_pending, state);
 
         self.pivot_chain = new_pivot_chain;
         (
