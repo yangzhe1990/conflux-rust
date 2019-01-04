@@ -137,6 +137,11 @@ impl Drop for TrieNode {
 }
 
 impl TrieNode {
+    const MAX_VALUE_SIZE: usize = 0xfffffffe;
+    /// A special value to use in Delta Mpt to indicate that the value is
+    /// deleted.
+    const VALUE_TOMBSTONE: u32 = 0xffffffff;
+
     fn get_compressed_path_size(&self) -> u16 {
         (self.path_steps / 2)
             + (((self.path_begin_mask | self.path_end_mask) != 0) as u16)
@@ -196,36 +201,44 @@ impl TrieNode {
         self.children_table.get_children_count()
     }
 
-    fn value_as_slice(&self) -> &[u8] {
-        let size = self.value_size as usize;
-        if size != 0 {
-            self.value.get_slice(size)
+    fn value_as_slice(&self) -> Option<&[u8]> {
+        let size = self.value_size;
+        if size == 0 {
+            None
+        } else if size == Self::VALUE_TOMBSTONE {
+            Some(&[])
         } else {
-            &[]
+            Some(self.value.get_slice(size as usize))
         }
     }
 
     fn value_clone(&self) -> Option<Box<[u8]>> {
-        let size = self.value_size as usize;
-        if size != 0 {
-            Option::Some(self.value.get_slice(size).into())
+        let size = self.value_size;
+        if size == 0 {
+            None
+        } else if size == Self::VALUE_TOMBSTONE {
+            Some(Box::<[u8]>::default())
         } else {
-            Option::None
+            Some(self.value.get_slice(size as usize).into())
         }
     }
 
     /// Take value out of self.
     /// This method can only be called by replace_value / delete_value because
     /// empty node must be removed and pass compression must be maintained.
-    // FIXME: hide this method
+    // FIXME: move this method into a special session.
     fn value_into_boxed_slice(&mut self) -> Option<Box<[u8]>> {
-        let size = self.value_size as usize;
+        let size = self.value_size;
         let maybe_value;
-        if size != 0 {
-            maybe_value = Some(self.value.into_boxed_slice(size));
-            self.value_size = 0;
-        } else {
+        if size == 0 {
             maybe_value = None;
+        } else {
+            if size == Self::VALUE_TOMBSTONE {
+                maybe_value = Some(Box::<[u8]>::default())
+            } else {
+                maybe_value = Some(self.value.into_boxed_slice(size as usize));
+            }
+            self.value_size = 0;
         }
         maybe_value
     }
@@ -233,15 +246,20 @@ impl TrieNode {
     fn replace_value_valid(&mut self, valid_value: &[u8]) -> Option<Box<[u8]>> {
         let old_value = self.value_into_boxed_slice();
         let value_size = valid_value.len();
-        self.value_size = value_size as u32;
-        self.value = MaybeInPlaceByteArray::copy_from(valid_value, value_size);
+        if value_size == 0 {
+            self.value_size = Self::VALUE_TOMBSTONE;
+        } else {
+            self.value =
+                MaybeInPlaceByteArray::copy_from(valid_value, value_size);
+            self.value_size = value_size as u32;
+        }
 
         old_value
     }
 
     fn check_value_size(value: &[u8]) -> Result<()> {
         let value_size = value.len();
-        if value_size > MaybeInPlaceByteArray::MAX_SIZE_U32 {
+        if value_size > Self::MAX_VALUE_SIZE {
             // TODO(yz): value too long.
             return Err(Error::from_kind(ErrorKind::MPTInvalidValue));
         }
@@ -566,14 +584,19 @@ enum TrieNodeAction {
 impl TrieNode {
     pub fn new(
         merkle: &MerkleHash, children_table: ChildrenTableDeltaMpt,
-        value: &[u8], compressed_path: CompressedPathRaw,
+        maybe_value: Option<Vec<u8>>, compressed_path: CompressedPathRaw,
     ) -> TrieNode
     {
         let mut ret = TrieNode::default();
 
         ret.merkle_hash = *merkle;
         ret.children_table = children_table;
-        ret.replace_value_valid(value);
+        match maybe_value {
+            None => {}
+            Some(value) => {
+                ret.replace_value_valid(value.as_ref());
+            }
+        }
         ret.set_compressed_path(compressed_path);
 
         ret
@@ -1782,7 +1805,7 @@ impl Decodable for TrieNode {
         Ok(TrieNode::new(
             &rlp.val_at::<Vec<u8>>(0)?.as_slice().into(),
             rlp.val_at::<ChildrenTableManagedDeltaMpt>(1)?.into(),
-            rlp.val_at::<Vec<u8>>(2)?.as_slice(),
+            rlp.val_at::<Option<Vec<u8>>>(2)?,
             compressed_path,
         ))
     }

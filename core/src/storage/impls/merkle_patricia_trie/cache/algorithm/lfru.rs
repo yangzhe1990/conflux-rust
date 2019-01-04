@@ -332,9 +332,8 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
         } else {
             // lfru_handle equals NULL_POS.
             if self.frequency_lru.has_space() {
-                let mut hole: Hole<
-                    LFRUMetadata<PosT, CacheIndexT>,
-                > = unsafe { mem::uninitialized() };
+                let mut hole: Hole<LFRUMetadata<PosT, CacheIndexT>> =
+                    unsafe { mem::uninitialized() };
                 {
                     let mut lru_cache_store_util = CacheStoreUtilLRUMiss::new(
                         self.frequency_heap.get_array_mut(),
@@ -375,9 +374,8 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                     }
                 }
             } else {
-                let mut hole: Hole<
-                    LFRUMetadata<PosT, CacheIndexT>,
-                > = unsafe { mem::uninitialized() };
+                let mut hole: Hole<LFRUMetadata<PosT, CacheIndexT>> =
+                    unsafe { mem::uninitialized() };
                 let lru_access_result;
                 {
                     let mut lru_cache_store_util = CacheStoreUtilLRUMiss::new(

@@ -87,7 +87,7 @@ fn test_trie_node_encode_decode() {
     let x = TrieNode::new(
         &Default::default(),
         children_table,
-        b"asdf",
+        Some(b"asdf".to_vec()),
         Default::default(),
     );
     let rlp_bytes = x.rlp_bytes();

@@ -17,7 +17,7 @@ pub fn compute_merkle_for_rlp(rlp_stream: &RlpStream) -> MerkleHash {
 }
 
 pub fn compute_node_merkle(
-    children_merkles: MaybeMerkleTableRef, value: &[u8],
+    children_merkles: MaybeMerkleTableRef, maybe_value: Option<&[u8]>,
 ) -> MerkleHash {
     let mut rlp_stream = RlpStream::new();
     rlp_stream.begin_unbounded_list();
@@ -27,7 +27,13 @@ pub fn compute_node_merkle(
         }
         _ => {}
     }
-    rlp_stream.append(&value).complete_unbounded_list();
+    match maybe_value {
+        Some(value) => {
+            rlp_stream.append(&value);
+        }
+        _ => {}
+    }
+    rlp_stream.complete_unbounded_list();
 
     compute_merkle_for_rlp(&rlp_stream)
 }
@@ -48,10 +54,10 @@ fn compute_path_merkle(
 
 pub fn compute_merkle(
     compressed_path: CompressedPathRef, children_merkles: MaybeMerkleTableRef,
-    value: &[u8],
+    maybe_value: Option<&[u8]>,
 ) -> MerkleHash
 {
-    let node_merkle = compute_node_merkle(children_merkles, value);
+    let node_merkle = compute_node_merkle(children_merkles, maybe_value);
     let path_merkle = compute_path_merkle(compressed_path, &node_merkle);
 
     path_merkle
