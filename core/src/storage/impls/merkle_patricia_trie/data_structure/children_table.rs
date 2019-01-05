@@ -257,6 +257,74 @@ impl<NodeRefT: NodeRefTrait> PartialEq for CompactedChildrenTable<NodeRefT> {
     fn eq(&self, other: &Self) -> bool { self.as_ref() == other.as_ref() }
 }
 
+trait CompactedChildrenTableIteratorTrait {
+    type NodeRefT: NodeRefTrait;
+    type RefType;
+
+    fn get_bitmap(&self) -> u16;
+
+    /// Only for CompactedChildrenTableIteratorNextTrait
+    fn set_bitmap(&mut self, bitmap: u16);
+
+    /// Only for CompactedChildrenTableIteratorNonSkipNextTrait
+    fn set_next_child_index(&mut self, child_index: u8);
+
+    fn get_current_element(&self) -> Self::RefType;
+
+    fn advance_elements(&mut self);
+}
+
+trait CompactedChildrenTableIteratorNonSkipNextTrait:
+    CompactedChildrenTableIteratorTrait
+{
+    fn next(&mut self, child_index: u8) -> Option<(u8, Option<Self::RefType>)> {
+        if child_index as usize == CHILDREN_COUNT {
+            return None;
+        }
+
+        let ret;
+        if CompactedChildrenTable::<Self::NodeRefT>::has_index(
+            self.get_bitmap(),
+            child_index,
+        ) {
+            ret = Some((child_index, Some(self.get_current_element())));
+            self.advance_elements();
+        } else {
+            ret = Some((child_index, None));
+        }
+        self.set_next_child_index(child_index + 1);
+
+        ret
+    }
+}
+
+trait CompactedChildrenTableIteratorNextTrait:
+    CompactedChildrenTableIteratorTrait
+{
+    fn next(&mut self) -> Option<(u8, Self::RefType)> {
+        let ret;
+        if self.get_bitmap() != 0 {
+            ret = Some((
+                CompactedChildrenTable::<Self::NodeRefT>::lowest_bit_at(
+                    self.get_bitmap(),
+                ),
+                self.get_current_element(),
+            ));
+        } else {
+            return None;
+        }
+
+        self.advance_elements();
+        self.set_bitmap(
+            CompactedChildrenTable::<Self::NodeRefT>::remove_lowest_bit(
+                self.get_bitmap(),
+            ),
+        );
+
+        ret
+    }
+}
+
 pub struct CompactedChildrenTableIteratorNonSkip<'a, NodeRefT> {
     next_child_index: u8,
     elements: *const NodeRefT,
@@ -264,7 +332,23 @@ pub struct CompactedChildrenTableIteratorNonSkip<'a, NodeRefT> {
     __marker: PhantomData<&'a NodeRefT>,
 }
 
-impl<'a, NodeRefT> CompactedChildrenTableIteratorNonSkip<'a, NodeRefT> {
+impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorTrait
+    for CompactedChildrenTableIteratorNonSkip<'a, NodeRefT>
+{
+    type NodeRefT = NodeRefT;
+    type RefType = &'a NodeRefT;
+
+    fn get_bitmap(&self) -> u16 { self.bitmap }
+
+    fn set_bitmap(&mut self, bitmap: u16) {
+        /// This method is unnecessary.
+        unimplemented!()
+    }
+
+    fn set_next_child_index(&mut self, child_index: u8) {
+        self.next_child_index = child_index;
+    }
+
     fn get_current_element(&self) -> &'a NodeRefT { unsafe { &*self.elements } }
 
     fn advance_elements(&mut self) {
@@ -274,30 +358,21 @@ impl<'a, NodeRefT> CompactedChildrenTableIteratorNonSkip<'a, NodeRefT> {
     }
 }
 
+impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorNonSkipNextTrait
+    for CompactedChildrenTableIteratorNonSkip<'a, NodeRefT>
+{
+}
+
 impl<'a, NodeRefT: NodeRefTrait> Iterator
     for CompactedChildrenTableIteratorNonSkip<'a, NodeRefT>
 {
     type Item = (u8, Option<&'a NodeRefT>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.next_child_index as usize == CHILDREN_COUNT {
-            return None;
-        }
-
-        let ret;
-        if CompactedChildrenTable::<NodeRefT>::has_index(
-            self.bitmap,
+        <Self as CompactedChildrenTableIteratorNonSkipNextTrait>::next(
+            self,
             self.next_child_index,
-        ) {
-            ret =
-                Some((self.next_child_index, Some(self.get_current_element())));
-            self.advance_elements();
-        } else {
-            ret = Some((self.next_child_index, None));
-        }
-        self.next_child_index += 1;
-
-        ret
+        )
     }
 }
 
@@ -308,7 +383,23 @@ pub struct CompactedChildrenTableIteratorNonSkipMut<'a, NodeRefT> {
     __marker: PhantomData<&'a mut NodeRefT>,
 }
 
-impl<'a, NodeRefT> CompactedChildrenTableIteratorNonSkipMut<'a, NodeRefT> {
+impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorTrait
+    for CompactedChildrenTableIteratorNonSkipMut<'a, NodeRefT>
+{
+    type NodeRefT = NodeRefT;
+    type RefType = &'a mut NodeRefT;
+
+    fn get_bitmap(&self) -> u16 { self.bitmap }
+
+    fn set_bitmap(&mut self, bitmap: u16) {
+        /// This method is unnecessary.
+        unimplemented!()
+    }
+
+    fn set_next_child_index(&mut self, child_index: u8) {
+        self.next_child_index = child_index;
+    }
+
     fn get_current_element(&self) -> &'a mut NodeRefT {
         unsafe { &mut *self.elements }
     }
@@ -320,30 +411,21 @@ impl<'a, NodeRefT> CompactedChildrenTableIteratorNonSkipMut<'a, NodeRefT> {
     }
 }
 
+impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorNonSkipNextTrait
+    for CompactedChildrenTableIteratorNonSkipMut<'a, NodeRefT>
+{
+}
+
 impl<'a, NodeRefT: NodeRefTrait> Iterator
     for CompactedChildrenTableIteratorNonSkipMut<'a, NodeRefT>
 {
     type Item = (u8, Option<&'a mut NodeRefT>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.next_child_index as usize == CHILDREN_COUNT {
-            return None;
-        }
-
-        let ret;
-        if CompactedChildrenTable::<NodeRefT>::has_index(
-            self.bitmap,
+        <Self as CompactedChildrenTableIteratorNonSkipNextTrait>::next(
+            self,
             self.next_child_index,
-        ) {
-            ret =
-                Some((self.next_child_index, Some(self.get_current_element())));
-            self.advance_elements();
-        } else {
-            ret = Some((self.next_child_index, None));
-        }
-        self.next_child_index += 1;
-
-        ret
+        )
     }
 }
 
@@ -353,7 +435,21 @@ pub struct CompactedChildrenTableIterator<'a, NodeRefT> {
     __marker: PhantomData<&'a NodeRefT>,
 }
 
-impl<'a, NodeRefT> CompactedChildrenTableIterator<'a, NodeRefT> {
+impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorTrait
+    for CompactedChildrenTableIterator<'a, NodeRefT>
+{
+    type NodeRefT = NodeRefT;
+    type RefType = &'a NodeRefT;
+
+    fn get_bitmap(&self) -> u16 { self.bitmap }
+
+    fn set_bitmap(&mut self, bitmap: u16) { self.bitmap = bitmap }
+
+    fn set_next_child_index(&mut self, child_index: u8) {
+        /// This method is unnecessary.
+        unimplemented!()
+    }
+
     fn get_current_element(&self) -> &'a NodeRefT { unsafe { &*self.elements } }
 
     fn advance_elements(&mut self) {
@@ -363,7 +459,10 @@ impl<'a, NodeRefT> CompactedChildrenTableIterator<'a, NodeRefT> {
     }
 }
 
-// FIXME: try to reuse code for next.
+impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorNextTrait
+    for CompactedChildrenTableIterator<'a, NodeRefT>
+{
+}
 
 impl<'a, NodeRefT: NodeRefTrait> Iterator
     for CompactedChildrenTableIterator<'a, NodeRefT>
@@ -371,21 +470,7 @@ impl<'a, NodeRefT: NodeRefTrait> Iterator
     type Item = (u8, &'a NodeRefT);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let ret;
-        if self.bitmap != 0 {
-            ret = Some((
-                CompactedChildrenTable::<NodeRefT>::lowest_bit_at(self.bitmap),
-                self.get_current_element(),
-            ));
-        } else {
-            return None;
-        }
-
-        self.advance_elements();
-        self.bitmap =
-            CompactedChildrenTable::<NodeRefT>::remove_lowest_bit(self.bitmap);
-
-        ret
+        <Self as CompactedChildrenTableIteratorNextTrait>::next(self)
     }
 }
 
@@ -395,7 +480,21 @@ pub struct CompactedChildrenTableIteratorMut<'a, NodeRefT> {
     __marker: PhantomData<&'a mut NodeRefT>,
 }
 
-impl<'a, NodeRefT> CompactedChildrenTableIteratorMut<'a, NodeRefT> {
+impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorTrait
+    for CompactedChildrenTableIteratorMut<'a, NodeRefT>
+{
+    type NodeRefT = NodeRefT;
+    type RefType = &'a mut NodeRefT;
+
+    fn get_bitmap(&self) -> u16 { self.bitmap }
+
+    fn set_bitmap(&mut self, bitmap: u16) { self.bitmap = bitmap }
+
+    fn set_next_child_index(&mut self, child_index: u8) {
+        /// This method is unnecessary.
+        unimplemented!()
+    }
+
     fn get_current_element(&self) -> &'a mut NodeRefT {
         unsafe { &mut *self.elements }
     }
@@ -407,27 +506,18 @@ impl<'a, NodeRefT> CompactedChildrenTableIteratorMut<'a, NodeRefT> {
     }
 }
 
+impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorNextTrait
+    for CompactedChildrenTableIteratorMut<'a, NodeRefT>
+{
+}
+
 impl<'a, NodeRefT: NodeRefTrait> Iterator
     for CompactedChildrenTableIteratorMut<'a, NodeRefT>
 {
     type Item = (u8, &'a mut NodeRefT);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let ret;
-        if self.bitmap != 0 {
-            ret = Some((
-                CompactedChildrenTable::<NodeRefT>::lowest_bit_at(self.bitmap),
-                self.get_current_element(),
-            ));
-        } else {
-            return None;
-        }
-
-        self.advance_elements();
-        self.bitmap =
-            CompactedChildrenTable::<NodeRefT>::remove_lowest_bit(self.bitmap);
-
-        ret
+        <Self as CompactedChildrenTableIteratorNextTrait>::next(self)
     }
 }
 
