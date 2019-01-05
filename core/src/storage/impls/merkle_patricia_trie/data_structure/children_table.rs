@@ -8,7 +8,6 @@ pub trait NodeRefTrait:
 }
 
 /// NodeRefT for delta MPT and persistent MPT can be different.
-#[derive(Clone)]
 pub struct CompactedChildrenTable<NodeRefT: NodeRefTrait> {
     /// Stores whether each child exists.
     bitmap: u16,
@@ -32,6 +31,10 @@ impl<NodeRefT: NodeRefTrait> Default for CompactedChildrenTable<NodeRefT> {
             table_ptr: null_mut(),
         }
     }
+}
+
+impl<NodeRefT: NodeRefTrait> Clone for CompactedChildrenTable<NodeRefT> {
+    fn clone(&self) -> Self { self.as_ref().into() }
 }
 
 impl<NodeRefT: NodeRefTrait> Debug for CompactedChildrenTable<NodeRefT> {
@@ -114,34 +117,32 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
 
 impl<NodeRefT: NodeRefTrait> Drop for CompactedChildrenTable<NodeRefT> {
     fn drop(&mut self) {
-        drop(unsafe {
-            Vec::from_raw_parts(
-                self.table_ptr,
-                self.children_count.into(),
-                self.children_count.into(),
-            )
-        });
+        if self.children_count != 0 {
+            drop(unsafe { self.into_managed_slice() });
+        }
     }
 }
 
 impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
-    pub fn into_managed(self) -> ChildrenTable<NodeRefT> {
-        ChildrenTable {
-            bitmap: self.bitmap,
-            table: unsafe {
-                Vec::from_raw_parts(
-                    self.table_ptr,
-                    self.children_count.into(),
-                    self.children_count.into(),
-                )
-                .into_boxed_slice()
-            },
+    unsafe fn into_managed_slice(&self) -> Option<Vec<NodeRefT>> {
+        if self.children_count != 0 {
+            Some(Vec::from_raw_parts(
+                self.table_ptr,
+                self.children_count.into(),
+                self.children_count.into(),
+            ))
+        } else {
+            None
         }
     }
 
     unsafe fn managed_slice_into_raw(
         mut managed: Box<[NodeRefT]>,
     ) -> *mut NodeRefT {
+        // If the slice has length 0, the pointer returned from as_mut_ptr
+        // isn't NULL, but alignment of the type in rust's stdlib
+        // implementation. This is OK because we always check (unless
+        // otherwise specified) before using the pointer.
         let ret = managed.as_mut_ptr();
 
         mem::forget(managed);
@@ -166,6 +167,16 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
                 )
             },
             bitmap: self.bitmap,
+        }
+    }
+
+    pub fn from_ref<'a>(r: ChildrenTableRef<'a, NodeRefT>) -> Self {
+        Self {
+            bitmap: r.bitmap,
+            table_ptr: unsafe {
+                Self::managed_slice_into_raw(r.table.to_vec().into())
+            },
+            children_count: r.table.len() as u8,
         }
     }
 }
@@ -442,10 +453,10 @@ pub struct ChildrenTableRef<'a, NodeRefT: NodeRefTrait> {
     bitmap: u16,
 }
 
-impl<NodeRefT: NodeRefTrait> From<CompactedChildrenTable<NodeRefT>>
-    for ChildrenTable<NodeRefT>
+impl<'a, NodeRefT: NodeRefTrait> From<ChildrenTableRef<'a, NodeRefT>>
+    for CompactedChildrenTable<NodeRefT>
 {
-    fn from(x: CompactedChildrenTable<NodeRefT>) -> Self { x.into_managed() }
+    fn from(x: ChildrenTableRef<'a, NodeRefT>) -> Self { Self::from_ref(x) }
 }
 
 impl<NodeRefT: NodeRefTrait> From<ChildrenTable<NodeRefT>>
