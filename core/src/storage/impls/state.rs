@@ -13,17 +13,19 @@ use primitives::EpochId;
 pub struct State<'a> {
     manager: &'a StateManager,
     delta_trie: &'a MultiVersionMerklePatriciaTrie,
-    root_node: MaybeNodeRef,
+    root_node: Option<NodeRefDeltaMpt>,
     owned_node_set: Option<OwnedNodeSet>,
     dirty: bool,
 }
 
 impl<'a> State<'a> {
-    pub fn new(manager: &'a StateManager, root_node: MaybeNodeRef) -> Self {
+    pub fn new(
+        manager: &'a StateManager, root_node: Option<NodeRefDeltaMpt>,
+    ) -> Self {
         Self {
             manager: manager,
             delta_trie: manager.get_delta_trie(),
-            root_node: root_node,
+            root_node: root_node.clone(),
             owned_node_set: Some(Default::default()),
             dirty: false,
         }
@@ -37,20 +39,23 @@ impl<'a> State<'a> {
     }
 
     // FIXME: move to data_structure mod
-    fn get_root_node(&self) -> Option<NodeRef> { self.root_node.into() }
+    fn get_root_node(&self) -> Option<NodeRefDeltaMpt> {
+        self.root_node.clone()
+    }
 
-    fn get_or_create_root_node(&mut self) -> Result<NodeRef> {
-        if self.root_node == MaybeNodeRef::NULL_NODE {
+    fn get_or_create_root_node(&mut self) -> Result<NodeRefDeltaMpt> {
+        if self.root_node.is_none() {
             let allocator =
                 self.delta_trie.get_node_memory_manager().get_allocator();
-            let (mut root_cow, entry) = CowNodeRef::new_uninitialized_node(
+            let (root_cow, entry) = CowNodeRef::new_uninitialized_node(
                 &allocator,
                 self.owned_node_set.as_mut().unwrap(),
             )?;
             // Insert empty node.
             entry.insert(Default::default());
 
-            self.root_node = root_cow.into_child();
+            self.root_node =
+                root_cow.into_child().map(|maybe_node| maybe_node.into());
         }
 
         // Safe because in either branch the result is Some.
@@ -58,8 +63,7 @@ impl<'a> State<'a> {
     }
 
     fn compute_merkle_root(&mut self) -> Result<MerkleHash> {
-        let maybe_root_node: Option<NodeRef> = self.root_node.into();
-        match maybe_root_node {
+        match &self.root_node {
             None => {
                 // Don't commit empty state. Empty state shouldn't exists since
                 // genesis block.
@@ -80,6 +84,7 @@ impl<'a> State<'a> {
                     self.delta_trie,
                     self.owned_node_set.as_mut().unwrap(),
                     trie_node_root,
+                    &allocator,
                 )?;
                 cow_root.into_child();
 
@@ -93,13 +98,12 @@ impl<'a> State<'a> {
     ) -> Result<()> {
         self.dirty = false;
 
-        let maybe_root_node: Option<NodeRef> = self.root_node.into();
-        match maybe_root_node {
+        match &self.root_node {
             None => {
                 // Don't commit empty state. Empty state shouldn't exists since
                 // genesis block.
             }
-            Some(root_node) => {
+            Some(ref root_node) => {
                 // Use coarse lock to prevent row number from interleaving,
                 // which makes it cleaner to restart from db
                 // failure. Without a coarse lock all threads
@@ -121,14 +125,16 @@ impl<'a> State<'a> {
                         &mut cow_root.node_ref,
                         cache_manager,
                     )?;
-                cow_root.commit(
+                let result = cow_root.commit(
                     self.delta_trie,
                     self.owned_node_set.as_mut().unwrap(),
                     trie_node_root,
                     &mut commit_transaction,
                     cache_manager,
-                )?;
+                    &allocator,
+                );
                 cow_root.into_child();
+                result?;
 
                 commit_transaction.transaction.put(
                     COL_DELTA_TRIE,
@@ -137,12 +143,12 @@ impl<'a> State<'a> {
                 );
 
                 let db_key = {
-                    match root_node {
-                        NodeRef::Dirty { index } => {
+                    match *root_node {
+                        NodeRefDeltaMpt::Dirty { index } => {
                             commit_transaction.info.row_number.value - 1
                         }
                         // Empty block's state root points to its base state.
-                        NodeRef::Committed { db_key } => db_key,
+                        NodeRefDeltaMpt::Committed { db_key } => db_key,
                     }
                 };
 
@@ -162,7 +168,8 @@ impl<'a> State<'a> {
                     .key_value()
                     .write(commit_transaction.transaction)?;
 
-                self.manager.mpt_commit_state_root(epoch_id, self.root_node);
+                self.manager
+                    .mpt_commit_state_root(epoch_id, self.root_node.clone());
             }
         }
 
@@ -238,7 +245,8 @@ impl<'a> StateTrait for State<'a> {
             self.get_or_create_root_node()?,
             &mut self.owned_node_set,
         )
-        .set(access_key, value)?;
+        .set(access_key, value)?
+        .into();
 
         Ok(())
     }
@@ -255,7 +263,7 @@ impl<'a> StateTrait for State<'a> {
                     &mut self.owned_node_set,
                 )
                 .delete(access_key)?;
-                self.root_node = root_node;
+                self.root_node = root_node.map(|maybe_node| maybe_node.into());
                 Ok(old_value)
             }
         }
@@ -270,7 +278,7 @@ impl<'a> StateTrait for State<'a> {
     }
 
     fn get_state_root(&self) -> Result<Option<MerkleHash>> {
-        self.delta_trie.get_merkle(self.root_node)
+        self.delta_trie.get_merkle(self.root_node.clone())
     }
 
     // TODO(yz): replace coarse lock with a queue.
@@ -306,8 +314,7 @@ impl<'a> StateTrait for State<'a> {
         // Free all modified nodes.
         let owned_node_set = self.owned_node_set.as_ref().unwrap();
         for owned_node in owned_node_set {
-            let mut cow_node =
-                CowNodeRef::new(owned_node.clone(), owned_node_set);
+            let cow_node = CowNodeRef::new(owned_node.clone(), owned_node_set);
             cow_node.delete_node(&self.delta_trie.get_node_memory_manager());
         }
     }

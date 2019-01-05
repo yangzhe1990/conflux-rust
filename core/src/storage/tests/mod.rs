@@ -1,4 +1,3 @@
-mod rlp_encode_decode;
 mod state;
 
 use super::state_manager::StateManager;

@@ -188,7 +188,7 @@ fn test_set_delete() {
 fn print(key: &[u8]) {
     print!("key = (");
     for char in key {
-        // FIXME: use byte order defined in data_structure.rs
+        // FIXME: use byte order defined in data_structure mod
         print!("{}, {}, ", char & 0x0f, char >> 4);
     }
     println!(")");

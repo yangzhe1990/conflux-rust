@@ -1,4 +1,6 @@
-use self::{merkle::*, node_memory_manager::*, node_ref_map::*};
+use self::{
+    data_structure::*, merkle::*, node_memory_manager::*, node_ref_map::*,
+};
 use super::errors::*;
 use kvdb::KeyValueDB;
 use parking_lot::RwLock;
@@ -22,7 +24,7 @@ pub struct MultiVersionMerklePatriciaTrie {
     /// We don't distinguish an epoch which doesn't exists from an epoch which
     /// contains nothing.
     /// This version map is incomplete as the rest map lives in disk db.
-    root_by_version: RwLock<HashMap<EpochId, NodeRef>>,
+    root_by_version: RwLock<HashMap<EpochId, NodeRefDeltaMpt>>,
     /// The nodes in memory should be considered a cache for MPT.
     /// However for delta_trie the disk_db contains MPT nodes which are swapped
     /// out from memory because persistence isn't necessary.
@@ -43,18 +45,20 @@ impl MultiVersionMerklePatriciaTrie {
         }
     }
 
-    pub fn get_root_at_epoch(&self, epoch_id: EpochId) -> Option<NodeRef> {
+    pub fn get_root_at_epoch(
+        &self, epoch_id: EpochId,
+    ) -> Option<NodeRefDeltaMpt> {
         self.root_by_version.read().get(&epoch_id).cloned()
     }
 
-    pub fn set_epoch_root(&self, epoch_id: EpochId, root: NodeRef) {
+    pub fn set_epoch_root(&self, epoch_id: EpochId, root: NodeRefDeltaMpt) {
         self.root_by_version.write().insert(epoch_id, root);
     }
 
     pub fn loaded_root_at_epoch(
         &self, epoch_id: EpochId, db_key: DeltaMptDbKey,
-    ) -> NodeRef {
-        let root = NodeRef::Committed { db_key: db_key };
+    ) -> NodeRefDeltaMpt {
+        let root = NodeRefDeltaMpt::Committed { db_key: db_key };
         self.set_epoch_root(epoch_id, root.clone());
 
         root
@@ -64,16 +68,16 @@ impl MultiVersionMerklePatriciaTrie {
         &self.node_memory_manager
     }
 
+    // FIXME: use MaybeNodeRef or ?
     pub fn get_merkle(
-        &self, maybe_node: MaybeNodeRef,
+        &self, maybe_node: Option<NodeRefDeltaMpt>,
     ) -> Result<Option<MerkleHash>> {
-        let maybe_node: Option<NodeRef> = maybe_node.into();
         match maybe_node {
-            Some(node) => Ok(Some(
+            Some(ref node) => Ok(Some(
                 self.node_memory_manager
                     .node_as_ref(
                         &self.node_memory_manager.get_allocator(),
-                        &node,
+                        node,
                     )?
                     .merkle_hash,
             )),

@@ -1,3 +1,5 @@
+use super::data_structure::CHILDREN_COUNT;
+
 use ethereum_types::H256;
 pub type MerkleHash = H256;
 pub type ChildrenMerkleTable = [MerkleHash; CHILDREN_COUNT];

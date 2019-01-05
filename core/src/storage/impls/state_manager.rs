@@ -3,11 +3,7 @@ use super::super::state_manager::*;
 use super::{
     super::{super::db::COL_DELTA_TRIE, state::*},
     errors::*,
-    merkle_patricia_trie::{
-        node_memory_manager::{MaybeNodeRef, NodeRef},
-        row_number::*,
-        *,
-    },
+    merkle_patricia_trie::{data_structure::NodeRefDeltaMpt, row_number::*, *},
 };
 use crate::{
     ext_db::SystemDB, snapshot::snapshot::Snapshot, statedb::StorageKey,
@@ -53,7 +49,7 @@ impl StateManager {
 
     fn load_state_root_node_ref_from_db(
         &self, epoch_id: EpochId,
-    ) -> Result<MaybeNodeRef> {
+    ) -> Result<Option<NodeRefDeltaMpt>> {
         let db_key_result = Self::parse_row_number(
             self.db.key_value().get(
                 COL_DELTA_TRIE,
@@ -66,19 +62,18 @@ impl StateManager {
             ),
         )?;
         match db_key_result {
-            Some(db_key) => Ok(self
-                .delta_trie
-                .loaded_root_at_epoch(epoch_id, db_key)
-                .into()),
-            None => Ok(MaybeNodeRef::NULL_NODE),
+            Some(db_key) => {
+                Ok(Some(self.delta_trie.loaded_root_at_epoch(epoch_id, db_key)))
+            }
+            None => Ok(None),
         }
     }
 
     fn get_state_root_node_ref(
         &self, epoch_id: EpochId,
-    ) -> Result<MaybeNodeRef> {
-        let node_ref = self.delta_trie.get_root_at_epoch(epoch_id).into();
-        if node_ref == MaybeNodeRef::NULL_NODE {
+    ) -> Result<Option<NodeRefDeltaMpt>> {
+        let node_ref = self.delta_trie.get_root_at_epoch(epoch_id);
+        if node_ref.is_none() {
             self.load_state_root_node_ref_from_db(epoch_id)
         } else {
             Ok(node_ref)
@@ -91,13 +86,13 @@ impl StateManager {
     // root is already computed, which should eventually be optimized out.
     // TODO(ming): Use self.get_state_root_node_ref(epoch_id).
     pub(super) fn mpt_commit_state_root(
-        &self, epoch_id: EpochId, root_node: MaybeNodeRef,
+        &self, epoch_id: EpochId, root_node: Option<NodeRefDeltaMpt>,
     ) {
-        if root_node != MaybeNodeRef::NULL_NODE {
-            self.delta_trie.set_epoch_root(
-                epoch_id,
-                Option::<NodeRef>::from(root_node).unwrap(),
-            );
+        match root_node {
+            None => {}
+            Some(node) => {
+                self.delta_trie.set_epoch_root(epoch_id, node.clone())
+            }
         }
     }
 

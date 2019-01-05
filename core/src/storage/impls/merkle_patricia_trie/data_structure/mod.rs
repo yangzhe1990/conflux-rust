@@ -1,4 +1,15 @@
-use self::access_mode::*;
+pub mod children_table;
+pub mod node_ref;
+
+#[cfg(test)]
+mod tests;
+
+pub use self::{
+    children_table::CHILDREN_COUNT,
+    node_ref::{NodeRefDeltaMpt, NodeRefDeltaMptCompact},
+};
+
+use self::{access_mode::*, children_table::*};
 use super::{
     super::{
         super::super::db::COL_DELTA_TRIE, errors::*,
@@ -8,16 +19,15 @@ use super::{
     maybe_in_place_byte_array::MaybeInPlaceByteArray,
     merkle::*,
     node_memory_manager::*,
-    node_ref_map::NodeRefDeltaMPT,
     return_after_use::ReturnAfterUse,
 };
 use rlp::*;
 use std::{
     cmp::min,
     collections::BTreeSet,
+    fmt::{Debug, Formatter},
     hint::unreachable_unchecked,
     marker::{Send, Sync},
-    mem::replace,
     vec::Vec,
 };
 
@@ -76,7 +86,7 @@ pub struct TrieNode {
     path_steps: u16,
     path: MaybeInPlaceByteArray,
     // End of CompactPath section
-    children_table: OwnedChildrenTable,
+    children_table: ChildrenTableDeltaMpt,
     // Rust automatically moves the value_size field in order to minimize the
     // total size of the struct.
     /// We limit the maximum value length by u16. If it proves insufficient,
@@ -99,25 +109,12 @@ unsafe impl Send for TrieNode {}
 /// is pointing to, therefore TrieNode is Sync.
 unsafe impl Sync for TrieNode {}
 
-pub const CHILDREN_COUNT: usize = 16;
-/// The children table for a non-leaf trie node.
-pub type ChildrenTable = [MaybeNodeRef; CHILDREN_COUNT];
-
-// TODO(yz): 2^16 = 2B. 2B + actual children to save space.
-/// For delta MPT the index type is DeltaMptDbKey, for persistent MPT see
-/// node_ref_map.rs (not implemented yet).
-struct CompactedChildrenTable<IndexT> {
-    table: Box<[IndexT]>,
-}
-
 type NodeMemoryRegion = Vec<TrieNode>;
 
 // FIXME: implement EntryTrait for TrieNode.
 pub type TrieNodeSlabEntry = super::slab::Entry<TrieNode>;
 pub type VacantEntry<'a> =
     super::slab::VacantEntry<'a, TrieNode, TrieNodeSlabEntry>;
-
-pub type OwnedChildrenTable = Option<Box<ChildrenTable>>;
 
 /// Key length should be multiple of 8.
 // TODO(yz): align key @8B with mask.
@@ -195,6 +192,10 @@ impl TrieNode {
 
     fn has_value(&self) -> bool { self.value_size > 0 }
 
+    fn get_children_count(&self) -> u8 {
+        self.children_table.get_children_count()
+    }
+
     fn value_as_slice(&self) -> &[u8] {
         let size = self.value_size as usize;
         if size != 0 {
@@ -231,9 +232,6 @@ impl TrieNode {
 
     fn replace_value_valid(&mut self, valid_value: &[u8]) -> Option<Box<[u8]>> {
         let old_value = self.value_into_boxed_slice();
-        if old_value.is_none() {
-            self.number_of_children_plus_value += 1;
-        }
         let value_size = valid_value.len();
         self.value_size = value_size as u32;
         self.value = MaybeInPlaceByteArray::copy_from(valid_value, value_size);
@@ -268,6 +266,7 @@ impl TrieNode {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct CompressedPathRef<'a> {
     pub path_slice: &'a [u8],
     pub end_mask: u8,
@@ -340,7 +339,7 @@ enum WalkStop<'key> {
     Descent {
         key_remaining: KeyPart<'key>,
         child_index: u8,
-        child_node: NodeRef,
+        child_node: NodeRefDeltaMpt,
     },
 
     // To descent, however child doesn't exists:
@@ -426,8 +425,6 @@ impl TrieNode {
                             Self::first_nibble(!0),
                         );
 
-                        // TODO(yz): move shift operator and magic number into a
-                        // better place.
                         key_child_index = Self::second_nibble(key[i]);
                         key_remaining = &key[i + 1..];
                         unmatched_child_index =
@@ -530,7 +527,7 @@ impl TrieNode {
                 }
             }
 
-            match Option::<NodeRef>::from(self.get_child(child_index)) {
+            match self.get_child(child_index) {
                 Option::None => {
                     if AM::is_read_only() {
                         return WalkStop::child_not_found_uninitialized();
@@ -543,7 +540,7 @@ impl TrieNode {
                 Option::Some(child_node) => {
                     return WalkStop::Descent {
                         key_remaining: key_remaining,
-                        child_node: child_node,
+                        child_node: child_node.into(),
                         child_index: child_index,
                     };
                 }
@@ -560,7 +557,7 @@ enum TrieNodeAction {
     Delete,
     MergePath {
         child_index: u8,
-        child_node_ref: NodeRef,
+        child_node_ref: NodeRefDeltaMpt,
     },
     DeleteChildrenTable,
 }
@@ -568,27 +565,13 @@ enum TrieNodeAction {
 /// Update
 impl TrieNode {
     pub fn new(
-        merkle: &MerkleHash, children_table: OwnedChildrenTable, value: &[u8],
-        compressed_path: CompressedPathRaw,
+        merkle: &MerkleHash, children_table: ChildrenTableDeltaMpt,
+        value: &[u8], compressed_path: CompressedPathRaw,
     ) -> TrieNode
     {
         let mut ret = TrieNode::default();
 
         ret.merkle_hash = *merkle;
-
-        ret.number_of_children_plus_value = match children_table.as_ref() {
-            None => 0,
-            Some(ref table) => {
-                let mut count = 0;
-                for node in table.as_ref() {
-                    if *node != MaybeNodeRef::NULL_NODE {
-                        count += 1;
-                    }
-                }
-                count
-            }
-        };
-
         ret.children_table = children_table;
         ret.replace_value_valid(value);
         ret.set_compressed_path(compressed_path);
@@ -602,21 +585,18 @@ impl TrieNode {
     ///
     /// unsafe because:
     /// 1. precondition on children_table;
-    /// 2. number_of_children_plus_value is only incrementally calculated.
-    /// 3. delete value assumes that self contains some value.
+    /// 2. delete value assumes that self contains some value.
     unsafe fn copy_and_replace_fields(
         &self, new_value: Option<Option<&[u8]>>,
         new_path: Option<CompressedPathRaw>,
-        children_table: Option<OwnedChildrenTable>,
+        children_table: Option<ChildrenTableDeltaMpt>,
     ) -> TrieNode
     {
         let mut ret = TrieNode::default();
-        ret.number_of_children_plus_value = self.number_of_children_plus_value;
 
         match new_value {
             Some(maybe_value) => match maybe_value {
                 Some(value) => {
-                    ret.number_of_children_plus_value -= self.has_value() as u8;
                     ret.replace_value_valid(value);
                 }
                 None => {
@@ -682,19 +662,13 @@ impl TrieNode {
 
     /// Delete value when we know that it already exists.
     unsafe fn delete_value_unchecked(&mut self) -> Box<[u8]> {
-        let ret = self.value_into_boxed_slice().unwrap();
-
-        self.number_of_children_plus_value -= 1;
-
-        ret
+        self.value_into_boxed_slice().unwrap()
     }
 
     /// Returns: old_value, is_self_about_to_delete, replacement_node_for_self
     fn check_delete_value(&self) -> Result<TrieNodeAction> {
         if self.has_value() {
-            let number_of_children_plus_value =
-                self.number_of_children_plus_value - 1;
-            Ok(match number_of_children_plus_value {
+            Ok(match self.get_children_count() {
                 0 => TrieNodeAction::Delete,
                 1 => self.merge_path_action(),
                 _ => TrieNodeAction::Modify,
@@ -704,26 +678,12 @@ impl TrieNode {
         }
     }
 
-    fn get_children_table_unchecked(&self) -> &ChildrenTable {
-        self.children_table.as_ref().unwrap().as_ref()
-    }
-
-    fn get_children_table_unchecked_mut(&mut self) -> &mut ChildrenTable {
-        self.children_table.as_mut().unwrap().as_mut()
-    }
-
     fn merge_path_action(&self) -> TrieNodeAction {
-        let children_table_ref = self.get_children_table_unchecked();
-        for i in 0..CHILDREN_COUNT {
-            if children_table_ref[i] != MaybeNodeRef::NULL_NODE {
-                return TrieNodeAction::MergePath {
-                    child_index: i as u8,
-                    child_node_ref: Option::<NodeRef>::from(
-                        children_table_ref[i],
-                    )
-                    .unwrap(),
-                };
-            }
+        for (i, node_ref) in self.children_table.iter() {
+            return TrieNodeAction::MergePath {
+                child_index: i,
+                child_node_ref: (*node_ref).into(),
+            };
         }
         unsafe { unreachable_unchecked() }
     }
@@ -731,82 +691,65 @@ impl TrieNode {
     fn merge_path_action_after_child_deletion(
         &self, child_index: u8,
     ) -> TrieNodeAction {
-        let children_table_ref = self.get_children_table_unchecked();
-        for i in 0..CHILDREN_COUNT {
-            if i != child_index as usize
-                && children_table_ref[i] != MaybeNodeRef::NULL_NODE
-            {
+        for (i, node_ref) in self.children_table.iter() {
+            if i != child_index {
                 return TrieNodeAction::MergePath {
-                    child_index: i as u8,
-                    child_node_ref: Option::<NodeRef>::from(
-                        children_table_ref[i],
-                    )
-                    .unwrap(),
+                    child_index: i,
+                    child_node_ref: (*node_ref).into(),
                 };
             }
         }
         unsafe { unreachable_unchecked() }
     }
 
-    // Children table.
-    fn get_child(&self, child_index: u8) -> MaybeNodeRef {
-        return self
-            .children_table
-            .as_ref()
-            .map_or(MaybeNodeRef::NULL_NODE, |table| {
-                table[child_index as usize]
-            });
+    fn get_child(&self, child_index: u8) -> Option<NodeRefDeltaMptCompact> {
+        self.children_table.get_child(child_index)
     }
 
-    /// set_child doesn't need to deal with resource management, because the
-    /// replaced child is either NULL_NODE, or whose ownership are stolen in
-    /// Trie operation.
-    fn set_child(&mut self, child_index: u8, new_child_node: MaybeNodeRef) {
-        let mut delta = 0;
-        let old_child: MaybeNodeRef;
-        if new_child_node != MaybeNodeRef::NULL_NODE {
-            delta += 1;
-        }
-        old_child = replace(
-            &mut self
-                .children_table
-                .get_or_insert_with(|| Default::default())
-                [child_index as usize],
-            new_child_node,
+    unsafe fn set_first_child_unchecked(
+        &mut self, child_index: u8, child: NodeRefDeltaMptCompact,
+    ) {
+        self.children_table =
+            ChildrenTableDeltaMpt::new_from_one_child(child_index, child);
+    }
+
+    unsafe fn add_new_child_unchecked(
+        &mut self, child_index: u8, child: NodeRefDeltaMptCompact,
+    ) {
+        self.children_table = CompactedChildrenTable::insert_child_unchecked(
+            self.children_table.as_ref(),
+            child_index,
+            child,
         );
-        if old_child != MaybeNodeRef::NULL_NODE {
-            delta -= 1;
-        }
-        self.number_of_children_plus_value =
-            (self.number_of_children_plus_value as i16 + delta) as u8;
+    }
+
+    /// Unsafe because it's assumed that the child_index already exists.
+    unsafe fn delete_child_unchecked(&mut self, child_index: u8) {
+        self.children_table = CompactedChildrenTable::delete_child_unchecked(
+            self.children_table.as_ref(),
+            child_index,
+        );
+    }
+
+    /// Unsafe because it's assumed that the child_index already exists.
+    unsafe fn replace_child_unchecked(
+        &mut self, child_index: u8, new_child_node: NodeRefDeltaMptCompact,
+    ) {
+        self.children_table
+            .set_child_unchecked(child_index, new_child_node);
     }
 
     /// Returns old_child, is_self_about_to_delete, replacement_node_for_self
-    fn check_replace_child(
-        &self, child_index: u8, new_child_node: MaybeNodeRef,
+    fn check_replace_or_delete_child_action(
+        &self, child_index: u8, new_child_node: Option<NodeRefDeltaMptCompact>,
     ) -> TrieNodeAction {
-        let mut delta = 0;
-        let old_child: MaybeNodeRef;
-        if new_child_node != MaybeNodeRef::NULL_NODE {
-            delta += 1;
-        }
-        if self.get_child(child_index) != MaybeNodeRef::NULL_NODE {
-            delta -= 1;
-        }
-        if delta == -1 {
-            match self.number_of_children_plus_value {
-                count @ 1...2 => {
-                    // It's not possible for non-root node to have 0 child 0
-                    // value after delete a child, because
-                    // the previous state must be 1 child 0
-                    // value, which can not exist.
-                    if count == 1 || self.has_value() {
-                        // There is no children.
-                        TrieNodeAction::DeleteChildrenTable
-                    } else {
-                        self.merge_path_action_after_child_deletion(child_index)
-                    }
+        if new_child_node.is_none() {
+            match self.get_children_count() {
+                1 => {
+                    // There is no children left after deletion.
+                    TrieNodeAction::DeleteChildrenTable
                 }
+                2 => self.merge_path_action_after_child_deletion(child_index),
                 _ => TrieNodeAction::Modify,
             }
         } else {
@@ -818,33 +761,19 @@ impl TrieNode {
 // TODO(yz): move to file for merkle_patricia_trie.
 use super::MultiVersionMerklePatriciaTrie;
 
-// If deleted, when the SubTrieVisitor goes out of scope, the node is deleted.
-// There is no need of allocator for deletion.
-// Allocation can happen as creation of this object.
-// OwnedChecker is only required when creating the CowNodeRef.
+/// CowNodeRef facilities access and modification to trie nodes in multi-version
+/// MPT. It offers read-only access to the original trie node, and creates an
+/// unique owned trie node once there is any modification. The ownership is
+/// maintained centralized in owned_node_set passed into many methods as
+/// argument.
 pub struct CowNodeRef {
-    // TODO(yz): if moved no deletion happens when SubTrieVisitor goes out of
-    // scope. Maybe this is not the best way but we will see. TODO(yz): if
-    // this is not the best way maybe we keep a reference to allocator to make
-    // sure that it definitely result into a deletion if not used.
+    // TODO(yz): remove moved because it's fine to only use owned.
     moved: bool,
     owned: bool,
-    pub node_ref: NodeRef,
+    pub node_ref: NodeRefDeltaMpt,
 }
 
-impl Default for CowNodeRef {
-    fn default() -> Self {
-        Self {
-            moved: false,
-            owned: false,
-            node_ref: NodeRef::Dirty {
-                index: NodeRefDeltaMPT::NULL_SLOT,
-            },
-        }
-    }
-}
-
-pub type OwnedNodeSet = BTreeSet<NodeRef>;
+pub type OwnedNodeSet = BTreeSet<NodeRefDeltaMpt>;
 
 impl CowNodeRef {
     pub fn new_uninitialized_node<'a>(
@@ -863,7 +792,9 @@ impl CowNodeRef {
         ))
     }
 
-    pub fn new(node_ref: NodeRef, owned_node_set: &OwnedNodeSet) -> Self {
+    pub fn new(
+        node_ref: NodeRefDeltaMpt, owned_node_set: &OwnedNodeSet,
+    ) -> Self {
         Self {
             owned: owned_node_set.contains(&node_ref),
             moved: false,
@@ -871,7 +802,21 @@ impl CowNodeRef {
         }
     }
 
-    fn into_owned<'a>(
+    /// Steal the value of Self, and leave the value into a state that's ready
+    /// to drop. The purpose of this method is only to circumvent Rust's
+    /// ownership check.
+    fn steal(&mut self) -> Self {
+        let ret = Self {
+            moved: self.moved,
+            owned: self.owned,
+            node_ref: self.node_ref.clone(),
+        };
+
+        self.moved = true;
+        ret
+    }
+
+    fn convert_to_owned<'a>(
         &mut self, node_memory_manager: &NodeMemoryManager,
         allocator: AllocatorRefRef<'a>, owned_node_set: &mut OwnedNodeSet,
     ) -> Result<Option<(&'a TrieNode, VacantEntry<'a>)>>
@@ -892,7 +837,7 @@ impl CowNodeRef {
         }
     }
 
-    pub fn delete_node(&mut self, node_memory_manager: &NodeMemoryManager) {
+    pub fn delete_node(mut self, node_memory_manager: &NodeMemoryManager) {
         if self.owned {
             node_memory_manager.free_node(&mut self.node_ref);
             self.owned = false;
@@ -900,12 +845,13 @@ impl CowNodeRef {
         self.moved = true;
     }
 
-    pub fn into_child(&mut self) -> MaybeNodeRef {
+    // TODO(yz): call into_child on unowned node should be an error.
+    pub fn into_child(mut self) -> Option<NodeRefDeltaMptCompact> {
         if !self.moved {
             self.moved = true;
-            self.node_ref.clone().into()
+            Some(self.node_ref.clone().into())
         } else {
-            MaybeNodeRef::NULL_NODE
+            None
         }
     }
 
@@ -913,48 +859,35 @@ impl CowNodeRef {
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
         commit_transaction: &mut AtomicCommitTransaction,
-        cache_manager: &mut CacheManager,
+        cache_manager: &mut CacheManager, allocator_ref: AllocatorRefRef,
     ) -> Result<()>
     {
-        match trie_node.children_table {
-            None => {}
-            Some(ref mut table) => {
-                let allocator = trie.get_node_memory_manager().get_allocator();
+        for (i, node_ref_mut) in trie_node.children_table.iter_mut() {
+            let node_ref = node_ref_mut.clone();
+            let mut cow_child_node = Self::new(node_ref.into(), owned_node_set);
+            let trie_node = trie
+                .get_node_memory_manager()
+                .node_as_mut_with_cache_manager(
+                    allocator_ref,
+                    &mut cow_child_node.node_ref,
+                    cache_manager,
+                )?;
+            let was_owned = cow_child_node.commit(
+                trie,
+                owned_node_set,
+                trie_node,
+                commit_transaction,
+                cache_manager,
+                allocator_ref,
+            )?;
 
-                let merkles = ChildrenMerkleTable::default();
-                for i in 0..CHILDREN_COUNT {
-                    let maybe_child_node: Option<NodeRef> = table[i].into();
-                    match maybe_child_node {
-                        None => {}
-                        Some(node_ref) => {
-                            let mut cow_child_node =
-                                Self::new(node_ref, owned_node_set);
-                            let trie_node = trie
-                                .get_node_memory_manager()
-                                .node_as_mut_with_cache_manager(
-                                    &allocator,
-                                    &mut cow_child_node.node_ref,
-                                    cache_manager,
-                                )?;
-                            let was_owned = cow_child_node.commit(
-                                trie,
-                                owned_node_set,
-                                trie_node,
-                                commit_transaction,
-                                cache_manager,
-                            )?;
-
-                            // A owned child TrieNode now have a new NodeRef.
-                            // Unowned child TrieNode isn't changed so it's safe
-                            // to not reset children
-                            // table in parent node.
-                            let new_node_ref = cow_child_node.into_child();
-                            if was_owned {
-                                table[i] = new_node_ref;
-                            }
-                        }
-                    }
-                }
+            // An owned child TrieNode now have a new NodeRef.
+            // Unowned child TrieNode isn't changed so it's safe
+            // to not reset children
+            // table in parent node.
+            let new_node_ref = cow_child_node.into_child();
+            if was_owned {
+                *node_ref_mut = new_node_ref.clone().unwrap();
             }
         }
         Ok(())
@@ -979,6 +912,7 @@ impl CowNodeRef {
     pub fn get_or_compute_merkle(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
+        allocator_ref: AllocatorRefRef,
     ) -> Result<MerkleHash>
     {
         if self.owned {
@@ -986,6 +920,7 @@ impl CowNodeRef {
                 trie,
                 owned_node_set,
                 trie_node,
+                allocator_ref,
             )?;
 
             let merkle = self.set_merkle(children_merkles.as_ref(), trie_node);
@@ -996,39 +931,43 @@ impl CowNodeRef {
         }
     }
 
+    // FIXME: get allocator outside recursion. do the same for commit.
     fn get_or_compute_children_merkles(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
+        allocator_ref: AllocatorRefRef,
     ) -> Result<MaybeMerkleTable>
     {
-        match trie_node.children_table {
-            None => Ok(None),
-            Some(ref mut table) => {
-                let allocator = trie.get_node_memory_manager().get_allocator();
-
+        match trie_node.children_table.get_children_count() {
+            0 => Ok(None),
+            _ => {
                 let mut merkles = ChildrenMerkleTable::default();
-                for i in 0..CHILDREN_COUNT {
-                    let maybe_child_node: Option<NodeRef> = table[i].into();
-                    merkles[i] = match maybe_child_node {
-                        None => super::merkle::MERKLE_NULL_NODE,
-                        Some(node_ref) => {
-                            let mut cow_child_node =
-                                Self::new(node_ref, owned_node_set);
+                for (i, maybe_node_ref_mut) in
+                    trie_node.children_table.iter_non_skip()
+                {
+                    match maybe_node_ref_mut {
+                        None => merkles[i as usize] = MERKLE_NULL_NODE,
+                        Some(node_ref_mut) => {
+                            let mut cow_child_node = Self::new(
+                                (*node_ref_mut).into(),
+                                owned_node_set,
+                            );
                             let trie_node =
                                 trie.get_node_memory_manager().node_as_mut(
-                                    &allocator,
+                                    allocator_ref,
                                     &mut cow_child_node.node_ref,
                                 )?;
                             let merkle = cow_child_node.get_or_compute_merkle(
                                 trie,
                                 owned_node_set,
                                 trie_node,
+                                allocator_ref,
                             )?;
                             // There is no change to the child_node so the
                             // return value is dropped.
                             cow_child_node.into_child();
 
-                            merkle
+                            merkles[i as usize] = merkle;
                         }
                     }
                 }
@@ -1042,7 +981,7 @@ impl CowNodeRef {
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
         commit_transaction: &mut AtomicCommitTransaction,
-        cache_manager: &mut CacheManager,
+        cache_manager: &mut CacheManager, allocator_ref: AllocatorRefRef,
     ) -> Result<bool>
     {
         if self.owned {
@@ -1052,6 +991,7 @@ impl CowNodeRef {
                 trie_node,
                 commit_transaction,
                 cache_manager,
+                allocator_ref,
             )?;
 
             let db_key = commit_transaction.info.row_number.value;
@@ -1064,11 +1004,11 @@ impl CowNodeRef {
                 commit_transaction.info.row_number.get_next()?;
 
             let slot = match &self.node_ref {
-                NodeRef::Dirty { index } => *index,
+                NodeRefDeltaMpt::Dirty { index } => *index,
                 _ => unsafe { unreachable_unchecked() },
             };
             owned_node_set.remove(&self.node_ref);
-            self.node_ref = NodeRef::Committed { db_key: db_key };
+            self.node_ref = NodeRefDeltaMpt::Committed { db_key: db_key };
             owned_node_set.insert(self.node_ref.clone());
 
             cache_manager.insert_to_node_ref_map(
@@ -1101,8 +1041,11 @@ impl CowNodeRef {
     ) -> Result<()>
     {
         let allocator = node_memory_manager.get_allocator();
-        let copied =
-            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
+        let copied = self.convert_to_owned(
+            node_memory_manager,
+            &allocator,
+            owned_node_set,
+        )?;
         match copied {
             Some((old, new_entry)) => {
                 new_entry.insert(unsafe {
@@ -1122,8 +1065,11 @@ impl CowNodeRef {
     ) -> Result<Box<[u8]>>
     {
         let allocator = node_memory_manager.get_allocator();
-        let copied =
-            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
+        let copied = self.convert_to_owned(
+            node_memory_manager,
+            &allocator,
+            owned_node_set,
+        )?;
         Ok(match copied {
             None => unsafe { trie_node.delete_value_unchecked() },
             Some((old, new_entry)) => {
@@ -1142,8 +1088,11 @@ impl CowNodeRef {
     ) -> Result<Option<Box<[u8]>>>
     {
         let allocator = node_memory_manager.get_allocator();
-        let copied =
-            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
+        let copied = self.convert_to_owned(
+            node_memory_manager,
+            &allocator,
+            owned_node_set,
+        )?;
         Ok(match copied {
             None => trie_node.replace_value_valid(value),
             Some((old, new_entry)) => {
@@ -1161,38 +1110,103 @@ impl CowNodeRef {
     ) -> Result<()>
     {
         let allocator = node_memory_manager.get_allocator();
-        let copied =
-            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
+        let copied = self.convert_to_owned(
+            node_memory_manager,
+            &allocator,
+            owned_node_set,
+        )?;
         match copied {
             None => {
-                trie_node.children_table = None;
+                trie_node.children_table = ChildrenTableDeltaMpt::default();
             }
             Some((old, new_entry)) => {
                 new_entry.insert(unsafe {
-                    old.copy_and_replace_fields(None, None, Some(None))
+                    old.copy_and_replace_fields(
+                        None,
+                        None,
+                        Some(ChildrenTableDeltaMpt::default()),
+                    )
                 });
             }
         }
         Ok(())
     }
 
-    fn cow_replace_child(
+    unsafe fn cow_replace_child_unchecked(
         &mut self, node_memory_manager: &NodeMemoryManager,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
-        child_index: u8, child_node: MaybeNodeRef,
+        child_index: u8, child_node: NodeRefDeltaMptCompact,
     ) -> Result<()>
     {
         let allocator = node_memory_manager.get_allocator();
-        let copied =
-            self.into_owned(node_memory_manager, &allocator, owned_node_set)?;
+        let copied = self.convert_to_owned(
+            node_memory_manager,
+            &allocator,
+            owned_node_set,
+        )?;
         match copied {
             None => {
-                trie_node.set_child(child_index, child_node);
+                trie_node.replace_child_unchecked(child_index, child_node);
             }
             Some((old, new_entry)) => {
                 let mut new_trie_node =
-                    unsafe { old.copy_and_replace_fields(None, None, None) };
-                new_trie_node.set_child(child_index, child_node);
+                    old.copy_and_replace_fields(None, None, None);
+                new_trie_node.replace_child_unchecked(child_index, child_node);
+                new_entry.insert(new_trie_node);
+            }
+        }
+
+        Ok(())
+    }
+
+    unsafe fn cow_delete_child_unchecked(
+        &mut self, node_memory_manager: &NodeMemoryManager,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
+        child_index: u8,
+    ) -> Result<()>
+    {
+        let allocator = node_memory_manager.get_allocator();
+        let copied = self.convert_to_owned(
+            node_memory_manager,
+            &allocator,
+            owned_node_set,
+        )?;
+        match copied {
+            None => {
+                trie_node.delete_child_unchecked(child_index);
+            }
+            Some((old, new_entry)) => {
+                let mut new_trie_node =
+                    old.copy_and_replace_fields(None, None, None);
+                new_trie_node.delete_child_unchecked(child_index);
+                new_entry.insert(new_trie_node);
+            }
+        }
+
+        Ok(())
+    }
+
+    // FIXME: How to replace duplicated code?
+    unsafe fn cow_add_new_child_unchecked(
+        &mut self, node_memory_manager: &NodeMemoryManager,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNode,
+        child_index: u8, child_node: NodeRefDeltaMptCompact,
+    ) -> Result<()>
+    {
+        let allocator = node_memory_manager.get_allocator();
+        let copied = self.convert_to_owned(
+            node_memory_manager,
+            &allocator,
+            owned_node_set,
+        )?;
+        match copied {
+            None => {
+                trie_node.add_new_child_unchecked(child_index, child_node);
+            }
+            Some((old, new_entry)) => {
+                let mut new_trie_node =
+                    old.copy_and_replace_fields(None, None, None);
+                new_trie_node.add_new_child_unchecked(child_index, child_node);
                 new_entry.insert(new_trie_node);
             }
         }
@@ -1220,8 +1234,9 @@ impl Drop for CowNodeRef {
 }
 
 pub struct SubTrieVisitor<'trie> {
-    trie_ref: &'trie MultiVersionMerklePatriciaTrie,
     root: CowNodeRef,
+
+    trie_ref: &'trie MultiVersionMerklePatriciaTrie,
 
     /// We use ReturnAfterUse because only one SubTrieVisitor(the deepest) can
     /// hold the mutable reference of owned_node_set.
@@ -1230,7 +1245,7 @@ pub struct SubTrieVisitor<'trie> {
 
 impl<'trie> SubTrieVisitor<'trie> {
     pub fn new(
-        trie_ref: &'trie MultiVersionMerklePatriciaTrie, root: NodeRef,
+        trie_ref: &'trie MultiVersionMerklePatriciaTrie, root: NodeRefDeltaMpt,
         owned_node_set: &'trie mut Option<OwnedNodeSet>,
     ) -> Self
     {
@@ -1242,7 +1257,7 @@ impl<'trie> SubTrieVisitor<'trie> {
     }
 
     fn new_visitor_for_subtree<'a>(
-        &'a mut self, child_node: NodeRef,
+        &'a mut self, child_node: NodeRefDeltaMpt,
     ) -> SubTrieVisitor<'a>
     where 'trie: 'a {
         let trie_ref = self.trie_ref;
@@ -1322,16 +1337,23 @@ impl<'trie> SubTrieVisitor<'trie> {
                 if trie_node.get_compressed_path_size() == 0 {
                     Ok(Some(trie_node.merkle_hash))
                 } else {
-                    let merkles = match trie_node.children_table {
-                        None => None,
-                        Some(ref table) => {
+                    let merkles = match trie_node
+                        .children_table
+                        .get_children_count()
+                    {
+                        0 => None,
+                        _ => {
                             let mut merkles = ChildrenMerkleTable::default();
-                            for i in 0..CHILDREN_COUNT {
-                                merkles[i] =
-                                    match self.trie_ref.get_merkle(table[i])? {
-                                        None => super::merkle::MERKLE_NULL_NODE,
-                                        Some(merkle) => merkle,
-                                    };
+                            for (i, maybe_node_ref) in
+                                trie_node.children_table.iter_non_skip()
+                            {
+                                merkles[i as usize] = match maybe_node_ref {
+                                    None => super::merkle::MERKLE_NULL_NODE,
+                                    Some(node_ref) => self
+                                        .trie_ref
+                                        .get_merkle(Some((*node_ref).into()))?
+                                        .unwrap(),
+                                };
                             }
 
                             Some(merkles)
@@ -1351,11 +1373,11 @@ impl<'trie> SubTrieVisitor<'trie> {
     /// Returns (deleted value, is root node replaced, the current root node for
     /// the subtree).
     pub fn delete(
-        &mut self, key: KeyPart,
-    ) -> Result<(Option<Box<[u8]>>, bool, MaybeNodeRef)> {
+        mut self, key: KeyPart,
+    ) -> Result<(Option<Box<[u8]>>, bool, Option<NodeRefDeltaMptCompact>)> {
         let node_memory_manager = self.node_memory_manager();
         let allocator = node_memory_manager.get_allocator();
-        let mut node_cow = replace(&mut self.root, Default::default());
+        let mut node_cow = self.root.steal();
         // TODO(yz): be compliant to borrow rule and avoid duplicated
 
         // FIXME: map_split?
@@ -1379,9 +1401,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                         // FIXME: deal with deletion while holding the
                         // trie_node_mut.
                         node_cow.delete_node(self.node_memory_manager());
-                        // FIXME: maybe unify NULL_NODE into
-                        // node_cow.into_child()?
-                        Ok((Some(value), true, MaybeNodeRef::NULL_NODE))
+                        Ok((Some(value), true, None))
                     }
                     TrieNodeAction::MergePath {
                         child_index,
@@ -1458,7 +1478,10 @@ impl<'trie> SubTrieVisitor<'trie> {
                 let (value, child_replaced, new_child_node) = result.unwrap();
                 if child_replaced {
                     let action = trie_node_mut
-                        .check_replace_child(child_index, new_child_node);
+                        .check_replace_or_delete_child_action(
+                            child_index,
+                            new_child_node,
+                        );
                     match action {
                         TrieNodeAction::MergePath {
                             child_index,
@@ -1512,18 +1535,30 @@ impl<'trie> SubTrieVisitor<'trie> {
 
                             Ok((value, node_changed, node_cow.into_child()))
                         }
-                        TrieNodeAction::Modify => {
+                        TrieNodeAction::Modify => unsafe {
                             let node_changed = !node_cow.owned;
-                            node_cow.cow_replace_child(
-                                &node_memory_manager,
-                                self.owned_node_set.get_mut(),
-                                trie_node_mut,
-                                child_index,
-                                new_child_node,
-                            )?;
+                            match new_child_node {
+                                None => {
+                                    node_cow.cow_delete_child_unchecked(
+                                        &node_memory_manager,
+                                        self.owned_node_set.get_mut(),
+                                        trie_node_mut,
+                                        child_index,
+                                    )?;
+                                }
+                                Some(replacement) => {
+                                    node_cow.cow_replace_child_unchecked(
+                                        &node_memory_manager,
+                                        self.owned_node_set.get_mut(),
+                                        trie_node_mut,
+                                        child_index,
+                                        replacement,
+                                    )?;
+                                }
+                            }
 
                             Ok((value, node_changed, node_cow.into_child()))
-                        }
+                        },
                         _ => unsafe { unreachable_unchecked() },
                     }
                 } else {
@@ -1549,10 +1584,10 @@ impl<'trie> SubTrieVisitor<'trie> {
     /// The visitor can only be used once to modify.
     unsafe fn insert_checked_value<'key>(
         mut self, key: KeyPart<'key>, value: &[u8],
-    ) -> Result<(bool, MaybeNodeRef)> {
+    ) -> Result<(bool, NodeRefDeltaMptCompact)> {
         let node_memory_manager = self.node_memory_manager();
         let allocator = node_memory_manager.get_allocator();
-        let mut node_cow = replace(&mut self.root, Default::default());
+        let mut node_cow = self.root.steal();
         // TODO(yz): be compliant to borrow rule and avoid duplicated
 
         let trie_node_mut = node_memory_manager
@@ -1567,7 +1602,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     value,
                 )?;
 
-                Ok((node_changed, node_cow.into_child()))
+                Ok((node_changed, node_cow.into_child().unwrap()))
             }
             WalkStop::Descent {
                 key_remaining,
@@ -1583,10 +1618,9 @@ impl<'trie> SubTrieVisitor<'trie> {
                 }
                 let (child_changed, new_child_node) = result.unwrap();
 
-                // No node deletion can happen
                 if child_changed {
                     let node_changed = !node_cow.owned;
-                    node_cow.cow_replace_child(
+                    node_cow.cow_replace_child_unchecked(
                         &node_memory_manager,
                         self.owned_node_set.get_mut(),
                         trie_node_mut,
@@ -1594,9 +1628,9 @@ impl<'trie> SubTrieVisitor<'trie> {
                         new_child_node,
                     )?;
 
-                    Ok((node_changed, node_cow.into_child()))
+                    Ok((node_changed, node_cow.into_child().unwrap()))
                 } else {
-                    Ok((false, node_cow.into_child()))
+                    Ok((false, node_cow.into_child().unwrap()))
                 }
             }
             WalkStop::PathDiverted {
@@ -1612,7 +1646,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 // replacement node create a new node for
                 // insertion (if key_remaining is non-empty), set it to child,
                 // with key_remaining.
-                let (mut new_node_cow, new_node_entry) =
+                let (new_node_cow, new_node_entry) =
                     CowNodeRef::new_uninitialized_node(
                         &allocator,
                         self.owned_node_set.get_mut(),
@@ -1628,8 +1662,12 @@ impl<'trie> SubTrieVisitor<'trie> {
                     trie_node_mut,
                 )?;
 
-                new_node
-                    .set_child(unmatched_child_index, node_cow.into_child());
+                // It's safe because we know that this is the first child.
+                new_node.set_first_child_unchecked(
+                    unmatched_child_index,
+                    // It's safe to unwrap because we know that it's not none.
+                    node_cow.into_child().unwrap(),
+                );
 
                 // TODO(yz): remove duplicated code.
                 match key_child_index {
@@ -1640,7 +1678,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     Some(child_index) => {
                         // TODO(yz): Maybe create CowNodeRef on NULL then
                         // cow_set_value then set path.
-                        let (mut child_node_cow, child_node_entry) =
+                        let (child_node_cow, child_node_entry) =
                             CowNodeRef::new_uninitialized_node(
                                 &allocator,
                                 self.owned_node_set.get_mut(),
@@ -1656,14 +1694,18 @@ impl<'trie> SubTrieVisitor<'trie> {
                         new_child_node.replace_value_valid(value);
                         child_node_entry.insert(new_child_node);
 
-                        new_node.set_child(
+                        // It's safe because it's guaranteed that
+                        // key_child_index != unmatched_child_index
+                        new_node.add_new_child_unchecked(
                             child_index,
-                            child_node_cow.into_child(),
+                            // It's safe to unwrap here because it's not null
+                            // node.
+                            child_node_cow.into_child().unwrap(),
                         );
                     }
                 }
                 new_node_entry.insert(new_node);
-                Ok((true, new_node_cow.into_child()))
+                Ok((true, new_node_cow.into_child().unwrap()))
             }
             WalkStop::ChildNotFound {
                 key_remaining,
@@ -1671,7 +1713,7 @@ impl<'trie> SubTrieVisitor<'trie> {
             } => {
                 // TODO(yz): Maybe create CowNodeRef on NULL then cow_set_value
                 // then set path.
-                let (mut child_node_cow, child_node_entry) =
+                let (child_node_cow, child_node_entry) =
                     CowNodeRef::new_uninitialized_node(
                         &allocator,
                         self.owned_node_set.get_mut(),
@@ -1686,27 +1728,27 @@ impl<'trie> SubTrieVisitor<'trie> {
                 child_node_entry.insert(new_child_node);
 
                 let node_changed = !node_cow.owned;
-                node_cow.cow_replace_child(
+                node_cow.cow_add_new_child_unchecked(
                     &node_memory_manager,
                     self.owned_node_set.get_mut(),
                     trie_node_mut,
                     child_index,
-                    child_node_cow.into_child(),
+                    child_node_cow.into_child().unwrap(),
                 )?;
 
-                Ok((node_changed, node_cow.into_child()))
+                Ok((node_changed, node_cow.into_child().unwrap()))
             }
         }
     }
 
-    pub fn set(self, key: KeyPart, value: &[u8]) -> Result<MaybeNodeRef> {
+    pub fn set(self, key: KeyPart, value: &[u8]) -> Result<NodeRefDeltaMpt> {
         TrieNode::check_key_size(key)?;
         TrieNode::check_value_size(value)?;
-        let new_root: MaybeNodeRef;
+        let new_root;
         unsafe {
             new_root = self.insert_checked_value(key, value)?.1;
         }
-        Ok(new_root)
+        Ok(new_root.into())
     }
 }
 
@@ -1716,9 +1758,7 @@ impl Encodable for TrieNode {
         // ( + [compressed_path] )
         s.begin_unbounded_list()
             .append(&self.merkle_hash)
-            .append(&OwnedChildrenTableRef {
-                children_table_ref: &self.children_table,
-            })
+            .append(&self.children_table.as_ref())
             .append(&self.value_as_slice());
 
         let compressed_path_ref = self.compressed_path_ref();
@@ -1741,52 +1781,10 @@ impl Decodable for TrieNode {
 
         Ok(TrieNode::new(
             &rlp.val_at::<Vec<u8>>(0)?.as_slice().into(),
-            rlp.val_at::<OwnedChildrenTableWrapper>(1)?
-                .owned_children_table,
+            rlp.val_at::<ChildrenTableManagedDeltaMpt>(1)?.into(),
             rlp.val_at::<Vec<u8>>(2)?.as_slice(),
             compressed_path,
         ))
-    }
-}
-
-pub struct OwnedChildrenTableWrapper {
-    pub owned_children_table: OwnedChildrenTable,
-}
-
-pub struct OwnedChildrenTableRef<'a> {
-    pub children_table_ref: &'a OwnedChildrenTable,
-}
-
-impl<'a> Encodable for OwnedChildrenTableRef<'a> {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        match self.children_table_ref {
-            Some(ref owned_children_table) => {
-                s.append_list(owned_children_table.as_ref().as_ref());
-            }
-            None => {
-                s.begin_list(0);
-            }
-        }
-    }
-}
-
-impl Decodable for OwnedChildrenTableWrapper {
-    fn decode(rlp: &Rlp) -> ::std::result::Result<Self, DecoderError> {
-        Ok(OwnedChildrenTableWrapper {
-            owned_children_table: if rlp.item_count()? > 1 {
-                let mut children_table = Box::<ChildrenTable>::default();
-                let parsed_children_table = rlp.as_list()?;
-                // Prevent copy_from_slice from asserting.
-                if parsed_children_table.len() != CHILDREN_COUNT {
-                    return Err(DecoderError::RlpIncorrectListLen);
-                }
-                children_table
-                    .copy_from_slice(parsed_children_table.as_slice());
-                Some(children_table)
-            } else {
-                None
-            },
-        })
     }
 }
 
@@ -1811,5 +1809,22 @@ impl Decodable for CompressedPathRaw {
             rlp.val_at::<Vec<u8>>(1)?.as_slice(),
             rlp.val_at(0)?,
         ))
+    }
+}
+
+impl PartialEq for TrieNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.value_as_slice() == other.value_as_slice()
+            && self.children_table == other.children_table
+            && self.merkle_hash == other.merkle_hash
+            && self.compressed_path_ref() == other.compressed_path_ref()
+    }
+}
+
+impl Debug for TrieNode {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "TrieNode{{ merkle: {:?}, value: {:?}, children_table: {:?}, compressed_path: {:?} }}",
+               self.merkle_hash, self.value_as_slice(),
+               &self.children_table, self.compressed_path_ref())
     }
 }

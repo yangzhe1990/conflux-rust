@@ -20,78 +20,11 @@ type Allocator = Slab<TrieNode, TrieNodeSlabEntry>;
 pub type AllocatorRef<'a> = RwLockReadGuard<'a, Allocator>;
 pub type AllocatorRefRef<'a> = &'a AllocatorRef<'a>;
 
-pub type CacheAlgorithmDeltaMPT = LFRU<LFRUPosT, DeltaMptDbKey>;
+pub type CacheAlgorithmDeltaMpt = LFRU<LFRUPosT, DeltaMptDbKey>;
 
 pub type CacheManagerMut<'a> = RwLockWriteGuard<'a, CacheManager>;
 
 impl CacheIndexTrait for DeltaMptDbKey {}
-
-/// The MSB is used to indicate if a node is in mem or on disk,
-/// the rest 31 bits specifies the index of the node in the
-/// memory region.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct MaybeNodeRef {
-    value: u32,
-}
-
-impl Default for MaybeNodeRef {
-    fn default() -> Self { Self { value: Self::NULL } }
-}
-
-impl MaybeNodeRef {
-    const DIRTY_BIT: u32 = 0x80000000;
-    pub const MAX_VALUE: u32 = 0x7fffffff;
-    const NULL: u32 = 0;
-    pub const NULL_NODE: MaybeNodeRef = MaybeNodeRef { value: Self::NULL };
-
-    pub fn new(value: u32) -> Self { Self { value: value } }
-}
-
-// Manages access to a TrieNode. Converted from MaybeNodeRef. NodeRef is not
-// copy because it controls access to TrieNode.
-#[derive(Clone, Eq, PartialOrd, PartialEq, Ord)]
-pub enum NodeRef {
-    Committed { db_key: DeltaMptDbKey },
-    Dirty { index: ActualSlabIndex },
-}
-
-impl From<MaybeNodeRef> for Option<NodeRef> {
-    fn from(x: MaybeNodeRef) -> Self {
-        if x.value == MaybeNodeRef::NULL {
-            Option::None
-        } else if MaybeNodeRef::DIRTY_BIT & x.value != 0 {
-            Option::Some(NodeRef::Dirty {
-                index: (MaybeNodeRef::DIRTY_BIT ^ x.value),
-            })
-        } else {
-            Option::Some(NodeRef::Committed {
-                db_key: (MaybeNodeRef::MAX_VALUE ^ x.value),
-            })
-        }
-    }
-}
-
-impl From<NodeRef> for MaybeNodeRef {
-    fn from(node: NodeRef) -> Self {
-        match node {
-            NodeRef::Committed { db_key } => Self {
-                value: db_key ^ MaybeNodeRef::MAX_VALUE,
-            },
-            NodeRef::Dirty { index } => Self {
-                value: index ^ MaybeNodeRef::DIRTY_BIT,
-            },
-        }
-    }
-}
-
-impl From<Option<NodeRef>> for MaybeNodeRef {
-    fn from(maybe_node: Option<NodeRef>) -> Self {
-        match maybe_node {
-            None => MaybeNodeRef::NULL_NODE,
-            Some(node) => node.into(),
-        }
-    }
-}
 
 // TODO: On performance, each access may requires a lock because of calling
 // TODO: cache algorithm & cache eviction & TrieNode slab alloc/delete
@@ -107,7 +40,7 @@ pub struct CacheManager {
     /// when a node is swapped-out from cache into disk, the eviction of
     /// children should be independent, not only because of cache hit
     /// property, but also because that a node can have multiple parents. When
-    /// the node is loaded into cache again, it should automatically connects
+    /// a node is loaded into cache again, it should automatically connects
     /// to its children in cache, even if the children is shared with some
     /// other node unknown.
     ///
@@ -117,10 +50,10 @@ pub struct CacheManager {
     /// Merkle Hash, which is too large for a Trie node: 16*64B are
     /// required to store only ChildrenTable.
     ///
-    /// To solve these problems, we introduce NodeRef, which should remain
-    /// stable for the lifetime of the TrieNode of the ChildrenTable.
-    /// The key of NodeRefMap shall be db key, and the value of NodeRefMap
-    /// shall point to where the node is cached.
+    /// To solve these problems, we introduce CacheableNodeRef, which should
+    /// remain stable for the lifetime of the TrieNode of the
+    /// ChildrenTable. The key of NodeRefMap shall be db key, and the value
+    /// of NodeRefMap shall point to where the node is cached.
     ///
     /// The db key could be made smaller for Delta MPT (4B)
     /// and maybe for Persistent MPT (8B) by simply using the row number.
@@ -139,8 +72,8 @@ pub struct CacheManager {
     /// Note that there are also dirty nodes, which always live in memory.
     /// The NodeRef / MaybeNodeRef also covers dirty nodes, but NodeRefMap
     /// covers only commited nodes.
-    node_ref_map: NodeRefMapDeltaMPT,
-    lfru_cache_algorithm: CacheAlgorithmDeltaMPT,
+    node_ref_map: NodeRefMapDeltaMpt,
+    lfru_cache_algorithm: CacheAlgorithmDeltaMpt,
 }
 
 pub struct NodeMemoryManager {
@@ -205,7 +138,7 @@ impl NodeMemoryManager {
             idle_size: idle_size,
             allocator: RwLock::new(Slab::with_capacity(start_size as usize)),
             cache: RwLock::new(CacheManager {
-                node_ref_map: NodeRefMapDeltaMPT::default(),
+                node_ref_map: NodeRefMapDeltaMpt::default(),
                 lfru_cache_algorithm: LFRU::<u32, DeltaMptDbKey>::new(
                     Self::MAX_CACHED_TRIE_NODES_DISK_HYBRID,
                     Self::MAX_CACHED_TRIE_NODES_LFRU_COUNTER,
@@ -244,7 +177,7 @@ impl NodeMemoryManager {
     }
 
     fn get_cache_slot(
-        node_ref_map: &NodeRefMapDeltaMPT, db_key: DeltaMptDbKey,
+        node_ref_map: &NodeRefMapDeltaMpt, db_key: DeltaMptDbKey,
     ) -> Option<ActualSlabIndex> {
         node_ref_map.get(db_key).and_then(|x| x.to_slot())
     }
@@ -280,9 +213,9 @@ impl NodeMemoryManager {
     /// Called after node are marked committed in Slab.
     /// The updating of the NodeRef from its parent are already done because
     /// dirty nodes comes from a tree when recursively committing.
-    pub fn dirty_node_committed(&self, node_ref: &NodeRef) {
+    pub fn dirty_node_committed(&self, node_ref: &NodeRefDeltaMpt) {
         match node_ref {
-            NodeRef::Committed { ref db_key } => {
+            NodeRefDeltaMpt::Committed { ref db_key } => {
                 self.call_cache_algorithm_access(
                     &mut *self.cache.write(),
                     *db_key,
@@ -295,8 +228,8 @@ impl NodeMemoryManager {
     /// This method is called when loading from db.
     /// unsafe because the key must be existing.
     pub unsafe fn delete_from_cache(
-        &self, cache_algorithm: &mut CacheAlgorithmDeltaMPT,
-        node_ref_map: &NodeRefMapDeltaMPT, db_key: DeltaMptDbKey,
+        &self, cache_algorithm: &mut CacheAlgorithmDeltaMpt,
+        node_ref_map: &NodeRefMapDeltaMpt, db_key: DeltaMptDbKey,
         slot: ActualSlabIndex,
     )
     {
@@ -337,12 +270,12 @@ impl NodeMemoryManager {
     }
 
     fn load_node_internal<'a>(
-        &self, allocator: AllocatorRefRef<'a>, node: &NodeRef,
+        &self, allocator: AllocatorRefRef<'a>, node: &NodeRefDeltaMpt,
         cache_manager: &mut CacheManager,
     ) -> Result<&'a mut TrieNode>
     {
         match node {
-            NodeRef::Committed { ref db_key } => {
+            NodeRefDeltaMpt::Committed { ref db_key } => {
                 let maybe_cache_slot =
                     Self::get_cache_slot(&cache_manager.node_ref_map, *db_key);
                 let cache_slot;
@@ -366,7 +299,7 @@ impl NodeMemoryManager {
 
                 Ok(node)
             }
-            NodeRef::Dirty { ref index } => {
+            NodeRefDeltaMpt::Dirty { ref index } => {
                 Ok(NodeMemoryManager::get_in_memory_node_mut(
                     &allocator,
                     *index as usize,
@@ -377,7 +310,7 @@ impl NodeMemoryManager {
 
     unsafe fn get_cached_node_mut_unchecked<'a>(
         &self, allocator: AllocatorRefRef<'a>,
-        node_ref_map: &NodeRefMapDeltaMPT, db_key: DeltaMptDbKey,
+        node_ref_map: &NodeRefMapDeltaMpt, db_key: DeltaMptDbKey,
     ) -> &'a mut TrieNode
     {
         // Unwrap because cache_slot is protected by &CacheManagement, and the
@@ -390,7 +323,7 @@ impl NodeMemoryManager {
     }
 
     pub fn node_as_ref<'a>(
-        &self, allocator: AllocatorRefRef<'a>, node: &NodeRef,
+        &self, allocator: AllocatorRefRef<'a>, node: &NodeRefDeltaMpt,
     ) -> Result<&'a TrieNode> {
         Ok(self.load_node_internal(
             allocator,
@@ -400,13 +333,13 @@ impl NodeMemoryManager {
     }
 
     pub fn node_as_mut<'a>(
-        &self, allocator: AllocatorRefRef<'a>, node: &mut NodeRef,
+        &self, allocator: AllocatorRefRef<'a>, node: &mut NodeRefDeltaMpt,
     ) -> Result<&'a mut TrieNode> {
         self.load_node_internal(allocator, node, &mut *self.cache.write())
     }
 
     pub fn node_as_mut_with_cache_manager<'a>(
-        &self, allocator: AllocatorRefRef<'a>, node: &mut NodeRef,
+        &self, allocator: AllocatorRefRef<'a>, node: &mut NodeRefDeltaMpt,
         cache_manager: &mut CacheManager,
     ) -> Result<&'a mut TrieNode>
     {
@@ -415,9 +348,9 @@ impl NodeMemoryManager {
 
     pub fn new_node<'a>(
         allocator: AllocatorRefRef<'a>,
-    ) -> Result<(NodeRef, VacantEntry<'a>)> {
+    ) -> Result<(NodeRefDeltaMpt, VacantEntry<'a>)> {
         let vacant_entry = allocator.vacant_entry()?;
-        let node = NodeRef::Dirty {
+        let node = NodeRefDeltaMpt::Dirty {
             index: vacant_entry.key() as ActualSlabIndex,
         };
         Ok((node, vacant_entry))
@@ -426,9 +359,9 @@ impl NodeMemoryManager {
     /// Usually the node to free is dirty (i.e. not committed), however it's
     /// also possible that the state db commitment fails so the node is in
     /// memory committed but it should be reverted.
-    pub fn free_node(&self, node: &mut NodeRef) {
+    pub fn free_node(&self, node: &mut NodeRefDeltaMpt) {
         let slot = match node {
-            NodeRef::Committed { ref db_key } => {
+            NodeRefDeltaMpt::Committed { ref db_key } => {
                 let mut cache_mut = self.cache.write();
                 let maybe_slot =
                     Self::get_cache_slot(&cache_mut.node_ref_map, *db_key);
@@ -442,7 +375,7 @@ impl NodeMemoryManager {
                     }
                 }
             }
-            NodeRef::Dirty { ref index } => *index,
+            NodeRefDeltaMpt::Dirty { ref index } => *index,
         };
 
         // This unwrap is fine because we return early if slot doesn't exist.
@@ -452,13 +385,13 @@ impl NodeMemoryManager {
 
 struct NodeCacheUtil<'a> {
     node_memory_manager: &'a NodeMemoryManager,
-    node_ref_map: &'a NodeRefMapDeltaMPT,
+    node_ref_map: &'a NodeRefMapDeltaMpt,
 }
 
 impl<'a> NodeCacheUtil<'a> {
     fn new(
         node_memory_manager: &'a NodeMemoryManager,
-        node_map: &'a NodeRefMapDeltaMPT,
+        node_map: &'a NodeRefMapDeltaMpt,
     ) -> Self
     {
         NodeCacheUtil {
@@ -512,16 +445,4 @@ impl CacheManager {
             &mut self.lfru_cache_algorithm,
         );
     }
-}
-
-impl Decodable for MaybeNodeRef {
-    fn decode(rlp: &Rlp) -> ::std::result::Result<Self, DecoderError> {
-        Ok(MaybeNodeRef {
-            value: rlp.as_val()?,
-        })
-    }
-}
-
-impl Encodable for MaybeNodeRef {
-    fn rlp_append(&self, s: &mut RlpStream) { s.append_internal(&self.value); }
 }
