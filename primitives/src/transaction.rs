@@ -1,12 +1,17 @@
 use crate::{bytes::Bytes, hash::keccak};
 use ethereum_types::{Address, H160, H256, U256};
 use ethkey::{self, public_to_address, recover, Public, Secret, Signature};
+use lru::LruCache;
 use rlp::{self, Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use std::{error, fmt, ops::Deref};
+use std::{error, fmt, ops::Deref, sync::Arc};
 use unexpected::OutOfBounds;
 
 /// Fake address for unsigned transactions.
 pub const UNSIGNED_SENDER: Address = H160([0xff; 20]);
+
+/// Shorter id for transactions in compact blocks
+// TODO should be u48
+pub type TxShortId = u64;
 
 #[derive(Debug, PartialEq, Clone)]
 /// Errors concerning transaction processing.
@@ -375,6 +380,32 @@ impl SignedTransaction {
             sender: UNSIGNED_SENDER,
             public: None,
         }
+    }
+
+    pub fn batch_recover_with_cache(
+        transactions: &Vec<TransactionWithSignature>,
+        tx_cache: &mut LruCache<H256, Arc<SignedTransaction>>,
+    ) -> Result<Vec<Arc<SignedTransaction>>, DecoderError>
+    {
+        transactions
+            .iter()
+            .map(|transaction| match tx_cache.get(&transaction.hash()) {
+                Some(tx) => Ok(tx.clone()),
+                None => match transaction.recover_public() {
+                    Ok(public) => {
+                        let tx = Arc::new(SignedTransaction::new(
+                            public,
+                            transaction.clone(),
+                        ));
+                        tx_cache.put(tx.hash(), tx.clone());
+                        Ok(tx)
+                    }
+                    Err(_) => {
+                        Err(DecoderError::Custom("Cannot recover public key"))
+                    }
+                },
+            })
+            .collect()
     }
 
     pub fn set_public(&mut self, public: Public) {

@@ -1,46 +1,42 @@
 use crate::{Message, MsgId, RequestId};
-use ethereum_types::H256;
+use primitives::block::CompactBlock;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, PartialEq, Default)]
-pub struct GetBlocks {
+pub struct GetCompactBlocksResponse {
     pub request_id: RequestId,
-    pub hashes: Vec<H256>,
+    pub blocks: Vec<CompactBlock>,
 }
 
-impl Message for GetBlocks {
-    fn msg_id(&self) -> MsgId { MsgId::GET_BLOCKS }
+impl Message for GetCompactBlocksResponse {
+    fn msg_id(&self) -> MsgId { MsgId::GET_CMPCT_BLOCKS_RESPONSE }
 }
 
-impl Deref for GetBlocks {
+impl Deref for GetCompactBlocksResponse {
     type Target = RequestId;
 
     fn deref(&self) -> &Self::Target { &self.request_id }
 }
 
-impl DerefMut for GetBlocks {
+impl DerefMut for GetCompactBlocksResponse {
     fn deref_mut(&mut self) -> &mut RequestId { &mut self.request_id }
 }
 
-impl Encodable for GetBlocks {
+impl Encodable for GetCompactBlocksResponse {
     fn rlp_append(&self, stream: &mut RlpStream) {
         stream
             .begin_list(2)
             .append(&self.request_id)
-            .append_list(&self.hashes);
+            .append_list(&self.blocks);
     }
 }
 
-impl Decodable for GetBlocks {
+impl Decodable for GetCompactBlocksResponse {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        if rlp.item_count()? != 2 {
-            return Err(DecoderError::RlpIncorrectListLen);
-        }
-
-        Ok(GetBlocks {
+        Ok(GetCompactBlocksResponse {
             request_id: rlp.val_at(0)?,
-            hashes: rlp.list_at(1)?,
+            blocks: rlp.list_at(1)?,
         })
     }
 }

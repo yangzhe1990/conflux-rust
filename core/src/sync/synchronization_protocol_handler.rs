@@ -9,7 +9,8 @@ use crate::{
 use ethereum_types::H256;
 use io::TimerToken;
 use message::{
-    GetBlockHeaders, GetBlockHeadersResponse, GetBlocks, GetBlocksResponse,
+    GetBlockHeaders, GetBlockHeadersResponse, GetBlockTxn, GetBlockTxnResponce,
+    GetBlocks, GetBlocksResponse, GetCompactBlocks, GetCompactBlocksResponse,
     GetTerminalBlockHashes, GetTerminalBlockHashesResponse, Message, MsgId,
     NewBlock, NewBlockHashes, Status, Transactions,
 };
@@ -81,7 +82,9 @@ impl TimedSyncRequests {
     ) -> TimedSyncRequests {
         let timeout = match *msg {
             RequestMessage::Headers(_) => HEADERS_REQUEST_TIMEOUT,
-            RequestMessage::Blocks(_) => BLOCKS_REQUEST_TIMEOUT,
+            RequestMessage::Blocks(_)
+            | RequestMessage::Compact(_)
+            | RequestMessage::BlockTxn(_) => BLOCKS_REQUEST_TIMEOUT,
             _ => Duration::default(),
         };
         TimedSyncRequests::new(peer_id, timeout, request_id)
@@ -177,6 +180,16 @@ impl SynchronizationProtocolHandler {
                 self.on_get_terminal_block_hashes(io, peer, &rlp)
             }
             MsgId::TRANSACTIONS => self.on_transactions(peer, &rlp),
+            MsgId::GET_CMPCT_BLOCKS => {
+                self.on_get_compact_blocks(io, peer, &rlp)
+            }
+            MsgId::GET_CMPCT_BLOCKS_RESPONSE => {
+                self.on_get_compact_blocks_response(io, peer, &rlp)
+            }
+            MsgId::GET_BLOCK_TXN => self.on_get_blocktxn(io, peer, &rlp),
+            MsgId::GET_BLOCK_TXN_RESPONSE => {
+                self.on_get_blocktxn_response(io, peer, &rlp)
+            }
             _ => {
                 warn!("Unknown message: peer={:?} msgid={:?}", peer, msg_id);
                 Ok(())
@@ -188,6 +201,230 @@ impl SynchronizationProtocolHandler {
                 msg_id, e
             );
         });
+    }
+
+    fn on_get_compact_blocks(
+        &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
+    ) -> Result<(), Error> {
+        let req: GetCompactBlocks = rlp.as_val()?;
+        let mut compact_blocks = Vec::with_capacity(req.hashes.len());
+        debug!("on_get_compact_blocks, msg=:{:?}", req);
+        for hash in &req.hashes {
+            if let Some(compact_block) = self.graph.compact_block_by_hash(hash)
+            {
+                compact_blocks.push(compact_block);
+            } else {
+                warn!(
+                    "Peer {} requested non-existent compact block {}",
+                    peer, hash
+                );
+            }
+        }
+        let resp = GetCompactBlocksResponse {
+            request_id: req.request_id,
+            blocks: compact_blocks,
+        };
+        self.send_message(io, peer, &resp)?;
+        Ok(())
+    }
+
+    fn on_get_compact_blocks_response(
+        &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
+    ) -> Result<(), Error> {
+        let resp: GetCompactBlocksResponse = rlp.as_val()?;
+        debug!("on_get_compact_blocks_response, msg=:{:?}", resp);
+        self.match_request(io, peer, resp.request_id())?;
+        let mut failed_blocks = Vec::new();
+        let mut completed_blocks = Vec::new();
+        for mut cmpct in resp.blocks {
+            let hash = cmpct.hash();
+            if self.graph.contains_block(&hash) {
+                debug!(
+                    "Get cmpct block, but full block already received, hash={}",
+                    hash
+                );
+                continue;
+            } else {
+                if self.graph.contains_block_header(&hash) {
+                    if self.graph.contains_compact_block(&hash) {
+                        debug!("Cmpct block already received, hash={}", hash);
+                        continue;
+                    } else {
+                        let missing = cmpct.build_partial(
+                            &*self
+                                .get_transaction_pool()
+                                .transaction_pubkey_cache
+                                .read(),
+                        );
+                        if !missing.is_empty() {
+                            debug!(
+                                "Request {} missing tx in {}",
+                                missing.len(),
+                                hash
+                            );
+                            self.graph
+                                .compact_blocks
+                                .write()
+                                .insert(hash.clone(), cmpct);
+                            self.request_blocktxn(io, peer, hash, missing);
+                        } else {
+                            let trans = cmpct
+                                .reconstructed_txes
+                                .into_iter()
+                                .map(|tx| tx.unwrap())
+                                .collect();
+                            self.blocks_in_flight.lock().remove(&hash);
+                            let (success, to_relay) = self.graph.insert_block(
+                                Block {
+                                    block_header: cmpct.block_header,
+                                    transactions: trans,
+                                },
+                                true,
+                            );
+
+                            // May fail due to transactions hash collision
+                            if !success {
+                                failed_blocks.push(hash.clone());
+                            }
+                            if to_relay {
+                                completed_blocks.push(hash);
+                            }
+                        }
+                    }
+                } else {
+                    warn!(
+                        "Get cmpct block, but header not received, hash={}",
+                        hash
+                    );
+                    continue;
+                }
+            }
+        }
+        if !failed_blocks.is_empty() {
+            self.request_blocks(io, peer, failed_blocks);
+        }
+        if !completed_blocks.is_empty() {
+            let new_block_hash_msg: Box<dyn Message> =
+                Box::new(NewBlockHashes {
+                    block_hashes: completed_blocks,
+                });
+            self.broadcast_message(
+                io,
+                PeerId::max_value(),
+                new_block_hash_msg.as_ref(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn on_get_blocktxn(
+        &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
+    ) -> Result<(), Error> {
+        let req: GetBlockTxn = rlp.as_val()?;
+        debug!("on_get_blocktxn, msg=:{:?}", req);
+        match self.graph.block_by_hash(&req.block_hash) {
+            Some(block) => {
+                let mut tx_resp = Vec::with_capacity(req.indexes.len());
+                let mut last = 0;
+                for index in req.indexes {
+                    last += index;
+                    if last >= block.transactions.len() {
+                        warn!(
+                            "Request tx index out of bound, peer={}, hash={}",
+                            peer,
+                            block.hash()
+                        );
+                        return Err(ErrorKind::Invalid.into());
+                    }
+                    tx_resp.push(block.transactions[last].transaction.clone());
+                    last += 1;
+                }
+                let resp = GetBlockTxnResponce {
+                    request_id: req.request_id,
+                    block_hash: req.block_hash,
+                    block_txn: tx_resp,
+                };
+                self.send_message(io, peer, &resp)?;
+            }
+            None => {
+                warn!(
+                    "Get blocktxn request of non-existent block, hash={}",
+                    req.block_hash
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn on_get_blocktxn_response(
+        &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
+    ) -> Result<(), Error> {
+        let resp: GetBlockTxnResponce = rlp.as_val()?;
+        debug!("on_get_blocktxn_response, msg={:?}", resp);
+        self.match_request(io, peer, resp.request_id())?;
+        let hash = resp.block_hash;
+        if self.graph.contains_block(&hash) {
+            debug!(
+                "Get blocktxn, but full block already received, hash={}",
+                hash
+            );
+        } else {
+            if self.graph.contains_block_header(&hash) {
+                let signed_txes = SignedTransaction::batch_recover_with_cache(
+                    &resp.block_txn,
+                    &mut *self
+                        .get_transaction_pool()
+                        .transaction_pubkey_cache
+                        .write(),
+                )?;
+                match self.graph.compact_block_by_hash(&hash) {
+                    Some(cmpct) => {
+                        let mut trans =
+                            Vec::with_capacity(cmpct.reconstructed_txes.len());
+                        let mut index = 0;
+                        for tx in cmpct.reconstructed_txes {
+                            match tx {
+                                Some(tx) => trans.push(tx),
+                                None => {
+                                    trans.push(signed_txes[index].clone());
+                                    index += 1;
+                                }
+                            }
+                        }
+
+                        let (success, to_relay) = self.graph.insert_block(
+                            Block {
+                                block_header: cmpct.block_header,
+                                transactions: trans,
+                            },
+                            true,
+                        );
+
+                        let mut blocks = Vec::new();
+                        blocks.push(hash);
+                        // May fail due to transactions hash collision
+                        if !success {
+                            self.request_blocks(io, peer, blocks.clone());
+                        }
+                        if to_relay {
+                            let new_block_hash_msg: Box<dyn Message> =
+                                Box::new(NewBlockHashes {
+                                    block_hashes: blocks,
+                                });
+                            self.broadcast_message(
+                                io,
+                                PeerId::max_value(),
+                                new_block_hash_msg.as_ref(),
+                            )?;
+                        }
+                    }
+                    None => {}
+                }
+            } else {
+                warn!("Get blocktxn, but header not received, hash={}", hash);
+            }
+        }
+        Ok(())
     }
 
     fn on_transactions(&self, peer: PeerId, rlp: &Rlp) -> Result<(), Error> {
@@ -481,7 +718,9 @@ impl SynchronizationProtocolHandler {
             }
         }
         if !hashes.is_empty() {
-            self.request_blocks(io, peer, hashes);
+            // TODO configure which path to use
+            self.request_compact_block(io, peer, hashes);
+            // self.request_blocks(io, peer, hashes);
         }
 
         if !need_to_relay.is_empty() {
@@ -771,6 +1010,58 @@ impl SynchronizationProtocolHandler {
         }
     }
 
+    fn request_compact_block(
+        &self, io: &NetworkContext, peer_id: PeerId, mut hashes: Vec<H256>,
+    ) {
+        {
+            let blocks_in_flight = self.blocks_in_flight.lock();
+            hashes.retain(|hash| !blocks_in_flight.contains(hash));
+        }
+
+        if let Some(timed_req) = self.send_request(
+            io,
+            peer_id,
+            Box::new(RequestMessage::Compact(GetCompactBlocks {
+                request_id: 0.into(),
+                hashes: hashes.clone(),
+            })),
+        ) {
+            debug!(
+                "Requesting compact blocks {:?} from {:?} request_id={}",
+                hashes, peer_id, timed_req.request_id
+            );
+            {
+                let mut blocks_in_flight = self.blocks_in_flight.lock();
+                for hash in hashes {
+                    blocks_in_flight.insert(hash);
+                }
+            }
+            self.requests_queue.lock().push(timed_req);
+        }
+    }
+
+    fn request_blocktxn(
+        &self, io: &NetworkContext, peer_id: PeerId, block_hash: H256,
+        indexes: Vec<usize>,
+    )
+    {
+        if let Some(timed_req) = self.send_request(
+            io,
+            peer_id,
+            Box::new(RequestMessage::BlockTxn(GetBlockTxn {
+                request_id: 0.into(),
+                block_hash: block_hash.clone(),
+                indexes: indexes.clone(),
+            })),
+        ) {
+            debug!(
+                "Requesting blocktxn {:?} from {:?} request_id={}",
+                block_hash, peer_id, timed_req.request_id
+            );
+            self.requests_queue.lock().push(timed_req);
+        }
+    }
+
     fn send_request(
         &self, io: &NetworkContext, peer_id: PeerId,
         mut msg: Box<RequestMessage>,
@@ -903,7 +1194,7 @@ impl SynchronizationProtocolHandler {
 
     fn propagate_transactions_to_peers(
         &self, syn: &mut SynchronizationState, io: &NetworkContext,
-        peers: Vec<PeerId>, transactions: Vec<SignedTransaction>,
+        peers: Vec<PeerId>, transactions: Vec<Arc<SignedTransaction>>,
     )
     {
         let all_transactions_hashes = transactions
@@ -1042,6 +1333,25 @@ impl SynchronizationProtocolHandler {
                     RequestMessage::Blocks(get_blocks) => {
                         self.request_blocks(io, chosen_peer, get_blocks.hashes);
                     }
+                    RequestMessage::Compact(get_compact) => {
+                        {
+                            let mut blocks_in_flight =
+                                self.blocks_in_flight.lock();
+                            for hash in &get_compact.hashes {
+                                blocks_in_flight.remove(hash);
+                            }
+                        }
+                        self.request_blocks(
+                            io,
+                            chosen_peer,
+                            get_compact.hashes,
+                        );
+                    }
+                    RequestMessage::BlockTxn(blocktxn) => {
+                        let mut hashes = Vec::new();
+                        hashes.push(blocktxn.block_hash);
+                        self.request_blocks(io, chosen_peer, hashes);
+                    }
                     _ => {}
                 }
             } else {
@@ -1065,6 +1375,9 @@ impl SynchronizationProtocolHandler {
                     for hash in &get_blocks.hashes {
                         blocks.remove(hash);
                     }
+                }
+                RequestMessage::BlockTxn(ref blocktxn) => {
+                    self.blocks_in_flight.lock().remove(&blocktxn.block_hash);
                 }
                 _ => {}
             }

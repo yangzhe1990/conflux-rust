@@ -159,7 +159,7 @@ impl BlockGenerator {
         trace!("{} txs packed", transactions.len());
         let mut tx_rlps: Vec<Vec<u8>> = Vec::new();
         for t in &transactions {
-            let t_rlp = encode(t);
+            let t_rlp = encode(t.as_ref());
             tx_rlps.push(t_rlp);
         }
 
@@ -243,9 +243,6 @@ impl BlockGenerator {
         for _ in 0..num_txs {
             let tx = self.txgen.generate_transaction();
             txs.push(tx);
-        }
-        for tx in txs.clone() {
-            self.txpool.add_pending(tx);
         }
         self.txpool.insert_new_transactions(
             self.graph.consensus.best_block_hash(),

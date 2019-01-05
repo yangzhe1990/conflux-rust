@@ -1,5 +1,8 @@
 use ethereum_types::H256;
-use message::{GetBlockHeaders, GetBlocks, GetTerminalBlockHashes, Message};
+use message::{
+    GetBlockHeaders, GetBlockTxn, GetBlocks, GetCompactBlocks,
+    GetTerminalBlockHashes, Message,
+};
 use network::PeerId;
 //use slab::Slab;
 use crate::sync::synchronization_protocol_handler::TimedSyncRequests;
@@ -17,6 +20,8 @@ pub const MAX_INFLIGHT_REQUEST_COUNT: u64 = 64;
 pub enum RequestMessage {
     Headers(GetBlockHeaders),
     Blocks(GetBlocks),
+    Compact(GetCompactBlocks),
+    BlockTxn(GetBlockTxn),
     Terminals(GetTerminalBlockHashes),
 }
 
@@ -29,6 +34,12 @@ impl RequestMessage {
             RequestMessage::Blocks(ref mut msg) => {
                 msg.set_request_id(request_id)
             }
+            RequestMessage::Compact(ref mut msg) => {
+                msg.set_request_id(request_id)
+            }
+            RequestMessage::BlockTxn(ref mut msg) => {
+                msg.set_request_id(request_id)
+            }
             RequestMessage::Terminals(ref mut msg) => {
                 msg.set_request_id(request_id)
             }
@@ -39,6 +50,8 @@ impl RequestMessage {
         match self {
             RequestMessage::Headers(ref msg) => msg,
             RequestMessage::Blocks(ref msg) => msg,
+            RequestMessage::Compact(ref msg) => msg,
+            RequestMessage::BlockTxn(ref msg) => msg,
             RequestMessage::Terminals(ref msg) => msg,
         }
     }

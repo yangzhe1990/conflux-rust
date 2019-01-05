@@ -1,7 +1,6 @@
+use crate::{Message, MsgId};
 use ethereum_types::H256;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use crate::Message;
-use crate::MsgId;
 
 #[derive(Debug, PartialEq)]
 pub struct NewBlockHashes {

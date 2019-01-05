@@ -6,7 +6,7 @@ use crate::{
 };
 use ethereum_types::{H256, U256};
 use parking_lot::RwLock;
-use primitives::{Block, BlockHeader};
+use primitives::{block::CompactBlock, Block, BlockHeader};
 use slab::Slab;
 use std::{
     cmp::{max, min},
@@ -446,6 +446,7 @@ impl SynchronizationGraphInner {
 pub struct SynchronizationGraph {
     pub inner: RwLock<SynchronizationGraphInner>,
     pub block_headers: RwLock<HashMap<H256, Arc<BlockHeader>>>,
+    pub compact_blocks: RwLock<HashMap<H256, CompactBlock>>,
     pub blocks: Arc<RwLock<HashMap<H256, Block>>>,
     genesis_block_hash: H256,
     pub consensus: SharedConsensusGraph,
@@ -473,6 +474,7 @@ impl SynchronizationGraph {
                 pow_config,
             )),
             block_headers: RwLock::new(block_headers),
+            compact_blocks: RwLock::new(HashMap::new()),
             blocks: consensus.blocks.clone(),
             genesis_block_hash,
             consensus,
@@ -496,10 +498,18 @@ impl SynchronizationGraph {
         }
     }
 
+    pub fn compact_block_by_hash(&self, hash: &H256) -> Option<CompactBlock> {
+        self.compact_blocks.read().get(hash).map(|cb| cb.clone())
+    }
+
     pub fn genesis_hash(&self) -> &H256 { &self.genesis_block_hash }
 
     pub fn contains_block_header(&self, hash: &H256) -> bool {
         self.block_headers.read().contains_key(hash)
+    }
+
+    pub fn contains_compact_block(&self, hash: &H256) -> bool {
+        self.compact_blocks.read().contains_key(hash)
     }
 
     fn parent_or_referees_invalid(&self, header: &BlockHeader) -> bool {
@@ -755,6 +765,11 @@ impl SynchronizationGraph {
 
         if inner.arena[me].graph_status != BLOCK_INVALID {
             self.blocks.write().insert(hash, block.clone());
+            // Here we always build a new compact block because we should not
+            // reuse the nonce
+            self.compact_blocks
+                .write()
+                .insert(block.hash(), block.to_compact());
         } else {
             insert_success = false;
         }

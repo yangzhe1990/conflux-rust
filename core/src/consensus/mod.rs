@@ -419,7 +419,7 @@ impl ConsensusGraphInner {
         epoch_blocks: &Vec<usize>, block_by_hash: &HashMap<H256, Block>,
         block_fees: &mut HashMap<usize, U256>,
         mut block_for_transaction: Option<&mut HashMap<H256, (bool, usize)>>,
-        re_pending: bool, to_pending: &mut Vec<SignedTransaction>,
+        re_pending: bool, to_pending: &mut Vec<Arc<SignedTransaction>>,
     )
     {
         let spec = Spec::new_byzantium();
@@ -1176,7 +1176,7 @@ impl ConsensusGraph {
         );
 
         for tx in block.transactions.iter() {
-            self.txpool.remove_pending(&tx);
+            self.txpool.remove_pending(tx.as_ref());
             self.txpool.remove_ready(tx.clone());
         }
         info!("Transaction pool size={}", self.txpool.len());

@@ -1,9 +1,7 @@
+use crate::{Message, MsgId, RequestId};
 use ethereum_types::H256;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::ops::{Deref, DerefMut};
-use crate::Message;
-use crate::MsgId;
-use crate::RequestId;
 
 #[derive(Debug, PartialEq)]
 pub struct GetBlockBodies {

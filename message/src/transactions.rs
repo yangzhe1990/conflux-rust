@@ -1,7 +1,6 @@
+use crate::{Message, MsgId};
 use primitives::TransactionWithSignature;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use crate::Message;
-use crate::MsgId;
 
 #[derive(Debug, PartialEq)]
 pub struct Transactions {

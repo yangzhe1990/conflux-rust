@@ -103,7 +103,7 @@ impl VerificationConfig {
     fn verify_block_integrity(&self, block: &Block) -> Result<(), Error> {
         let mut tx_rlps: Vec<Vec<u8>> = Vec::new();
         for t in &block.transactions {
-            let t_rlp = encode(t);
+            let t_rlp = encode(t.as_ref());
             tx_rlps.push(t_rlp);
         }
 

@@ -14,3 +14,6 @@ ethcore-bytes = { path = "../util/bytes" }
 unexpected = { path = "../util/unexpected" }
 heapsize = "0.4"
 lru = "0.1"
+byteorder = "1.2.7"
+rand = "0.5"
+siphasher = "0.3"

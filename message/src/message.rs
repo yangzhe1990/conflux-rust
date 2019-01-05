@@ -14,6 +14,10 @@ impl MsgId {
     pub const GET_BLOCK_HASHES_RESPONSE: MsgId = MsgId(0x04);
     pub const GET_BLOCK_HEADERS: MsgId = MsgId(0x05);
     pub const GET_BLOCK_HEADERS_RESPONSE: MsgId = MsgId(0x06);
+    pub const GET_BLOCK_TXN: MsgId = MsgId(0x11);
+    pub const GET_BLOCK_TXN_RESPONSE: MsgId = MsgId(0x12);
+    pub const GET_CMPCT_BLOCKS: MsgId = MsgId(0x0e);
+    pub const GET_CMPCT_BLOCKS_RESPONSE: MsgId = MsgId(0x10);
     pub const GET_TERMINAL_BLOCK_HASHES: MsgId = MsgId(0x0b);
     pub const GET_TERMINAL_BLOCK_HASHES_RESPONSE: MsgId = MsgId(0x0a);
     pub const NEW_BLOCK: MsgId = MsgId(0x09);

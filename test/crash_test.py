@@ -57,7 +57,6 @@ class P2PTest(ConfluxTestFramework):
         sync_blocks(self.nodes, timeout=30)
         self.log.info("Pass 1")
 
-        '''Check if transaction from uncommitted new address can be accepted'''
         self.nodes[0].add_p2p_connection(P2PInterface())
         network_thread_start()
         self.nodes[0].p2p.wait_for_status()
