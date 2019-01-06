@@ -11,6 +11,9 @@ pub(in super::super) mod lfru;
 pub(in super::super) mod lru;
 pub mod removable_heap;
 
+#[cfg(test)]
+mod tests;
+
 /// The cache algorithm should store a reference to the cached element in order
 /// to link between cache store and internal data structure of cache algorithm.
 /// Normally this should be simple type like pointer, or map key for the
@@ -126,6 +129,7 @@ where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum CacheAccessResult<CacheIndexT> {
     Hit,
     MissInsert,

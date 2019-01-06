@@ -28,15 +28,15 @@ impl<PosT: PrimitiveNum> LRUHandle<PosT> {
 
     fn placement_new_evicted(&mut self) { self.set_evicted(); }
 
-    fn is_hit(&self) -> bool { self.prev_pos != PosT::from(Self::NULL_POS) }
+    pub fn is_hit(&self) -> bool { self.prev_pos != PosT::from(Self::NULL_POS) }
 
     fn set_evicted(&mut self) { self.prev_pos = PosT::from(Self::NULL_POS); }
 
-    fn is_most_recently_accessed(&self) -> bool {
+    pub fn is_most_recently_accessed(&self) -> bool {
         self.prev_pos == PosT::from(Self::HEAD_POS)
     }
 
-    fn set_most_recently_accessed(&mut self) {
+    pub fn set_most_recently_accessed(&mut self) {
         self.prev_pos = PosT::from(Self::HEAD_POS);
     }
 
@@ -192,16 +192,11 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
             let new_head = self.rear;
             let old_head = self.head;
 
-            // Insert new head.
-            self.head = new_head;
-            unsafe {
-                self.get_unchecked_mut(new_head).next = old_head;
-                CacheAlgoDataAdapter::new_mut_most_recently_accessed(
-                    cache_store_util,
-                    cache_index,
-                )
-                .placement_new_most_recently_accessed();
-            }
+            // Update old head.
+            CacheAlgoDataAdapter::get_mut(cache_store_util, unsafe {
+                self.get_unchecked_mut(old_head).cache_index
+            })
+            .set_handle(new_head);
 
             let evicted_cache_index;
             {
@@ -215,7 +210,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                         *rear_cache_index_mut,
                     );
 
-                    // Set cache_index for new element.
+                    // Set cache_index for new head.
                     evicted_cache_index =
                         replace(rear_cache_index_mut, cache_index);
                 }
@@ -228,11 +223,16 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                 rear_handle.set_evicted();
             }
 
-            // update old head.
-            CacheAlgoDataAdapter::get_mut(cache_store_util, unsafe {
-                self.get_unchecked_mut(old_head).cache_index
-            })
-            .set_handle(new_head);
+            // Insert new head.
+            self.head = new_head;
+            unsafe {
+                self.get_unchecked_mut(new_head).next = old_head;
+                CacheAlgoDataAdapter::new_mut_most_recently_accessed(
+                    cache_store_util,
+                    cache_index,
+                )
+                .placement_new_most_recently_accessed();
+            }
 
             CacheAccessResult::MissReplaced {
                 evicted: evicted_cache_index,
@@ -250,12 +250,13 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
         cache_store_util: &mut CacheStoreUtilT,
     )
     {
-        let lru_handle =
-            cache_store_util.get_most_recently_accessed(cache_index);
+        let lru_handle = cache_store_util.get(cache_index);
 
         if lru_handle.is_hit() {
             // First delete this entry.
             let pos_to_delete = self.get_lru_pos_for_handle(&lru_handle);
+            CacheAlgoDataAdapter::get_mut(cache_store_util, cache_index)
+                .set_evicted();
             if pos_to_delete == self.rear {
                 self.rear = lru_handle.get_prev_pos();
                 if pos_to_delete == self.head {
@@ -265,18 +266,18 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                 let next_pos;
                 unsafe {
                     next_pos = self.get_unchecked_mut(pos_to_delete).next;
-                    let prev_pos = lru_handle.get_prev_pos();
-                    self.get_unchecked_mut(prev_pos).next = next_pos;
+                    if pos_to_delete != self.head {
+                        let prev_pos = lru_handle.get_prev_pos();
+                        self.get_unchecked_mut(prev_pos).next = next_pos;
+                    } else {
+                        self.head = next_pos;
+                    }
 
                     CacheAlgoDataAdapter::get_mut(
                         cache_store_util,
                         self.get_unchecked_mut(next_pos).cache_index,
                     )
                     .set_handle(lru_handle.get_prev_pos());
-                }
-
-                if pos_to_delete == self.head {
-                    self.head = next_pos;
                 }
             }
             // Move the element at size to pos.
@@ -348,4 +349,6 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> LRU<PosT, CacheIndexT> {
     pub fn has_space(&self) -> bool { self.capacity != self.size }
 
     pub fn is_full(&self) -> bool { self.capacity == self.size }
+
+    pub fn is_empty(&self) -> bool { PosT::from(0) == self.size }
 }
