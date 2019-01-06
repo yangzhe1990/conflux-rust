@@ -86,6 +86,8 @@ pub struct TrieNode {
     path_steps: u16,
     path: MaybeInPlaceByteArray,
     // End of CompactPath section
+    // TODO(yz): maybe unpack the fields from ChildrenTableDeltaMpt to save memory. In this case
+    // create temporary ChildrenTableDeltaMpt for update / iteration.
     children_table: ChildrenTableDeltaMpt,
     // Rust automatically moves the value_size field in order to minimize the
     // total size of the struct.
@@ -740,7 +742,7 @@ impl TrieNode {
         &mut self, child_index: u8, child: NodeRefDeltaMptCompact,
     ) {
         self.children_table = CompactedChildrenTable::insert_child_unchecked(
-            self.children_table.as_ref(),
+            self.children_table.to_ref(),
             child_index,
             child,
         );
@@ -749,7 +751,7 @@ impl TrieNode {
     /// Unsafe because it's assumed that the child_index already exists.
     unsafe fn delete_child_unchecked(&mut self, child_index: u8) {
         self.children_table = CompactedChildrenTable::delete_child_unchecked(
-            self.children_table.as_ref(),
+            self.children_table.to_ref(),
             child_index,
         );
     }
@@ -1781,7 +1783,7 @@ impl Encodable for TrieNode {
         // ( + [compressed_path] )
         s.begin_unbounded_list()
             .append(&self.merkle_hash)
-            .append(&self.children_table.as_ref())
+            .append(&self.children_table.to_ref())
             .append(&self.value_as_slice());
 
         let compressed_path_ref = self.compressed_path_ref();

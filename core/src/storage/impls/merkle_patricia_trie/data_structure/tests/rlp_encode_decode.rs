@@ -17,7 +17,7 @@ fn test_full_children_table_encode_decode() {
     unsafe {
         for i in 0..CHILDREN_COUNT as u8 {
             children_table = ChildrenTableDeltaMpt::insert_child_unchecked(
-                children_table.as_ref(),
+                children_table.to_ref(),
                 i,
                 NodeRefDeltaMptCompact::new(i as u32 * 16384),
             );
@@ -27,7 +27,7 @@ fn test_full_children_table_encode_decode() {
             NodeRefDeltaMpt::Committed { db_key: 0 }.into(),
         );
     }
-    let rlp_bytes = children_table.as_ref().rlp_bytes();
+    let rlp_bytes = children_table.to_ref().rlp_bytes();
 
     let rlp = &Rlp::new(rlp_bytes.as_slice());
     // Assert that the rlp has 16 items.
@@ -43,13 +43,13 @@ fn test_non_empty_children_table_encode_decode() {
     unsafe {
         for i in 0..(CHILDREN_COUNT / 2) as u8 {
             children_table = ChildrenTableDeltaMpt::insert_child_unchecked(
-                children_table.as_ref(),
+                children_table.to_ref(),
                 i,
                 NodeRefDeltaMptCompact::new(i as u32 * 16384),
             );
         }
     }
-    let rlp_bytes = children_table.as_ref().rlp_bytes();
+    let rlp_bytes = children_table.to_ref().rlp_bytes();
     let rlp_parsed =
         ChildrenTableManagedDeltaMpt::decode(&Rlp::new(rlp_bytes.as_slice()))
             .unwrap();
@@ -59,7 +59,7 @@ fn test_non_empty_children_table_encode_decode() {
 #[test]
 fn test_empty_children_table_encode_decode() {
     let empty_children_table: ChildrenTableDeltaMpt = Default::default();
-    let rlp_bytes = empty_children_table.as_ref().rlp_bytes();
+    let rlp_bytes = empty_children_table.to_ref().rlp_bytes();
     let rlp_parsed =
         ChildrenTableManagedDeltaMpt::decode(&Rlp::new(rlp_bytes.as_slice()))
             .unwrap();
@@ -76,7 +76,7 @@ fn test_trie_node_encode_decode() {
     unsafe {
         for i in 0..(CHILDREN_COUNT / 2) as u8 {
             children_table = ChildrenTableDeltaMpt::insert_child_unchecked(
-                children_table.as_ref(),
+                children_table.to_ref(),
                 i,
                 NodeRefDeltaMptCompact::new(i as u32 * 16384),
             );

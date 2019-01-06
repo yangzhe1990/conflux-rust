@@ -34,12 +34,12 @@ impl<NodeRefT: NodeRefTrait> Default for CompactedChildrenTable<NodeRefT> {
 }
 
 impl<NodeRefT: NodeRefTrait> Clone for CompactedChildrenTable<NodeRefT> {
-    fn clone(&self) -> Self { self.as_ref().into() }
+    fn clone(&self) -> Self { self.to_ref().into() }
 }
 
 impl<NodeRefT: NodeRefTrait> Debug for CompactedChildrenTable<NodeRefT> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "ChildrenTable{{ {:?} }}", self.as_ref())
+        write!(f, "ChildrenTable{{ {:?} }}", self.to_ref())
     }
 }
 
@@ -158,7 +158,7 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
         }
     }
 
-    pub fn as_ref(&self) -> ChildrenTableRef<NodeRefT> {
+    pub fn to_ref(&self) -> ChildrenTableRef<NodeRefT> {
         ChildrenTableRef {
             table: unsafe {
                 slice::from_raw_parts(
@@ -254,7 +254,7 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
 }
 
 impl<NodeRefT: NodeRefTrait> PartialEq for CompactedChildrenTable<NodeRefT> {
-    fn eq(&self, other: &Self) -> bool { self.as_ref() == other.as_ref() }
+    fn eq(&self, other: &Self) -> bool { self.to_ref() == other.to_ref() }
 }
 
 trait CompactedChildrenTableIteratorTrait {
@@ -537,7 +537,7 @@ impl<NodeRefT: NodeRefTrait> Default for ChildrenTable<NodeRefT> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ChildrenTableRef<'a, NodeRefT: NodeRefTrait> {
     table: &'a [NodeRefT],
     bitmap: u16,
