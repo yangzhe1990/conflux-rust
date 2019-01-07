@@ -1,10 +1,10 @@
 use crate::{Message, MsgId};
-use primitives::block::RawBlock;
+use primitives::Block;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 
 #[derive(Debug, PartialEq)]
 pub struct NewBlock {
-    pub block: RawBlock,
+    pub block: Block,
 }
 
 impl Message for NewBlock {
@@ -18,7 +18,7 @@ impl Encodable for NewBlock {
 impl Decodable for NewBlock {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         Ok(NewBlock {
-            block: rlp.as_val::<RawBlock>()?,
+            block: rlp.as_val::<Block>()?,
         })
     }
 }

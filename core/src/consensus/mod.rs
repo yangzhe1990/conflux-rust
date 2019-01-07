@@ -16,7 +16,7 @@ use crate::{
 use ethereum_types::{Address, H256, U256, U512};
 use heapsize::HeapSizeOf;
 use parking_lot::{Mutex, RwLock};
-use primitives::{block::RawBlock, Block, BlockHeader, SignedTransaction};
+use primitives::{Block, BlockHeader, SignedTransaction};
 use rlp::Rlp;
 use slab::Slab;
 use std::{
@@ -1152,15 +1152,13 @@ impl ConsensusGraph {
         let block = self.db.key_value().get(COL_BLOCKS, hash)
             .expect("Low level database error when fetching block. Some issue with disk?")?;
         let rlp = Rlp::new(&block);
-        let raw_block =
-            rlp.as_val::<RawBlock>().expect("Wrong block rlp format!");
-        let block = Arc::new(
-            raw_block
-                .into_block_with_signed_tx(
-                    &mut *self.txpool.transaction_pubkey_cache.write(),
-                )
-                .expect("Wrong transaction signatures!"),
-        );
+        let mut unsigned_block =
+            rlp.as_val::<Block>().expect("Wrong block rlp format!");
+        unsigned_block
+            .recover_public(&mut *self.txpool.transaction_pubkey_cache.write())
+            .expect("Failed to recover public!");
+        let block = Arc::new(unsigned_block);
+
         let mut write = self.blocks.write();
         write.insert(*hash, block.clone());
 
@@ -1171,8 +1169,7 @@ impl ConsensusGraph {
     pub fn insert_block_to_kv(&self, block: Arc<Block>) {
         let hash = block.hash();
         let mut dbops = self.db.key_value().transaction();
-        let raw_block: RawBlock = (*block).clone().into();
-        dbops.put(COL_BLOCKS, &hash, &rlp::encode(&raw_block));
+        dbops.put(COL_BLOCKS, &hash, &rlp::encode(block.as_ref()));
         self.db.key_value().write_buffered(dbops);
 
         self.blocks.write().insert(hash, block);

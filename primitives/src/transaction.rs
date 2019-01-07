@@ -387,25 +387,29 @@ impl SignedTransaction {
         tx_cache: &mut LruCache<H256, Arc<SignedTransaction>>,
     ) -> Result<Vec<Arc<SignedTransaction>>, DecoderError>
     {
-        transactions
-            .iter()
-            .map(|transaction| match tx_cache.get(&transaction.hash()) {
-                Some(tx) => Ok(tx.clone()),
+        let mut recovered_transactions = Vec::with_capacity(transactions.len());
+        for transaction in transactions {
+            match tx_cache.get(&transaction.hash()) {
+                Some(tx) => recovered_transactions.push(tx.clone()),
                 None => match transaction.recover_public() {
                     Ok(public) => {
                         let tx = Arc::new(SignedTransaction::new(
                             public,
                             transaction.clone(),
                         ));
-                        tx_cache.put(tx.hash(), tx.clone());
-                        Ok(tx)
+                        recovered_transactions.push(tx.clone());
+                        tx_cache.put(tx.hash(), tx);
                     }
                     Err(_) => {
-                        Err(DecoderError::Custom("Cannot recover public key"))
+                        return Err(DecoderError::Custom(
+                            "Cannot recover public key",
+                        ));
                     }
                 },
-            })
-            .collect()
+            }
+        }
+
+        Ok(recovered_transactions)
     }
 
     pub fn set_public(&mut self, public: Public) {

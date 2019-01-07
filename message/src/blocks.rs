@@ -1,12 +1,12 @@
 use crate::{Message, MsgId, RequestId};
-use primitives::block::RawBlock;
+use primitives::Block;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, PartialEq, Default)]
 pub struct GetBlocksResponse {
     pub request_id: RequestId,
-    pub blocks: Vec<RawBlock>,
+    pub blocks: Vec<Block>,
 }
 
 impl Message for GetBlocksResponse {

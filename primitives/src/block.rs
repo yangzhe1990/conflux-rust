@@ -66,6 +66,36 @@ impl Block {
             reconstructed_txes: Vec::new(),
         }
     }
+
+    pub fn recover_public(
+        &mut self, tx_cache: &mut LruCache<H256, Arc<SignedTransaction>>,
+    ) -> Result<(), DecoderError> {
+        let mut recovered_transactions =
+            Vec::with_capacity(self.transactions.len());
+        for transaction in &self.transactions {
+            match tx_cache.get(&transaction.hash()) {
+                Some(tx) => recovered_transactions.push(tx.clone()),
+                None => match transaction.transaction.recover_public() {
+                    Ok(public) => {
+                        let tx = Arc::new(SignedTransaction::new(
+                            public,
+                            transaction.transaction.clone(),
+                        ));
+                        recovered_transactions.push(tx.clone());
+                        tx_cache.put(tx.hash(), tx);
+                    }
+                    Err(_) => {
+                        return Err(DecoderError::Custom(
+                            "Cannot recover public key",
+                        ));
+                    }
+                },
+            }
+        }
+
+        self.transactions = recovered_transactions;
+        Ok(())
+    }
 }
 
 impl Encodable for Block {
@@ -78,55 +108,7 @@ impl Encodable for Block {
     }
 }
 
-impl From<Block> for RawBlock {
-    fn from(block: Block) -> RawBlock {
-        RawBlock {
-            block_header: block.block_header,
-            transactions: block
-                .transactions
-                .into_iter()
-                .map(|tx| tx.transaction.clone())
-                .collect(),
-        }
-    }
-}
-
-#[derive(Default, Debug, Clone, PartialEq)]
-pub struct RawBlock {
-    /// The header hash of this block.
-    pub block_header: BlockHeader,
-    /// The¡ transactions in this block.
-    pub transactions: Vec<TransactionWithSignature>,
-}
-
-impl RawBlock {
-    pub fn into_block_with_signed_tx(
-        self, tx_cache: &mut LruCache<H256, Arc<SignedTransaction>>,
-    ) -> Result<Block, DecoderError> {
-        let signed_transactions: Result<
-            Vec<Arc<SignedTransaction>>,
-            DecoderError,
-        > = SignedTransaction::batch_recover_with_cache(
-            &self.transactions,
-            tx_cache,
-        );
-        Ok(Block {
-            block_header: self.block_header,
-            transactions: signed_transactions?,
-        })
-    }
-}
-
-impl Encodable for RawBlock {
-    fn rlp_append(&self, stream: &mut RlpStream) {
-        stream
-            .begin_list(2)
-            .append(&self.block_header)
-            .append_list(&self.transactions);
-    }
-}
-
-impl Decodable for RawBlock {
+impl Decodable for Block {
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         if rlp.as_raw().len() != rlp.payload_info()?.total() {
             return Err(DecoderError::RlpIsTooBig);
@@ -137,9 +119,15 @@ impl Decodable for RawBlock {
 
         let transactions = rlp.list_at::<TransactionWithSignature>(1)?;
 
-        Ok(RawBlock {
+        let mut signed_transactions = Vec::with_capacity(transactions.len());
+        for tx in transactions {
+            let signed = SignedTransaction::new_unsigned(tx);
+            signed_transactions.push(Arc::new(signed));
+        }
+
+        Ok(Block {
             block_header: rlp.val_at(0)?,
-            transactions,
+            transactions: signed_transactions,
         })
     }
 }

@@ -518,7 +518,7 @@ impl SynchronizationProtocolHandler {
                     .filter_map(|hash| {
                         self.graph
                             .block_by_hash(hash)
-                            .map(|b| (*b).clone().into())
+                            .map(|b| b.as_ref().clone())
                     })
                     .collect(),
             });
@@ -764,8 +764,8 @@ impl SynchronizationProtocolHandler {
         {
             let mut blocks_in_flight = self.blocks_in_flight.lock();
 
-            for raw_block in blocks.blocks {
-                let block = raw_block.into_block_with_signed_tx(
+            for mut block in blocks.blocks {
+                block.recover_public(
                     &mut *self
                         .get_transaction_pool()
                         .transaction_pubkey_cache
@@ -831,10 +831,11 @@ impl SynchronizationProtocolHandler {
             return Ok(());
         }
 
-        let new_block = rlp.as_val::<NewBlock>()?;
-        let block = new_block.block.into_block_with_signed_tx(
+        let mut new_block = rlp.as_val::<NewBlock>()?;
+        new_block.block.recover_public(
             &mut *self.get_transaction_pool().transaction_pubkey_cache.write(),
         )?;
+        let block = new_block.block;
         debug!(
             "on_new_block, header={:?} tx_number={}",
             block.block_header,
