@@ -12,12 +12,12 @@ extern crate txgen;
 #[macro_use]
 extern crate log;
 
+use crate::triehash::ordered_trie_root;
 use core::{
     consensus::DEFERRED_STATE_EPOCH_COUNT, pow::*,
     transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT, SharedSynchronizationGraph,
     SharedSynchronizationService, SharedTransactionPool,
 };
-use crate::triehash::ordered_trie_root;
 use ethereum_types::{Address, H256};
 use parking_lot::RwLock;
 use primitives::*;
@@ -152,7 +152,8 @@ impl BlockGenerator {
         deferred_state_root: H256, num_txs: usize,
     ) -> Block
     {
-        let parent_height = self.graph.get_block_height(&parent_hash).unwrap();
+        let parent_height =
+            self.graph.block_height_by_hash(&parent_hash).unwrap();
         let transactions = self
             .txpool
             .pack_transactions(num_txs, self.txgen.get_best_state());
@@ -349,7 +350,8 @@ impl BlockGenerator {
                         && !validate(
                             &current_problem.unwrap(),
                             &new_solution.unwrap(),
-                        ) {
+                        )
+                    {
                         new_solution = receiver.try_recv();
                     } else {
                         break;

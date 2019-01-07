@@ -4,12 +4,13 @@ use crate::{
 };
 use byteorder::{ByteOrder, LittleEndian};
 use ethereum_types::{H256, U256};
+use heapsize::HeapSizeOf;
 use keccak_hash::keccak;
 use lru::LruCache;
 use rand::Rng;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use siphasher::sip::SipHasher24;
-use std::{collections::HashMap, hash::Hasher, sync::Arc};
+use std::{collections::HashMap, hash::Hasher, mem, sync::Arc};
 
 /// A block, encoded as it is on the block chain.
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -18,6 +19,14 @@ pub struct Block {
     pub block_header: BlockHeader,
     /// The¡ transactions in this block.
     pub transactions: Vec<Arc<SignedTransaction>>,
+}
+
+impl HeapSizeOf for Block {
+    fn heap_size_of_children(&self) -> usize {
+        // Ignores the size of Arc<SignedTransaction>
+        self.block_header.heap_size_of_children()
+            + self.transactions.len() * mem::size_of::<SignedTransaction>()
+    }
 }
 
 impl Block {
@@ -55,6 +64,16 @@ impl Block {
                 .collect(),
             // reconstructed_txes constructed here will not be used
             reconstructed_txes: Vec::new(),
+        }
+    }
+}
+
+impl Encodable for Block {
+    fn rlp_append(&self, stream: &mut RlpStream) {
+        stream.begin_list(2).append(&self.block_header);
+        stream.begin_list(self.transactions.len());
+        for tx in &self.transactions {
+            stream.append(tx.as_ref());
         }
     }
 }

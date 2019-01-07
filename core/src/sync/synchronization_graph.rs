@@ -2,7 +2,7 @@ use crate::{
     consensus::SharedConsensusGraph,
     error::{BlockError, Error},
     pow::ProofOfWorkConfig,
-    verification::verification::*,
+    verification::*,
 };
 use ethereum_types::{H256, U256};
 use parking_lot::RwLock;
@@ -447,7 +447,7 @@ pub struct SynchronizationGraph {
     pub inner: RwLock<SynchronizationGraphInner>,
     pub block_headers: RwLock<HashMap<H256, Arc<BlockHeader>>>,
     pub compact_blocks: RwLock<HashMap<H256, CompactBlock>>,
-    pub blocks: Arc<RwLock<HashMap<H256, Block>>>,
+    pub blocks: Arc<RwLock<HashMap<H256, Arc<Block>>>>,
     genesis_block_hash: H256,
     pub consensus: SharedConsensusGraph,
     pub verification_config: VerificationConfig,
@@ -468,7 +468,7 @@ impl SynchronizationGraph {
         let genesis_header = Arc::new(genesis_block.block_header.clone());
         block_headers.insert(genesis_block_hash, genesis_header.clone());
 
-        SynchronizationGraph {
+        let sync_graph = SynchronizationGraph {
             inner: RwLock::new(SynchronizationGraphInner::with_genesis_block(
                 genesis_header,
                 pow_config,
@@ -479,23 +479,24 @@ impl SynchronizationGraph {
             genesis_block_hash,
             consensus,
             verification_config,
-        }
+        };
+
+        // FIXME: recover synchronization/consensus graphs from blocks in
+        // persistent storage.
+
+        sync_graph
     }
 
     pub fn block_header_by_hash(&self, hash: &H256) -> Option<BlockHeader> {
-        self.blocks
-            .read()
-            .get(hash)
-            .map(|block| &block.block_header)
-            .cloned()
+        self.consensus.block_header_by_hash(hash)
     }
 
-    pub fn block_by_hash(&self, hash: &H256) -> Option<Block> {
-        if let Some(block) = self.blocks.read().get(hash) {
-            Some(block.clone())
-        } else {
-            None
-        }
+    pub fn block_height_by_hash(&self, hash: &H256) -> Option<u64> {
+        self.consensus.block_height_by_hash(hash)
+    }
+
+    pub fn block_by_hash(&self, hash: &H256) -> Option<Arc<Block>> {
+        self.consensus.block_by_hash(hash)
     }
 
     pub fn compact_block_by_hash(&self, hash: &H256) -> Option<CompactBlock> {
@@ -505,7 +506,7 @@ impl SynchronizationGraph {
     pub fn genesis_hash(&self) -> &H256 { &self.genesis_block_hash }
 
     pub fn contains_block_header(&self, hash: &H256) -> bool {
-        self.block_headers.read().contains_key(hash)
+        self.inner.read().indices.contains_key(hash)
     }
 
     pub fn contains_compact_block(&self, hash: &H256) -> bool {
@@ -601,7 +602,7 @@ impl SynchronizationGraph {
             inner.arena.remove(*index);
             inner.indices.remove(&hash);
             self.block_headers.write().remove(&hash);
-            self.blocks.write().remove(&hash);
+            self.remove_block_from_kv(&hash);
         }
     }
 
@@ -615,7 +616,7 @@ impl SynchronizationGraph {
             return (false, Vec::new());
         }
 
-        if self.contains_block_header(&hash) {
+        if inner.indices.contains_key(&hash) {
             return (true, Vec::new());
         }
 
@@ -721,7 +722,20 @@ impl SynchronizationGraph {
     }
 
     pub fn contains_block(&self, hash: &H256) -> bool {
-        self.blocks.read().contains_key(hash)
+        let inner = self.inner.read();
+        if let Some(index) = inner.indices.get(hash) {
+            inner.arena[*index].block_ready
+        } else {
+            false
+        }
+    }
+
+    pub fn insert_block_to_kv(&self, block: Arc<Block>) {
+        self.consensus.insert_block_to_kv(block)
+    }
+
+    fn remove_block_from_kv(&self, hash: &H256) {
+        self.consensus.remove_block_from_kv(hash)
     }
 
     pub fn insert_block(
@@ -729,6 +743,8 @@ impl SynchronizationGraph {
     ) -> (bool, bool) {
         let mut insert_success = true;
         let mut need_to_relay = false;
+
+        let block = Arc::new(block);
 
         let hash = block.hash();
 
@@ -740,7 +756,13 @@ impl SynchronizationGraph {
             return (insert_success, need_to_relay);
         }
 
-        if self.contains_block(&hash) {
+        let contains_block = if let Some(index) = inner.indices.get(&hash) {
+            inner.arena[*index].block_ready
+        } else {
+            false
+        };
+
+        if contains_block {
             // (true, false)
             return (insert_success, need_to_relay);
         }
@@ -749,7 +771,6 @@ impl SynchronizationGraph {
         debug_assert!(hash == inner.arena[me].block_header.hash());
         debug_assert!(!inner.arena[me].block_ready);
         inner.arena[me].block_ready = true;
-        trace!("block_ready {}", hash);
 
         if need_to_verify {
             let r = self.verification_config.verify_block_basic(&block);
@@ -764,15 +785,16 @@ impl SynchronizationGraph {
         queue.push_back(me);
 
         if inner.arena[me].graph_status != BLOCK_INVALID {
-            self.blocks.write().insert(hash, block.clone());
             // Here we always build a new compact block because we should not
             // reuse the nonce
             self.compact_blocks
                 .write()
                 .insert(block.hash(), block.to_compact());
+            self.insert_block_to_kv(block);
         } else {
             insert_success = false;
         }
+
         while let Some(index) = queue.pop_front() {
             if inner.arena[index].graph_status == BLOCK_INVALID {
                 Self::set_and_propagate_invalid(
@@ -828,7 +850,5 @@ impl SynchronizationGraph {
         self.consensus.verified_invalid(hash)
     }
 
-    pub fn get_block_height(&self, hash: &H256) -> Option<u64> {
-        self.consensus.get_block_height(hash)
-    }
+    pub fn block_cache_gc(&self) { self.consensus.block_cache_gc(); }
 }

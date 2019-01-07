@@ -1,4 +1,7 @@
 use crate::{
+    cache_config::CacheConfig,
+    cache_manager::CacheManager,
+    db::COL_BLOCKS,
     executive::{ExecutionError, Executive},
     ext_db::SystemDB,
     machine::new_byzantium_test_machine,
@@ -11,8 +14,10 @@ use crate::{
     vm_factory::VmFactory,
 };
 use ethereum_types::{Address, H256, U256, U512};
-use parking_lot::RwLock;
-use primitives::{Block, SignedTransaction};
+use heapsize::HeapSizeOf;
+use parking_lot::{Mutex, RwLock};
+use primitives::{block::RawBlock, Block, BlockHeader, SignedTransaction};
+use rlp::Rlp;
 use slab::Slab;
 use std::{
     cell::RefCell,
@@ -416,7 +421,7 @@ impl ConsensusGraphInner {
 
     fn process_epoch_transactions(
         state: &mut State, arena: &Slab<ConsensusGraphNode>,
-        epoch_blocks: &Vec<usize>, block_by_hash: &HashMap<H256, Block>,
+        epoch_blocks: &Vec<usize>, consensus_graph: &ConsensusGraph,
         block_fees: &mut HashMap<usize, U256>,
         mut block_for_transaction: Option<&mut HashMap<H256, (bool, usize)>>,
         re_pending: bool, to_pending: &mut Vec<Arc<SignedTransaction>>,
@@ -425,7 +430,8 @@ impl ConsensusGraphInner {
         let spec = Spec::new_byzantium();
         let machine = new_byzantium_test_machine();
         for index in epoch_blocks.iter() {
-            let block = block_by_hash.get(&arena[*index].hash).unwrap();
+            let block =
+                consensus_graph.block_by_hash(&arena[*index].hash).unwrap();
             let env = EnvInfo {
                 number: 0, // TODO: replace 0 with correct cardinal number
                 author: block.block_header.author().clone(),
@@ -488,7 +494,7 @@ impl ConsensusGraphInner {
     fn process_rewards_and_fees<F>(
         &self, state: &mut State, indices_in_epoch: &Vec<usize>,
         pivot_index: usize, penalty_upper_anticone: &HashSet<usize>,
-        block_by_hash: &HashMap<H256, Block>, block_fee_fn: F,
+        consensus_graph: &ConsensusGraph, block_fee_fn: F,
     ) where
         F: Fn(usize) -> U256,
     {
@@ -531,8 +537,8 @@ impl ConsensusGraphInner {
 
             debug_assert!(reward <= U512::from(U256::max_value()));
             let reward = U256::from(reward);
-            let author = block_by_hash
-                .get(&self.arena[*index].hash)
+            let author = consensus_graph
+                .block_by_hash(&self.arena[*index].hash)
                 .unwrap()
                 .block_header
                 .author()
@@ -564,7 +570,7 @@ impl ConsensusGraphInner {
     /// This is a very expensive call to force the engine to recompute the state
     /// root of a given block
     pub fn compute_state_for_block(
-        &self, block_hash: &H256, block_by_hash: &HashMap<H256, Block>,
+        &self, block_hash: &H256, consensus_graph: &ConsensusGraph,
     ) -> H256 {
         // If we already computed the state of the block before, we should not
         // do it again FIXME: propagate the error up
@@ -665,7 +671,7 @@ impl ConsensusGraphInner {
                 &mut state,
                 &self.arena,
                 &reversed_indices,
-                block_by_hash,
+                consensus_graph,
                 &mut block_fees,
                 None,
                 false,
@@ -714,7 +720,7 @@ impl ConsensusGraphInner {
                     indices_in_epoch,
                     pivot_index,
                     penalty_upper_anticone,
-                    block_by_hash,
+                    consensus_graph,
                     block_fee_closure,
                 );
             }
@@ -733,7 +739,7 @@ impl ConsensusGraphInner {
     }
 
     pub fn compute_deferred_state_for_block(
-        &self, block_hash: &H256, block_by_hash: &HashMap<H256, Block>,
+        &self, block_hash: &H256, consensus_graph: &ConsensusGraph,
         delay: usize,
     ) -> H256
     {
@@ -745,11 +751,11 @@ impl ConsensusGraphInner {
             }
             idx = self.arena[idx].parent;
         }
-        self.compute_state_for_block(&self.arena[idx].hash, block_by_hash)
+        self.compute_state_for_block(&self.arena[idx].hash, consensus_graph)
     }
 
     fn check_block_full_validity(
-        &self, new: usize, block: &Block, block_by_hash: &HashMap<H256, Block>,
+        &self, new: usize, block: &Block, consensus_graph: &ConsensusGraph,
         sync_graph: &mut SynchronizationGraphInner,
     ) -> bool
     {
@@ -809,7 +815,7 @@ impl ConsensusGraphInner {
                     *block.block_header.deferred_state_root()
                         == self.compute_state_for_block(
                             &self.arena[deferred].hash,
-                            block_by_hash,
+                            consensus_graph,
                         )
                 }
             };
@@ -826,8 +832,8 @@ impl ConsensusGraphInner {
 
     pub fn on_new_block(
         &mut self, txpool: &SharedTransactionPool, block: &Block,
-        block_by_hash: &HashMap<H256, Block>,
         sync_graph: &mut SynchronizationGraphInner,
+        consensus_graph: &ConsensusGraph,
     ) -> (H256, H256)
     {
         let new = self.insert(block, &mut sync_graph.terminal_block_hashes);
@@ -836,7 +842,7 @@ impl ConsensusGraphInner {
         let fully_valid = self.check_block_full_validity(
             new,
             block,
-            block_by_hash,
+            consensus_graph,
             sync_graph,
         );
         if !fully_valid {
@@ -964,7 +970,7 @@ impl ConsensusGraphInner {
                 &mut state,
                 &self.arena,
                 &reversed_indices,
-                block_by_hash,
+                consensus_graph,
                 &mut self.block_fees,
                 Some(&mut self.block_for_transaction),
                 true,
@@ -999,7 +1005,7 @@ impl ConsensusGraphInner {
                     indices_in_epoch,
                     pivot_index,
                     penalty_upper_anticone,
-                    block_by_hash,
+                    consensus_graph,
                     |index| -> U256 { *self.block_fees.get(&index).unwrap() },
                 );
             }
@@ -1064,15 +1070,32 @@ impl ConsensusGraphInner {
     }
 }
 
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+enum CacheId {
+    Block(H256),
+}
+
+#[derive(Debug)]
+pub struct CacheSize {
+    /// Blocks cache size.
+    pub blocks: usize,
+}
+
+impl CacheSize {
+    /// Total amount used by the cache.
+    pub fn total(&self) -> usize { self.blocks }
+}
+
 pub struct ConsensusGraph {
-    pub blocks: Arc<RwLock<HashMap<H256, Block>>>,
+    pub blocks: Arc<RwLock<HashMap<H256, Arc<Block>>>>,
     pub inner: RwLock<ConsensusGraphInner>,
-    genesis_block_hash: H256,
+    genesis_block: Arc<Block>,
     pub txpool: SharedTransactionPool,
     // This db is used to persist information related to
     // ledger structure, like block- or transaction-related
     // stuffs.
-    pub ledger_db: Arc<SystemDB>,
+    pub db: Arc<SystemDB>,
+    cache_man: Mutex<CacheManager<CacheId>>,
     pub invalid_blocks: RwLock<HashSet<H256>>,
 }
 
@@ -1081,36 +1104,94 @@ pub type SharedConsensusGraph = Arc<ConsensusGraph>;
 impl ConsensusGraph {
     pub fn with_genesis_block(
         genesis_block: Block, state_mananger: Arc<StorageManager>,
-        vm: VmFactory, txpool: SharedTransactionPool, ledger_db: Arc<SystemDB>,
+        vm: VmFactory, txpool: SharedTransactionPool, db: Arc<SystemDB>,
+        cache_config: CacheConfig,
     ) -> Self
     {
-        let genesis_block_hash = genesis_block.hash();
+        let mb = 1024 * 1024;
+        let max_cache_size = cache_config.ledger_mb() * mb;
+        let pref_cache_size = max_cache_size * 3 * mb / 4;
+        // 400 is the average size of the key. TODO(ming): make sure this again.
+        let cache_man =
+            CacheManager::new(pref_cache_size, max_cache_size, 4 * mb);
 
-        let mut blocks = HashMap::new();
-        blocks.insert(genesis_block_hash, genesis_block.clone());
-
-        ConsensusGraph {
+        let consensus_graph = ConsensusGraph {
             inner: RwLock::new(ConsensusGraphInner::with_genesis_block(
                 &genesis_block,
                 state_mananger,
                 vm,
             )),
-            blocks: Arc::new(RwLock::new(blocks)),
-            genesis_block_hash,
+            blocks: Arc::new(RwLock::new(HashMap::new())),
+            genesis_block: Arc::new(genesis_block),
             txpool,
-            ledger_db,
+            db,
+            cache_man: Mutex::new(cache_man),
             invalid_blocks: RwLock::new(HashSet::new()),
+        };
+
+        consensus_graph.insert_block_to_kv(consensus_graph.genesis_block());
+
+        consensus_graph
+    }
+
+    pub fn block_header_by_hash(&self, hash: &H256) -> Option<BlockHeader> {
+        let result = self.block_by_hash(hash)?;
+        Some(result.block_header.clone())
+    }
+
+    pub fn block_by_hash(&self, hash: &H256) -> Option<Arc<Block>> {
+        // Check cache first
+        {
+            let read = self.blocks.read();
+            if let Some(v) = read.get(hash) {
+                return Some(v.clone());
+            }
         }
+
+        // Read from DB and populate cache
+        let block = self.db.key_value().get(COL_BLOCKS, hash)
+            .expect("Low level database error when fetching block. Some issue with disk?")?;
+        let rlp = Rlp::new(&block);
+        let raw_block =
+            rlp.as_val::<RawBlock>().expect("Wrong block rlp format!");
+        let block = Arc::new(
+            raw_block
+                .into_block_with_signed_tx(
+                    &mut *self.txpool.transaction_pubkey_cache.write(),
+                )
+                .expect("Wrong transaction signatures!"),
+        );
+        let mut write = self.blocks.write();
+        write.insert(*hash, block.clone());
+
+        self.cache_man.lock().note_used(CacheId::Block(*hash));
+        Some(block)
     }
 
-    pub fn genesis_block(&self) -> Block {
-        let blocks = self.blocks.read();
-        blocks.get(&self.genesis_block_hash).unwrap().clone()
+    pub fn insert_block_to_kv(&self, block: Arc<Block>) {
+        let hash = block.hash();
+        let mut dbops = self.db.key_value().transaction();
+        let raw_block: RawBlock = (*block).clone().into();
+        dbops.put(COL_BLOCKS, &hash, &rlp::encode(&raw_block));
+        self.db.key_value().write_buffered(dbops);
+
+        self.blocks.write().insert(hash, block);
+        self.cache_man.lock().note_used(CacheId::Block(hash));
     }
 
-    pub fn contains_block(&self, hash: &H256) -> bool {
-        self.blocks.read().contains_key(hash)
+    pub fn remove_block_from_kv(&self, hash: &H256) {
+        self.blocks.write().remove(hash);
+        let mut dbops = self.db.key_value().transaction();
+        dbops.delete(COL_BLOCKS, hash);
+        self.db.key_value().write_buffered(dbops);
     }
+
+    pub fn block_height_by_hash(&self, hash: &H256) -> Option<u64> {
+        let result = self.block_by_hash(hash)?;
+        Some(result.block_header.height())
+    }
+
+    pub fn genesis_block(&self) -> Arc<Block> { self.genesis_block.clone() }
 
     pub fn verified_invalid(&self, hash: &H256) -> bool {
         self.invalid_blocks.read().contains(hash)
@@ -1129,15 +1210,6 @@ impl ConsensusGraph {
         }
     }
 
-    pub fn get_block_height(&self, hash: &H256) -> Option<u64> {
-        let blocks = self.blocks.read();
-        if let Some(block) = blocks.get(hash) {
-            Some(block.block_header.height())
-        } else {
-            None
-        }
-    }
-
     pub fn get_block_epoch_number(&self, hash: &H256) -> Option<usize> {
         let r = self.inner.read();
         if let Some(idx) = r.indices.get(hash) {
@@ -1148,26 +1220,21 @@ impl ConsensusGraph {
     }
 
     pub fn compute_state_for_block(&self, block_hash: &H256) -> H256 {
-        let blocks = self.blocks.read();
-        self.inner
-            .read()
-            .compute_state_for_block(block_hash, &*blocks)
+        self.inner.read().compute_state_for_block(block_hash, self)
     }
 
     pub fn compute_deferred_state_for_block(
         &self, block_hash: &H256, delay: usize,
     ) -> H256 {
-        let blocks = self.blocks.read();
         self.inner
             .read()
-            .compute_deferred_state_for_block(block_hash, &*blocks, delay)
+            .compute_deferred_state_for_block(block_hash, self, delay)
     }
 
     pub fn on_new_block(
         &self, hash: &H256, sync_graph: &mut SynchronizationGraphInner,
     ) -> (H256, H256) {
-        let blocks = self.blocks.read();
-        let block = blocks.get(hash).unwrap();
+        let block = self.block_by_hash(hash).unwrap();
 
         info!(
             "insert new block into consensus: block_header={:?} tx_count={}",
@@ -1183,9 +1250,9 @@ impl ConsensusGraph {
 
         self.inner.write().on_new_block(
             &self.txpool,
-            block,
-            &*blocks,
+            block.as_ref(),
             sync_graph,
+            self,
         )
     }
 
@@ -1193,7 +1260,7 @@ impl ConsensusGraph {
         self.inner.read().best_block_hash()
     }
 
-    pub fn block_count(&self) -> usize { self.blocks.read().len() }
+    pub fn block_count(&self) -> usize { self.inner.read().indices.len() }
 
     pub fn get_block_for_tx_execution(
         &self, tx_hash: &H256,
@@ -1203,5 +1270,33 @@ impl ConsensusGraph {
 
     pub fn check_block_confirmation(&self, block_hash: &H256) -> bool {
         self.inner.read().check_block_confirmation(block_hash)
+    }
+
+    /// Get current cache size.
+    pub fn cache_size(&self) -> CacheSize {
+        CacheSize {
+            blocks: self.blocks.read().heap_size_of_children(),
+        }
+    }
+
+    pub fn block_cache_gc(&self) {
+        let current_size = self.cache_size().total();
+
+        let mut blocks = self.blocks.write();
+
+        let mut cache_man = self.cache_man.lock();
+        cache_man.collect_garbage(current_size, |ids| {
+            for id in &ids {
+                match *id {
+                    CacheId::Block(ref h) => {
+                        blocks.remove(h);
+                    }
+                }
+            }
+
+            blocks.shrink_to_fit();
+
+            blocks.heap_size_of_children()
+        });
     }
 }

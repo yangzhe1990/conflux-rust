@@ -1,3 +1,7 @@
+use crate::{
+    http::{Server as HttpServer, ServerBuilder as HttpServerBuilder},
+    tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder},
+};
 use blockgen::BlockGenerator;
 use core::{
     state::State,
@@ -5,10 +9,6 @@ use core::{
     storage::{StorageManager, StorageManagerTrait},
     PeerInfo, SharedConsensusGraph, SharedSynchronizationService,
     SharedTransactionPool,
-};
-use crate::{
-    http::{Server as HttpServer, ServerBuilder as HttpServerBuilder},
-    tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder},
 };
 use ethereum_types::{Address, H256, U256};
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
@@ -187,7 +187,7 @@ impl Rpc for RpcImpl {
 
         if let Some(block) = self.sync.block_by_hash(&block_hash) {
             Ok(RpcBlock::new(
-                &block,
+                &*block,
                 self.consensus.get_block_epoch_number(&block_hash),
                 self.consensus.get_block_total_difficulty(&block_hash),
             ))

@@ -36,6 +36,7 @@ extern crate triehash_ethereum as triehash;
 extern crate unexpected;
 
 mod builtin;
+pub mod cache_config;
 mod cache_manager;
 pub mod consensus;
 pub mod db;

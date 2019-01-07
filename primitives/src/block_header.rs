@@ -3,7 +3,9 @@ use crate::{
     hash::{keccak, KECCAK_NULL_RLP},
 };
 use ethereum_types::{Address, H256, U256};
+use heapsize::HeapSizeOf;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
+use std::mem;
 
 /// A block header.
 #[derive(Clone, Debug, Eq)]
@@ -32,6 +34,13 @@ pub struct BlockHeader {
     nonce: u64,
     /// Hash of the block
     hash: Option<H256>,
+}
+
+impl HeapSizeOf for BlockHeader {
+    fn heap_size_of_children(&self) -> usize {
+        mem::size_of::<BlockHeader>()
+            + self.referee_hashes.len() * mem::size_of::<H256>()
+    }
 }
 
 impl PartialEq for BlockHeader {

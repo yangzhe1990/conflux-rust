@@ -29,8 +29,10 @@ use rlp;
 pub const COL_MISC: Option<u32> = Some(0);
 /// Column for delta trie.
 pub const COL_DELTA_TRIE: Option<u32> = Some(1);
+/// Column for Blocks.
+pub const COL_BLOCKS: Option<u32> = Some(2);
 /// Number of columns in DB
-pub const NUM_COLUMNS: Option<u32> = Some(2);
+pub const NUM_COLUMNS: Option<u32> = Some(3);
 
 /// Modes for updating caches.
 #[derive(Clone, Copy)]

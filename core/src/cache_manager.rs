@@ -1,38 +1,42 @@
+// Copyright 2015-2018 Parity Technologies (UK) Ltd.
+// This file is part of Parity.
+
+// Parity is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// Parity is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashSet, VecDeque},
     hash::Hash,
 };
 
 const COLLECTION_QUEUE_SIZE: usize = 8;
 
-// FIXME: We should remove this once we finished the cache manager code
-#[allow(dead_code)]
-pub enum CacheEntryState {
-    Clean,
-    Dirty,
-    Invalid,
-}
-
-// FIXME: We should remove this once we finished the cache manager code
-#[allow(dead_code)]
-pub struct WriteBackCacheManager<T> {
+pub struct CacheManager<T> {
     pref_cache_size: usize,
     max_cache_size: usize,
     bytes_per_cache_entry: usize,
-    cache_usage: VecDeque<HashMap<T, CacheEntryState>>,
+    cache_usage: VecDeque<HashSet<T>>,
 }
 
-// FIXME: We should remove this once we finished the cache manager code
-#[allow(dead_code)]
-impl<T> WriteBackCacheManager<T>
-where T: Eq + Hash + Clone
+impl<T> CacheManager<T>
+where T: Eq + Hash
 {
     pub fn new(
         pref_cache_size: usize, max_cache_size: usize,
         bytes_per_cache_entry: usize,
     ) -> Self
     {
-        WriteBackCacheManager {
+        CacheManager {
             pref_cache_size: pref_cache_size,
             max_cache_size: max_cache_size,
             bytes_per_cache_entry: bytes_per_cache_entry,
@@ -43,41 +47,17 @@ where T: Eq + Hash + Clone
         }
     }
 
-    pub fn note_read(&mut self, id: T) {
-        if !self.cache_usage[0].contains_key(&id) {
-            let mut entry_state = CacheEntryState::Clean;
+    pub fn note_used(&mut self, id: T) {
+        if !self.cache_usage[0].contains(&id) {
             if let Some(c) = self
                 .cache_usage
                 .iter_mut()
                 .skip(1)
-                .find(|e| e.contains_key(&id))
-            {
-                entry_state = c.remove(&id).unwrap();
-            }
-            self.cache_usage[0].insert(id, entry_state);
-        }
-    }
-
-    pub fn note_write(&mut self, id: T) {
-        let mut exist = true;
-        {
-            let entry_state =
-                self.cache_usage[0].entry(id.clone()).or_insert_with(|| {
-                    exist = false;
-                    CacheEntryState::Dirty
-                });
-            *entry_state = CacheEntryState::Dirty;
-        }
-
-        if !exist {
-            if let Some(c) = self
-                .cache_usage
-                .iter_mut()
-                .skip(1)
-                .find(|e| e.contains_key(&id))
+                .find(|e| e.contains(&id))
             {
                 c.remove(&id);
             }
+            self.cache_usage[0].insert(id);
         }
     }
 
@@ -87,7 +67,7 @@ where T: Eq + Hash + Clone
     /// of the cache.
     pub fn collect_garbage<F>(
         &mut self, current_size: usize, mut notify_unused: F,
-    ) where F: FnMut(HashMap<T, CacheEntryState>) -> usize {
+    ) where F: FnMut(HashSet<T>) -> usize {
         if current_size < self.pref_cache_size {
             self.rotate_cache_if_needed();
             return;
@@ -99,21 +79,6 @@ where T: Eq + Hash + Clone
                 self.cache_usage.push_front(Default::default());
                 if current_size < self.max_cache_size {
                     break;
-                }
-            }
-        }
-    }
-
-    /// Flush all the dirty items in cache to persistent storage
-    pub fn flush<F>(&mut self, clear: bool, mut to_flush: F)
-    where F: FnMut(&mut HashMap<T, CacheEntryState>) -> bool {
-        for c in self.cache_usage.iter_mut() {
-            let need_clean = to_flush(c);
-            if clear {
-                c.clear();
-            } else if need_clean {
-                for (_, val) in c.iter_mut() {
-                    *val = CacheEntryState::Clean;
                 }
             }
         }

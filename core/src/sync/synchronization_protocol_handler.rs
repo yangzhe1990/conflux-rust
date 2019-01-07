@@ -24,7 +24,7 @@ use rlp::Rlp;
 //use slab::Slab;
 use crate::{
     sync::synchronization_state::RequestMessage,
-    verification::verification::VerificationConfig,
+    verification::VerificationConfig,
 };
 use std::{
     cmp::{self, Ordering},
@@ -48,6 +48,7 @@ const DEFAULT_GET_HEADERS_NUM: u64 = 1;
 
 const TX_TIMER: TimerToken = 0;
 const CHECK_REQUEST_TIMER: TimerToken = 1;
+const BLOCK_CACHE_GC_TIMER: TimerToken = 2;
 
 pub struct SynchronizationProtocolHandler {
     graph: SharedSynchronizationGraph,
@@ -131,7 +132,7 @@ impl SynchronizationProtocolHandler {
         self.graph.clone()
     }
 
-    pub fn block_by_hash(&self, hash: &H256) -> Option<Block> {
+    pub fn block_by_hash(&self, hash: &H256) -> Option<Arc<Block>> {
         self.graph.block_by_hash(hash)
     }
 
@@ -515,7 +516,9 @@ impl SynchronizationProtocolHandler {
                     .iter()
                     .take(MAX_BLOCKS_TO_SEND as usize)
                     .filter_map(|hash| {
-                        self.graph.block_by_hash(hash).map(|b| b.into())
+                        self.graph
+                            .block_by_hash(hash)
+                            .map(|b| (*b).clone().into())
                     })
                     .collect(),
             });
@@ -1140,7 +1143,7 @@ impl SynchronizationProtocolHandler {
         for hash in hashes {
             let block = self.graph.block_by_hash(hash).unwrap();
             let msg: Box<dyn Message> = Box::new(NewBlock {
-                block: block.into(),
+                block: (*block).clone().into(),
             });
             for (id, _) in syn.peers.iter() {
                 self.send_message(io, *id, msg.as_ref())
@@ -1385,6 +1388,8 @@ impl SynchronizationProtocolHandler {
             *req.message
         })
     }
+
+    fn block_cache_gc(&self) { self.graph.block_cache_gc(); }
 }
 
 impl NetworkProtocolHandler for SynchronizationProtocolHandler {
@@ -1393,6 +1398,8 @@ impl NetworkProtocolHandler for SynchronizationProtocolHandler {
             .expect("Error registering transactions timer");
         io.register_timer(CHECK_REQUEST_TIMER, Duration::from_secs(5))
             .expect("Error registering transactions timer");
+        io.register_timer(BLOCK_CACHE_GC_TIMER, Duration::from_secs(5))
+            .expect("Error registering block_cache_gc timer");
     }
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, raw: &[u8]) {
@@ -1430,6 +1437,9 @@ impl NetworkProtocolHandler for SynchronizationProtocolHandler {
             }
             CHECK_REQUEST_TIMER => {
                 self.remove_expired_flying_request(io);
+            }
+            BLOCK_CACHE_GC_TIMER => {
+                self.block_cache_gc();
             }
             _ => warn!("Unknown timer {} triggered.", timer),
         }

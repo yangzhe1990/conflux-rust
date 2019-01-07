@@ -7,7 +7,6 @@ extern crate log;
 
 #[macro_use]
 mod config_macro;
-mod cache_config;
 mod configuration;
 mod rpc;
 #[cfg(test)]
@@ -83,7 +82,7 @@ impl Client {
             ThreadPool::new(WORKER_COMPUTATION_PARALLELISM);
 
         let network_config = conf.net_config();
-        let _cache_config = conf.cache_config();
+        let cache_config = conf.cache_config();
 
         let db_config = conf.db_config();
         let ledger_db = db::open_database(
@@ -110,6 +109,7 @@ impl Client {
             vm.clone(),
             txpool.clone(),
             ledger_db.clone(),
+            cache_config,
         ));
 
         let sync_config = core::SynchronizationConfiguration {

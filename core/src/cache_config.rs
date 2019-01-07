@@ -5,7 +5,7 @@ use std::cmp::max;
 const MIN_DB_CACHE_MB: usize = 8;
 const MIN_LEDGER_CACHE_MB: usize = 4;
 const DEFAULT_DB_CACHE_SIZE: usize = 128;
-const DEFAULT_LEDGER_CACHE_SIZE: usize = 8;
+const DEFAULT_LEDGER_CACHE_SIZE: usize = 1024;
 
 #[derive(Debug, PartialEq)]
 pub struct CacheConfig {
@@ -31,5 +31,5 @@ impl CacheConfig {
 
     /// Size of the ledger cache.
     #[allow(dead_code)]
-    pub fn ledger(&self) -> usize { max(self.ledger, MIN_LEDGER_CACHE_MB) }
+    pub fn ledger_mb(&self) -> usize { max(self.ledger, MIN_LEDGER_CACHE_MB) }
 }
