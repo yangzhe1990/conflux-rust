@@ -271,6 +271,15 @@ impl OverlayAccount {
             }
             self.storage_cache.borrow_mut().insert(k, v);
         }
+        match self.cache_code(db) {
+            None => {}
+            Some(code) => {
+                db.set::<Vec<u8>>(
+                    &StorageKey::new_code_key(&self.address, &self.code_hash),
+                    code.as_ref(),
+                )?;
+            }
+        }
 
         Ok(())
     }
