@@ -419,6 +419,34 @@ impl ConsensusGraphInner {
         reversed_indices
     }
 
+    pub fn call_virtual(
+        &self, tx: &SignedTransaction,
+    ) -> Result<Vec<u8>, ExecutionError> {
+        let spec = Spec::new_byzantium();
+        let machine = new_byzantium_test_machine();
+        let mut state = State::new(
+            StateDb::new(
+                self.storage_manager
+                    .get_state_at(self.best_block_hash())
+                    .unwrap(),
+            ),
+            0.into(),
+            self.vm.clone(),
+        );
+        let env = EnvInfo {
+            number: 0, // TODO: replace 0 with correct cardinal number
+            author: Default::default(),
+            timestamp: Default::default(),
+            difficulty: Default::default(),
+            gas_used: U256::zero(),
+            gas_limit: tx.gas.clone(),
+        };
+        let mut ex = Executive::new(&mut state, &env, &machine, &spec);
+        let r = ex.transact(tx);
+        trace!("Execution result {:?}", r);
+        r.map(|r| r.output)
+    }
+
     fn process_epoch_transactions(
         state: &mut State, arena: &Slab<ConsensusGraphNode>,
         epoch_blocks: &Vec<usize>, consensus_graph: &ConsensusGraph,
@@ -1267,6 +1295,12 @@ impl ConsensusGraph {
 
     pub fn check_block_confirmation(&self, block_hash: &H256) -> bool {
         self.inner.read().check_block_confirmation(block_hash)
+    }
+
+    pub fn call_virtual(
+        &self, tx: &SignedTransaction,
+    ) -> Result<Vec<u8>, ExecutionError> {
+        self.inner.write().call_virtual(tx)
     }
 
     /// Get current cache size.

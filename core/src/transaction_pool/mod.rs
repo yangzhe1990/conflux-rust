@@ -29,7 +29,7 @@ use std::{
 use threadpool::ThreadPool;
 
 pub const DEFAULT_MIN_TRANSACTION_GAS_PRICE: u64 = 1;
-pub const DEFAULT_MAX_TRANSACTION_GAS_LIMIT: u64 = 100_000;
+pub const DEFAULT_MAX_TRANSACTION_GAS_LIMIT: u64 = 100_000_000;
 pub const DEFAULT_MAX_BLOCK_GAS_LIMIT: u64 = 30_000 * 100_000;
 
 pub const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 2000;
@@ -193,7 +193,8 @@ pub struct TransactionPool {
     capacity: usize,
     inner: RwLock<TransactionPoolInner>,
     storage_manager: Arc<StorageManager>,
-    pub transaction_pubkey_cache: RwLock<LruCache<H256, Arc<SignedTransaction>>>,
+    pub transaction_pubkey_cache:
+        RwLock<LruCache<H256, Arc<SignedTransaction>>>,
     worker_pool: Mutex<ThreadPool>,
 }
 
@@ -237,7 +238,8 @@ impl TransactionPool {
             let mut signed_txes = Vec::new();
             for tx in uncached_trans {
                 if let Ok(public) = tx.recover_public() {
-                    let signed_tx = Arc::new(SignedTransaction::new(public, tx));
+                    let signed_tx =
+                        Arc::new(SignedTransaction::new(public, tx));
                     signed_txes.push(signed_tx);
                 } else {
                     debug!(
@@ -370,8 +372,10 @@ impl TransactionPool {
     }
 
     pub fn add_with_readiness(
-        &self, account_cache: &mut AccountCache, transaction: Arc<SignedTransaction>,
-    ) {
+        &self, account_cache: &mut AccountCache,
+        transaction: Arc<SignedTransaction>,
+    )
+    {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
 
@@ -385,7 +389,9 @@ impl TransactionPool {
                 let account =
                     account_cache.accounts.get_mut(&transaction.sender);
                 if let Some(mut account) = account {
-                    if self.verify_ready_transaction(account, transaction.as_ref()) {
+                    if self
+                        .verify_ready_transaction(account, transaction.as_ref())
+                    {
                         if self.add_ready_without_lock(inner, transaction) {
                             account.nonce = account.nonce + 1;
                         }
@@ -418,8 +424,10 @@ impl TransactionPool {
     }
 
     pub fn add_ready_without_lock(
-        &self, inner: &mut TransactionPoolInner, transaction: Arc<SignedTransaction>,
-    ) -> bool {
+        &self, inner: &mut TransactionPoolInner,
+        transaction: Arc<SignedTransaction>,
+    ) -> bool
+    {
         trace!(
             "Insert tx into ready hash={:?} sender={:?}",
             transaction.hash(),
@@ -451,8 +459,10 @@ impl TransactionPool {
     }
 
     pub fn add_pending_without_lock(
-        &self, inner: &mut TransactionPoolInner, transaction: Arc<SignedTransaction>,
-    ) -> bool {
+        &self, inner: &mut TransactionPoolInner,
+        transaction: Arc<SignedTransaction>,
+    ) -> bool
+    {
         trace!(
             "Insert tx into pending hash={:?} sender={:?}",
             transaction.hash(),
@@ -472,8 +482,10 @@ impl TransactionPool {
     }
 
     pub fn remove_ready_without_lock(
-        &self, inner: &mut TransactionPoolInner, transaction: Arc<SignedTransaction>,
-    ) -> Option<Arc<SignedTransaction>> {
+        &self, inner: &mut TransactionPoolInner,
+        transaction: Arc<SignedTransaction>,
+    ) -> Option<Arc<SignedTransaction>>
+    {
         let hash = transaction.hash();
         inner.ready_transactions.remove(&hash)
     }

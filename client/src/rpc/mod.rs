@@ -23,7 +23,13 @@ use std::{
 
 mod types;
 
-use self::types::{Block as RpcBlock, Status as RpcStatus, H256 as RpcH256};
+use self::types::{
+    Block as RpcBlock, Status as RpcStatus, Transaction as RpcTransaction,
+    H256 as RpcH256,
+};
+use primitives::{
+    Action, SignedTransaction, Transaction, TransactionWithSignature,
+};
 
 pub struct Dependencies {
     pub remote: TokioRemote,
@@ -121,6 +127,9 @@ build_rpc_trait! {
 
         #[rpc(name = "checktx")]
         fn check_tx(&self, H256) -> RpcResult<(bool, bool)>;
+
+        #[rpc(name = "cfx_call")]
+        fn call(&self, RpcTransaction) -> RpcResult<Vec<u8>>;
     }
 }
 
@@ -317,6 +326,30 @@ impl Rpc for RpcImpl {
             None => (false, false),
         };
         Ok(result)
+    }
+
+    fn call(&self, rpc_tx: RpcTransaction) -> RpcResult<Vec<u8>> {
+        let tx = Transaction {
+            nonce: rpc_tx.nonce.into(),
+            gas: rpc_tx.gas.into(),
+            gas_price: rpc_tx.gas_price.into(),
+            value: rpc_tx.value.into(),
+            action: match rpc_tx.to {
+                Some(to) => Action::Call(to.into()),
+                None => Action::Create,
+            },
+            data: rpc_tx.data,
+        };
+        let mut signed_tx = SignedTransaction::new_unsigned(
+            TransactionWithSignature::new_unsigned(tx),
+        );
+        signed_tx.sender = rpc_tx.from.into();
+        trace!("call tx {:?}", signed_tx);
+        let result = self.consensus.call_virtual(&signed_tx);
+        result.map_err(|e| {
+            warn!("Transaction execution error {:?}", e);
+            RpcError::internal_error()
+        })
     }
 }
 

@@ -270,7 +270,8 @@ impl<'a> StateTrait for State<'a> {
     }
 
     fn delete_all(&mut self, access_key_prefix: &[u8]) -> Result<()> {
-        unimplemented!()
+        // unimplemented!()
+        Ok(())
     }
 
     fn compute_state_root(&mut self) -> Result<MerkleHash> {

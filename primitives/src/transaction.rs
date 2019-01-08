@@ -273,6 +273,16 @@ impl Encodable for TransactionWithSignature {
 }
 
 impl TransactionWithSignature {
+    pub fn new_unsigned(tx: Transaction) -> Self {
+        TransactionWithSignature {
+            unsigned: tx,
+            s: 0.into(),
+            r: 0.into(),
+            v: 0.into(),
+            hash: Default::default(),
+        }
+    }
+
     /// Used to compute hash of created transactions
     fn compute_hash(mut self) -> TransactionWithSignature {
         let hash = keccak(&*self.rlp_bytes());

@@ -68,17 +68,23 @@ impl<'a> StateDb<'a> {
     }
 
     pub fn get_raw(&self, key: &StorageKey) -> Result<Option<Box<[u8]>>> {
-        Ok(self.storage.get(key.as_ref())?)
+        let r = Ok(self.storage.get(key.as_ref())?);
+        trace!("get_raw key={:?}, value={:?}", key.as_ref(), r);
+        r
     }
 
     pub fn set<T>(&mut self, key: &StorageKey, value: &T) -> Result<()>
     where T: ::rlp::Encodable {
-        //        println!("set key={:?} value={:?}", key,
-        // ::rlp::encode(value));
-        match self
-            .storage
-            .set(key.as_ref(), ::rlp::encode(value).as_ref())
-        {
+        trace!(
+            "set key={:?} value={:?}",
+            key.as_ref(),
+            ::rlp::encode(value)
+        );
+        self.set_raw(key, &::rlp::encode(value))
+    }
+
+    pub fn set_raw(&mut self, key: &StorageKey, value: &[u8]) -> Result<()> {
+        match self.storage.set(key.as_ref(), value) {
             Ok(_) => Ok(()),
             Err(StorageError(StorageErrorKind::MPTKeyNotFound, _)) => Ok(()),
             Err(e) => Err(e.into()),

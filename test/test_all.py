@@ -34,6 +34,7 @@ TEST_SCRIPTS = [
     "transaction_test.py",
     "reorg_test.py",
     "consensus_test.py",
+    "erc20_test.py",
 ]
 
 test_dir = os.path.dirname(os.path.realpath(__file__))

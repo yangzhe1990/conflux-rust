@@ -144,7 +144,7 @@ impl OverlayAccount {
         {
             Ok(Some(code)) => {
                 self.code_size = Some(code.len());
-                self.code_cache = Arc::new(code.into_vec());
+                self.code_cache = Arc::new(code.to_vec());
                 Some(self.code_cache.clone())
             }
             _ => {
@@ -274,9 +274,9 @@ impl OverlayAccount {
         match self.cache_code(db) {
             None => {}
             Some(code) => {
-                db.set::<Vec<u8>>(
+                db.set_raw(
                     &StorageKey::new_code_key(&self.address, &self.code_hash),
-                    code.as_ref(),
+                    &code.as_ref(),
                 )?;
             }
         }

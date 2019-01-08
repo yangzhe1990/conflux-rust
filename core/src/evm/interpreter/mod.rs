@@ -150,6 +150,7 @@ impl From<ActionParams> for InterpreterParams {
 }
 
 /// Stepping result returned by interpreter.
+#[derive(Debug)]
 pub enum InterpreterResult {
     /// The VM has already stopped.
     Stopped,
