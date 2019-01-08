@@ -300,7 +300,7 @@ impl TransactionPool {
             }
             worker_pool.join();
 
-            for (idx, signed_txes) in receiver.iter() {
+            for (idx, signed_txes) in receiver.iter().take(signed_trans.len()) {
                 signed_trans[idx] = signed_txes;
             }
         }

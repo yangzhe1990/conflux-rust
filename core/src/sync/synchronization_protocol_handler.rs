@@ -49,6 +49,7 @@ const DEFAULT_GET_HEADERS_NUM: u64 = 1;
 const TX_TIMER: TimerToken = 0;
 const CHECK_REQUEST_TIMER: TimerToken = 1;
 const BLOCK_CACHE_GC_TIMER: TimerToken = 2;
+const PERSIST_TERMINAL_TIMER: TimerToken = 3;
 
 pub struct SynchronizationProtocolHandler {
     graph: SharedSynchronizationGraph,
@@ -281,6 +282,7 @@ impl SynchronizationProtocolHandler {
                                     transactions: trans,
                                 },
                                 true,
+                                true,
                             );
 
                             // May fail due to transactions hash collision
@@ -398,6 +400,7 @@ impl SynchronizationProtocolHandler {
                                 block_header: cmpct.block_header,
                                 transactions: trans,
                             },
+                            true,
                             true,
                         );
 
@@ -588,7 +591,7 @@ impl SynchronizationProtocolHandler {
             syn.handshaking_peers.remove(&peer);
         }
 
-        let status = rlp.as_val::<Status>()?;
+        let mut status = rlp.as_val::<Status>()?;
         debug!("on_status, msg=:{:?}", status);
         let genesis_hash = self.graph.genesis_hash();
         if *genesis_hash != status.genesis_hash {
@@ -625,6 +628,17 @@ impl SynchronizationProtocolHandler {
             let mut syn = self.syn.write();
             syn.peers.insert(peer.clone(), peer_state);
         }
+
+        {
+            let mut missed_hashes =
+                self.graph.initial_missed_block_hashes.lock();
+            if !missed_hashes.is_empty() {
+                status
+                    .terminal_block_hashes
+                    .extend(missed_hashes.iter().clone());
+                missed_hashes.clear();
+            }
+        };
 
         // FIXME Need better design.
         // Should be refactored with on_new_block_hashes.
@@ -783,7 +797,7 @@ impl SynchronizationProtocolHandler {
                     continue;
                 }
 
-                let (_, to_relay) = self.graph.insert_block(block, true);
+                let (_, to_relay) = self.graph.insert_block(block, true, true);
                 if to_relay {
                     need_to_relay.push(hash);
                 }
@@ -819,8 +833,30 @@ impl SynchronizationProtocolHandler {
         assert!(!self.graph.contains_block(&hash));
         // Do not need to look at the result since this new block will be
         // broadcast to peers.
-        self.graph.insert_block(block, false);
+        self.graph.insert_block(block, false, true);
         res.1
+    }
+
+    fn on_new_decoded_block(
+        &self, block: Block, need_to_verify: bool, persistent: bool,
+    ) -> Result<Vec<H256>, Error> {
+        let hash = block.block_header.hash();
+        let mut need_to_relay = Vec::new();
+        let res = self
+            .graph
+            .insert_block_header(block.block_header.clone(), need_to_verify);
+        if res.0 {
+            need_to_relay.extend(res.1);
+        } else {
+            return Err(Error::from_kind(ErrorKind::Invalid));
+        }
+
+        let (_, to_relay) =
+            self.graph.insert_block(block, need_to_verify, persistent);
+        if to_relay {
+            need_to_relay.push(hash);
+        }
+        Ok(need_to_relay)
     }
 
     fn on_new_block(
@@ -846,41 +882,27 @@ impl SynchronizationProtocolHandler {
         self.headers_in_flight.lock().remove(&hash);
         self.blocks_in_flight.lock().remove(&hash);
 
-        let mut need_to_relay = Vec::new();
+        let parent_hash = block.block_header.parent_hash().clone();
+        let referee_hashes = block.block_header.referee_hashes().clone();
 
-        let res = self
-            .graph
-            .insert_block_header(block.block_header.clone(), true);
-        if res.0 {
-            need_to_relay.extend(res.1);
-        } else {
-            return Err(Error::from_kind(ErrorKind::Invalid));
-        }
+        let need_to_relay = self.on_new_decoded_block(block, true, true)?;
 
-        let (_, to_relay) = self.graph.insert_block(block.clone(), true);
-        if to_relay {
-            need_to_relay.push(hash);
-        }
-
-        let parent_hash = block.block_header.parent_hash();
-        let referee_hashes = block.block_header.referee_hashes();
-
-        debug_assert!(!self.graph.verified_invalid(parent_hash));
-        if !self.graph.contains_block_header(parent_hash) {
+        debug_assert!(!self.graph.verified_invalid(&parent_hash));
+        if !self.graph.contains_block_header(&parent_hash) {
             self.request_block_headers(
                 io,
                 peer,
-                parent_hash,
+                &parent_hash,
                 DEFAULT_GET_HEADERS_NUM,
             );
         }
         for hash in referee_hashes {
-            debug_assert!(!self.graph.verified_invalid(hash));
-            if !self.graph.contains_block_header(hash) {
+            debug_assert!(!self.graph.verified_invalid(&hash));
+            if !self.graph.contains_block_header(&hash) {
                 self.request_block_headers(
                     io,
                     peer,
-                    hash,
+                    &hash,
                     DEFAULT_GET_HEADERS_NUM,
                 );
             }
@@ -1391,6 +1413,8 @@ impl SynchronizationProtocolHandler {
     }
 
     fn block_cache_gc(&self) { self.graph.block_cache_gc(); }
+
+    fn persist_terminals(&self) { self.graph.persist_terminals(); }
 }
 
 impl NetworkProtocolHandler for SynchronizationProtocolHandler {
@@ -1401,6 +1425,8 @@ impl NetworkProtocolHandler for SynchronizationProtocolHandler {
             .expect("Error registering transactions timer");
         io.register_timer(BLOCK_CACHE_GC_TIMER, Duration::from_secs(5))
             .expect("Error registering block_cache_gc timer");
+        io.register_timer(PERSIST_TERMINAL_TIMER, Duration::from_secs(60))
+            .expect("Error registering persist terminals timer");
     }
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, raw: &[u8]) {
@@ -1441,6 +1467,9 @@ impl NetworkProtocolHandler for SynchronizationProtocolHandler {
             }
             BLOCK_CACHE_GC_TIMER => {
                 self.block_cache_gc();
+            }
+            PERSIST_TERMINAL_TIMER => {
+                self.persist_terminals();
             }
             _ => warn!("Unknown timer {} triggered.", timer),
         }

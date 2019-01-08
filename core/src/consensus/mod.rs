@@ -1,7 +1,7 @@
 use crate::{
     cache_config::CacheConfig,
     cache_manager::CacheManager,
-    db::COL_BLOCKS,
+    db::{COL_BLOCKS, COL_MISC},
     executive::{ExecutionError, Executive},
     ext_db::SystemDB,
     machine::new_byzantium_test_machine,
@@ -17,7 +17,7 @@ use ethereum_types::{Address, H256, U256, U512};
 use heapsize::HeapSizeOf;
 use parking_lot::{Mutex, RwLock};
 use primitives::{Block, BlockHeader, SignedTransaction};
-use rlp::Rlp;
+use rlp::{Rlp, RlpStream};
 use slab::Slab;
 use std::{
     cell::RefCell,
@@ -1157,7 +1157,8 @@ impl ConsensusGraph {
             invalid_blocks: RwLock::new(HashSet::new()),
         };
 
-        consensus_graph.insert_block_to_kv(consensus_graph.genesis_block());
+        consensus_graph
+            .insert_block_to_kv(consensus_graph.genesis_block(), true);
 
         consensus_graph
     }
@@ -1165,6 +1166,17 @@ impl ConsensusGraph {
     pub fn block_header_by_hash(&self, hash: &H256) -> Option<BlockHeader> {
         let result = self.block_by_hash(hash)?;
         Some(result.block_header.clone())
+    }
+
+    pub fn block_by_hash_from_db(&self, hash: &H256) -> Option<Block> {
+        let block = self.db.key_value().get(COL_BLOCKS, hash)
+            .expect("Low level database error when fetching block. Some issue with disk?")?;
+        let rlp = Rlp::new(&block);
+        let mut block = rlp.as_val::<Block>().expect("Wrong block rlp format!");
+        block
+            .recover_public(&mut *self.txpool.transaction_pubkey_cache.write())
+            .expect("Failed to recover public!");
+        Some(block)
     }
 
     pub fn block_by_hash(&self, hash: &H256) -> Option<Arc<Block>> {
@@ -1176,16 +1188,8 @@ impl ConsensusGraph {
             }
         }
 
-        // Read from DB and populate cache
-        let block = self.db.key_value().get(COL_BLOCKS, hash)
-            .expect("Low level database error when fetching block. Some issue with disk?")?;
-        let rlp = Rlp::new(&block);
-        let mut unsigned_block =
-            rlp.as_val::<Block>().expect("Wrong block rlp format!");
-        unsigned_block
-            .recover_public(&mut *self.txpool.transaction_pubkey_cache.write())
-            .expect("Failed to recover public!");
-        let block = Arc::new(unsigned_block);
+        let block = self.block_by_hash_from_db(hash)?;
+        let block = Arc::new(block);
 
         let mut write = self.blocks.write();
         write.insert(*hash, block.clone());
@@ -1194,11 +1198,14 @@ impl ConsensusGraph {
         Some(block)
     }
 
-    pub fn insert_block_to_kv(&self, block: Arc<Block>) {
+    pub fn insert_block_to_kv(&self, block: Arc<Block>, persistent: bool) {
         let hash = block.hash();
-        let mut dbops = self.db.key_value().transaction();
-        dbops.put(COL_BLOCKS, &hash, &rlp::encode(block.as_ref()));
-        self.db.key_value().write_buffered(dbops);
+
+        if persistent {
+            let mut dbops = self.db.key_value().transaction();
+            dbops.put(COL_BLOCKS, &hash, &rlp::encode(block.as_ref()));
+            self.db.key_value().write_buffered(dbops);
+        }
 
         self.blocks.write().insert(hash, block);
         self.cache_man.lock().note_used(CacheId::Block(hash));
@@ -1308,6 +1315,28 @@ impl ConsensusGraph {
         CacheSize {
             blocks: self.blocks.read().heap_size_of_children(),
         }
+    }
+
+    pub fn persist_terminals(&self) {
+        let terminals = {
+            let inner = self.inner.read();
+            let mut terminals =
+                Vec::with_capacity(inner.parental_terminals.len());
+            for index in &inner.parental_terminals {
+                terminals.push(inner.arena[*index].hash);
+            }
+            terminals
+        };
+
+        let mut rlp_stream = RlpStream::new();
+        rlp_stream.begin_list(terminals.len());
+        for hash in terminals {
+            rlp_stream.append(&hash);
+        }
+
+        let mut dbops = self.db.key_value().transaction();
+        dbops.put(COL_MISC, b"terminals", &rlp_stream.drain());
+        self.db.key_value().write_buffered(dbops);
     }
 
     pub fn block_cache_gc(&self) {

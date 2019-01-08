@@ -1,12 +1,14 @@
 use crate::{
     consensus::SharedConsensusGraph,
+    db::COL_MISC,
     error::{BlockError, Error},
     pow::ProofOfWorkConfig,
     verification::*,
 };
 use ethereum_types::{H256, U256};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use primitives::{block::CompactBlock, Block, BlockHeader};
+use rlp::Rlp;
 use slab::Slab;
 use std::{
     cmp::{max, min},
@@ -449,6 +451,7 @@ pub struct SynchronizationGraph {
     pub compact_blocks: RwLock<HashMap<H256, CompactBlock>>,
     pub blocks: Arc<RwLock<HashMap<H256, Arc<Block>>>>,
     genesis_block_hash: H256,
+    pub initial_missed_block_hashes: Mutex<HashSet<H256>>,
     pub consensus: SharedConsensusGraph,
     pub verification_config: VerificationConfig,
 }
@@ -468,7 +471,7 @@ impl SynchronizationGraph {
         let genesis_header = Arc::new(genesis_block.block_header.clone());
         block_headers.insert(genesis_block_hash, genesis_header.clone());
 
-        let sync_graph = SynchronizationGraph {
+        let mut sync_graph = SynchronizationGraph {
             inner: RwLock::new(SynchronizationGraphInner::with_genesis_block(
                 genesis_header,
                 pow_config,
@@ -477,14 +480,64 @@ impl SynchronizationGraph {
             compact_blocks: RwLock::new(HashMap::new()),
             blocks: consensus.blocks.clone(),
             genesis_block_hash,
+            initial_missed_block_hashes: Mutex::new(HashSet::new()),
             consensus,
             verification_config,
         };
 
-        // FIXME: recover synchronization/consensus graphs from blocks in
-        // persistent storage.
-
+        sync_graph.recover_graph_from_db();
         sync_graph
+    }
+
+    fn recover_graph_from_db(&mut self) {
+        let terminals = match self.consensus.db.key_value().get(COL_MISC, b"terminals")
+            .expect("Low-level database error when fetching 'terminals' block. Some issue with disk?")
+            {
+                Some(terminals) => {
+                    let rlp = Rlp::new(&terminals);
+                    rlp.list_at::<H256>(0).expect("Failed to decode terminals!")
+                }
+                None => {
+                    return;
+                }
+            };
+
+        let mut queue = VecDeque::new();
+        for terminal in terminals {
+            queue.push_back(terminal);
+        }
+
+        let mut missed_hashes = self.initial_missed_block_hashes.lock();
+        while let Some(hash) = queue.pop_front() {
+            if hash == self.genesis_block_hash {
+                continue;
+            }
+
+            if let Some(block) = self.block_by_hash_from_db(&hash) {
+                // This is for constructing synchronization graph.
+                let res =
+                    self.insert_block_header(block.block_header.clone(), true);
+                assert!(res.0);
+
+                let parent = block.block_header.parent_hash().clone();
+                let referees = block.block_header.referee_hashes().clone();
+
+                // This is necessary to construct consensus graph.
+                self.insert_block(block, true, false);
+
+                if !self.contains_block(&parent) {
+                    queue.push_back(parent);
+                }
+
+                for referee in referees {
+                    if !self.contains_block(&referee) {
+                        queue.push_back(referee);
+                    }
+                }
+            } else {
+                missed_hashes.insert(hash);
+            }
+        }
     }
 
     pub fn block_header_by_hash(&self, hash: &H256) -> Option<BlockHeader> {
@@ -497,6 +550,10 @@ impl SynchronizationGraph {
 
     pub fn block_by_hash(&self, hash: &H256) -> Option<Arc<Block>> {
         self.consensus.block_by_hash(hash)
+    }
+
+    pub fn block_by_hash_from_db(&self, hash: &H256) -> Option<Block> {
+        self.consensus.block_by_hash_from_db(hash)
     }
 
     pub fn compact_block_by_hash(&self, hash: &H256) -> Option<CompactBlock> {
@@ -730,8 +787,8 @@ impl SynchronizationGraph {
         }
     }
 
-    pub fn insert_block_to_kv(&self, block: Arc<Block>) {
-        self.consensus.insert_block_to_kv(block)
+    pub fn insert_block_to_kv(&self, block: Arc<Block>, persistent: bool) {
+        self.consensus.insert_block_to_kv(block, persistent)
     }
 
     fn remove_block_from_kv(&self, hash: &H256) {
@@ -739,7 +796,7 @@ impl SynchronizationGraph {
     }
 
     pub fn insert_block(
-        &self, block: Block, need_to_verify: bool,
+        &self, block: Block, need_to_verify: bool, persistent: bool,
     ) -> (bool, bool) {
         let mut insert_success = true;
         let mut need_to_relay = false;
@@ -790,7 +847,7 @@ impl SynchronizationGraph {
             self.compact_blocks
                 .write()
                 .insert(block.hash(), block.to_compact());
-            self.insert_block_to_kv(block);
+            self.insert_block_to_kv(block, persistent);
         } else {
             insert_success = false;
         }
@@ -851,4 +908,6 @@ impl SynchronizationGraph {
     }
 
     pub fn block_cache_gc(&self) { self.consensus.block_cache_gc(); }
+
+    pub fn persist_terminals(&self) { self.consensus.persist_terminals(); }
 }
