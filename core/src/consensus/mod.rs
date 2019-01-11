@@ -428,7 +428,7 @@ impl ConsensusGraphInner {
         let mut state = State::new(
             StateDb::new(
                 self.storage_manager
-                    .get_state_at(self.best_block_hash())
+                    .get_state_at(self.best_state_block_hash())
                     .unwrap(),
             ),
             0.into(),
@@ -649,6 +649,7 @@ impl ConsensusGraphInner {
         let mut block_fees: HashMap<usize, U256> = HashMap::new();
         let mut indices_in_epochs: HashMap<usize, Vec<usize>> = HashMap::new();
 
+        // Construct epochs
         for fork_at in 1..chain.len() {
             // First, identify all the blocks in the current epoch of the
             // hypothetical pivot chain
@@ -698,6 +699,101 @@ impl ConsensusGraphInner {
             // and break ties with block hash
             let reversed_indices = self.topological_sort(&queue);
 
+            debug!(
+                "Construct epoch_id={}, block_count={}",
+                self.arena[chain[fork_at]].hash,
+                reversed_indices.len()
+            );
+
+            indices_in_epochs.insert(chain[fork_at], reversed_indices);
+        }
+
+        let mut last_state_height =
+            if self.pivot_chain.len() > DEFERRED_STATE_EPOCH_COUNT as usize {
+                self.pivot_chain.len() - DEFERRED_STATE_EPOCH_COUNT as usize
+            } else {
+                0
+            };
+
+        last_state_height += 1;
+        while last_state_height <= fork_height {
+            let reversed_indices = self
+                .indices_in_epochs
+                .get(&self.pivot_chain[last_state_height])
+                .unwrap();
+
+            let mut state = State::new(
+                StateDb::new(
+                    self.storage_manager
+                        .get_state_at(
+                            self.arena[self.pivot_chain[last_state_height - 1]]
+                                .hash,
+                        )
+                        .unwrap(),
+                ),
+                0.into(),
+                self.vm.clone(),
+            );
+            debug!(
+                "Process tx epoch_id={}, block_count={}",
+                self.arena[self.pivot_chain[last_state_height]].hash,
+                reversed_indices.len()
+            );
+            ConsensusGraphInner::process_epoch_transactions(
+                &mut state,
+                &self.arena,
+                reversed_indices,
+                consensus_graph,
+                &mut block_fees,
+                None,
+                false,
+                &mut Vec::new(),
+            );
+
+            // Calculate the block reward for blocks inside the epoch
+            // All transaction fees are shared among blocks inside one epoch
+            if last_state_height > REWARD_EPOCH_COUNT as usize {
+                let epoch_num = last_state_height - REWARD_EPOCH_COUNT as usize;
+                let anticone_penalty_epoch_upper =
+                    epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
+                let mut pivot_block_upper =
+                    self.pivot_chain[anticone_penalty_epoch_upper];
+                if anticone_penalty_epoch_upper > fork_height {
+                    pivot_block_upper =
+                        chain[anticone_penalty_epoch_upper - fork_height];
+                }
+                let penalty_upper_anticone =
+                    &self.arena[pivot_block_upper].data.anticone;
+                let pivot_index = self.pivot_chain[epoch_num];
+                debug_assert!(
+                    epoch_num == self.arena[pivot_index].height as usize
+                );
+                let block_fee_closure = |index: usize| -> U256 {
+                    self.block_fees.get(&index).unwrap().clone()
+                };
+                let indices_in_epoch =
+                    self.indices_in_epochs.get(&pivot_index).unwrap();
+                self.process_rewards_and_fees(
+                    &mut state,
+                    indices_in_epoch,
+                    pivot_index,
+                    penalty_upper_anticone,
+                    consensus_graph,
+                    block_fee_closure,
+                );
+            }
+
+            // FIXME: We may want to propagate the error up
+            state
+                .commit(self.arena[self.pivot_chain[last_state_height]].hash)
+                .unwrap();
+            last_state_height += 1;
+        }
+
+        for fork_at in 1..chain.len() {
+            let reversed_indices =
+                indices_in_epochs.get(&chain[fork_at]).unwrap();
+
             // Third, apply transactions in the determined total order
             let mut state = State::new(
                 StateDb::new(
@@ -716,15 +812,13 @@ impl ConsensusGraphInner {
             ConsensusGraphInner::process_epoch_transactions(
                 &mut state,
                 &self.arena,
-                &reversed_indices,
+                reversed_indices,
                 consensus_graph,
                 &mut block_fees,
                 None,
                 false,
                 &mut Vec::new(),
             );
-
-            indices_in_epochs.insert(chain[fork_at], reversed_indices);
 
             // Calculate the block reward for blocks inside the epoch
             // All transaction fees are shared among blocks inside one epoch
@@ -963,12 +1057,15 @@ impl ConsensusGraphInner {
             }
         }
 
-        let mut to_pending = Vec::new();
-        while fork_at < new_pivot_chain.len() {
+        assert!(fork_at != 0);
+
+        // Construct epochs
+        let mut pivot_index = fork_at;
+        while pivot_index < new_pivot_chain.len() {
             // First, identify all the blocks in the current epoch
             let mut queue = Vec::new();
             {
-                let copy_of_fork_at = fork_at;
+                let copy_of_fork_at = pivot_index;
                 let enqueue_if_new = |queue: &mut Vec<usize>, index| {
                     let mut epoch_number =
                         self.arena[index].data.epoch_number.borrow_mut();
@@ -979,7 +1076,7 @@ impl ConsensusGraphInner {
                 };
 
                 let mut at = 0;
-                enqueue_if_new(&mut queue, new_pivot_chain[fork_at]);
+                enqueue_if_new(&mut queue, new_pivot_chain[pivot_index]);
                 while at < queue.len() {
                     let me = queue[at];
                     for referee in &self.arena[me].referees {
@@ -994,12 +1091,45 @@ impl ConsensusGraphInner {
             // and break ties with block hash
             let reversed_indices = self.topological_sort(&queue);
 
-            // Third, apply transactions in the determined total order
+            debug!(
+                "Construct epoch_id={}, block_count={}",
+                self.arena[new_pivot_chain[pivot_index]].hash,
+                reversed_indices.len()
+            );
+
+            self.indices_in_epochs
+                .insert(new_pivot_chain[pivot_index], reversed_indices);
+
+            pivot_index += 1;
+        }
+
+        let mut to_pending = Vec::new();
+        let to_state_pos =
+            if new_pivot_chain.len() < DEFERRED_STATE_EPOCH_COUNT as usize {
+                0 as usize
+            } else {
+                new_pivot_chain.len() - DEFERRED_STATE_EPOCH_COUNT as usize + 1
+            };
+
+        let mut state_at = fork_at;
+        if fork_at + DEFERRED_STATE_EPOCH_COUNT as usize
+            > self.pivot_chain.len()
+        {
+            if self.pivot_chain.len() > DEFERRED_STATE_EPOCH_COUNT as usize {
+                state_at = self.pivot_chain.len()
+                    - DEFERRED_STATE_EPOCH_COUNT as usize;
+            } else {
+                state_at = 1;
+            }
+        }
+
+        // Apply transactions in the determined total order
+        while state_at < to_state_pos {
             let mut state = State::new(
                 StateDb::new(
                     self.storage_manager
                         .get_state_at(
-                            self.arena[new_pivot_chain[fork_at - 1]].hash,
+                            self.arena[new_pivot_chain[state_at - 1]].hash,
                         )
                         .unwrap(),
                 ),
@@ -1007,15 +1137,20 @@ impl ConsensusGraphInner {
                 self.vm.clone(),
             );
 
+            let reversed_indices = self
+                .indices_in_epochs
+                .get(&new_pivot_chain[state_at])
+                .unwrap();
+
             debug!(
                 "Process tx epoch_id={}, block_count={}",
-                self.arena[new_pivot_chain[fork_at]].hash,
+                self.arena[new_pivot_chain[state_at]].hash,
                 reversed_indices.len()
             );
             ConsensusGraphInner::process_epoch_transactions(
                 &mut state,
                 &self.arena,
-                &reversed_indices,
+                reversed_indices,
                 consensus_graph,
                 &mut self.block_fees,
                 Some(&mut self.block_for_transaction),
@@ -1024,14 +1159,10 @@ impl ConsensusGraphInner {
             );
             debug!("Finish tx execution");
 
-            self.indices_in_epochs
-                .insert(new_pivot_chain[fork_at], reversed_indices);
-
             // Calculate the block reward for blocks inside the epoch
             // All transaction fees are shared among blocks inside one epoch
-            if fork_at > REWARD_EPOCH_COUNT as usize {
-                debug!("Compute reward");
-                let epoch_num = fork_at - REWARD_EPOCH_COUNT as usize;
+            if state_at > REWARD_EPOCH_COUNT as usize {
+                let epoch_num = state_at - REWARD_EPOCH_COUNT as usize;
                 let anticone_penalty_epoch_upper =
                     epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
                 let penalty_upper_anticone = &self.arena
@@ -1061,19 +1192,22 @@ impl ConsensusGraphInner {
             // FIXME: We may want to propagate the error up
             state
                 .commit_and_notify(
-                    self.arena[new_pivot_chain[fork_at]].hash,
+                    self.arena[new_pivot_chain[state_at]].hash,
                     txpool,
                 )
                 .unwrap();
 
-            fork_at += 1;
+            state_at += 1;
         }
 
-        let state = self
-            .storage_manager
-            .get_state_at(self.arena[*new_pivot_chain.last().unwrap()].hash)
-            .unwrap();
-        txpool.recycle_future_transactions(to_pending, state);
+        if state_at > 1 {
+            state_at -= 1;
+            let state = self
+                .storage_manager
+                .get_state_at(self.arena[new_pivot_chain[state_at]].hash)
+                .unwrap();
+            txpool.recycle_future_transactions(to_pending, state);
+        }
 
         self.pivot_chain = new_pivot_chain;
         (
@@ -1084,6 +1218,17 @@ impl ConsensusGraphInner {
 
     pub fn best_block_hash(&self) -> H256 {
         self.arena[*self.pivot_chain.last().unwrap()].hash
+    }
+
+    pub fn best_state_block_hash(&self) -> H256 {
+        let pivot_len = self.pivot_chain.len();
+        let index = if pivot_len < DEFERRED_STATE_EPOCH_COUNT as usize {
+            0
+        } else {
+            pivot_len - DEFERRED_STATE_EPOCH_COUNT as usize
+        };
+
+        self.arena[self.pivot_chain[index]].hash
     }
 
     pub fn deferred_state_root(&self, chain: &[usize]) -> Option<H256> {
@@ -1097,6 +1242,12 @@ impl ConsensusGraphInner {
             .storage_manager
             .get_state_at(self.arena[chain[index]].hash)
             .unwrap();
+        trace!(
+            "get state, hash ({:?}), chain len: {}, chain index: {}",
+            self.arena[chain[index]].hash,
+            chain_len,
+            index
+        );
         state.get_state_root().unwrap()
     }
 
@@ -1310,6 +1461,10 @@ impl ConsensusGraph {
 
     pub fn best_block_hash(&self) -> H256 {
         self.inner.read().best_block_hash()
+    }
+
+    pub fn best_state_block_hash(&self) -> H256 {
+        self.inner.read().best_state_block_hash()
     }
 
     pub fn block_count(&self) -> usize { self.inner.read().indices.len() }

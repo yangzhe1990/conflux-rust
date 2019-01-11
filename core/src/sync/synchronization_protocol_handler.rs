@@ -457,7 +457,7 @@ impl SynchronizationProtocolHandler {
             .extend(transactions.iter().map(|tx| tx.hash()));
 
         self.get_transaction_pool().insert_new_transactions(
-            self.graph.consensus.best_block_hash(),
+            self.graph.consensus.best_state_block_hash(),
             transactions,
         );
         debug!("Transactions successfully inserted to transaction pool");

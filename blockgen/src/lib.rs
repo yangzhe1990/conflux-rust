@@ -246,7 +246,7 @@ impl BlockGenerator {
             txs.push(tx);
         }
         self.txpool.insert_new_transactions(
-            self.graph.consensus.best_block_hash(),
+            self.graph.consensus.best_state_block_hash(),
             txs.into_iter().map(|tx| tx.transaction).collect(),
         );
         self.generate_block(num_txs)

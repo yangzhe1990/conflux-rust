@@ -168,7 +168,7 @@ impl Rpc for RpcImpl {
         let state = State::new(
             StateDb::new(
                 self.storage_manager
-                    .get_state_at(self.consensus.best_block_hash())
+                    .get_state_at(self.consensus.best_state_block_hash())
                     .unwrap(),
             ),
             0.into(),

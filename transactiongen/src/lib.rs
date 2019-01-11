@@ -78,7 +78,7 @@ impl TransactionGenerator {
         State::new(
             StateDb::new(
                 self.storage_manager
-                    .get_state_at(self.consensus.best_block_hash())
+                    .get_state_at(self.consensus.best_state_block_hash())
                     .unwrap(),
             ),
             0.into(),
@@ -115,7 +115,7 @@ impl TransactionGenerator {
             "account_count:{} sender_addr:{:?} epoch_id:{:?}",
             account_count,
             sender_address,
-            self.consensus.best_block_hash()
+            self.consensus.best_state_block_hash()
         );
         let sender_balance = state.balance(&sender_address).unwrap_or(0.into());
 
@@ -170,7 +170,7 @@ impl TransactionGenerator {
                 StateDb::new(
                     txgen
                         .storage_manager
-                        .get_state_at(txgen.consensus.best_block_hash())
+                        .get_state_at(txgen.consensus.best_state_block_hash())
                         .unwrap(),
                 ),
                 0.into(),
@@ -241,7 +241,9 @@ impl TransactionGenerator {
             let receiver_address = public_to_address(receiver_kp.public());
             trace!(
                 "receiver={:?} value={:?} nonce={:?}",
-                receiver_address, balance_to_transfer, sender_nonce
+                receiver_address,
+                balance_to_transfer,
+                sender_nonce
             );
             *balance_map.entry(receiver_address).or_insert(0.into()) +=
                 balance_to_transfer;
@@ -261,7 +263,7 @@ impl TransactionGenerator {
             let mut tx_to_insert = Vec::new();
             tx_to_insert.push(signed_tx.transaction);
             txgen.txpool.insert_new_transactions(
-                txgen.consensus.best_block_hash(),
+                txgen.consensus.best_state_block_hash(),
                 tx_to_insert,
             );
             tx_n += 1;
