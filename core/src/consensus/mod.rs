@@ -448,774 +448,6 @@ impl ConsensusGraphInner {
         r.map(|r| r.output)
     }
 
-    fn process_epoch_transactions(
-        state: &mut State, arena: &Slab<ConsensusGraphNode>,
-        epoch_blocks: &Vec<usize>, consensus_graph: &ConsensusGraph,
-        block_fees: &mut HashMap<usize, U256>,
-        mut block_for_transaction: Option<&mut LruCache<H256, (bool, usize)>>,
-        re_pending: bool, to_pending: &mut Vec<Arc<SignedTransaction>>,
-    )
-    {
-        let spec = Spec::new_byzantium();
-        let machine = new_byzantium_test_machine();
-        for index in epoch_blocks.iter() {
-            let block =
-                consensus_graph.block_by_hash(&arena[*index].hash).unwrap();
-            debug!(
-                "process txs in block: hash={:?}, tx count={:?}",
-                block.hash(),
-                block.transactions.len()
-            );
-            let env = EnvInfo {
-                number: 0, // TODO: replace 0 with correct cardinal number
-                author: block.block_header.author().clone(),
-                timestamp: block.block_header.timestamp(),
-                difficulty: block.block_header.difficulty().clone(),
-                gas_used: U256::zero(),
-                gas_limit: U256::from(block.block_header.gas_limit()),
-            };
-            let mut accumulated_fee: U256 = 0.into();
-            let mut ex = Executive::new(state, &env, &machine, &spec);
-            let mut n_invalid_nonce = 0;
-            let mut n_ok = 0;
-            let mut n_other = 0;
-            for transaction in &block.transactions {
-                let r = ex.transact(transaction);
-                match r {
-                    Err(ExecutionError::NotEnoughBaseGas {
-                        required: _,
-                        got: _,
-                    })
-                    | Err(ExecutionError::SenderMustExist {})
-                    | Err(ExecutionError::Internal(_)) => {
-                        warn!(
-                            "tx execution error: transaction={:?}, err={:?}",
-                            transaction, r
-                        );
-                    }
-                    Err(ExecutionError::InvalidNonce { expected, got }) => {
-                        n_invalid_nonce += 1;
-                        trace!("tx execution InvalidNonce without inc_nonce: transaction={:?}, err={:?}", transaction.clone(), r);
-                        if re_pending && got > expected {
-                            trace!(
-                                "To re-add transaction ({:?}) to pending pool",
-                                transaction.clone()
-                            );
-                            to_pending.push(transaction.clone());
-                        }
-                    }
-                    Ok(executed) => {
-                        n_ok += 1;
-                        trace!("tx executed successfully: transaction={:?}, result={:?}, in block {:?}", transaction, executed, arena[*index].hash.clone());
-                        accumulated_fee += executed.fee;
-                        if let Some(ref mut block_for_transaction) =
-                            block_for_transaction
-                        {
-                            block_for_transaction
-                                .put(transaction.hash(), (true, *index));
-                        }
-                    }
-                    _ => {
-                        n_other += 1;
-                        trace!("tx executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, arena[*index].hash.clone());
-                        if let Some(ref mut block_for_transaction) =
-                            block_for_transaction
-                        {
-                            block_for_transaction
-                                .put(transaction.hash(), (true, *index));
-                        }
-                    }
-                }
-            }
-            debug!(
-                "n_invalid_nonce={}, n_ok={}, n_other={}",
-                n_invalid_nonce, n_ok, n_other
-            );
-            block_fees.insert(*index, accumulated_fee);
-        }
-        debug!("Finish processing tx for epoch");
-    }
-
-    fn process_rewards_and_fees<F>(
-        &self, state: &mut State, indices_in_epoch: &Vec<usize>,
-        pivot_index: usize, penalty_upper_anticone: &HashSet<usize>,
-        consensus_graph: &ConsensusGraph, block_fee_fn: F,
-    ) where
-        F: Fn(usize) -> U256,
-    {
-        let difficulty = self.arena[pivot_index].difficulty;
-        let mut epoch_accum_fee: U256 = 0.into();
-        let mut rewards: Vec<(Address, U256)> = Vec::new();
-
-        for index in indices_in_epoch {
-            let block_fee = block_fee_fn(*index);
-            assert!(U256::max_value() - epoch_accum_fee > block_fee);
-            epoch_accum_fee += block_fee;
-
-            if self.arena[*index].data.partial_invalid {
-                continue;
-            }
-
-            let mut reward: U512 =
-                if self.arena[*index].difficulty == difficulty {
-                    BASE_MINING_REWARD.into()
-                } else {
-                    0.into()
-                };
-
-            if reward > 0.into() {
-                let anticone_size = self.arena[*index]
-                    .data
-                    .anticone
-                    .difference(penalty_upper_anticone)
-                    .cloned()
-                    .collect::<HashSet<_>>()
-                    .len();
-                let penalty = (reward * U512::from(anticone_size))
-                    / U512::from(ANTICONE_PENALTY_RATIO);
-                if penalty > reward {
-                    reward = 0.into();
-                } else {
-                    reward -= penalty;
-                }
-            }
-
-            debug_assert!(reward <= U512::from(U256::max_value()));
-            let reward = U256::from(reward);
-            let author = consensus_graph
-                .block_by_hash(&self.arena[*index].hash)
-                .unwrap()
-                .block_header
-                .author()
-                .clone();
-            rewards.push((author, reward));
-        }
-        debug!("Give rewards reward={:?}", rewards);
-
-        if !rewards.is_empty() {
-            let block_count = U256::from(rewards.len());
-            let quotient: U256 = epoch_accum_fee / block_count;
-            let mut remainder: U256 =
-                epoch_accum_fee - (block_count * quotient);
-            for (_, reward) in &mut rewards {
-                *reward += quotient;
-                if !remainder.is_zero() {
-                    *reward += 1.into();
-                    remainder -= 1.into();
-                }
-            }
-
-            for (address, reward) in rewards {
-                state
-                    .add_balance(&address, &reward, CleanupMode::ForceCreate)
-                    .unwrap();
-            }
-        }
-    }
-
-    /// This is a very expensive call to force the engine to recompute the state
-    /// root of a given block
-    pub fn compute_state_for_block(
-        &self, block_hash: &H256, consensus_graph: &ConsensusGraph,
-    ) -> H256 {
-        // If we already computed the state of the block before, we should not
-        // do it again FIXME: propagate the error up
-        let cached_state = self
-            .storage_manager
-            .get_state_at(block_hash.clone())
-            .unwrap();
-        if cached_state.does_exist() {
-            return cached_state.get_state_root().unwrap().unwrap();
-        }
-        // FIXME: propagate the error up
-        let me: usize = self.indices.get(block_hash).unwrap().clone();
-        let block_height = self.arena[me].height as usize;
-        let mut fork_height = block_height;
-        let mut chain: Vec<usize> = Vec::new();
-        let mut idx = me;
-        while fork_height > 0
-            && (fork_height >= self.pivot_chain.len()
-                || self.pivot_chain[fork_height] != idx)
-        {
-            chain.push(idx);
-            fork_height -= 1;
-            idx = self.arena[idx].parent;
-        }
-        // Because we have genesis at height 0, this should always be true
-        debug_assert!(self.pivot_chain[fork_height] == idx);
-        chain.push(idx);
-        chain.reverse();
-        let mut epoch_number_map: HashMap<usize, usize> = HashMap::new();
-        let mut block_fees: HashMap<usize, U256> = HashMap::new();
-        let mut indices_in_epochs: HashMap<usize, Vec<usize>> = HashMap::new();
-
-        // Construct epochs
-        for fork_at in 1..chain.len() {
-            // First, identify all the blocks in the current epoch of the
-            // hypothetical pivot chain
-            let mut queue = Vec::new();
-            {
-                let new_epoch_number = fork_at + fork_height;
-                let enqueue_if_new =
-                    |queue: &mut Vec<usize>,
-                     epoch_number_map: &mut HashMap<usize, usize>,
-                     index| {
-                        let epoch_number =
-                            self.arena[index].data.epoch_number.borrow();
-                        if (*epoch_number == NULL
-                            || *epoch_number > fork_height)
-                            && !epoch_number_map.contains_key(&index)
-                        {
-                            epoch_number_map.insert(index, new_epoch_number);
-                            queue.push(index);
-                        }
-                    };
-
-                let mut at = 0;
-                enqueue_if_new(
-                    &mut queue,
-                    &mut epoch_number_map,
-                    chain[fork_at],
-                );
-                while at < queue.len() {
-                    let me = queue[at];
-                    for referee in &self.arena[me].referees {
-                        enqueue_if_new(
-                            &mut queue,
-                            &mut epoch_number_map,
-                            *referee,
-                        );
-                    }
-                    enqueue_if_new(
-                        &mut queue,
-                        &mut epoch_number_map,
-                        self.arena[me].parent,
-                    );
-                    at += 1;
-                }
-            }
-
-            // Second, sort all the blocks based on their topological order
-            // and break ties with block hash
-            let reversed_indices = self.topological_sort(&queue);
-
-            debug!(
-                "Construct epoch_id={}, block_count={}",
-                self.arena[chain[fork_at]].hash,
-                reversed_indices.len()
-            );
-
-            indices_in_epochs.insert(chain[fork_at], reversed_indices);
-        }
-
-        let mut last_state_height =
-            if self.pivot_chain.len() > DEFERRED_STATE_EPOCH_COUNT as usize {
-                self.pivot_chain.len() - DEFERRED_STATE_EPOCH_COUNT as usize
-            } else {
-                0
-            };
-
-        last_state_height += 1;
-        while last_state_height <= fork_height {
-            let reversed_indices = self
-                .indices_in_epochs
-                .get(&self.pivot_chain[last_state_height])
-                .unwrap();
-
-            let mut state = State::new(
-                StateDb::new(
-                    self.storage_manager
-                        .get_state_at(
-                            self.arena[self.pivot_chain[last_state_height - 1]]
-                                .hash,
-                        )
-                        .unwrap(),
-                ),
-                0.into(),
-                self.vm.clone(),
-            );
-            debug!(
-                "Process tx epoch_id={}, block_count={}",
-                self.arena[self.pivot_chain[last_state_height]].hash,
-                reversed_indices.len()
-            );
-            ConsensusGraphInner::process_epoch_transactions(
-                &mut state,
-                &self.arena,
-                reversed_indices,
-                consensus_graph,
-                &mut block_fees,
-                None,
-                false,
-                &mut Vec::new(),
-            );
-
-            // Calculate the block reward for blocks inside the epoch
-            // All transaction fees are shared among blocks inside one epoch
-            if last_state_height > REWARD_EPOCH_COUNT as usize {
-                let epoch_num = last_state_height - REWARD_EPOCH_COUNT as usize;
-                let anticone_penalty_epoch_upper =
-                    epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
-                let mut pivot_block_upper =
-                    self.pivot_chain[anticone_penalty_epoch_upper];
-                if anticone_penalty_epoch_upper > fork_height {
-                    pivot_block_upper =
-                        chain[anticone_penalty_epoch_upper - fork_height];
-                }
-                let penalty_upper_anticone =
-                    &self.arena[pivot_block_upper].data.anticone;
-                let pivot_index = self.pivot_chain[epoch_num];
-                debug_assert!(
-                    epoch_num == self.arena[pivot_index].height as usize
-                );
-                let block_fee_closure = |index: usize| -> U256 {
-                    self.block_fees.get(&index).unwrap().clone()
-                };
-                let indices_in_epoch =
-                    self.indices_in_epochs.get(&pivot_index).unwrap();
-                self.process_rewards_and_fees(
-                    &mut state,
-                    indices_in_epoch,
-                    pivot_index,
-                    penalty_upper_anticone,
-                    consensus_graph,
-                    block_fee_closure,
-                );
-            }
-
-            // FIXME: We may want to propagate the error up
-            state
-                .commit(self.arena[self.pivot_chain[last_state_height]].hash)
-                .unwrap();
-            last_state_height += 1;
-        }
-
-        for fork_at in 1..chain.len() {
-            let reversed_indices =
-                indices_in_epochs.get(&chain[fork_at]).unwrap();
-
-            // Third, apply transactions in the determined total order
-            let mut state = State::new(
-                StateDb::new(
-                    self.storage_manager
-                        .get_state_at(self.arena[chain[fork_at - 1]].hash)
-                        .unwrap(),
-                ),
-                0.into(),
-                self.vm.clone(),
-            );
-            debug!(
-                "Process tx epoch_id={}, block_count={}",
-                self.arena[chain[fork_at]].hash,
-                reversed_indices.len()
-            );
-            ConsensusGraphInner::process_epoch_transactions(
-                &mut state,
-                &self.arena,
-                reversed_indices,
-                consensus_graph,
-                &mut block_fees,
-                None,
-                false,
-                &mut Vec::new(),
-            );
-
-            // Calculate the block reward for blocks inside the epoch
-            // All transaction fees are shared among blocks inside one epoch
-            if fork_height + fork_at > REWARD_EPOCH_COUNT as usize {
-                let epoch_num =
-                    fork_height + fork_at - REWARD_EPOCH_COUNT as usize;
-                let anticone_penalty_epoch_upper =
-                    epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
-                let mut pivot_block_upper =
-                    self.pivot_chain[anticone_penalty_epoch_upper];
-                if anticone_penalty_epoch_upper > fork_height {
-                    pivot_block_upper =
-                        chain[anticone_penalty_epoch_upper - fork_height];
-                }
-                let penalty_upper_anticone =
-                    &self.arena[pivot_block_upper].data.anticone;
-                let mut pivot_index = self.pivot_chain[epoch_num];
-                let mut in_branch = false;
-                if epoch_num > fork_height {
-                    pivot_index = chain[epoch_num - fork_height];
-                    in_branch = true;
-                }
-                debug_assert!(
-                    epoch_num == self.arena[pivot_index].height as usize
-                );
-                let block_fee_closure = |index: usize| -> U256 {
-                    match in_branch {
-                        true => block_fees.get(&index).unwrap(),
-                        false => self.block_fees.get(&index).unwrap(),
-                    }
-                    .clone()
-                };
-                let indices_in_epoch = match in_branch {
-                    true => indices_in_epochs.get(&pivot_index).unwrap(),
-                    false => self.indices_in_epochs.get(&pivot_index).unwrap(),
-                };
-                self.process_rewards_and_fees(
-                    &mut state,
-                    indices_in_epoch,
-                    pivot_index,
-                    penalty_upper_anticone,
-                    consensus_graph,
-                    block_fee_closure,
-                );
-            }
-
-            // FIXME: We may want to propagate the error up
-            state.commit(self.arena[chain[fork_at]].hash).unwrap();
-        }
-
-        // FIXME: Propagate errors upward
-        self.storage_manager
-            .get_state_at(self.arena[me].hash)
-            .unwrap()
-            .get_state_root()
-            .unwrap()
-            .unwrap()
-    }
-
-    pub fn compute_deferred_state_for_block(
-        &self, block_hash: &H256, consensus_graph: &ConsensusGraph,
-        delay: usize,
-    ) -> H256
-    {
-        // FIXME: Propagate errors upward
-        let mut idx = self.indices.get(block_hash).unwrap().clone();
-        for _i in 0..delay {
-            if idx == self.genesis_block_index {
-                break;
-            }
-            idx = self.arena[idx].parent;
-        }
-        self.compute_state_for_block(&self.arena[idx].hash, consensus_graph)
-    }
-
-    fn check_block_full_validity(
-        &self, new: usize, block: &Block, consensus_graph: &ConsensusGraph,
-        sync_graph: &mut SynchronizationGraphInner,
-    ) -> bool
-    {
-        if self.arena[self.arena[new].parent].data.partial_invalid {
-            warn!(
-                "Partially invalid due to partially invalid parent. {:?}",
-                block.block_header.clone()
-            );
-            return false;
-        }
-
-        // Check whether the new block select the correct parent block
-        if self.arena[new].parent != *self.pivot_chain.last().unwrap() {
-            if !self.check_correct_parent(new, sync_graph) {
-                warn!(
-                    "Partially invalid due to picking incorrect parent. {:?}",
-                    block.block_header.clone()
-                );
-                return false;
-            }
-        }
-
-        // Check if the state root is correct or not
-        // TODO: We may want to optimize this because now on the chain switch we
-        // are going to compute state twice
-        let state_root_valid =
-            if block.block_header.height() < DEFERRED_STATE_EPOCH_COUNT {
-                *block.block_header.deferred_state_root()
-                    == self.genesis_block_state_root
-            } else {
-                let mut deferred = new;
-                for _ in 0..DEFERRED_STATE_EPOCH_COUNT {
-                    deferred = self.arena[deferred].parent;
-                }
-                debug_assert!(
-                    block.block_header.height() - DEFERRED_STATE_EPOCH_COUNT
-                        == self.arena[deferred].height
-                );
-
-                /*let height = self.arena[deferred].height as usize;
-                if height < self.pivot_chain.len()
-                    && self.pivot_chain[height] == deferred*/
-                if self
-                    .storage_manager
-                    .contains_state(self.arena[deferred].hash)
-                {
-                    *block.block_header.deferred_state_root()
-                        == self
-                            .storage_manager
-                            .get_state_at(self.arena[deferred].hash)
-                            .unwrap()
-                            .get_state_root()
-                            .unwrap()
-                            .unwrap()
-                } else {
-                    // Call the expensive function to check this state root
-                    *block.block_header.deferred_state_root()
-                        == self.compute_state_for_block(
-                            &self.arena[deferred].hash,
-                            consensus_graph,
-                        )
-                }
-            };
-
-        if !state_root_valid {
-            warn!(
-                "Partially invalid in fork due to incorrect state root. {:?}",
-                block.block_header.clone()
-            );
-            return false;
-        }
-        return true;
-    }
-
-    pub fn on_new_block(
-        &mut self, txpool: &SharedTransactionPool, block: &Block,
-        sync_graph: &mut SynchronizationGraphInner,
-        consensus_graph: &ConsensusGraph,
-    ) -> (H256, H256)
-    {
-        let new = self.insert(block, &mut sync_graph.terminal_block_hashes);
-        self.compute_anticone(new);
-
-        let fully_valid = self.check_block_full_validity(
-            new,
-            block,
-            consensus_graph,
-            sync_graph,
-        );
-        if !fully_valid {
-            self.arena[new].data.partial_invalid = true;
-            return (
-                self.best_block_hash(),
-                self.deferred_state_root_following_best_block(),
-            );
-        }
-        debug!("Block {} is fully valid", self.arena[new].hash);
-
-        // Update the total difficulty for the new block
-        let mut me = new;
-        loop {
-            me = self.arena[me].parent;
-            self.arena[me].total_difficulty += *block.block_header.difficulty();
-            if me == self.genesis_block_index {
-                break;
-            }
-        }
-
-        // Compute the new pivot chain
-        let mut new_pivot_chain = Vec::new();
-        me = self.genesis_block_index;
-        loop {
-            new_pivot_chain.push(me);
-            if let Some(heaviest) = self.arena[me]
-                .children
-                .iter()
-                .filter(|&index| !self.arena[*index].data.partial_invalid)
-                .max_by_key(|index| {
-                    (
-                        self.arena[**index].total_difficulty,
-                        self.arena[**index].hash,
-                    )
-                })
-                .cloned()
-            {
-                me = heaviest;
-            } else {
-                break;
-            }
-        }
-
-        let mut fork_at = 0;
-        while fork_at < self.pivot_chain.len()
-            && fork_at < new_pivot_chain.len()
-        {
-            if self.pivot_chain[fork_at] != new_pivot_chain[fork_at] {
-                break;
-            }
-            fork_at += 1;
-        }
-
-        if fork_at < self.pivot_chain.len() {
-            let enqueue_if_obsolete = |queue: &mut VecDeque<usize>, index| {
-                let mut epoch_number =
-                    self.arena[index].data.epoch_number.borrow_mut();
-                if *epoch_number != NULL && *epoch_number >= fork_at {
-                    *epoch_number = NULL;
-                    queue.push_back(index);
-                }
-            };
-
-            let mut queue = VecDeque::new();
-            enqueue_if_obsolete(&mut queue, *self.pivot_chain.last().unwrap());
-            while let Some(me) = queue.pop_front() {
-                for referee in self.arena[me].referees.clone() {
-                    enqueue_if_obsolete(&mut queue, referee);
-                }
-                enqueue_if_obsolete(&mut queue, self.arena[me].parent);
-            }
-        }
-
-        assert!(fork_at != 0);
-
-        // Construct epochs
-        let mut pivot_index = fork_at;
-        while pivot_index < new_pivot_chain.len() {
-            // First, identify all the blocks in the current epoch
-            let mut queue = Vec::new();
-            {
-                let copy_of_fork_at = pivot_index;
-                let enqueue_if_new = |queue: &mut Vec<usize>, index| {
-                    let mut epoch_number =
-                        self.arena[index].data.epoch_number.borrow_mut();
-                    if *epoch_number == NULL {
-                        *epoch_number = copy_of_fork_at;
-                        queue.push(index);
-                    }
-                };
-
-                let mut at = 0;
-                enqueue_if_new(&mut queue, new_pivot_chain[pivot_index]);
-                while at < queue.len() {
-                    let me = queue[at];
-                    for referee in &self.arena[me].referees {
-                        enqueue_if_new(&mut queue, *referee);
-                    }
-                    enqueue_if_new(&mut queue, self.arena[me].parent);
-                    at += 1;
-                }
-            }
-
-            // Second, sort all the blocks based on their topological order
-            // and break ties with block hash
-            let reversed_indices = self.topological_sort(&queue);
-
-            debug!(
-                "Construct epoch_id={}, block_count={}",
-                self.arena[new_pivot_chain[pivot_index]].hash,
-                reversed_indices.len()
-            );
-
-            self.indices_in_epochs
-                .insert(new_pivot_chain[pivot_index], reversed_indices);
-
-            pivot_index += 1;
-        }
-
-        let mut to_pending = Vec::new();
-        let to_state_pos =
-            if new_pivot_chain.len() < DEFERRED_STATE_EPOCH_COUNT as usize {
-                0 as usize
-            } else {
-                new_pivot_chain.len() - DEFERRED_STATE_EPOCH_COUNT as usize + 1
-            };
-
-        let mut state_at = fork_at;
-        if fork_at + DEFERRED_STATE_EPOCH_COUNT as usize
-            > self.pivot_chain.len()
-        {
-            if self.pivot_chain.len() > DEFERRED_STATE_EPOCH_COUNT as usize {
-                state_at = self.pivot_chain.len()
-                    - DEFERRED_STATE_EPOCH_COUNT as usize;
-            } else {
-                state_at = 1;
-            }
-        }
-
-        // Apply transactions in the determined total order
-        while state_at < to_state_pos {
-            let mut state = State::new(
-                StateDb::new(
-                    self.storage_manager
-                        .get_state_at(
-                            self.arena[new_pivot_chain[state_at - 1]].hash,
-                        )
-                        .unwrap(),
-                ),
-                0.into(),
-                self.vm.clone(),
-            );
-
-            let reversed_indices = self
-                .indices_in_epochs
-                .get(&new_pivot_chain[state_at])
-                .unwrap();
-
-            debug!(
-                "Process tx epoch_id={}, block_count={}",
-                self.arena[new_pivot_chain[state_at]].hash,
-                reversed_indices.len()
-            );
-            ConsensusGraphInner::process_epoch_transactions(
-                &mut state,
-                &self.arena,
-                reversed_indices,
-                consensus_graph,
-                &mut self.block_fees,
-                Some(&mut self.block_for_transaction),
-                true,
-                &mut to_pending,
-            );
-            debug!("Finish tx execution");
-
-            // Calculate the block reward for blocks inside the epoch
-            // All transaction fees are shared among blocks inside one epoch
-            if state_at > REWARD_EPOCH_COUNT as usize {
-                let epoch_num = state_at - REWARD_EPOCH_COUNT as usize;
-                let anticone_penalty_epoch_upper =
-                    epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
-                let penalty_upper_anticone = &self.arena
-                    [new_pivot_chain[anticone_penalty_epoch_upper]]
-                    .data
-                    .anticone;
-                let pivot_index = new_pivot_chain[epoch_num];
-                debug_assert!(
-                    epoch_num == self.arena[pivot_index].height as usize
-                );
-                debug_assert!(
-                    epoch_num
-                        == *self.arena[pivot_index].data.epoch_number.borrow()
-                );
-                let indices_in_epoch =
-                    self.indices_in_epochs.get(&pivot_index).unwrap();
-                self.process_rewards_and_fees(
-                    &mut state,
-                    indices_in_epoch,
-                    pivot_index,
-                    penalty_upper_anticone,
-                    consensus_graph,
-                    |index| -> U256 { *self.block_fees.get(&index).unwrap() },
-                );
-            }
-
-            // FIXME: We may want to propagate the error up
-            state
-                .commit_and_notify(
-                    self.arena[new_pivot_chain[state_at]].hash,
-                    txpool,
-                )
-                .unwrap();
-
-            state_at += 1;
-        }
-
-        if state_at > 1 {
-            state_at -= 1;
-            let state = self
-                .storage_manager
-                .get_state_at(self.arena[new_pivot_chain[state_at]].hash)
-                .unwrap();
-            txpool.recycle_future_transactions(to_pending, state);
-        }
-
-        self.pivot_chain = new_pivot_chain;
-        (
-            self.best_block_hash(),
-            self.deferred_state_root_following_best_block(),
-        )
-    }
-
     pub fn best_block_hash(&self) -> H256 {
         self.arena[*self.pivot_chain.last().unwrap()].hash
     }
@@ -1422,16 +654,526 @@ impl ConsensusGraph {
         }
     }
 
-    pub fn compute_state_for_block(&self, block_hash: &H256) -> H256 {
-        self.inner.read().compute_state_for_block(block_hash, self)
+    fn process_epoch_transactions(
+        &self, state: &mut State, arena: &Slab<ConsensusGraphNode>,
+        epoch_blocks: &Vec<usize>, block_fees: &mut HashMap<usize, U256>,
+        mut block_for_transaction: Option<&mut LruCache<H256, (bool, usize)>>,
+        re_pending: bool, to_pending: &mut Vec<Arc<SignedTransaction>>,
+    )
+    {
+        let spec = Spec::new_byzantium();
+        let machine = new_byzantium_test_machine();
+        for index in epoch_blocks.iter() {
+            let block = self.block_by_hash(&arena[*index].hash).unwrap();
+            debug!(
+                "process txs in block: hash={:?}, tx count={:?}",
+                block.hash(),
+                block.transactions.len()
+            );
+            let env = EnvInfo {
+                number: 0, // TODO: replace 0 with correct cardinal number
+                author: block.block_header.author().clone(),
+                timestamp: block.block_header.timestamp(),
+                difficulty: block.block_header.difficulty().clone(),
+                gas_used: U256::zero(),
+                gas_limit: U256::from(block.block_header.gas_limit()),
+            };
+            let mut accumulated_fee: U256 = 0.into();
+            let mut ex = Executive::new(state, &env, &machine, &spec);
+            let mut n_invalid_nonce = 0;
+            let mut n_ok = 0;
+            let mut n_other = 0;
+            for transaction in &block.transactions {
+                let r = ex.transact(transaction);
+                match r {
+                    Err(ExecutionError::NotEnoughBaseGas {
+                        required: _,
+                        got: _,
+                    })
+                    | Err(ExecutionError::SenderMustExist {})
+                    | Err(ExecutionError::Internal(_)) => {
+                        warn!(
+                            "tx execution error: transaction={:?}, err={:?}",
+                            transaction, r
+                        );
+                    }
+                    Err(ExecutionError::InvalidNonce { expected, got }) => {
+                        n_invalid_nonce += 1;
+                        trace!("tx execution InvalidNonce without inc_nonce: transaction={:?}, err={:?}", transaction.clone(), r);
+                        if re_pending && got > expected {
+                            trace!(
+                                "To re-add transaction ({:?}) to pending pool",
+                                transaction.clone()
+                            );
+                            to_pending.push(transaction.clone());
+                        }
+                    }
+                    Ok(executed) => {
+                        n_ok += 1;
+                        trace!("tx executed successfully: transaction={:?}, result={:?}, in block {:?}", transaction, executed, arena[*index].hash.clone());
+                        accumulated_fee += executed.fee;
+                        if let Some(ref mut block_for_transaction) =
+                            block_for_transaction
+                        {
+                            block_for_transaction
+                                .put(transaction.hash(), (true, *index));
+                        }
+                    }
+                    _ => {
+                        n_other += 1;
+                        trace!("tx executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, arena[*index].hash.clone());
+                        if let Some(ref mut block_for_transaction) =
+                            block_for_transaction
+                        {
+                            block_for_transaction
+                                .put(transaction.hash(), (true, *index));
+                        }
+                    }
+                }
+            }
+            debug!(
+                "n_invalid_nonce={}, n_ok={}, n_other={}",
+                n_invalid_nonce, n_ok, n_other
+            );
+            block_fees.insert(*index, accumulated_fee);
+        }
+        debug!("Finish processing tx for epoch");
+    }
+
+    /// This is a very expensive call to force the engine to recompute the state
+    /// root of a given block
+    pub fn compute_state_for_block(
+        &self, block_hash: &H256, inner: &ConsensusGraphInner,
+    ) -> H256 {
+        // If we already computed the state of the block before, we should not
+        // do it again FIXME: propagate the error up
+        let cached_state = inner
+            .storage_manager
+            .get_state_at(block_hash.clone())
+            .unwrap();
+        if cached_state.does_exist() {
+            return cached_state.get_state_root().unwrap().unwrap();
+        }
+        // FIXME: propagate the error up
+        let me: usize = inner.indices.get(block_hash).unwrap().clone();
+        let block_height = inner.arena[me].height as usize;
+        let mut fork_height = block_height;
+        let mut chain: Vec<usize> = Vec::new();
+        let mut idx = me;
+        while fork_height > 0
+            && (fork_height >= inner.pivot_chain.len()
+                || inner.pivot_chain[fork_height] != idx)
+        {
+            chain.push(idx);
+            fork_height -= 1;
+            idx = inner.arena[idx].parent;
+        }
+        // Because we have genesis at height 0, this should always be true
+        debug_assert!(inner.pivot_chain[fork_height] == idx);
+        chain.push(idx);
+        chain.reverse();
+        let mut epoch_number_map: HashMap<usize, usize> = HashMap::new();
+        let mut block_fees: HashMap<usize, U256> = HashMap::new();
+        let mut indices_in_epochs: HashMap<usize, Vec<usize>> = HashMap::new();
+
+        // Construct epochs
+        for fork_at in 1..chain.len() {
+            // First, identify all the blocks in the current epoch of the
+            // hypothetical pivot chain
+            let mut queue = Vec::new();
+            {
+                let new_epoch_number = fork_at + fork_height;
+                let enqueue_if_new =
+                    |queue: &mut Vec<usize>,
+                     epoch_number_map: &mut HashMap<usize, usize>,
+                     index| {
+                        let epoch_number =
+                            inner.arena[index].data.epoch_number.borrow();
+                        if (*epoch_number == NULL
+                            || *epoch_number > fork_height)
+                            && !epoch_number_map.contains_key(&index)
+                        {
+                            epoch_number_map.insert(index, new_epoch_number);
+                            queue.push(index);
+                        }
+                    };
+
+                let mut at = 0;
+                enqueue_if_new(
+                    &mut queue,
+                    &mut epoch_number_map,
+                    chain[fork_at],
+                );
+                while at < queue.len() {
+                    let me = queue[at];
+                    for referee in &inner.arena[me].referees {
+                        enqueue_if_new(
+                            &mut queue,
+                            &mut epoch_number_map,
+                            *referee,
+                        );
+                    }
+                    enqueue_if_new(
+                        &mut queue,
+                        &mut epoch_number_map,
+                        inner.arena[me].parent,
+                    );
+                    at += 1;
+                }
+            }
+
+            // Second, sort all the blocks based on their topological order
+            // and break ties with block hash
+            let reversed_indices = inner.topological_sort(&queue);
+
+            debug!(
+                "Construct epoch_id={}, block_count={}",
+                inner.arena[chain[fork_at]].hash,
+                reversed_indices.len()
+            );
+
+            indices_in_epochs.insert(chain[fork_at], reversed_indices);
+        }
+
+        let mut last_state_height =
+            if inner.pivot_chain.len() > DEFERRED_STATE_EPOCH_COUNT as usize {
+                inner.pivot_chain.len() - DEFERRED_STATE_EPOCH_COUNT as usize
+            } else {
+                0
+            };
+
+        last_state_height += 1;
+        while last_state_height <= fork_height {
+            let reversed_indices = inner
+                .indices_in_epochs
+                .get(&inner.pivot_chain[last_state_height])
+                .unwrap();
+
+            let mut state = State::new(
+                StateDb::new(
+                    inner
+                        .storage_manager
+                        .get_state_at(
+                            inner.arena
+                                [inner.pivot_chain[last_state_height - 1]]
+                                .hash,
+                        )
+                        .unwrap(),
+                ),
+                0.into(),
+                inner.vm.clone(),
+            );
+            debug!(
+                "Process tx epoch_id={}, block_count={}",
+                inner.arena[inner.pivot_chain[last_state_height]].hash,
+                reversed_indices.len()
+            );
+            self.process_epoch_transactions(
+                &mut state,
+                &inner.arena,
+                reversed_indices,
+                &mut block_fees,
+                None,
+                false,
+                &mut Vec::new(),
+            );
+
+            // Calculate the block reward for blocks inside the epoch
+            // All transaction fees are shared among blocks inside one epoch
+            if last_state_height > REWARD_EPOCH_COUNT as usize {
+                let epoch_num = last_state_height - REWARD_EPOCH_COUNT as usize;
+                let anticone_penalty_epoch_upper =
+                    epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
+                let mut pivot_block_upper =
+                    inner.pivot_chain[anticone_penalty_epoch_upper];
+                if anticone_penalty_epoch_upper > fork_height {
+                    pivot_block_upper =
+                        chain[anticone_penalty_epoch_upper - fork_height];
+                }
+                let penalty_upper_anticone =
+                    &inner.arena[pivot_block_upper].data.anticone;
+                let pivot_index = inner.pivot_chain[epoch_num];
+                debug_assert!(
+                    epoch_num == inner.arena[pivot_index].height as usize
+                );
+                let block_fee_closure = |index: usize| -> U256 {
+                    inner.block_fees.get(&index).unwrap().clone()
+                };
+                let indices_in_epoch =
+                    inner.indices_in_epochs.get(&pivot_index).unwrap();
+                self.process_rewards_and_fees(
+                    &mut state,
+                    indices_in_epoch,
+                    pivot_index,
+                    penalty_upper_anticone,
+                    inner,
+                    block_fee_closure,
+                );
+            }
+
+            // FIXME: We may want to propagate the error up
+            state
+                .commit(inner.arena[inner.pivot_chain[last_state_height]].hash)
+                .unwrap();
+            last_state_height += 1;
+        }
+
+        for fork_at in 1..chain.len() {
+            let reversed_indices =
+                indices_in_epochs.get(&chain[fork_at]).unwrap();
+
+            // Third, apply transactions in the determined total order
+            let mut state = State::new(
+                StateDb::new(
+                    inner
+                        .storage_manager
+                        .get_state_at(inner.arena[chain[fork_at - 1]].hash)
+                        .unwrap(),
+                ),
+                0.into(),
+                inner.vm.clone(),
+            );
+            debug!(
+                "Process tx epoch_id={}, block_count={}",
+                inner.arena[chain[fork_at]].hash,
+                reversed_indices.len()
+            );
+            self.process_epoch_transactions(
+                &mut state,
+                &inner.arena,
+                reversed_indices,
+                &mut block_fees,
+                None,
+                false,
+                &mut Vec::new(),
+            );
+
+            // Calculate the block reward for blocks inside the epoch
+            // All transaction fees are shared among blocks inside one epoch
+            if fork_height + fork_at > REWARD_EPOCH_COUNT as usize {
+                let epoch_num =
+                    fork_height + fork_at - REWARD_EPOCH_COUNT as usize;
+                let anticone_penalty_epoch_upper =
+                    epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
+                let mut pivot_block_upper =
+                    inner.pivot_chain[anticone_penalty_epoch_upper];
+                if anticone_penalty_epoch_upper > fork_height {
+                    pivot_block_upper =
+                        chain[anticone_penalty_epoch_upper - fork_height];
+                }
+                let penalty_upper_anticone =
+                    &inner.arena[pivot_block_upper].data.anticone;
+                let mut pivot_index = inner.pivot_chain[epoch_num];
+                let mut in_branch = false;
+                if epoch_num > fork_height {
+                    pivot_index = chain[epoch_num - fork_height];
+                    in_branch = true;
+                }
+                debug_assert!(
+                    epoch_num == inner.arena[pivot_index].height as usize
+                );
+                let block_fee_closure = |index: usize| -> U256 {
+                    match in_branch {
+                        true => block_fees.get(&index).unwrap(),
+                        false => inner.block_fees.get(&index).unwrap(),
+                    }
+                    .clone()
+                };
+                let indices_in_epoch = match in_branch {
+                    true => indices_in_epochs.get(&pivot_index).unwrap(),
+                    false => inner.indices_in_epochs.get(&pivot_index).unwrap(),
+                };
+                self.process_rewards_and_fees(
+                    &mut state,
+                    indices_in_epoch,
+                    pivot_index,
+                    penalty_upper_anticone,
+                    inner,
+                    block_fee_closure,
+                );
+            }
+
+            // FIXME: We may want to propagate the error up
+            state.commit(inner.arena[chain[fork_at]].hash).unwrap();
+        }
+
+        // FIXME: Propagate errors upward
+        inner
+            .storage_manager
+            .get_state_at(inner.arena[me].hash)
+            .unwrap()
+            .get_state_root()
+            .unwrap()
+            .unwrap()
     }
 
     pub fn compute_deferred_state_for_block(
         &self, block_hash: &H256, delay: usize,
     ) -> H256 {
-        self.inner
-            .read()
-            .compute_deferred_state_for_block(block_hash, self, delay)
+        let inner = &*self.inner.read();
+
+        // FIXME: Propagate errors upward
+        let mut idx = inner.indices.get(block_hash).unwrap().clone();
+        for _i in 0..delay {
+            if idx == inner.genesis_block_index {
+                break;
+            }
+            idx = inner.arena[idx].parent;
+        }
+        self.compute_state_for_block(&inner.arena[idx].hash, inner)
+    }
+
+    fn check_block_full_validity(
+        &self, new: usize, block: &Block, inner: &ConsensusGraphInner,
+        sync_graph: &mut SynchronizationGraphInner,
+    ) -> bool
+    {
+        if inner.arena[inner.arena[new].parent].data.partial_invalid {
+            warn!(
+                "Partially invalid due to partially invalid parent. {:?}",
+                block.block_header.clone()
+            );
+            return false;
+        }
+
+        // Check whether the new block select the correct parent block
+        if inner.arena[new].parent != *inner.pivot_chain.last().unwrap() {
+            if !inner.check_correct_parent(new, sync_graph) {
+                warn!(
+                    "Partially invalid due to picking incorrect parent. {:?}",
+                    block.block_header.clone()
+                );
+                return false;
+            }
+        }
+
+        // Check if the state root is correct or not
+        // TODO: We may want to optimize this because now on the chain switch we
+        // are going to compute state twice
+        let state_root_valid =
+            if block.block_header.height() < DEFERRED_STATE_EPOCH_COUNT {
+                *block.block_header.deferred_state_root()
+                    == inner.genesis_block_state_root
+            } else {
+                let mut deferred = new;
+                for _ in 0..DEFERRED_STATE_EPOCH_COUNT {
+                    deferred = inner.arena[deferred].parent;
+                }
+                debug_assert!(
+                    block.block_header.height() - DEFERRED_STATE_EPOCH_COUNT
+                        == inner.arena[deferred].height
+                );
+
+                /*let height = inner.arena[deferred].height as usize;
+                if height < inner.pivot_chain.len()
+                    && inner.pivot_chain[height] == deferred*/
+                if inner
+                    .storage_manager
+                    .contains_state(inner.arena[deferred].hash)
+                {
+                    *block.block_header.deferred_state_root()
+                        == inner
+                            .storage_manager
+                            .get_state_at(inner.arena[deferred].hash)
+                            .unwrap()
+                            .get_state_root()
+                            .unwrap()
+                            .unwrap()
+                } else {
+                    // Call the expensive function to check this state root
+                    *block.block_header.deferred_state_root()
+                        == self.compute_state_for_block(
+                            &inner.arena[deferred].hash,
+                            inner,
+                        )
+                }
+            };
+
+        if !state_root_valid {
+            warn!(
+                "Partially invalid in fork due to incorrect state root. {:?}",
+                block.block_header.clone()
+            );
+            return false;
+        }
+        return true;
+    }
+
+    fn process_rewards_and_fees<F>(
+        &self, state: &mut State, indices_in_epoch: &Vec<usize>,
+        pivot_index: usize, penalty_upper_anticone: &HashSet<usize>,
+        inner: &ConsensusGraphInner, block_fee_fn: F,
+    ) where
+        F: Fn(usize) -> U256,
+    {
+        let difficulty = inner.arena[pivot_index].difficulty;
+        let mut epoch_accum_fee: U256 = 0.into();
+        let mut rewards: Vec<(Address, U256)> = Vec::new();
+
+        for index in indices_in_epoch {
+            let block_fee = block_fee_fn(*index);
+            assert!(U256::max_value() - epoch_accum_fee > block_fee);
+            epoch_accum_fee += block_fee;
+
+            if inner.arena[*index].data.partial_invalid {
+                continue;
+            }
+
+            let mut reward: U512 =
+                if inner.arena[*index].difficulty == difficulty {
+                    BASE_MINING_REWARD.into()
+                } else {
+                    0.into()
+                };
+
+            if reward > 0.into() {
+                let anticone_size = inner.arena[*index]
+                    .data
+                    .anticone
+                    .difference(penalty_upper_anticone)
+                    .cloned()
+                    .collect::<HashSet<_>>()
+                    .len();
+                let penalty = (reward * U512::from(anticone_size))
+                    / U512::from(ANTICONE_PENALTY_RATIO);
+                if penalty > reward {
+                    reward = 0.into();
+                } else {
+                    reward -= penalty;
+                }
+            }
+
+            debug_assert!(reward <= U512::from(U256::max_value()));
+            let reward = U256::from(reward);
+            let author = self
+                .block_by_hash(&inner.arena[*index].hash)
+                .unwrap()
+                .block_header
+                .author()
+                .clone();
+            rewards.push((author, reward));
+        }
+        debug!("Give rewards reward={:?}", rewards);
+
+        if !rewards.is_empty() {
+            let block_count = U256::from(rewards.len());
+            let quotient: U256 = epoch_accum_fee / block_count;
+            let mut remainder: U256 =
+                epoch_accum_fee - (block_count * quotient);
+            for (_, reward) in &mut rewards {
+                *reward += quotient;
+                if !remainder.is_zero() {
+                    *reward += 1.into();
+                    remainder -= 1.into();
+                }
+            }
+
+            for (address, reward) in rewards {
+                state
+                    .add_balance(&address, &reward, CleanupMode::ForceCreate)
+                    .unwrap();
+            }
+        }
     }
 
     pub fn on_new_block(
@@ -1451,11 +1193,247 @@ impl ConsensusGraph {
         }
         info!("Transaction pool size={}", self.txpool.len());
 
-        self.inner.write().on_new_block(
-            &self.txpool,
+        let mut inner = &mut *self.inner.write();
+
+        let new =
+            inner.insert(block.as_ref(), &mut sync_graph.terminal_block_hashes);
+        inner.compute_anticone(new);
+
+        let fully_valid = self.check_block_full_validity(
+            new,
             block.as_ref(),
+            inner,
             sync_graph,
-            self,
+        );
+        if !fully_valid {
+            inner.arena[new].data.partial_invalid = true;
+            return (
+                inner.best_block_hash(),
+                inner.deferred_state_root_following_best_block(),
+            );
+        }
+        debug!("Block {} is fully valid", inner.arena[new].hash);
+
+        // Update the total difficulty for the new block
+        let mut me = new;
+        loop {
+            me = inner.arena[me].parent;
+            inner.arena[me].total_difficulty +=
+                *block.block_header.difficulty();
+            if me == inner.genesis_block_index {
+                break;
+            }
+        }
+
+        // Compute the new pivot chain
+        let mut new_pivot_chain = Vec::new();
+        me = inner.genesis_block_index;
+        loop {
+            new_pivot_chain.push(me);
+            if let Some(heaviest) = inner.arena[me]
+                .children
+                .iter()
+                .filter(|&index| !inner.arena[*index].data.partial_invalid)
+                .max_by_key(|index| {
+                    (
+                        inner.arena[**index].total_difficulty,
+                        inner.arena[**index].hash,
+                    )
+                })
+                .cloned()
+            {
+                me = heaviest;
+            } else {
+                break;
+            }
+        }
+
+        let mut fork_at = 0;
+        while fork_at < inner.pivot_chain.len()
+            && fork_at < new_pivot_chain.len()
+        {
+            if inner.pivot_chain[fork_at] != new_pivot_chain[fork_at] {
+                break;
+            }
+            fork_at += 1;
+        }
+
+        if fork_at < inner.pivot_chain.len() {
+            let enqueue_if_obsolete = |queue: &mut VecDeque<usize>, index| {
+                let mut epoch_number =
+                    inner.arena[index].data.epoch_number.borrow_mut();
+                if *epoch_number != NULL && *epoch_number >= fork_at {
+                    *epoch_number = NULL;
+                    queue.push_back(index);
+                }
+            };
+
+            let mut queue = VecDeque::new();
+            enqueue_if_obsolete(&mut queue, *inner.pivot_chain.last().unwrap());
+            while let Some(me) = queue.pop_front() {
+                for referee in inner.arena[me].referees.clone() {
+                    enqueue_if_obsolete(&mut queue, referee);
+                }
+                enqueue_if_obsolete(&mut queue, inner.arena[me].parent);
+            }
+        }
+
+        assert!(fork_at != 0);
+
+        // Construct epochs
+        let mut pivot_index = fork_at;
+        while pivot_index < new_pivot_chain.len() {
+            // First, identify all the blocks in the current epoch
+            let mut queue = Vec::new();
+            {
+                let copy_of_fork_at = pivot_index;
+                let enqueue_if_new = |queue: &mut Vec<usize>, index| {
+                    let mut epoch_number =
+                        inner.arena[index].data.epoch_number.borrow_mut();
+                    if *epoch_number == NULL {
+                        *epoch_number = copy_of_fork_at;
+                        queue.push(index);
+                    }
+                };
+
+                let mut at = 0;
+                enqueue_if_new(&mut queue, new_pivot_chain[pivot_index]);
+                while at < queue.len() {
+                    let me = queue[at];
+                    for referee in &inner.arena[me].referees {
+                        enqueue_if_new(&mut queue, *referee);
+                    }
+                    enqueue_if_new(&mut queue, inner.arena[me].parent);
+                    at += 1;
+                }
+            }
+
+            // Second, sort all the blocks based on their topological order
+            // and break ties with block hash
+            let reversed_indices = inner.topological_sort(&queue);
+
+            debug!(
+                "Construct epoch_id={}, block_count={}",
+                inner.arena[new_pivot_chain[pivot_index]].hash,
+                reversed_indices.len()
+            );
+
+            inner
+                .indices_in_epochs
+                .insert(new_pivot_chain[pivot_index], reversed_indices);
+
+            pivot_index += 1;
+        }
+
+        let mut to_pending = Vec::new();
+        let to_state_pos =
+            if new_pivot_chain.len() < DEFERRED_STATE_EPOCH_COUNT as usize {
+                0 as usize
+            } else {
+                new_pivot_chain.len() - DEFERRED_STATE_EPOCH_COUNT as usize + 1
+            };
+
+        let mut state_at = fork_at;
+        if fork_at + DEFERRED_STATE_EPOCH_COUNT as usize
+            > inner.pivot_chain.len()
+        {
+            if inner.pivot_chain.len() > DEFERRED_STATE_EPOCH_COUNT as usize {
+                state_at = inner.pivot_chain.len()
+                    - DEFERRED_STATE_EPOCH_COUNT as usize;
+            } else {
+                state_at = 1;
+            }
+        }
+
+        // Apply transactions in the determined total order
+        while state_at < to_state_pos {
+            let mut state = State::new(
+                StateDb::new(
+                    inner
+                        .storage_manager
+                        .get_state_at(
+                            inner.arena[new_pivot_chain[state_at - 1]].hash,
+                        )
+                        .unwrap(),
+                ),
+                0.into(),
+                inner.vm.clone(),
+            );
+
+            let reversed_indices = inner
+                .indices_in_epochs
+                .get(&new_pivot_chain[state_at])
+                .unwrap();
+
+            debug!(
+                "Process tx epoch_id={}, block_count={}",
+                inner.arena[new_pivot_chain[state_at]].hash,
+                reversed_indices.len()
+            );
+            self.process_epoch_transactions(
+                &mut state,
+                &inner.arena,
+                reversed_indices,
+                &mut inner.block_fees,
+                Some(&mut inner.block_for_transaction),
+                true,
+                &mut to_pending,
+            );
+
+            // Calculate the block reward for blocks inside the epoch
+            // All transaction fees are shared among blocks inside one epoch
+            if state_at > REWARD_EPOCH_COUNT as usize {
+                let epoch_num = state_at - REWARD_EPOCH_COUNT as usize;
+                let anticone_penalty_epoch_upper =
+                    epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
+                let penalty_upper_anticone = &inner.arena
+                    [new_pivot_chain[anticone_penalty_epoch_upper]]
+                    .data
+                    .anticone;
+                let pivot_index = new_pivot_chain[epoch_num];
+                debug_assert!(
+                    epoch_num == inner.arena[pivot_index].height as usize
+                );
+                debug_assert!(
+                    epoch_num
+                        == *inner.arena[pivot_index].data.epoch_number.borrow()
+                );
+                let indices_in_epoch =
+                    inner.indices_in_epochs.get(&pivot_index).unwrap();
+                self.process_rewards_and_fees(
+                    &mut state,
+                    indices_in_epoch,
+                    pivot_index,
+                    penalty_upper_anticone,
+                    inner,
+                    |index| -> U256 { *inner.block_fees.get(&index).unwrap() },
+                );
+            }
+
+            // FIXME: We may want to propagate the error up
+            state
+                .commit_and_notify(
+                    inner.arena[new_pivot_chain[state_at]].hash,
+                    &self.txpool,
+                )
+                .unwrap();
+
+            state_at += 1;
+        }
+
+        if state_at > 1 {
+            state_at -= 1;
+            let state = inner
+                .storage_manager
+                .get_state_at(inner.arena[new_pivot_chain[state_at]].hash)
+                .unwrap();
+            self.txpool.recycle_future_transactions(to_pending, state);
+        }
+
+        inner.pivot_chain = new_pivot_chain;
+        (
+            inner.best_block_hash(),
+            inner.deferred_state_root_following_best_block(),
         )
     }
 
