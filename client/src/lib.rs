@@ -78,8 +78,10 @@ impl Client {
     ) -> Result<ClientHandle, String> {
         info!("Working directory: {:?}", std::env::current_dir());
 
-        let worker_thread_pool =
-            ThreadPool::new(WORKER_COMPUTATION_PARALLELISM);
+        let worker_thread_pool = ThreadPool::with_name(
+            "Tx Recover".into(),
+            WORKER_COMPUTATION_PARALLELISM,
+        );
 
         let network_config = conf.net_config();
         let cache_config = conf.cache_config();

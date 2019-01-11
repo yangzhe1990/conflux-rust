@@ -42,8 +42,8 @@ pub const MAX_HEADERS_TO_SEND: u64 = 512;
 pub const MAX_BLOCKS_TO_SEND: u64 = 256;
 const MIN_PEERS_PROPAGATION: usize = 4;
 const MAX_PEERS_PROPAGATION: usize = 128;
-const HEADERS_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
-const BLOCKS_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const HEADERS_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const BLOCKS_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_GET_HEADERS_NUM: u64 = 1;
 
 const TX_TIMER: TimerToken = 0;
@@ -234,7 +234,7 @@ impl SynchronizationProtocolHandler {
         &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error> {
         let resp: GetCompactBlocksResponse = rlp.as_val()?;
-        debug!("on_get_compact_blocks_response, msg=:{:?}", resp);
+        debug!("on_get_compact_blocks_response");
         self.match_request(io, peer, resp.request_id())?;
         let mut failed_blocks = Vec::new();
         let mut completed_blocks = Vec::new();
@@ -252,6 +252,7 @@ impl SynchronizationProtocolHandler {
                         debug!("Cmpct block already received, hash={}", hash);
                         continue;
                     } else {
+                        debug!("Cmpct block Processing, hash={}", hash);
                         let missing = cmpct.build_partial(
                             &*self
                                 .get_transaction_pool()
@@ -324,9 +325,10 @@ impl SynchronizationProtocolHandler {
         &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error> {
         let req: GetBlockTxn = rlp.as_val()?;
-        debug!("on_get_blocktxn, msg=:{:?}", req);
+        debug!("on_get_blocktxn");
         match self.graph.block_by_hash(&req.block_hash) {
             Some(block) => {
+                debug!("Process get_blocktxn hash={:?}", block.hash());
                 let mut tx_resp = Vec::with_capacity(req.indexes.len());
                 let mut last = 0;
                 for index in req.indexes {
@@ -363,7 +365,7 @@ impl SynchronizationProtocolHandler {
         &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error> {
         let resp: GetBlockTxnResponce = rlp.as_val()?;
-        debug!("on_get_blocktxn_response, msg={:?}", resp);
+        debug!("on_get_blocktxn_response");
         self.match_request(io, peer, resp.request_id())?;
         let hash = resp.block_hash;
         if self.graph.contains_block(&hash) {
@@ -373,6 +375,7 @@ impl SynchronizationProtocolHandler {
             );
         } else {
             if self.graph.contains_block_header(&hash) {
+                debug!("Process blocktxn hash={:?}", hash);
                 let signed_txes = SignedTransaction::batch_recover_with_cache(
                     &resp.block_txn,
                     &mut *self

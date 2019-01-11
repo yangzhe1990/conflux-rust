@@ -42,8 +42,8 @@ pub mod consensus;
 pub mod db;
 pub mod error;
 mod evm;
-mod executive;
-mod machine;
+pub mod executive;
+pub mod machine;
 pub mod pow;
 pub(crate) mod snapshot;
 pub mod state;
@@ -52,7 +52,7 @@ pub mod storage;
 mod sync;
 pub mod transaction_pool;
 pub mod verification;
-mod vm;
+pub mod vm;
 pub mod vm_factory;
 
 pub use crate::{

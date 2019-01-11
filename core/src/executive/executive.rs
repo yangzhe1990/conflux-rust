@@ -837,7 +837,7 @@ pub type ExecutiveTrapResult<'a, T> =
 
 /// Transaction executor.
 pub struct Executive<'a, 'b: 'a> {
-    state: &'a mut State<'b>,
+    pub state: &'a mut State<'b>,
     env: &'a EnvInfo,
     machine: &'a Machine,
     spec: &'a Spec,
@@ -957,7 +957,7 @@ impl<'a, 'b> Executive<'a, 'b> {
     }
 
     pub fn transact(
-        &'a mut self, tx: &SignedTransaction,
+        &mut self, tx: &SignedTransaction,
     ) -> ExecutionResult<Executed> {
         let sender = tx.sender();
         let nonce = self.state.nonce(&sender)?;
@@ -1147,18 +1147,22 @@ impl<'a, 'b> Executive<'a, 'b> {
             self.state.kill_account(address);
         }
 
-        // perform garbage-collection
-        let min_balance = if spec.kill_dust != CleanDustMode::Off {
-            Some(U256::from(spec.tx_gas) * tx.gas_price)
-        } else {
-            None
-        };
-        self.state.kill_garbage(
-            &substate.touched,
-            spec.kill_empty,
-            &min_balance,
-            spec.kill_dust == CleanDustMode::WithCodeAndStorage,
-        )?;
+        // TODO should be added back after enabling dust collection
+        // Should be executed once per block, instead of per transaction?
+
+        //        // perform garbage-collection
+        //        let min_balance = if spec.kill_dust != CleanDustMode::Off {
+        //            Some(U256::from(spec.tx_gas) * tx.gas_price)
+        //        } else {
+        //            None
+        //        };
+        //
+        //        self.state.kill_garbage(
+        //            &substate.touched,
+        //            spec.kill_empty,
+        //            &min_balance,
+        //            spec.kill_dust == CleanDustMode::WithCodeAndStorage,
+        //        )?;
 
         match result {
             Err(vm::Error::Internal(msg)) => Err(ExecutionError::Internal(msg)),

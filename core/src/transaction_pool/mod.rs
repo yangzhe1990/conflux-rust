@@ -642,7 +642,7 @@ impl TransactionPool {
                     inner.pending_transactions.remove(address, &nonce)
                 {
                     if !self.add_ready_without_lock(inner, tx) {
-                        warn!(
+                        trace!(
                             "Check passed but fail to insert ready transaction"
                         );
                     }

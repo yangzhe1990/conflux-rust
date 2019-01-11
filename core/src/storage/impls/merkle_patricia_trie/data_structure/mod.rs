@@ -86,8 +86,9 @@ pub struct TrieNode {
     path_steps: u16,
     path: MaybeInPlaceByteArray,
     // End of CompactPath section
-    // TODO(yz): maybe unpack the fields from ChildrenTableDeltaMpt to save memory. In this case
-    // create temporary ChildrenTableDeltaMpt for update / iteration.
+    // TODO(yz): maybe unpack the fields from ChildrenTableDeltaMpt to save
+    // memory. In this case create temporary ChildrenTableDeltaMpt for
+    // update / iteration.
     children_table: ChildrenTableDeltaMpt,
     // Rust automatically moves the value_size field in order to minimize the
     // total size of the struct.

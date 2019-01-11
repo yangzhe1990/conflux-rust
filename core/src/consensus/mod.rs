@@ -15,6 +15,7 @@ use crate::{
 };
 use ethereum_types::{Address, H256, U256, U512};
 use heapsize::HeapSizeOf;
+use lru::LruCache;
 use parking_lot::{Mutex, RwLock};
 use primitives::{Block, BlockHeader, SignedTransaction};
 use rlp::{Rlp, RlpStream};
@@ -70,7 +71,7 @@ pub struct ConsensusGraphInner {
     pub indices: HashMap<H256, usize>,
     pub pivot_chain: Vec<usize>,
     /// Track the block where the tx is successfully executed
-    pub block_for_transaction: HashMap<H256, (bool, usize)>,
+    pub block_for_transaction: LruCache<H256, (bool, usize)>,
     genesis_block_index: usize,
     genesis_block_state_root: H256,
     parental_terminals: HashSet<usize>,
@@ -90,7 +91,7 @@ impl ConsensusGraphInner {
             arena: Slab::new(),
             indices: HashMap::new(),
             pivot_chain: Vec::new(),
-            block_for_transaction: HashMap::new(),
+            block_for_transaction: LruCache::new(10000),
             genesis_block_index: NULL,
             genesis_block_state_root: genesis_block
                 .block_header
@@ -451,7 +452,7 @@ impl ConsensusGraphInner {
         state: &mut State, arena: &Slab<ConsensusGraphNode>,
         epoch_blocks: &Vec<usize>, consensus_graph: &ConsensusGraph,
         block_fees: &mut HashMap<usize, U256>,
-        mut block_for_transaction: Option<&mut HashMap<H256, (bool, usize)>>,
+        mut block_for_transaction: Option<&mut LruCache<H256, (bool, usize)>>,
         re_pending: bool, to_pending: &mut Vec<Arc<SignedTransaction>>,
     )
     {
@@ -460,6 +461,11 @@ impl ConsensusGraphInner {
         for index in epoch_blocks.iter() {
             let block =
                 consensus_graph.block_by_hash(&arena[*index].hash).unwrap();
+            debug!(
+                "process txs in block: hash={:?}, tx count={:?}",
+                block.hash(),
+                block.transactions.len()
+            );
             let env = EnvInfo {
                 number: 0, // TODO: replace 0 with correct cardinal number
                 author: block.block_header.author().clone(),
@@ -469,8 +475,11 @@ impl ConsensusGraphInner {
                 gas_limit: U256::from(block.block_header.gas_limit()),
             };
             let mut accumulated_fee: U256 = 0.into();
+            let mut ex = Executive::new(state, &env, &machine, &spec);
+            let mut n_invalid_nonce = 0;
+            let mut n_ok = 0;
+            let mut n_other = 0;
             for transaction in &block.transactions {
-                let mut ex = Executive::new(state, &env, &machine, &spec);
                 let r = ex.transact(transaction);
                 match r {
                     Err(ExecutionError::NotEnoughBaseGas {
@@ -485,6 +494,7 @@ impl ConsensusGraphInner {
                         );
                     }
                     Err(ExecutionError::InvalidNonce { expected, got }) => {
+                        n_invalid_nonce += 1;
                         trace!("tx execution InvalidNonce without inc_nonce: transaction={:?}, err={:?}", transaction.clone(), r);
                         if re_pending && got > expected {
                             trace!(
@@ -495,28 +505,35 @@ impl ConsensusGraphInner {
                         }
                     }
                     Ok(executed) => {
+                        n_ok += 1;
                         trace!("tx executed successfully: transaction={:?}, result={:?}, in block {:?}", transaction, executed, arena[*index].hash.clone());
                         accumulated_fee += executed.fee;
                         if let Some(ref mut block_for_transaction) =
                             block_for_transaction
                         {
                             block_for_transaction
-                                .insert(transaction.hash(), (true, *index));
+                                .put(transaction.hash(), (true, *index));
                         }
                     }
                     _ => {
+                        n_other += 1;
                         trace!("tx executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, arena[*index].hash.clone());
                         if let Some(ref mut block_for_transaction) =
                             block_for_transaction
                         {
                             block_for_transaction
-                                .insert(transaction.hash(), (true, *index));
+                                .put(transaction.hash(), (true, *index));
                         }
                     }
                 }
             }
+            debug!(
+                "n_invalid_nonce={}, n_ok={}, n_other={}",
+                n_invalid_nonce, n_ok, n_other
+            );
             block_fees.insert(*index, accumulated_fee);
         }
+        debug!("Finish processing tx for epoch");
     }
 
     fn process_rewards_and_fees<F>(
@@ -573,6 +590,7 @@ impl ConsensusGraphInner {
                 .clone();
             rewards.push((author, reward));
         }
+        debug!("Give rewards reward={:?}", rewards);
 
         if !rewards.is_empty() {
             let block_count = U256::from(rewards.len());
@@ -1004,6 +1022,7 @@ impl ConsensusGraphInner {
                 true,
                 &mut to_pending,
             );
+            debug!("Finish tx execution");
 
             self.indices_in_epochs
                 .insert(new_pivot_chain[fork_at], reversed_indices);
@@ -1011,6 +1030,7 @@ impl ConsensusGraphInner {
             // Calculate the block reward for blocks inside the epoch
             // All transaction fees are shared among blocks inside one epoch
             if fork_at > REWARD_EPOCH_COUNT as usize {
+                debug!("Compute reward");
                 let epoch_num = fork_at - REWARD_EPOCH_COUNT as usize;
                 let anticone_penalty_epoch_upper =
                     epoch_num + ANTICONE_PENALTY_UPPER_EPOCH_COUNT as usize;
@@ -1088,7 +1108,7 @@ impl ConsensusGraphInner {
         &self, tx_hash: &H256,
     ) -> Option<(bool, H256)> {
         self.block_for_transaction
-            .get(tx_hash)
+            .peek(tx_hash)
             .map(|(success, index)| (*success, self.arena[*index].hash))
     }
 

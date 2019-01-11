@@ -111,9 +111,8 @@ impl Block {
 #[cfg(test)]
 mod tests {
     use super::{Block, BlockTransactions};
-    use crate::rpc::types::{Transaction, H160, H2048, H256, H64, U256};
+    use crate::rpc::types::{Transaction, H160, H256, H64, U256};
     use serde_json;
-    use std::collections::BTreeMap;
 
     #[test]
     fn test_serialize_block_transactions() {
