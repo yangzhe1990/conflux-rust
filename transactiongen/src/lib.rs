@@ -214,7 +214,7 @@ impl TransactionGenerator {
             let mut receiver_kp: KeyPair;
             let mut receiver_index: usize = random();
             receiver_index %= account_count;
-            if sender_index == receiver_index {
+            if sender_index == receiver_index && secret_store.count() < 1000 {
                 balance_to_transfer = *sender_balance / 2;
                 // Create a new receiver account
                 loop {

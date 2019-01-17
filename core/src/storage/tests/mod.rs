@@ -1,7 +1,7 @@
 mod state;
 
 use super::state_manager::StateManager;
-use crate::ext_db::SystemDB;
+use crate::{ext_db::SystemDB, storage::state_manager::StorageConfiguration};
 use elastic_array::ElasticArray128;
 use kvdb::{DBTransaction, KeyValueDB};
 use std::{io::Result, sync::Arc};
@@ -44,7 +44,13 @@ impl KeyValueDB for FakeDbForStateTest {
 }
 
 pub fn new_state_manager_for_testing() -> StateManager {
-    StateManager::new(Arc::new(SystemDB::new(Arc::new(
-        FakeDbForStateTest::default(),
-    ))))
+    StateManager::new(
+        Arc::new(SystemDB::new(Arc::new(FakeDbForStateTest::default()))),
+        StorageConfiguration {
+            start_size: 1_000_000,
+            cache_size: 20_000_000,
+            idle_size: 200_000,
+            lfru_factor: 4.0,
+        },
+    )
 }

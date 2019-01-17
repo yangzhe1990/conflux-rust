@@ -98,7 +98,8 @@ impl<'a> State<'a> {
     ) -> Result<()> {
         self.dirty = false;
 
-        match &self.root_node {
+        let tmp_root_node = self.root_node.clone();
+        match &tmp_root_node {
             None => {
                 // Don't commit empty state. Empty state shouldn't exists since
                 // genesis block.
@@ -133,7 +134,7 @@ impl<'a> State<'a> {
                     cache_manager,
                     &allocator,
                 );
-                cow_root.into_child();
+                self.root_node = cow_root.into_child().map(|r| r.into());
                 result?;
 
                 commit_transaction.transaction.put(

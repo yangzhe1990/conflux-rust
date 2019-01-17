@@ -123,25 +123,27 @@ impl NodeMemoryManager {
     pub fn new(kvdb: Arc<KeyValueDB>) -> Self {
         Self::new_with_size(
             Self::START_CAPACITY,
-            Self::MAX_CACHED_TRIE_NODES_DISK_HYBRID
-                + Self::MAX_DIRTY_AND_TEMPORARY_TRIE_NODES,
+            Self::MAX_CACHED_TRIE_NODES_DISK_HYBRID,
             Self::MAX_DIRTY_AND_TEMPORARY_TRIE_NODES,
+            Self::LFRU_FACTOR,
             kvdb,
         )
     }
 
-    fn new_with_size(
-        start_size: u32, size_limit: u32, idle_size: u32, kvdb: Arc<KeyValueDB>,
-    ) -> Self {
+    pub fn new_with_size(
+        start_size: u32, cache_size: u32, idle_size: u32, lfru_factor: f64,
+        kvdb: Arc<KeyValueDB>,
+    ) -> Self
+    {
         Self {
-            size_limit: size_limit,
-            idle_size: idle_size,
+            size_limit: cache_size + idle_size,
+            idle_size,
             allocator: RwLock::new(Slab::with_capacity(start_size as usize)),
             cache: RwLock::new(CacheManager {
-                node_ref_map: NodeRefMapDeltaMpt::default(),
+                node_ref_map: NodeRefMapDeltaMpt::new(start_size as usize),
                 lfru_cache_algorithm: LFRU::<u32, DeltaMptDbKey>::new(
-                    Self::MAX_CACHED_TRIE_NODES_DISK_HYBRID,
-                    Self::MAX_CACHED_TRIE_NODES_LFRU_COUNTER,
+                    cache_size,
+                    (cache_size as f64 * lfru_factor) as u32,
                 ),
             }),
             db: kvdb,
@@ -294,7 +296,6 @@ impl NodeMemoryManager {
                     &allocator,
                     cache_slot as usize,
                 );
-
                 self.call_cache_algorithm_access(cache_manager, *db_key);
 
                 Ok(node)

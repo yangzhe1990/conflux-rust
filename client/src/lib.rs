@@ -94,12 +94,15 @@ impl Client {
         .map_err(|e| format!("Failed to open database {:?}", e))?;
 
         let secret_store = Arc::new(SecretStore::new());
-        let storage_manager = Arc::new(StorageManager::new(ledger_db.clone()));
+        let storage_manager = Arc::new(StorageManager::new(
+            ledger_db.clone(),
+            conf.storage_config(),
+        ));
         let genesis_block = storage_manager.initialize(secret_store.as_ref());
         debug!("Initialize genesis_block={:?}", genesis_block);
 
         let txpool = Arc::new(TransactionPool::with_capacity(
-            100000,
+            50000,
             storage_manager.clone(),
             worker_thread_pool.clone(),
         ));

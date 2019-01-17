@@ -16,7 +16,6 @@ use std::{hint, mem};
 /// from frequency greater than 0, and another downside is using much more
 /// memory. We use heap to maintain frequency.
 pub struct LFRU<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> {
-    size: PosT,
     capacity: PosT,
     frequency_lru: LRU<PosT, LFRUHandle<PosT>>,
     frequency_heap: RemovableHeap<PosT, LFRUMetadata<PosT, CacheIndexT>>,
@@ -399,6 +398,8 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                             heap.get_unchecked_mut(lru_evicted.pos)
                                 as *mut LFRUMetadata<PosT, CacheIndexT>
                         };
+                        let evicted_cache_index =
+                            unsafe { (*evicted_lfru_metadata_ptr).cache_index };
                         hole.pointer_pos = evicted_lfru_metadata_ptr;
 
                         if lru_evicted.is_lfu_hit(heap) {
@@ -433,9 +434,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                             );
                         }
                         CacheAccessResult::MissReplaced {
-                            evicted: unsafe {
-                                (*evicted_lfru_metadata_ptr).cache_index
-                            },
+                            evicted: evicted_cache_index,
                         }
                     }
                     _ => unsafe { hint::unreachable_unchecked() },
@@ -469,7 +468,6 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
 impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> LFRU<PosT, CacheIndexT> {
     pub fn new(capacity: PosT, lru_capacity: PosT) -> Self {
         Self {
-            size: PosT::from(0),
             capacity: capacity,
             frequency_heap: RemovableHeap::new(lru_capacity),
             frequency_lru: LRU::new(lru_capacity),
@@ -498,7 +496,11 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> LFRU<PosT, CacheIndexT> {
         )
     }
 
-    pub fn has_space(&self) -> bool { self.capacity != self.size }
+    pub fn has_space(&self) -> bool {
+        self.capacity != self.frequency_heap.get_heap_size()
+    }
 
-    pub fn is_full(&self) -> bool { self.capacity == self.size }
+    pub fn is_full(&self) -> bool {
+        self.capacity == self.frequency_heap.get_heap_size()
+    }
 }

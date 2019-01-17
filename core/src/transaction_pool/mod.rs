@@ -211,7 +211,7 @@ impl TransactionPool {
             inner: RwLock::new(TransactionPoolInner::new()),
             storage_manager,
             // TODO Cache capacity should be set seperately
-            transaction_pubkey_cache: RwLock::new(LruCache::new(capacity * 2)),
+            transaction_pubkey_cache: RwLock::new(LruCache::new(capacity )),
             worker_pool: Mutex::new(worker_pool),
         }
     }
@@ -359,8 +359,8 @@ impl TransactionPool {
         // check balance
         let cost = transaction.value + transaction.gas_price * transaction.gas;
         if account.balance < cost {
-            warn!(
-                "Transaction {} discarded due to not enough balance: {} < {}",
+            trace!(
+                "Transaction {} not ready due to not enough balance: {} < {}",
                 transaction.hash(),
                 account.balance,
                 cost

@@ -17,10 +17,10 @@ class MessageTest(ConfluxTestFramework):
         self.conf_parameters = {"log-level":"\"debug\""}
 
     def setup_network(self):
-        self.setup_nodes(binary=[os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            "../target/release/conflux")])
-
+        # self.setup_nodes(binary=[os.path.join(
+        #     os.path.dirname(os.path.realpath(__file__)),
+        #     "../target/release/conflux")])
+        self.setup_nodes()
     def run_test(self):
 
         # Start mininode connection
@@ -34,7 +34,7 @@ class MessageTest(ConfluxTestFramework):
         block_gen_thread.start()
         tx_n = 100000
 
-        generate = True
+        generate = False
         if generate:
             f = open("encoded_tx", "wb")
             '''Test Random Transactions'''
@@ -133,7 +133,7 @@ class BlockGenThread(threading.Thread):
         while not self.stopped:
             try:
                 time.sleep(0.2)
-                h = self.node.generateoneblock(100000)
+                h = self.node.generateoneblock(100)
                 self.log.debug("%s generate block %s", 0, h)
             except Exception as e:
                 self.log.info("Fails to generate blocks")

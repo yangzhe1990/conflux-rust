@@ -271,13 +271,15 @@ impl OverlayAccount {
             }
             self.storage_cache.borrow_mut().insert(k, v);
         }
-        match self.cache_code(db) {
+        match self.code() {
             None => {}
             Some(code) => {
-                db.set_raw(
-                    &StorageKey::new_code_key(&self.address, &self.code_hash),
-                    &code.as_ref(),
-                )?;
+                if !code.is_empty() {
+                    db.set_raw(
+                        &StorageKey::new_code_key(&self.address, &self.code_hash),
+                        &code.as_ref(),
+                    )?;
+                }
             }
         }
 

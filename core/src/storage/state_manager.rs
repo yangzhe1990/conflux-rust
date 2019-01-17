@@ -24,3 +24,11 @@ pub trait StateManagerTrait {
     fn contains_state(&self, epoch_id: EpochId) -> bool;
     fn drop_state_outside(&self, epoch_id: EpochId);
 }
+
+#[derive(Debug)]
+pub struct StorageConfiguration {
+    pub start_size: u32,
+    pub cache_size: u32,
+    pub idle_size: u32,
+    pub lfru_factor: f64,
+}

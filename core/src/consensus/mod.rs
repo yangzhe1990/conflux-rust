@@ -1490,6 +1490,8 @@ impl ConsensusGraph {
         let mut dbops = self.db.key_value().transaction();
         dbops.put(COL_MISC, b"terminals", &rlp_stream.drain());
         self.db.key_value().write_buffered(dbops);
+        // FIXME This is just a workaround!!!
+        self.db.key_value().flush().unwrap();
     }
 
     pub fn block_cache_gc(&self) {

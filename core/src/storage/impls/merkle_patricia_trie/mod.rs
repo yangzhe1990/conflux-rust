@@ -2,6 +2,7 @@ use self::{
     data_structure::*, merkle::*, node_memory_manager::*, node_ref_map::*,
 };
 use super::errors::*;
+use crate::storage::state_manager::StorageConfiguration;
 use kvdb::KeyValueDB;
 use parking_lot::RwLock;
 use primitives::EpochId;
@@ -38,10 +39,16 @@ pub struct MultiVersionMerklePatriciaTrie {
 }
 
 impl MultiVersionMerklePatriciaTrie {
-    pub fn new(kvdb: Arc<KeyValueDB>) -> Self {
+    pub fn new(kvdb: Arc<KeyValueDB>, conf: StorageConfiguration) -> Self {
         Self {
             root_by_version: Default::default(),
-            node_memory_manager: NodeMemoryManager::new(kvdb),
+            node_memory_manager: NodeMemoryManager::new_with_size(
+                conf.start_size,
+                conf.cache_size,
+                conf.idle_size,
+                conf.lfru_factor,
+                kvdb,
+            ),
         }
     }
 

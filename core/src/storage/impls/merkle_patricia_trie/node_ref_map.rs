@@ -58,20 +58,22 @@ impl NodeRefMapDeltaMpt {
     /// We allow at most 200M (most recent) nodes for cache of delta trie.
     /// Assuming 2h lifetime for Delta MPT it's around 27k new node per second.
     const MAX_CAPACITY: DeltaMptDbKey = 200_000_000;
-}
 
-impl Default for NodeRefMapDeltaMpt {
-    fn default() -> Self {
-        let mut default = Self {
+    pub fn new(start_size: usize) -> Self {
+        let mut mpt = Self {
             base_row_number: Default::default(),
             map: Default::default(),
         };
 
-        default
-            .map
-            .reserve(NodeMemoryManager::START_CAPACITY as usize);
+        mpt.map.reserve(start_size);
 
-        default
+        mpt
+    }
+}
+
+impl Default for NodeRefMapDeltaMpt {
+    fn default() -> Self {
+        Self::new(NodeMemoryManager::START_CAPACITY as usize)
     }
 }
 

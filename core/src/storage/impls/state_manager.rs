@@ -108,7 +108,7 @@ impl StateManager {
         })
     }
 
-    pub fn new(db: Arc<SystemDB>) -> Self {
+    pub fn new(db: Arc<SystemDB>, conf: StorageConfiguration) -> Self {
         let row_number = Self::parse_row_number(
             db.key_value()
                 .get(COL_DELTA_TRIE, "last_row_number".as_bytes()),
@@ -116,10 +116,12 @@ impl StateManager {
         // unwrap() on new is fine.
         .unwrap()
         .unwrap_or_default();
+        debug!("Storage conf {:?}", conf);
 
         Self {
             delta_trie: MultiVersionMerklePatriciaTrie::new(
                 db.key_value().clone(),
+                conf,
             ),
             db: db,
             commit_lock: Mutex::new(AtomicCommit {

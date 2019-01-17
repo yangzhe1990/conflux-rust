@@ -138,16 +138,17 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         let array_pos = self.array.len();
 
         self.array.set_len(array_pos + 1);
-        if MyInto::<usize>::into(pos) != array_pos {
+        let array_pos = PosT::from(array_pos);
+        if pos != array_pos {
             ptr::copy_nonoverlapping(
                 self.get_unchecked(pos),
-                self.get_unchecked_mut(PosT::from(array_pos)),
+                self.get_unchecked_mut(array_pos),
                 1,
             );
         }
         hole.pointer_pos = self.get_unchecked_mut(pos);
 
-        pos
+        array_pos
     }
 }
 
@@ -239,7 +240,7 @@ impl<
         if self.pos == PosT::from(0) {
             None
         } else {
-            let parent = self.pos / PosT::from(2);
+            let parent = (self.pos - PosT::from(1)) / PosT::from(2);
             let pointer_parent =
                 unsafe { self.heap_base.offset(parent.into()) };
 
@@ -305,7 +306,7 @@ impl<
     fn calculate_next(
         &mut self, value_util: &ValueUtilT,
     ) -> Option<*mut ValueType> {
-        let left_child = self.pos << PosT::from(1);
+        let left_child = self.pos << PosT::from(1) + PosT::from(1);
         if left_child > self.max_pos {
             return None;
         }
@@ -393,6 +394,7 @@ impl<ValueType> Hole<ValueType> {
         unsafe {
             value_updater.set_heap_handle(&mut *pointer_new_pos, pos);
             ptr::copy_nonoverlapping(pointer_new_pos, self.pointer_pos, 1);
+            self.pointer_pos = pointer_new_pos;
         }
     }
 }
@@ -408,9 +410,9 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     ) -> PosT {
         let heap_size = self.heap_size;
         self.hole_push_back_and_swap_unchecked(heap_size, &mut hole);
-        self.heap_size += PosT::from(1);
 
         self.sift_up_with_hole(heap_size, hole, value_util);
+        self.heap_size += PosT::from(1);
 
         heap_size
     }

@@ -1,3 +1,4 @@
+use core::storage::state_manager::StorageConfiguration;
 use txgen::TransactionGeneratorConfig;
 /// usage:
 /// ```
@@ -37,6 +38,10 @@ build_config! {
         (db_dir, (Option<String>), Some("./db".to_string()))
         (generate_tx, (bool), false)
         (generate_tx_period_ms, (Option<u64>), Some(100))
+        (storage_start_size, (u32), 1_000_000)
+        (storage_cache_size, (u32), 20_000_000)
+        (storage_idle_size, (u32), 200_000)
+        (storage_lfru_factor, (f64), 4.0)
     }
     {
         (
@@ -155,6 +160,15 @@ impl Configuration {
             self.raw_conf.generate_tx,
             self.raw_conf.generate_tx_period_ms.expect("has default"),
         )
+    }
+
+    pub fn storage_config(&self) -> StorageConfiguration {
+        StorageConfiguration {
+            start_size: self.raw_conf.storage_start_size,
+            cache_size: self.raw_conf.storage_cache_size,
+            idle_size: self.raw_conf.storage_idle_size,
+            lfru_factor: self.raw_conf.storage_lfru_factor,
+        }
     }
 }
 
