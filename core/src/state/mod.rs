@@ -1052,6 +1052,7 @@ mod tests {
             H256::from(U256::from(0xffff))
         );
         state.clear();
+        state = get_state(&storage_manager, H256::from(U256::from(1)));
 
         state.checkpoint(); // c1
         state.new_contract(&a, U256::zero(), U256::zero()).unwrap();

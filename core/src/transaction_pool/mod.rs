@@ -528,7 +528,10 @@ impl TransactionPool {
             inner.pending_transactions.len()
         );
 
-        for _ in 0..num_txs {
+        loop {
+            if packed_transactions.len() >= num_txs || inner.ready_transactions.len() == 0 {
+                break;
+            }
             let sum_gas_price = inner.ready_transactions.sum_weight();
             let mut rand_value: U512 = U512::from(H512::random());
             assert_ne!(inner.ready_transactions.len(), 0);

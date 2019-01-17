@@ -102,7 +102,7 @@ impl Client {
         debug!("Initialize genesis_block={:?}", genesis_block);
 
         let txpool = Arc::new(TransactionPool::with_capacity(
-            50000,
+            100000,
             storage_manager.clone(),
             worker_thread_pool.clone(),
         ));

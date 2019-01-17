@@ -124,7 +124,7 @@ class BlockGenThread(threading.Thread):
         while not self.stopped:
             try:
                 time.sleep(0.2)
-                h = self.node.generateoneblock(100000)
+                h = self.node.generateoneblock(100)
                 self.log.debug("%s generate block %s", 0, h)
             except Exception as e:
                 self.log.info("Fails to generate blocks")
