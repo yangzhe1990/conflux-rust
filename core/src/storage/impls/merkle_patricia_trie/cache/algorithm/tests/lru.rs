@@ -1,9 +1,8 @@
 use super::super::{lru::*, *};
 use rand::{
     distributions::{uniform::*, *},
-    ChaChaRng, Rand, Rng, SeedableRng,
+    ChaChaRng, SeedableRng,
 };
-use std::collections::btree_set::BTreeSet;
 
 fn get_rng_for_test() -> ChaChaRng { ChaChaRng::from_seed([123; 32]) }
 
@@ -49,17 +48,17 @@ mod test_lru_algorithm_size_1 {
 
     impl CacheUtil {
         fn delete(&mut self, key: i32) {
-            if (Some(key) == self.current_key) {
+            if Some(key) == self.current_key {
                 self.previous_key = self.current_key.take();
                 self.cache_algo_data_previous_key =
                     self.cache_algo_data_current_key;
-            } else if (Some(key) == self.previous_key) {
+            } else if Some(key) == self.previous_key {
                 self.previous_key.take();
             }
         }
 
         fn change_key(&mut self, key: i32) {
-            if (Some(key) != self.current_key) {
+            if Some(key) != self.current_key {
                 self.previous_key = self.current_key;
                 self.cache_algo_data_previous_key =
                     self.cache_algo_data_current_key;
@@ -80,8 +79,8 @@ mod test_lru_algorithm_size_1 {
     /// Check the correctness of the algorithm when cache size is 1.
     #[test]
     fn test_lru_algorithm_size_1() {
-        /// The cache should always contain the most recently accessed element.
-        let mut empty = true;
+        // The cache should always contain the most recently accessed element.
+        let empty = true;
         let key_range = 10;
         let mut lru = LRU::<u32, i32>::new(1);
         let mut cache_store_util = CacheUtil::default();
@@ -175,6 +174,7 @@ mod test_lru_algorithm_size_1 {
 
 mod test_lru_algorithm {
     use super::*;
+    use rand::Rng;
 
     struct CacheUtil<'a> {
         cache_algo_data: &'a mut [LRUHandle<u32>],

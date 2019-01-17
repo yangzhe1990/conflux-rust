@@ -1541,7 +1541,7 @@ mod tests {
         context.tracing = true;
 
         let gas_left = {
-            let mut vm = interpreter(params, &context);
+            let vm = interpreter(params, &context);
             test_finalize(vm.exec(&mut context).ok().unwrap()).unwrap()
         };
 
@@ -1563,7 +1563,7 @@ mod tests {
         context.tracing = true;
 
         let err = {
-            let mut vm = interpreter(params, &context);
+            let vm = interpreter(params, &context);
             test_finalize(vm.exec(&mut context).ok().unwrap())
                 .err()
                 .unwrap()

@@ -1,7 +1,6 @@
 use super::super::{children_table::*, *};
 
 use lazy_static::lazy_static;
-use rand::{ChaChaRng, Rng, SeedableRng};
 
 lazy_static! {
     static ref NEW_CHILDREN_VALUE: NodeRefDeltaMptCompact =

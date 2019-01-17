@@ -1,6 +1,6 @@
 use super::TreapMap;
 use ethereum_types::{H256, U256, U512};
-use ethkey::{Public, Signature};
+use ethkey::Signature;
 use primitives::{Action, SignedTransaction, Transaction};
 use rand::{prng::XorShiftRng, ChaChaRng, Rng, RngCore, SeedableRng};
 use std::{
@@ -28,7 +28,7 @@ impl<
 
     pub fn len(&self) -> usize { self.inner.len() }
 
-    pub fn is_empty(&self) -> bool { self.inner.is_empty() }
+    pub fn _is_empty(&self) -> bool { self.inner.is_empty() }
 
     pub fn contains_key(&self, key: &K) -> bool { self.inner.contains_key(key) }
 
@@ -50,7 +50,7 @@ impl<
         sum
     }
 
-    pub fn get(&self, key: &K) -> Option<&V> {
+    pub fn _get(&self, key: &K) -> Option<&V> {
         self.inner.get(key).and_then(|x| Some(&(x.1)))
     }
 
@@ -71,7 +71,7 @@ enum Operation {
     ContainsKey,
     Insert,
     Remove,
-    SumWeight,
+    _SumWeight,
     GetByWeight,
 }
 
