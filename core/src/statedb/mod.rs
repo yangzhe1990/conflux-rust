@@ -98,7 +98,9 @@ impl<'a> StateDb<'a> {
         }
     }
 
-    pub fn delete_all(&mut self, key_prefix: &StorageKey) -> Result<()> {
+    pub fn delete_all(
+        &mut self, key_prefix: &StorageKey,
+    ) -> Result<Option<Vec<(Vec<u8>, Box<[u8]>)>>> {
         Ok(self.storage.delete_all(key_prefix.as_ref())?)
     }
 

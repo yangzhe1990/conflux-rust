@@ -287,6 +287,37 @@ impl TrieNode {
     }
 }
 
+trait CompressedPathTrait {
+    type SelfType;
+
+    fn as_slice(&self) -> &[u8];
+    fn end_mask(&self) -> u8;
+}
+
+impl<'a> CompressedPathTrait for &'a [u8] {
+    type SelfType = Self;
+
+    fn as_slice(&self) -> &[u8] { self }
+
+    fn end_mask(&self) -> u8 { 0 }
+}
+
+impl<'a> CompressedPathTrait for CompressedPathRef<'a> {
+    type SelfType = Self;
+
+    fn as_slice(&self) -> &[u8] { self.path_slice }
+
+    fn end_mask(&self) -> u8 { self.end_mask }
+}
+
+impl CompressedPathTrait for CompressedPathRaw {
+    type SelfType = Self;
+
+    fn as_slice(&self) -> &[u8] { self.path.get_slice(self.path_size as usize) }
+
+    fn end_mask(&self) -> u8 { self.end_mask }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct CompressedPathRef<'a> {
     pub path_slice: &'a [u8],
@@ -300,7 +331,44 @@ pub struct CompressedPathRaw {
     end_mask: u8,
 }
 
+impl<'a> From<&'a [u8]> for CompressedPathRaw {
+    fn from(x: &'a [u8]) -> Self { CompressedPathRaw::new(x, 0) }
+}
+
 impl CompressedPathRaw {
+    fn concat<X: CompressedPathTrait, Y: CompressedPathTrait>(
+        x: &X, y: &Y,
+    ) -> Self {
+        let x_slice;
+        if x.end_mask() != 0 {
+            let s = x.as_slice();
+            x_slice = &s[0..s.len() - 1];
+        } else {
+            x_slice = x.as_slice();
+        }
+        let y_slice = y.as_slice();
+        let size = x_slice.len() + y_slice.len();
+
+        let mut path;
+        if size <= MaybeInPlaceByteArray::MAX_INPLACE_SIZE {
+            path = MaybeInPlaceByteArray::copy_from(x_slice, size);
+            path.get_slice_mut(size)
+                [x_slice.len()..x_slice.len() + y_slice.len()]
+                .clone_from_slice(y_slice);
+        } else {
+            path = MaybeInPlaceByteArray::copy_from(
+                &([x_slice, y_slice].concat()),
+                size,
+            );
+        }
+
+        Self {
+            path_size: size as u16,
+            path: path,
+            end_mask: y.end_mask(),
+        }
+    }
+
     fn new(path_slice: &[u8], end_mask: u8) -> Self {
         let path_size = path_slice.len();
         Self {
@@ -1002,6 +1070,44 @@ impl CowNodeRef {
         }
     }
 
+    // FIXME: unit test.
+    fn iterate_internal(
+        &self, owned_node_set: &OwnedNodeSet,
+        trie: &MultiVersionMerklePatriciaTrie, allocator_ref: AllocatorRefRef,
+        trie_node: &TrieNode, key_prefix: CompressedPathRaw,
+        values: &mut Vec<(Vec<u8>, Box<[u8]>)>,
+    ) -> Result<()>
+    {
+        if trie_node.has_value() {
+            assert_eq!(key_prefix.end_mask(), 0);
+            values.push((
+                key_prefix.as_slice().to_vec(),
+                trie_node.value_clone().unwrap(),
+            ));
+        }
+
+        for (i, node_ref) in trie_node.children_table.iter() {
+            let mut cow_child_node =
+                Self::new((*node_ref).into(), owned_node_set);
+            let child_node = trie
+                .get_node_memory_manager()
+                .node_as_ref(allocator_ref, &mut cow_child_node.node_ref)?;
+            cow_child_node.iterate_internal(
+                owned_node_set,
+                trie,
+                allocator_ref,
+                child_node,
+                CompressedPathRaw::concat(
+                    &key_prefix,
+                    &child_node.compressed_path_ref(),
+                ),
+                values,
+            )?;
+        }
+
+        Ok(())
+    }
+
     /// Recursively commit dirty nodes.
     pub fn commit(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
@@ -1594,6 +1700,179 @@ impl<'trie> SubTrieVisitor<'trie> {
 
             _ => Ok((None, false, node_cow.into_child())),
         }
+    }
+
+    /// The visitor can only be used once to modify.
+    /// Returns (deleted value, is root node replaced, the current root node for
+    /// the subtree).
+    pub fn delete_all(
+        mut self, key: KeyPart, key_remaining: KeyPart,
+    ) -> Result<(
+        Option<Vec<(Vec<u8>, Box<[u8]>)>>,
+        bool,
+        Option<NodeRefDeltaMptCompact>,
+    )> {
+        let node_memory_manager = self.node_memory_manager();
+        let allocator = node_memory_manager.get_allocator();
+        let mut node_cow = self.root.steal();
+        // TODO(yz): be compliant to borrow rule and avoid duplicated
+
+        // FIXME: map_split?
+        let trie_node_mut = node_memory_manager
+            .node_as_mut(&allocator, &mut node_cow.node_ref)?;
+
+        let key_prefix: CompressedPathRaw;
+        match trie_node_mut.walk::<Read>(key_remaining) {
+            WalkStop::ChildNotFound {
+                key_remaining,
+                child_index,
+            } => return Ok((None, false, node_cow.into_child())),
+            WalkStop::Arrived => {
+                // To enumerate the subtree.
+                key_prefix = key.into();
+            }
+            WalkStop::PathDiverted {
+                key_child_index,
+                key_remaining,
+                matched_path,
+                unmatched_child_index,
+                unmatched_path_remaining,
+            } => {
+                if key_child_index.is_none() {
+                    return Ok((None, false, node_cow.into_child()));
+                }
+                // To enumerate the subtree.
+                key_prefix =
+                    CompressedPathRaw::concat(&key, &unmatched_path_remaining);
+            }
+            WalkStop::Descent {
+                key_remaining,
+                child_node,
+                child_index,
+            } => {
+                let result = self
+                    .new_visitor_for_subtree(child_node)
+                    .delete_all(key, key_remaining);
+                if result.is_err() {
+                    node_cow.into_child();
+                    return result;
+                }
+                let (value, child_replaced, new_child_node) = result.unwrap();
+                // FIXME: copied from delete(). Try to reuse code?
+                if child_replaced {
+                    let action = trie_node_mut
+                        .check_replace_or_delete_child_action(
+                            child_index,
+                            new_child_node,
+                        );
+                    match action {
+                        TrieNodeAction::MergePath {
+                            child_index,
+                            child_node_ref,
+                        } => {
+                            let new_path: CompressedPathRaw;
+                            let mut child_node_cow: CowNodeRef;
+                            {
+                                let path_prefix =
+                                    trie_node_mut.compressed_path_ref();
+                                // COW modify child,
+                                child_node_cow = CowNodeRef::new(
+                                    child_node_ref,
+                                    self.owned_node_set.get_ref(),
+                                );
+                                new_path = node_memory_manager
+                                    .node_as_ref(
+                                        &allocator,
+                                        &child_node_cow.node_ref,
+                                    )?
+                                    .path_prepended(path_prefix, child_index);
+                            }
+                            let child_trie_node = node_memory_manager
+                                .node_as_mut(
+                                    &allocator,
+                                    &mut child_node_cow.node_ref,
+                                )?;
+                            child_node_cow.cow_set_compressed_path(
+                                &node_memory_manager,
+                                self.owned_node_set.get_mut(),
+                                new_path,
+                                child_trie_node,
+                            )?;
+
+                            // FIXME: how to represent that trie_node_mut is
+                            // invalid after call to node_mut.delete_node?
+                            // FIXME: trie_node_mut should be considered ref of
+                            // node_mut.
+                            node_cow.delete_node(self.node_memory_manager());
+
+                            return Ok((
+                                value,
+                                true,
+                                child_node_cow.into_child(),
+                            ));
+                        }
+                        TrieNodeAction::DeleteChildrenTable => {
+                            let node_changed = !node_cow.owned;
+                            node_cow.cow_delete_children_table(
+                                &node_memory_manager,
+                                self.owned_node_set.get_mut(),
+                                trie_node_mut,
+                            )?;
+
+                            return Ok((
+                                value,
+                                node_changed,
+                                node_cow.into_child(),
+                            ));
+                        }
+                        TrieNodeAction::Modify => unsafe {
+                            let node_changed = !node_cow.owned;
+                            match new_child_node {
+                                None => {
+                                    node_cow.cow_delete_child_unchecked(
+                                        &node_memory_manager,
+                                        self.owned_node_set.get_mut(),
+                                        trie_node_mut,
+                                        child_index,
+                                    )?;
+                                }
+                                Some(replacement) => {
+                                    node_cow.cow_replace_child_unchecked(
+                                        &node_memory_manager,
+                                        self.owned_node_set.get_mut(),
+                                        trie_node_mut,
+                                        child_index,
+                                        replacement,
+                                    )?;
+                                }
+                            }
+
+                            return Ok((
+                                value,
+                                node_changed,
+                                node_cow.into_child(),
+                            ));
+                        },
+                        _ => unsafe { unreachable_unchecked() },
+                    }
+                } else {
+                    return Ok((value, false, node_cow.into_child()));
+                }
+            }
+        }
+
+        let mut old_values = vec![];
+        node_cow.iterate_internal(
+            self.owned_node_set.get_ref(),
+            self.get_trie_ref(),
+            &allocator,
+            trie_node_mut,
+            key_prefix,
+            &mut old_values,
+        )?;
+        node_cow.delete_node(self.node_memory_manager());
+
+        Ok((Some(old_values), true, None))
     }
 
     // In a method we visit node one or 2 times but borrow-checker prevent

@@ -26,11 +26,11 @@ pub trait StateTrait {
     fn get(&self, access_key: &[u8]) -> Result<Option<Box<[u8]>>>;
     fn set(&mut self, access_key: &[u8], value: &[u8]) -> Result<()>;
     fn delete(&mut self, access_key: &[u8]) -> Result<Option<Box<[u8]>>>;
-    // Delete everything prefixed by access_key and return
-    // Contaianer must be a container or type which ignores all inserts. So far
-    // there is no standard container traits that we can directly apply.
-    // TODO(yz): maybe implement some constrains for Contaianer?
-    fn delete_all(&mut self, access_key_prefix: &[u8]) -> Result<()>;
+    // Delete everything prefixed by access_key and return deleted key value
+    // pairs.
+    fn delete_all(
+        &mut self, access_key_prefix: &[u8],
+    ) -> Result<Option<Vec<(Vec<u8>, Box<[u8]>)>>>;
 
     // Finalize
     /// It's costly to compute state root however it's only necessary to compute

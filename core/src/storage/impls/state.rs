@@ -270,9 +270,24 @@ impl<'a> StateTrait for State<'a> {
         }
     }
 
-    fn delete_all(&mut self, access_key_prefix: &[u8]) -> Result<()> {
-        // unimplemented!()
-        Ok(())
+    fn delete_all(
+        &mut self, access_key_prefix: &[u8],
+    ) -> Result<Option<Vec<(Vec<u8>, Box<[u8]>)>>> {
+        self.pre_modification();
+
+        match self.get_root_node() {
+            None => Ok(None),
+            Some(old_root_node) => {
+                let (deleted, _, root_node) = SubTrieVisitor::new(
+                    self.delta_trie,
+                    old_root_node,
+                    &mut self.owned_node_set,
+                )
+                .delete_all(access_key_prefix, access_key_prefix)?;
+                self.root_node = root_node.map(|maybe_node| maybe_node.into());
+                Ok(deleted)
+            }
+        }
     }
 
     fn compute_state_root(&mut self) -> Result<MerkleHash> {
