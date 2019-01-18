@@ -15,6 +15,7 @@ pub mod block;
 pub mod block_header;
 pub mod epoch;
 pub mod log_entry;
+pub mod receipt;
 pub mod transaction;
 
 pub use crate::{

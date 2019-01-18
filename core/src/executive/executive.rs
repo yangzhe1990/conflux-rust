@@ -838,7 +838,7 @@ pub type ExecutiveTrapResult<'a, T> =
 /// Transaction executor.
 pub struct Executive<'a, 'b: 'a> {
     pub state: &'a mut State<'b>,
-    env: &'a EnvInfo,
+    env: &'a mut EnvInfo,
     machine: &'a Machine,
     spec: &'a Spec,
     depth: usize,
@@ -848,7 +848,7 @@ pub struct Executive<'a, 'b: 'a> {
 impl<'a, 'b> Executive<'a, 'b> {
     /// Basic constructor.
     pub fn new(
-        state: &'a mut State<'b>, env: &'a EnvInfo, machine: &'a Machine,
+        state: &'a mut State<'b>, env: &'a mut EnvInfo, machine: &'a Machine,
         spec: &'a Spec,
     ) -> Self
     {
@@ -865,7 +865,7 @@ impl<'a, 'b> Executive<'a, 'b> {
     /// Populates executive from parent properties. Increments executive depth.
     #[allow(dead_code)]
     pub fn from_parent(
-        state: &'a mut State<'b>, env: &'a EnvInfo, machine: &'a Machine,
+        state: &'a mut State<'b>, env: &'a mut EnvInfo, machine: &'a Machine,
         spec: &'a Spec, parent_depth: usize, static_flag: bool,
     ) -> Self
     {
@@ -1115,8 +1115,9 @@ impl<'a, 'b> Executive<'a, 'b> {
         let gas_left = gas_left_prerefund + refunded;
 
         let gas_used = tx.gas - gas_left;
-        let refund_value = gas_left * tx.gas_price;
-        let fees_value = gas_used * tx.gas_price;
+        self.env.gas_used += tx.gas;
+        let refund_value = U256::zero();
+        let fees_value = tx.gas * tx.gas_price;
 
         trace!("exec::finalize: tx.gas={}, sstore_refunds={}, suicide_refunds={}, refunds_bound={}, gas_left_prerefund={}, refunded={}, gas_left={}, gas_used={}, refund_value={}, fees_value={}\n",
                tx.gas, sstore_refunds, suicide_refunds, refunds_bound, gas_left_prerefund, refunded, gas_left, gas_used, refund_value, fees_value);
@@ -1172,7 +1173,7 @@ impl<'a, 'b> Executive<'a, 'b> {
                 gas_used: tx.gas,
                 refunded: U256::zero(),
                 fee: fees_value,
-                cumulative_gas_used: self.env.gas_used + tx.gas,
+                cumulative_gas_used: self.env.gas_used,
                 logs: vec![],
                 contracts_created: vec![],
                 output: output,
@@ -1187,7 +1188,7 @@ impl<'a, 'b> Executive<'a, 'b> {
                 gas_used: gas_used,
                 refunded: refunded,
                 fee: fees_value,
-                cumulative_gas_used: self.env.gas_used + gas_used,
+                cumulative_gas_used: self.env.gas_used,
                 logs: substate.logs,
                 contracts_created: substate.contracts_created,
                 output: output,

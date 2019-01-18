@@ -1,7 +1,7 @@
 use crate::{
     cache_config::CacheConfig,
     cache_manager::CacheManager,
-    db::{COL_BLOCKS, COL_MISC},
+    db::{COL_BLOCKS, COL_BLOCK_RECEIPTS, COL_MISC},
     executive::{ExecutionError, Executive},
     ext_db::SystemDB,
     machine::new_byzantium_test_machine,
@@ -17,7 +17,12 @@ use ethereum_types::{Address, H256, U256, U512};
 use heapsize::HeapSizeOf;
 use lru::LruCache;
 use parking_lot::{Mutex, RwLock};
-use primitives::{Block, BlockHeader, SignedTransaction};
+use primitives::{
+    receipt::{
+        Receipt, TRANSACTION_OUTCOME_EXCEPTION, TRANSACTION_OUTCOME_SUCCESS,
+    },
+    Block, BlockHeader, SignedTransaction,
+};
 use rlp::{Rlp, RlpStream};
 use slab::Slab;
 use std::{
@@ -434,7 +439,7 @@ impl ConsensusGraphInner {
             0.into(),
             self.vm.clone(),
         );
-        let env = EnvInfo {
+        let mut env = EnvInfo {
             number: 0, // TODO: replace 0 with correct cardinal number
             author: Default::default(),
             timestamp: Default::default(),
@@ -442,7 +447,7 @@ impl ConsensusGraphInner {
             gas_used: U256::zero(),
             gas_limit: tx.gas.clone(),
         };
-        let mut ex = Executive::new(&mut state, &env, &machine, &spec);
+        let mut ex = Executive::new(&mut state, &mut env, &machine, &spec);
         let r = ex.transact(tx);
         trace!("Execution result {:?}", r);
         r.map(|r| r.output)
@@ -504,21 +509,25 @@ impl ConsensusGraphInner {
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 enum CacheId {
     Block(H256),
+    BlockReceipts(H256),
 }
 
 #[derive(Debug)]
 pub struct CacheSize {
     /// Blocks cache size.
     pub blocks: usize,
+    /// Block Receipts cache size.
+    pub block_receipts: usize,
 }
 
 impl CacheSize {
     /// Total amount used by the cache.
-    pub fn total(&self) -> usize { self.blocks }
+    pub fn total(&self) -> usize { self.blocks + self.block_receipts }
 }
 
 pub struct ConsensusGraph {
     pub blocks: Arc<RwLock<HashMap<H256, Arc<Block>>>>,
+    pub block_receipts: RwLock<HashMap<H256, Arc<Vec<Receipt>>>>,
     pub inner: RwLock<ConsensusGraphInner>,
     genesis_block: Arc<Block>,
     pub txpool: SharedTransactionPool,
@@ -544,7 +553,7 @@ impl ConsensusGraph {
         let pref_cache_size = max_cache_size * 3 * mb / 4;
         // 400 is the average size of the key. TODO(ming): make sure this again.
         let cache_man =
-            CacheManager::new(pref_cache_size, max_cache_size, 4 * mb);
+            CacheManager::new(pref_cache_size, max_cache_size, 3 * mb);
 
         let consensus_graph = ConsensusGraph {
             inner: RwLock::new(ConsensusGraphInner::with_genesis_block(
@@ -553,6 +562,7 @@ impl ConsensusGraph {
                 vm,
             )),
             blocks: Arc::new(RwLock::new(HashMap::new())),
+            block_receipts: RwLock::new(HashMap::new()),
             genesis_block: Arc::new(genesis_block),
             txpool,
             db,
@@ -569,6 +579,57 @@ impl ConsensusGraph {
     pub fn block_header_by_hash(&self, hash: &H256) -> Option<BlockHeader> {
         let result = self.block_by_hash(hash)?;
         Some(result.block_header.clone())
+    }
+
+    pub fn block_receipts_by_hash_from_db(
+        &self, hash: &H256,
+    ) -> Option<Vec<Receipt>> {
+        let block_receipts = self.db.key_value().get(COL_BLOCK_RECEIPTS, hash)
+            .expect("Low level database error when fetching block receipts. Some issue with disk?")?;
+        let rlp = Rlp::new(&block_receipts);
+        let block_receipts = rlp
+            .list_at::<Receipt>(0)
+            .expect("Wrong block receipts rlp format!");
+        Some(block_receipts)
+    }
+
+    pub fn block_receipts_by_hash(
+        &self, hash: &H256,
+    ) -> Option<Arc<Vec<Receipt>>> {
+        // Check cache first
+        {
+            let read = self.block_receipts.read();
+            if let Some(v) = read.get(hash) {
+                return Some(v.clone());
+            }
+        }
+
+        let block_receipts = self.block_receipts_by_hash_from_db(hash)?;
+        let block_receipts = Arc::new(block_receipts);
+        let mut write = self.block_receipts.write();
+        write.insert(*hash, block_receipts.clone());
+
+        self.cache_man
+            .lock()
+            .note_used(CacheId::BlockReceipts(*hash));
+        Some(block_receipts)
+    }
+
+    pub fn insert_block_receipts_to_kv(
+        &self, hash: H256, block_receipts: Arc<Vec<Receipt>>, persistent: bool,
+    ) {
+        if persistent {
+            let mut dbops = self.db.key_value().transaction();
+            let mut rlp_stream = RlpStream::new();
+            rlp_stream.append_list(&*block_receipts);
+            dbops.put(COL_BLOCK_RECEIPTS, &hash, &rlp_stream.drain());
+            self.db.key_value().write_buffered(dbops);
+        }
+
+        self.block_receipts.write().insert(hash, block_receipts);
+        self.cache_man
+            .lock()
+            .note_used(CacheId::BlockReceipts(hash));
     }
 
     pub fn block_by_hash_from_db(&self, hash: &H256) -> Option<Block> {
@@ -664,13 +725,14 @@ impl ConsensusGraph {
         let spec = Spec::new_byzantium();
         let machine = new_byzantium_test_machine();
         for index in epoch_blocks.iter() {
+            let mut receipts = Vec::new();
             let block = self.block_by_hash(&arena[*index].hash).unwrap();
             debug!(
                 "process txs in block: hash={:?}, tx count={:?}",
                 block.hash(),
                 block.transactions.len()
             );
-            let env = EnvInfo {
+            let mut env = EnvInfo {
                 number: 0, // TODO: replace 0 with correct cardinal number
                 author: block.block_header.author().clone(),
                 timestamp: block.block_header.timestamp(),
@@ -679,10 +741,12 @@ impl ConsensusGraph {
                 gas_limit: U256::from(block.block_header.gas_limit()),
             };
             let mut accumulated_fee: U256 = 0.into();
-            let mut ex = Executive::new(state, &env, &machine, &spec);
+            let mut ex = Executive::new(state, &mut env, &machine, &spec);
             let mut n_invalid_nonce = 0;
             let mut n_ok = 0;
             let mut n_other = 0;
+            let mut tx_outcome_status = TRANSACTION_OUTCOME_SUCCESS;
+            let mut last_cumulative_gas_used = U256::zero();
             for transaction in &block.transactions {
                 let r = ex.transact(transaction);
                 match r {
@@ -696,6 +760,7 @@ impl ConsensusGraph {
                             "tx execution error: transaction={:?}, err={:?}",
                             transaction, r
                         );
+                        tx_outcome_status = TRANSACTION_OUTCOME_EXCEPTION;
                     }
                     Err(ExecutionError::InvalidNonce { expected, got }) => {
                         n_invalid_nonce += 1;
@@ -707,8 +772,10 @@ impl ConsensusGraph {
                             );
                             to_pending.push(transaction.clone());
                         }
+                        tx_outcome_status = TRANSACTION_OUTCOME_EXCEPTION;
                     }
                     Ok(executed) => {
+                        last_cumulative_gas_used = executed.cumulative_gas_used;
                         n_ok += 1;
                         trace!("tx executed successfully: transaction={:?}, result={:?}, in block {:?}", transaction, executed, arena[*index].hash.clone());
                         accumulated_fee += executed.fee;
@@ -720,6 +787,7 @@ impl ConsensusGraph {
                         }
                     }
                     _ => {
+                        tx_outcome_status = TRANSACTION_OUTCOME_EXCEPTION;
                         n_other += 1;
                         trace!("tx executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, arena[*index].hash.clone());
                         if let Some(ref mut block_for_transaction) =
@@ -730,7 +798,17 @@ impl ConsensusGraph {
                         }
                     }
                 }
+                let receipt =
+                    Receipt::new(tx_outcome_status, last_cumulative_gas_used);
+                receipts.push(receipt);
             }
+
+            self.insert_block_receipts_to_kv(
+                block.hash(),
+                Arc::new(receipts),
+                true,
+            );
+
             debug!(
                 "n_invalid_nonce={}, n_ok={}, n_other={}",
                 n_invalid_nonce, n_ok, n_other
@@ -1064,9 +1142,6 @@ impl ConsensusGraph {
                         == inner.arena[deferred].height
                 );
 
-                /*let height = inner.arena[deferred].height as usize;
-                if height < inner.pivot_chain.len()
-                    && inner.pivot_chain[height] == deferred*/
                 if inner
                     .storage_manager
                     .contains_state(inner.arena[deferred].hash)
@@ -1467,6 +1542,7 @@ impl ConsensusGraph {
     pub fn cache_size(&self) -> CacheSize {
         CacheSize {
             blocks: self.blocks.read().heap_size_of_children(),
+            block_receipts: self.block_receipts.read().heap_size_of_children(),
         }
     }
 
@@ -1498,6 +1574,7 @@ impl ConsensusGraph {
         let current_size = self.cache_size().total();
 
         let mut blocks = self.blocks.write();
+        let mut block_receipts = self.block_receipts.write();
 
         let mut cache_man = self.cache_man.lock();
         cache_man.collect_garbage(current_size, |ids| {
@@ -1506,12 +1583,17 @@ impl ConsensusGraph {
                     CacheId::Block(ref h) => {
                         blocks.remove(h);
                     }
+                    CacheId::BlockReceipts(ref h) => {
+                        block_receipts.remove(h);
+                    }
                 }
             }
 
             blocks.shrink_to_fit();
+            block_receipts.shrink_to_fit();
 
             blocks.heap_size_of_children()
+                + block_receipts.heap_size_of_children()
         });
     }
 }

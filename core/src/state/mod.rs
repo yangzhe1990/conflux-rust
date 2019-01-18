@@ -1,17 +1,14 @@
 use crate::{
     bytes::Bytes,
-    executive::Executive,
     hash::KECCAK_EMPTY,
-    machine::Machine,
     statedb::{
         ErrorKind as DbErrorKind, Result as DbResult, StateDb, StorageKey,
     },
     transaction_pool::SharedTransactionPool,
-    vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
 };
 use ethereum_types::{Address, H256, U256};
-use primitives::{Account, EpochId, SignedTransaction};
+use primitives::{Account, EpochId};
 use std::{
     cell::{RefCell, RefMut},
     collections::{hash_map::Entry, HashMap, HashSet},
@@ -399,20 +396,6 @@ impl<'a> State<'a> {
         }
 
         Ok(())
-    }
-
-    pub fn apply(
-        &mut self, env_info: &EnvInfo, machine: &Machine,
-        tx: &SignedTransaction,
-    )
-    {
-        let spec = Spec::new_byzantium();
-        let _vm = VmFactory::new(1024 * 1024);
-
-        // FIXME: We may need to propagate the error up
-        Executive::new(self, env_info, machine, &spec)
-            .transact(tx)
-            .unwrap();
     }
 
     pub fn storage_at(&self, address: &Address, key: &H256) -> DbResult<H256> {

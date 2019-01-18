@@ -5,7 +5,6 @@ use crate::{
 use ethereum_types::{Address, H256, U256};
 use heapsize::HeapSizeOf;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use std::mem;
 
 /// A block header.
 #[derive(Clone, Debug, Eq)]
@@ -38,8 +37,7 @@ pub struct BlockHeader {
 
 impl HeapSizeOf for BlockHeader {
     fn heap_size_of_children(&self) -> usize {
-        mem::size_of::<BlockHeader>()
-            + self.referee_hashes.len() * mem::size_of::<H256>()
+        self.referee_hashes.heap_size_of_children()
     }
 }
 
