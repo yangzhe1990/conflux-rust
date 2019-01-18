@@ -358,6 +358,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                         heap.hole_push_back_and_swap_unchecked(
                             PosT::from(0),
                             &mut hole,
+                            &mut heap_util,
                         )
                     };
                     heap.sift_down_with_hole(

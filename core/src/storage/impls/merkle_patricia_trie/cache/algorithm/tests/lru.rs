@@ -1,10 +1,8 @@
-use super::super::{lru::*, *};
-use rand::{
-    distributions::{uniform::*, *},
-    ChaChaRng, SeedableRng,
+use super::{
+    super::{lru::*, *},
+    *,
 };
-
-fn get_rng_for_test() -> ChaChaRng { ChaChaRng::from_seed([123; 32]) }
+use rand::distributions::{uniform::*, *};
 
 mod test_lru_algorithm_size_1 {
     use super::*;

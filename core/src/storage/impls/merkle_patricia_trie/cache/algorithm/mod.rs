@@ -3,7 +3,7 @@ use std::{
     marker::PhantomData,
     mem,
     ops::{
-        Add, AddAssign, Deref, DerefMut, Div, DivAssign, Shl, Sub, SubAssign,
+        Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, Sub, SubAssign,
     },
 };
 
@@ -175,7 +175,7 @@ pub trait PrimitiveNum:
     + SubAssign
     + Div<Output = Self>
     + DivAssign
-    + Shl<Output = Self>
+    + Mul<Output = Self>
     + PartialOrd
     + PartialEq
     + MyInto<usize>

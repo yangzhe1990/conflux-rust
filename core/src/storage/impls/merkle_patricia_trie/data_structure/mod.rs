@@ -1494,7 +1494,8 @@ impl<'trie> SubTrieVisitor<'trie> {
                         0 => None,
                         _ => {
                             let mut merkles = ChildrenMerkleTable::default();
-                            let children_table = trie_node.children_table.clone();
+                            let children_table =
+                                trie_node.children_table.clone();
                             drop(trie_node);
                             for (i, maybe_node_ref) in
                                 children_table.iter_non_skip()
