@@ -1414,7 +1414,8 @@ impl ConsensusGraph {
         {
             if inner.pivot_chain.len() > DEFERRED_STATE_EPOCH_COUNT as usize {
                 state_at = inner.pivot_chain.len()
-                    - DEFERRED_STATE_EPOCH_COUNT as usize;
+                    - DEFERRED_STATE_EPOCH_COUNT as usize
+                    + 1;
             } else {
                 state_at = 1;
             }
