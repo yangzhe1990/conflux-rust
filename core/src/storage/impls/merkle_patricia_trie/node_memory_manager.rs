@@ -5,6 +5,7 @@ use super::{
         CacheAccessResult, CacheAlgorithm, CacheIndexTrait, CacheStoreUtil,
     },
     data_structure::*,
+    guarded_value::*,
     node_ref_map::*,
     slab::Slab,
 };
@@ -323,20 +324,28 @@ impl NodeMemoryManager {
         )
     }
 
+    // FIXME: CacheManager is only relevant for committed node.
     pub fn node_as_ref<'a>(
         &self, allocator: AllocatorRefRef<'a>, node: &NodeRefDeltaMpt,
-    ) -> Result<&'a TrieNode> {
-        Ok(self.load_node_internal(
-            allocator,
-            node,
-            &mut *self.cache.write(),
-        )?)
+    ) -> Result<GuardedValue<RwLockWriteGuard<CacheManager>, &'a TrieNode>>
+    {
+        let mut cache_manager_lock = self.cache.write();
+        let trie_node =
+            self.load_node_internal(allocator, node, &mut *cache_manager_lock)?;
+
+        Ok(GuardedValue::new(cache_manager_lock, trie_node))
     }
 
+    // FIXME: CacheManager is only relevant for committed node.
     pub fn node_as_mut<'a>(
         &self, allocator: AllocatorRefRef<'a>, node: &mut NodeRefDeltaMpt,
-    ) -> Result<&'a mut TrieNode> {
-        self.load_node_internal(allocator, node, &mut *self.cache.write())
+    ) -> Result<GuardedValue<RwLockWriteGuard<CacheManager>, &'a mut TrieNode>>
+    {
+        let mut cache_manager_lock = self.cache.write();
+        let trie_node =
+            self.load_node_internal(allocator, node, &mut *cache_manager_lock)?;
+
+        Ok(GuardedValue::new(cache_manager_lock, trie_node))
     }
 
     pub fn node_as_mut_with_cache_manager<'a>(

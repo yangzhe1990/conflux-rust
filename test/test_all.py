@@ -28,13 +28,13 @@ TEST_SCRIPTS = [
     "rpc_test.py",
     "peer_test.py",
     "message_test.py",
-    "p2p_test.py",
     "sync_test.py",
     "crash_test.py",
     "transaction_test.py",
     "reorg_test.py",
     "consensus_test.py",
     "erc20_test.py",
+    "p2p_test.py",
 ]
 
 test_dir = os.path.dirname(os.path.realpath(__file__))

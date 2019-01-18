@@ -76,14 +76,9 @@ impl<'a> State<'a> {
                 );
                 let allocator =
                     self.delta_trie.get_node_memory_manager().get_allocator();
-                let trie_node_root = self
-                    .delta_trie
-                    .get_node_memory_manager()
-                    .node_as_mut(&allocator, &mut cow_root.node_ref)?;
                 let merkle = cow_root.get_or_compute_merkle(
                     self.delta_trie,
                     self.owned_node_set.as_mut().unwrap(),
-                    trie_node_root,
                     &allocator,
                 )?;
                 cow_root.into_child();

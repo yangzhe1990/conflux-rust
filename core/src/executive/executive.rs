@@ -1290,13 +1290,13 @@ mod tests {
         state
             .add_balance(&sender, &U256::from(0x100u64), CleanupMode::NoEmpty)
             .unwrap();
-        let info = EnvInfo::default();
+        let mut info = EnvInfo::default();
         let machine = make_byzantium_machine(0);
         let spec = machine.spec(info.number);
         let mut substate = Substate::new();
 
         let FinalizationResult { gas_left, .. } = {
-            let mut ex = Executive::new(&mut state, &info, &machine, &spec);
+            let mut ex = Executive::new(&mut state, &mut info, &machine, &spec);
             ex.create(params, &mut substate).unwrap()
         };
 
@@ -1366,13 +1366,13 @@ mod tests {
         state
             .add_balance(&sender, &U256::from(100), CleanupMode::NoEmpty)
             .unwrap();
-        let info = EnvInfo::default();
+        let mut info = EnvInfo::default();
         let machine = make_byzantium_machine(0);
         let spec = machine.spec(info.number);
         let mut substate = Substate::new();
 
         let FinalizationResult { gas_left, .. } = {
-            let mut ex = Executive::new(&mut state, &info, &machine, &spec);
+            let mut ex = Executive::new(&mut state, &mut info, &machine, &spec);
             ex.create(params, &mut substate).unwrap()
         };
 
@@ -1434,13 +1434,13 @@ mod tests {
         state
             .add_balance(&sender, &U256::from(100), CleanupMode::NoEmpty)
             .unwrap();
-        let info = EnvInfo::default();
+        let mut info = EnvInfo::default();
         let machine = make_byzantium_machine(5);
         let spec = machine.spec(info.number);
         let mut substate = Substate::new();
 
         let FinalizationResult { gas_left, .. } = {
-            let mut ex = Executive::new(&mut state, &info, &machine, &spec);
+            let mut ex = Executive::new(&mut state, &mut info, &machine, &spec);
             ex.call(params, &mut substate).unwrap()
         };
 
@@ -1483,7 +1483,7 @@ mod tests {
         params.gas = U256::from(20025);
         params.code = Some(Arc::new(code));
         params.value = ActionValue::Transfer(U256::zero());
-        let info = EnvInfo::default();
+        let mut info = EnvInfo::default();
         let machine = crate::machine::new_byzantium_test_machine();
         let spec = machine.spec(info.number);
         let mut substate = Substate::new();
@@ -1494,7 +1494,7 @@ mod tests {
             return_data,
             ..
         } = {
-            let mut ex = Executive::new(&mut state, &info, &machine, &spec);
+            let mut ex = Executive::new(&mut state, &mut info, &machine, &spec);
             ex.call(params, &mut substate).unwrap()
         };
         (&mut output)
@@ -1550,13 +1550,13 @@ mod tests {
                 CleanupMode::NoEmpty,
             )
             .unwrap();
-        let info = EnvInfo::default();
+        let mut info = EnvInfo::default();
         let machine = make_byzantium_machine(0);
         let spec = machine.spec(info.number);
         let mut substate = Substate::new();
 
         let result = {
-            let mut ex = Executive::new(&mut state, &info, &machine, &spec);
+            let mut ex = Executive::new(&mut state, &mut info, &machine, &spec);
             ex.create(params, &mut substate)
         };
 
@@ -1597,7 +1597,7 @@ mod tests {
         let spec = machine.spec(info.number);
 
         let res = {
-            let mut ex = Executive::new(&mut state, &info, &machine, &spec);
+            let mut ex = Executive::new(&mut state, &mut info, &machine, &spec);
             ex.transact(&t)
         };
 

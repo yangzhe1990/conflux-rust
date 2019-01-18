@@ -10,6 +10,7 @@ use std::{collections::HashMap, sync::Arc};
 
 pub mod cache;
 pub(in super::super) mod data_structure;
+mod guarded_value;
 pub(self) mod maybe_in_place_byte_array;
 pub mod merkle;
 pub(in super::super) mod node_memory_manager;
