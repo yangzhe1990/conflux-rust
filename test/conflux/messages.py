@@ -173,9 +173,9 @@ class BlockHeader(rlp.Serializable):
         ("author", hash20),
         ("transactions_root", hash32),
         ("deferred_state_root", hash32),
+        ("deferred_receipts_root", hash32),
         ("difficulty", big_endian_int),
         ("gas_limit", big_endian_int),
-        ("gas_used", big_endian_int),
         ("referee_hashes", CountableList(hash32)),
         ("nonce", big_endian_int),
     ]
@@ -187,9 +187,9 @@ class BlockHeader(rlp.Serializable):
                  author=default_config['GENESIS_COINBASE'],
                  transactions_root=trie.BLANK_ROOT,
                  deferred_state_root=trie.BLANK_ROOT,
+                 deferred_receipts_root=trie.BLANK_ROOT,
                  difficulty=default_config['GENESIS_DIFFICULTY'],
                  gas_limit=0,
-                 gas_used=0,
                  referee_hashes=[],
                  nonce=0):
         # at the beginning of a method, locals() is a dict of all arguments

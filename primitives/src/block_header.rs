@@ -27,8 +27,6 @@ pub struct BlockHeader {
     difficulty: U256,
     /// Gas limit.
     gas_limit: U256,
-    /// Gas used.
-    gas_used: U256,
     /// Referee hashes
     referee_hashes: Vec<H256>,
     /// Nonce of the block
@@ -54,7 +52,6 @@ impl PartialEq for BlockHeader {
             && self.deferred_receipts_root == o.deferred_receipts_root
             && self.difficulty == o.difficulty
             && self.gas_limit == o.gas_limit
-            && self.gas_used == o.gas_used
             && self.referee_hashes == o.referee_hashes
     }
 }
@@ -71,7 +68,6 @@ impl Default for BlockHeader {
             deferred_receipts_root: KECCAK_NULL_RLP,
             difficulty: U256::zero(),
             gas_limit: U256::zero(),
-            gas_used: U256::zero(),
             referee_hashes: Vec::new(),
             nonce: 0,
             hash: None,
@@ -166,7 +162,6 @@ impl BlockHeader {
             .append(&self.deferred_receipts_root)
             .append(&self.difficulty)
             .append(&self.gas_limit)
-            .append(&self.gas_used)
             .append_list(&self.referee_hashes);
     }
 
@@ -183,7 +178,6 @@ impl BlockHeader {
             .append(&self.deferred_receipts_root)
             .append(&self.difficulty)
             .append(&self.gas_limit)
-            .append(&self.gas_used)
             .append_list(&self.referee_hashes)
             .append(&self.nonce);
     }
@@ -205,7 +199,6 @@ pub struct BlockHeaderBuilder {
     deferred_receipts_root: H256,
     difficulty: U256,
     gas_limit: U256,
-    gas_used: U256,
     referee_hashes: Vec<H256>,
     nonce: u64,
 }
@@ -222,7 +215,6 @@ impl BlockHeaderBuilder {
             deferred_receipts_root: KECCAK_NULL_RLP,
             difficulty: U256::default(),
             gas_limit: U256::zero(),
-            gas_used: U256::zero(),
             referee_hashes: Vec::new(),
             nonce: 0,
         }
@@ -279,11 +271,6 @@ impl BlockHeaderBuilder {
         self
     }
 
-    pub fn with_gas_used(&mut self, gas_used: U256) -> &mut Self {
-        self.gas_used = gas_used;
-        self
-    }
-
     pub fn with_referee_hashes(
         &mut self, referee_hashes: Vec<H256>,
     ) -> &mut Self {
@@ -307,7 +294,6 @@ impl BlockHeaderBuilder {
             deferred_receipts_root: self.deferred_receipts_root,
             difficulty: self.difficulty,
             gas_limit: self.gas_limit,
-            gas_used: self.gas_used,
             referee_hashes: self.referee_hashes.clone(),
             nonce: self.nonce,
             hash: None,
@@ -331,9 +317,8 @@ impl Decodable for BlockHeader {
             deferred_receipts_root: r.val_at(6)?,
             difficulty: r.val_at(7)?,
             gas_limit: r.val_at(8)?,
-            gas_used: r.val_at(9)?,
-            referee_hashes: r.list_at(10)?,
-            nonce: r.val_at(11)?,
+            referee_hashes: r.list_at(9)?,
+            nonce: r.val_at(10)?,
             hash: keccak(r.as_raw()).into(),
         })
     }

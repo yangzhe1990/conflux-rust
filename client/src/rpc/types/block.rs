@@ -39,6 +39,8 @@ pub struct Block {
     pub author: H160,
     /// State root hash
     pub deferred_state_root: H256,
+    /// Receipts root hash
+    pub deferred_receipts_root: H256,
     /// Transactions root hash
     pub transactions_root: H256,
     /// Epoch number
@@ -76,6 +78,9 @@ impl Block {
             author: H160::from(b.block_header.author().clone()),
             deferred_state_root: H256::from(
                 b.block_header.deferred_state_root().clone(),
+            ),
+            deferred_receipts_root: H256::from(
+                b.block_header.deferred_receipts_root().clone(),
             ),
             transactions_root: H256::from(
                 b.block_header.transactions_root().clone(),

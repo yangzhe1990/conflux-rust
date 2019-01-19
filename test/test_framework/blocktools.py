@@ -15,7 +15,7 @@ HASH_MAX = 1 << 256
 
 
 def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, timestamp=0, difficulty=TEST_DIFFICULTY, transactions=[],
-                 gas_limit=0, gas_used=0, referee_hashes=[], author=default_config["GENESIS_COINBASE"], deferred_state_root=default_config["GENESIS_STATE_ROOT"]):
+                 gas_limit=0, referee_hashes=[], author=default_config["GENESIS_COINBASE"], deferred_state_root=default_config["GENESIS_STATE_ROOT"], deferred_receipts_root=default_config["GENESIS_RECEIPTS_ROOT"]):
     if len(transactions) != 0:
         # tx_root = utils.sha3(rlp.encode(Transactions(transactions)))
         tx_trie_tree = HexaryTrie(db={})
@@ -27,8 +27,8 @@ def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, times
     nonce = 0
     while True:
         header = BlockHeader(parent_hash=parent_hash, height=height, difficulty=difficulty, timestamp=timestamp,
-                             author=author, transactions_root=tx_root, gas_limit=gas_limit, gas_used=gas_used,
-                             referee_hashes=referee_hashes, nonce=nonce, deferred_state_root=deferred_state_root)
+                             author=author, transactions_root=tx_root, gas_limit=gas_limit,
+                             referee_hashes=referee_hashes, nonce=nonce, deferred_state_root=deferred_state_root, deferred_receipts_root=deferred_receipts_root)
         if header.pow_decimal() * difficulty < HASH_MAX:
             break
         nonce += 1
