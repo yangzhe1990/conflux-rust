@@ -2,6 +2,7 @@ use crate::{
     consensus::SharedConsensusGraph,
     db::COL_MISC,
     error::{BlockError, Error},
+    hash::KECCAK_NULL_RLP,
     pow::ProofOfWorkConfig,
     verification::*,
 };
@@ -31,6 +32,7 @@ pub struct BestInformation {
     pub current_difficulty: U256,
     pub terminal_block_hashes: Vec<H256>,
     pub deferred_state_root: H256,
+    pub deferred_receipts_root: H256,
 }
 
 pub struct SynchronizationGraphNode {
@@ -70,6 +72,7 @@ pub struct SynchronizationGraphInner {
     best_block_hash: H256,
     pub terminal_block_hashes: HashSet<H256>,
     pub deferred_state_root: H256,
+    pub deferred_receipts_root: H256,
 }
 
 impl SynchronizationGraphInner {
@@ -86,7 +89,8 @@ impl SynchronizationGraphInner {
             current_difficulty: pow_config.initial_difficulty.into(),
             best_block_hash: genesis_header.hash(),
             terminal_block_hashes: HashSet::new(),
-            deferred_state_root: H256::default(),
+            deferred_state_root: KECCAK_NULL_RLP,
+            deferred_receipts_root: KECCAK_NULL_RLP,
         };
         inner.deferred_state_root =
             genesis_header.deferred_state_root().clone();
@@ -863,11 +867,15 @@ impl SynchronizationGraph {
             } else if inner.new_to_be_block_graph_ready(index) {
                 inner.arena[index].graph_status = BLOCK_GRAPH_READY;
                 let h = inner.arena[index].block_header.hash();
-                let (new_best_hash, deferred_state_root) =
-                    self.consensus.on_new_block(&h, inner.deref_mut());
+                let (
+                    new_best_hash,
+                    deferred_state_root,
+                    deferred_receipts_root,
+                ) = self.consensus.on_new_block(&h, inner.deref_mut());
                 inner.adjust_difficulty(&new_best_hash);
                 inner.best_block_hash = new_best_hash;
                 inner.deferred_state_root = deferred_state_root;
+                inner.deferred_receipts_root = deferred_receipts_root;
 
                 for child in &inner.arena[index].children {
                     debug_assert!(
@@ -900,6 +908,7 @@ impl SynchronizationGraph {
             current_difficulty: inner.current_difficulty,
             terminal_block_hashes: inner.terminal_block_hashes(),
             deferred_state_root: inner.deferred_state_root.clone(),
+            deferred_receipts_root: inner.deferred_receipts_root.clone(),
         }
     }
 

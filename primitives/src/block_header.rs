@@ -21,6 +21,8 @@ pub struct BlockHeader {
     transactions_root: H256,
     /// Deferred state root.
     deferred_state_root: H256,
+    /// Deferred block receipts root.
+    deferred_receipts_root: H256,
     /// Block difficulty.
     difficulty: U256,
     /// Gas limit.
@@ -49,6 +51,7 @@ impl PartialEq for BlockHeader {
             && self.author == o.author
             && self.transactions_root == o.transactions_root
             && self.deferred_state_root == o.deferred_state_root
+            && self.deferred_receipts_root == o.deferred_receipts_root
             && self.difficulty == o.difficulty
             && self.gas_limit == o.gas_limit
             && self.gas_used == o.gas_used
@@ -65,6 +68,7 @@ impl Default for BlockHeader {
             author: Address::default(),
             transactions_root: KECCAK_NULL_RLP,
             deferred_state_root: KECCAK_NULL_RLP,
+            deferred_receipts_root: KECCAK_NULL_RLP,
             difficulty: U256::zero(),
             gas_limit: U256::zero(),
             gas_used: U256::zero(),
@@ -96,6 +100,11 @@ impl BlockHeader {
 
     /// Get the deferred state root field of the header.
     pub fn deferred_state_root(&self) -> &H256 { &self.deferred_state_root }
+
+    /// Get the deferred block receipts root field of the header.
+    pub fn deferred_receipts_root(&self) -> &H256 {
+        &self.deferred_receipts_root
+    }
 
     /// Get the difficulty field of the header.
     pub fn difficulty(&self) -> &U256 { &self.difficulty }
@@ -154,6 +163,7 @@ impl BlockHeader {
             .append(&self.author)
             .append(&self.transactions_root)
             .append(&self.deferred_state_root)
+            .append(&self.deferred_receipts_root)
             .append(&self.difficulty)
             .append(&self.gas_limit)
             .append(&self.gas_used)
@@ -170,6 +180,7 @@ impl BlockHeader {
             .append(&self.author)
             .append(&self.transactions_root)
             .append(&self.deferred_state_root)
+            .append(&self.deferred_receipts_root)
             .append(&self.difficulty)
             .append(&self.gas_limit)
             .append(&self.gas_used)
@@ -191,6 +202,7 @@ pub struct BlockHeaderBuilder {
     author: Address,
     transactions_root: H256,
     deferred_state_root: H256,
+    deferred_receipts_root: H256,
     difficulty: U256,
     gas_limit: U256,
     gas_used: U256,
@@ -207,6 +219,7 @@ impl BlockHeaderBuilder {
             author: Address::default(),
             transactions_root: KECCAK_NULL_RLP,
             deferred_state_root: KECCAK_NULL_RLP,
+            deferred_receipts_root: KECCAK_NULL_RLP,
             difficulty: U256::default(),
             gas_limit: U256::zero(),
             gas_used: U256::zero(),
@@ -249,6 +262,13 @@ impl BlockHeaderBuilder {
         self
     }
 
+    pub fn with_deferred_receipts_root(
+        &mut self, deferred_receipts_root: H256,
+    ) -> &mut Self {
+        self.deferred_receipts_root = deferred_receipts_root;
+        self
+    }
+
     pub fn with_difficulty(&mut self, difficulty: U256) -> &mut Self {
         self.difficulty = difficulty;
         self
@@ -284,6 +304,7 @@ impl BlockHeaderBuilder {
             author: self.author,
             transactions_root: self.transactions_root,
             deferred_state_root: self.deferred_state_root,
+            deferred_receipts_root: self.deferred_receipts_root,
             difficulty: self.difficulty,
             gas_limit: self.gas_limit,
             gas_used: self.gas_used,
@@ -307,11 +328,12 @@ impl Decodable for BlockHeader {
             author: r.val_at(3)?,
             transactions_root: r.val_at(4)?,
             deferred_state_root: r.val_at(5)?,
-            difficulty: r.val_at(6)?,
-            gas_limit: r.val_at(7)?,
-            gas_used: r.val_at(8)?,
-            referee_hashes: r.list_at(9)?,
-            nonce: r.val_at(10)?,
+            deferred_receipts_root: r.val_at(6)?,
+            difficulty: r.val_at(7)?,
+            gas_limit: r.val_at(8)?,
+            gas_used: r.val_at(9)?,
+            referee_hashes: r.list_at(10)?,
+            nonce: r.val_at(11)?,
             hash: keccak(r.as_raw()).into(),
         })
     }

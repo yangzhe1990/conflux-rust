@@ -149,7 +149,8 @@ impl BlockGenerator {
 
     fn assemble_new_block_impl(
         &self, parent_hash: H256, referee: Vec<H256>,
-        deferred_state_root: H256, num_txs: usize,
+        deferred_state_root: H256, deferred_receipts_root: H256,
+        num_txs: usize,
     ) -> Block
     {
         let parent_height =
@@ -173,6 +174,7 @@ impl BlockGenerator {
             .with_timestamp(0) //TODO: get timestamp
             .with_author(Address::default()) //TODO: get author
             .with_deferred_state_root(deferred_state_root) //TODO: get deferred state root
+            .with_deferred_receipts_root(deferred_receipts_root)
             .with_difficulty(self.pow_config.initial_difficulty.into()) //TODO: adjust difficulty
             .with_referee_hashes(referee) //TODO: get referee hashes
             .with_nonce(0) // TODO: gen nonce from pow
@@ -190,13 +192,17 @@ impl BlockGenerator {
     pub fn assemble_new_fixed_block(
         &self, parent_hash: H256, referee: Vec<H256>, num_txs: usize,
     ) -> Block {
-        self.assemble_new_block_impl(
-            parent_hash,
-            referee,
+        let (state_root, receipts_root) =
             self.graph.consensus.compute_deferred_state_for_block(
                 &parent_hash,
                 DEFERRED_STATE_EPOCH_COUNT as usize - 1,
-            ),
+            );
+
+        self.assemble_new_block_impl(
+            parent_hash,
+            referee,
+            state_root,
+            receipts_root,
             num_txs,
         )
     }
@@ -217,6 +223,7 @@ impl BlockGenerator {
             best_block_hash,
             referee,
             best_info.deferred_state_root,
+            best_info.deferred_receipts_root,
             num_txs,
         )
     }

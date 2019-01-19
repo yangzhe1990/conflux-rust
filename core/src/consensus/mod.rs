@@ -4,12 +4,14 @@ use crate::{
     db::{COL_BLOCKS, COL_BLOCK_RECEIPTS, COL_MISC},
     executive::{ExecutionError, Executive},
     ext_db::SystemDB,
+    hash::KECCAK_NULL_RLP,
     machine::new_byzantium_test_machine,
     state::{CleanupMode, State},
     statedb::StateDb,
     storage::{state::StateTrait, StorageManager, StorageManagerTrait},
     sync::SynchronizationGraphInner,
     transaction_pool::SharedTransactionPool,
+    triehash::ordered_trie_root,
     vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
 };
@@ -23,7 +25,7 @@ use primitives::{
     },
     Block, BlockHeader, SignedTransaction,
 };
-use rlp::{Rlp, RlpStream};
+use rlp::{Encodable, Rlp, RlpStream};
 use slab::Slab;
 use std::{
     cell::RefCell,
@@ -77,8 +79,10 @@ pub struct ConsensusGraphInner {
     pub pivot_chain: Vec<usize>,
     /// Track the block where the tx is successfully executed
     pub block_for_transaction: LruCache<H256, (bool, usize)>,
+    pub block_receipts_root: HashMap<H256, H256>,
     genesis_block_index: usize,
     genesis_block_state_root: H256,
+    genesis_block_receipts_root: H256,
     parental_terminals: HashSet<usize>,
     indices_in_epochs: HashMap<usize, Vec<usize>>,
     block_fees: HashMap<usize, U256>,
@@ -97,10 +101,15 @@ impl ConsensusGraphInner {
             indices: HashMap::new(),
             pivot_chain: Vec::new(),
             block_for_transaction: LruCache::new(10000),
+            block_receipts_root: HashMap::new(),
             genesis_block_index: NULL,
             genesis_block_state_root: genesis_block
                 .block_header
                 .deferred_state_root()
+                .clone(),
+            genesis_block_receipts_root: genesis_block
+                .block_header
+                .deferred_receipts_root()
                 .clone(),
             parental_terminals: HashSet::new(),
             indices_in_epochs: HashMap::new(),
@@ -115,6 +124,10 @@ impl ConsensusGraphInner {
             .epoch_number
             .borrow_mut() = 0;
         inner.pivot_chain.push(inner.genesis_block_index);
+        assert!(inner.genesis_block_receipts_root == KECCAK_NULL_RLP);
+        inner
+            .block_receipts_root
+            .insert(genesis_block.hash(), inner.genesis_block_receipts_root);
 
         inner
     }
@@ -492,6 +505,24 @@ impl ConsensusGraphInner {
         self.deferred_state_root(&self.pivot_chain).unwrap()
     }
 
+    pub fn deferred_receipts_root(&self, chain: &[usize]) -> Option<H256> {
+        let chain_len = chain.len();
+        let index = if chain_len < DEFERRED_STATE_EPOCH_COUNT as usize {
+            0
+        } else {
+            chain_len - DEFERRED_STATE_EPOCH_COUNT as usize
+        };
+
+        let root = self
+            .block_receipts_root
+            .get(&self.arena[chain[index]].hash)?;
+        Some(root.clone())
+    }
+
+    pub fn deferred_receipts_root_following_best_block(&self) -> H256 {
+        self.deferred_receipts_root(&self.pivot_chain).unwrap()
+    }
+
     pub fn get_block_for_tx_execution(
         &self, tx_hash: &H256,
     ) -> Option<(bool, H256)> {
@@ -616,8 +647,10 @@ impl ConsensusGraph {
     }
 
     pub fn insert_block_receipts_to_kv(
-        &self, hash: H256, block_receipts: Arc<Vec<Receipt>>, persistent: bool,
-    ) {
+        &self, block_receipts_root: &mut HashMap<H256, H256>, hash: H256,
+        block_receipts: Arc<Vec<Receipt>>, persistent: bool,
+    )
+    {
         if persistent {
             let mut dbops = self.db.key_value().transaction();
             let mut rlp_stream = RlpStream::new();
@@ -626,6 +659,10 @@ impl ConsensusGraph {
             self.db.key_value().write_buffered(dbops);
         }
 
+        block_receipts_root.insert(
+            hash,
+            ordered_trie_root(block_receipts.iter().map(|r| r.rlp_bytes())),
+        );
         self.block_receipts.write().insert(hash, block_receipts);
         self.cache_man
             .lock()
@@ -717,6 +754,7 @@ impl ConsensusGraph {
 
     fn process_epoch_transactions(
         &self, state: &mut State, arena: &Slab<ConsensusGraphNode>,
+        block_receipts_root: &mut HashMap<H256, H256>,
         epoch_blocks: &Vec<usize>, block_fees: &mut HashMap<usize, U256>,
         mut block_for_transaction: Option<&mut LruCache<H256, (bool, usize)>>,
         re_pending: bool, to_pending: &mut Vec<Arc<SignedTransaction>>,
@@ -804,6 +842,7 @@ impl ConsensusGraph {
             }
 
             self.insert_block_receipts_to_kv(
+                block_receipts_root,
                 block.hash(),
                 Arc::new(receipts),
                 true,
@@ -821,16 +860,21 @@ impl ConsensusGraph {
     /// This is a very expensive call to force the engine to recompute the state
     /// root of a given block
     pub fn compute_state_for_block(
-        &self, block_hash: &H256, inner: &ConsensusGraphInner,
-    ) -> H256 {
+        &self, block_hash: &H256, inner: &mut ConsensusGraphInner,
+    ) -> (H256, H256) {
         // If we already computed the state of the block before, we should not
         // do it again FIXME: propagate the error up
         let cached_state = inner
             .storage_manager
             .get_state_at(block_hash.clone())
             .unwrap();
-        if cached_state.does_exist() {
-            return cached_state.get_state_root().unwrap().unwrap();
+        if cached_state.does_exist()
+            && inner.block_receipts_root.contains_key(block_hash)
+        {
+            return (
+                cached_state.get_state_root().unwrap().unwrap(),
+                inner.block_receipts_root.get(&block_hash).unwrap().clone(),
+            );
         }
         // FIXME: propagate the error up
         let me: usize = inner.indices.get(block_hash).unwrap().clone();
@@ -949,6 +993,7 @@ impl ConsensusGraph {
             self.process_epoch_transactions(
                 &mut state,
                 &inner.arena,
+                &mut inner.block_receipts_root,
                 reversed_indices,
                 &mut block_fees,
                 None,
@@ -1019,6 +1064,7 @@ impl ConsensusGraph {
             self.process_epoch_transactions(
                 &mut state,
                 &inner.arena,
+                &mut inner.block_receipts_root,
                 reversed_indices,
                 &mut block_fees,
                 None,
@@ -1076,19 +1122,27 @@ impl ConsensusGraph {
         }
 
         // FIXME: Propagate errors upward
-        inner
+        let state_root = inner
             .storage_manager
             .get_state_at(inner.arena[me].hash)
             .unwrap()
             .get_state_root()
             .unwrap()
+            .unwrap();
+
+        let receipts_root = inner
+            .block_receipts_root
+            .get(&inner.arena[me].hash)
             .unwrap()
+            .clone();
+
+        (state_root, receipts_root)
     }
 
     pub fn compute_deferred_state_for_block(
         &self, block_hash: &H256, delay: usize,
-    ) -> H256 {
-        let inner = &*self.inner.read();
+    ) -> (H256, H256) {
+        let inner = &mut *self.inner.write();
 
         // FIXME: Propagate errors upward
         let mut idx = inner.indices.get(block_hash).unwrap().clone();
@@ -1098,11 +1152,12 @@ impl ConsensusGraph {
             }
             idx = inner.arena[idx].parent;
         }
-        self.compute_state_for_block(&inner.arena[idx].hash, inner)
+        let hash = inner.arena[idx].hash;
+        self.compute_state_for_block(&hash, inner)
     }
 
     fn check_block_full_validity(
-        &self, new: usize, block: &Block, inner: &ConsensusGraphInner,
+        &self, new: usize, block: &Block, inner: &mut ConsensusGraphInner,
         sync_graph: &mut SynchronizationGraphInner,
     ) -> bool
     {
@@ -1132,6 +1187,8 @@ impl ConsensusGraph {
             if block.block_header.height() < DEFERRED_STATE_EPOCH_COUNT {
                 *block.block_header.deferred_state_root()
                     == inner.genesis_block_state_root
+                    && *block.block_header.deferred_receipts_root()
+                        == inner.genesis_block_receipts_root
             } else {
                 let mut deferred = new;
                 for _ in 0..DEFERRED_STATE_EPOCH_COUNT {
@@ -1145,6 +1202,9 @@ impl ConsensusGraph {
                 if inner
                     .storage_manager
                     .contains_state(inner.arena[deferred].hash)
+                    && inner
+                        .block_receipts_root
+                        .contains_key(&inner.arena[deferred].hash)
                 {
                     *block.block_header.deferred_state_root()
                         == inner
@@ -1154,13 +1214,20 @@ impl ConsensusGraph {
                             .get_state_root()
                             .unwrap()
                             .unwrap()
+                        && *block.block_header.deferred_receipts_root()
+                            == inner
+                                .block_receipts_root
+                                .get(&inner.arena[deferred].hash)
+                                .unwrap()
+                                .clone()
                 } else {
                     // Call the expensive function to check this state root
-                    *block.block_header.deferred_state_root()
-                        == self.compute_state_for_block(
-                            &inner.arena[deferred].hash,
-                            inner,
-                        )
+                    let deferred_hash = inner.arena[deferred].hash;
+                    let (state_root, receipts_root) =
+                        self.compute_state_for_block(&deferred_hash, inner);
+                    *block.block_header.deferred_state_root() == state_root
+                        && *block.block_header.deferred_receipts_root()
+                            == receipts_root
                 }
             };
 
@@ -1253,7 +1320,7 @@ impl ConsensusGraph {
 
     pub fn on_new_block(
         &self, hash: &H256, sync_graph: &mut SynchronizationGraphInner,
-    ) -> (H256, H256) {
+    ) -> (H256, H256, H256) {
         let block = self.block_by_hash(hash).unwrap();
 
         info!(
@@ -1282,9 +1349,11 @@ impl ConsensusGraph {
         );
         if !fully_valid {
             inner.arena[new].data.partial_invalid = true;
+            let best_hash = inner.best_block_hash();
             return (
-                inner.best_block_hash(),
+                best_hash,
                 inner.deferred_state_root_following_best_block(),
+                inner.deferred_receipts_root_following_best_block(),
             );
         }
         debug!("Block {} is fully valid", inner.arena[new].hash);
@@ -1449,6 +1518,7 @@ impl ConsensusGraph {
             self.process_epoch_transactions(
                 &mut state,
                 &inner.arena,
+                &mut inner.block_receipts_root,
                 reversed_indices,
                 &mut inner.block_fees,
                 Some(&mut inner.block_for_transaction),
@@ -1507,9 +1577,11 @@ impl ConsensusGraph {
         }
 
         inner.pivot_chain = new_pivot_chain;
+        let best_hash = inner.best_block_hash();
         (
-            inner.best_block_hash(),
+            best_hash,
             inner.deferred_state_root_following_best_block(),
+            inner.deferred_receipts_root_following_best_block(),
         )
     }
 
