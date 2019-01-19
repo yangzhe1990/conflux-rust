@@ -15,7 +15,7 @@ use super::{
         super::super::db::COL_DELTA_TRIE, errors::*,
         state_manager::AtomicCommitTransaction,
     },
-    cache::algorithm::lfru::LFRUHandle,
+    cache::algorithm::lru::LRUHandle,
     guarded_value::*,
     maybe_in_place_byte_array::MaybeInPlaceByteArray,
     merkle::*,
@@ -103,7 +103,7 @@ pub struct TrieNode {
     /// The merkle hash without the compressed path.
     pub merkle_hash: MerkleHash,
 
-    pub cache_algo_data: LFRUHandle<LFRUPosT>,
+    pub cache_algo_data: LRUHandle<LRUPosT>,
 }
 
 /// Compiler is not sure about the pointer in MaybeInPlaceByteArray fields.

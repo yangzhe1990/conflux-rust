@@ -1,7 +1,7 @@
 use super::{
     super::{super::super::db::COL_DELTA_TRIE, errors::*},
     cache::algorithm::{
-        lfru::{LFRUHandle, LFRU},
+        lru::{LRUHandle, LRU},
         CacheAccessResult, CacheAlgorithm, CacheIndexTrait, CacheStoreUtil,
     },
     data_structure::*,
@@ -14,14 +14,14 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rlp::*;
 use std::sync::Arc;
 
-pub type LFRUPosT = u32;
+pub type LRUPosT = u32;
 
 pub type ActualSlabIndex = u32;
 type Allocator = Slab<TrieNode, TrieNodeSlabEntry>;
 pub type AllocatorRef<'a> = RwLockReadGuard<'a, Allocator>;
 pub type AllocatorRefRef<'a> = &'a AllocatorRef<'a>;
 
-pub type CacheAlgorithmDeltaMpt = LFRU<LFRUPosT, DeltaMptDbKey>;
+pub type CacheAlgorithmDeltaMpt = LRU<LRUPosT, DeltaMptDbKey>;
 
 pub type CacheManagerMut<'a> = RwLockWriteGuard<'a, CacheManager>;
 
@@ -74,7 +74,7 @@ pub struct CacheManager {
     /// The NodeRef / MaybeNodeRef also covers dirty nodes, but NodeRefMap
     /// covers only commited nodes.
     node_ref_map: NodeRefMapDeltaMpt,
-    lfru_cache_algorithm: CacheAlgorithmDeltaMpt,
+    lru_cache_algorithm: CacheAlgorithmDeltaMpt,
 }
 
 pub struct NodeMemoryManager {
@@ -142,9 +142,10 @@ impl NodeMemoryManager {
             allocator: RwLock::new(Slab::with_capacity(start_size as usize)),
             cache: RwLock::new(CacheManager {
                 node_ref_map: NodeRefMapDeltaMpt::new(start_size as usize),
-                lfru_cache_algorithm: LFRU::<u32, DeltaMptDbKey>::new(
+                lru_cache_algorithm: LRU::<u32, DeltaMptDbKey>::new(
                     cache_size,
-                    (cache_size as f64 * lfru_factor) as u32,
+                    // TODO(yz): add back when LFRU is finally ready.
+                    //(cache_size as f64 * lfru_factor) as u32,
                 ),
             }),
             db: kvdb,
@@ -207,7 +208,7 @@ impl NodeMemoryManager {
             db_key,
             slot,
             &self,
-            &mut cache_mut.lfru_cache_algorithm,
+            &mut cache_mut.lru_cache_algorithm,
         );
 
         Ok(slot)
@@ -259,7 +260,7 @@ impl NodeMemoryManager {
             let mut cache_store_util =
                 NodeCacheUtil::new(self, &cache_mut.node_ref_map);
             cache_access_result = cache_mut
-                .lfru_cache_algorithm
+                .lru_cache_algorithm
                 .access(db_key, &mut cache_store_util);
         }
         match cache_access_result {
@@ -412,7 +413,7 @@ impl<'a> NodeCacheUtil<'a> {
 }
 
 impl<'a> CacheStoreUtil for NodeCacheUtil<'a> {
-    type CacheAlgoData = LFRUHandle<LFRUPosT>;
+    type CacheAlgoData = LRUHandle<LRUPosT>;
     type ElementIndex = DeltaMptDbKey;
 
     fn get(&self, db_key: DeltaMptDbKey) -> Self::CacheAlgoData {
@@ -452,7 +453,7 @@ impl CacheManager {
             db_key,
             slot,
             node_memory_manager,
-            &mut self.lfru_cache_algorithm,
+            &mut self.lru_cache_algorithm,
         );
     }
 }
