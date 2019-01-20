@@ -138,6 +138,7 @@ mod tests {
             height: U256::default(),
             author: H160::default(),
             deferred_state_root: H256::default(),
+            deferred_receipts_root: H256::default(),
             transactions_root: H256::default(),
             number: Some(0),
             gas_used: U256::default(),
