@@ -116,7 +116,7 @@ impl Block {
 #[cfg(test)]
 mod tests {
     use super::{Block, BlockTransactions};
-    use crate::rpc::types::{Transaction, H160, H256, H64, U256};
+    use crate::rpc::types::{Transaction, H160, H256, U256};
     use serde_json;
 
     #[test]
@@ -153,6 +153,6 @@ mod tests {
         };
         let serialized_block = serde_json::to_string(&block).unwrap();
 
-        assert_eq!(serialized_block, "{\"hash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"height\":\"0x0\",\"author\":\"0x0000000000000000000000000000000000000000\",\"deferredStateRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"transactionsRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"number\":0,\"gasUsed\":\"0x0\",\"gasLimit\":\"0x0\",\"timestamp\":\"0x0\",\"difficulty\":\"0x0\",\"totalDifficulty\":\"0x0\",\"refereeHashes\":[],\"nonce\":0,\"transactions\":[],\"size\":\"0x45\"}");
+        assert_eq!(serialized_block, "{\"hash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"height\":\"0x0\",\"author\":\"0x0000000000000000000000000000000000000000\",\"deferredStateRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"deferredReceiptsRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"transactionsRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"number\":0,\"gasUsed\":\"0x0\",\"gasLimit\":\"0x0\",\"timestamp\":\"0x0\",\"difficulty\":\"0x0\",\"totalDifficulty\":\"0x0\",\"refereeHashes\":[],\"nonce\":0,\"transactions\":[],\"size\":\"0x45\"}");
     }
 }

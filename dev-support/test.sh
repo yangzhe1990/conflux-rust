@@ -1,6 +1,13 @@
 #!/bin/bash
 
-ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. && pwd )"
+SCRIPT_DIR=`dirname "${BASH_SOURCE[0]}"`
+echo "Checking dependent python3 modules ..."
+source $SCRIPT_DIR/dep_pip3.sh
+
+ROOT_DIR="$( cd $SCRIPT_DIR/.. && pwd )"
+
+export CARGO_TARGET_DIR=$ROOT_DIR/build
+export RUSTFLAGS="-D warnings"
 
 function check_build {
     local -n test_reuslt=$1
@@ -9,7 +16,7 @@ function check_build {
     pushd $ROOT_DIR > /dev/null
 
     local result
-    result=`CARGO_TARGET_DIR=$ROOT_DIR/build RUSTFLAGS="-D warnings" cargo build -v`
+    result=`cargo build -v`
     local exit_code=$?
 
     popd > /dev/null
@@ -27,7 +34,7 @@ function check_client_tests {
 
     pushd $ROOT_DIR/client > /dev/null
     local result
-    result=`CARGO_TARGET_DIR=$ROOT_DIR/build cargo test`
+    result=`cargo test`
     local exit_code=$?
     popd > /dev/null
 
@@ -42,7 +49,7 @@ function check_core_tests {
 
     pushd $ROOT_DIR/core > /dev/null
     local result
-    result=`CARGO_TARGET_DIR=$ROOT_DIR/build cargo test`
+    result=`cargo test`
     local exit_code=$?
     popd > /dev/null
 
@@ -59,7 +66,7 @@ function check_integration_tests {
     local result
     result=$(
         # Make symbolic link for conflux binary to where integration test assumes its existence.
-        rm -f target; ln -s build/x86_64-unknown-linux-gnu/ target
+        rm -f target; ln -s build target
         ./test/test_all.py
     )
     local exit_code=$?
