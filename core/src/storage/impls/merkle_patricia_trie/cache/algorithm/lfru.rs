@@ -156,9 +156,9 @@ impl<
         }
     }
 
-    fn get_key_for_comparison<'v>(
-        &self, value: &'v LFRUMetadata<PosT, CacheIndexT>,
-    ) -> &'v Self::KeyType {
+    fn get_key_for_comparison<'x>(
+        &'x self, value: &'x LFRUMetadata<PosT, CacheIndexT>,
+    ) -> &Self::KeyType {
         &value.frequency
     }
 }

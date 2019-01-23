@@ -10,30 +10,13 @@ impl<PosT: PrimitiveNum> HeapHandle<PosT> {
     pub const NULL_POS: i32 = -1;
 
     pub fn get_pos(&self) -> PosT { self.pos }
-}
-
-pub trait ValueWithHeapHandle<PosT: PrimitiveNum> {
-    type KeyType;
-
-    fn get_handle_mut(&mut self) -> &mut HeapHandle<PosT>;
 
     // Update heap handle for value being moved in heap.
-    fn set_heap_handle(&mut self, pos: PosT) {
-        self.get_handle_mut().set_heap_handle(pos);
+    pub fn set_heap_handle(&mut self, pos: PosT) { self.pos = pos; }
+
+    pub fn set_heap_removed(&mut self) {
+        self.pos = PosT::from(Self::NULL_POS);
     }
-
-    fn set_heap_removed(&mut self) { self.get_handle_mut().set_heap_removed(); }
-}
-
-impl<PosT: PrimitiveNum> ValueWithHeapHandle<PosT> for HeapHandle<PosT> {
-    type KeyType = ();
-
-    fn get_handle_mut(&mut self) -> &mut HeapHandle<PosT> { self }
-
-    // Update heap handle for value being moved in heap.
-    fn set_heap_handle(&mut self, pos: PosT) { self.pos = pos; }
-
-    fn set_heap_removed(&mut self) { self.pos = PosT::from(Self::NULL_POS); }
 }
 
 impl<PosT: PrimitiveNum> Default for HeapHandle<PosT> {
@@ -42,6 +25,41 @@ impl<PosT: PrimitiveNum> Default for HeapHandle<PosT> {
             pos: PosT::from(Self::NULL_POS),
         }
     }
+}
+
+pub struct TrivialValueWithHeapHandle<ValueType, PosT: PrimitiveNum> {
+    pub value: ValueType,
+    handle: HeapHandle<PosT>,
+}
+
+impl<ValueType, PosT: PrimitiveNum>
+    TrivialValueWithHeapHandle<ValueType, PosT>
+{
+    pub fn new(value: ValueType) -> Self {
+        Self {
+            value: value,
+            handle: unsafe { mem::uninitialized() },
+        }
+    }
+
+    pub fn get_handle_mut(&mut self) -> &mut HeapHandle<PosT> {
+        &mut self.handle
+    }
+
+    // Update heap handle for value being moved in heap.
+    pub fn set_heap_handle(&mut self, pos: PosT) {
+        self.get_handle_mut().set_heap_handle(pos);
+    }
+
+    pub fn set_heap_removed(&mut self) {
+        self.get_handle_mut().set_heap_removed();
+    }
+}
+
+impl<ValueType, PosT: PrimitiveNum> AsRef<ValueType>
+    for TrivialValueWithHeapHandle<ValueType, PosT>
+{
+    fn as_ref(&self) -> &ValueType { &self.value }
 }
 
 /// The value util should only be passed for each action. The problem of holding
@@ -59,80 +77,24 @@ pub trait HeapValueUtil<ValueType, PosT: PrimitiveNum> {
     fn set_heap_handle_final(&mut self, value: &mut ValueType, pos: PosT);
     fn set_heap_removed(&mut self, value: &mut ValueType);
 
-    fn get_key_for_comparison<'v>(
-        &self, value: &'v ValueType,
-    ) -> &'v Self::KeyType;
+    fn get_key_for_comparison<'a>(
+        &'a self, value: &'a ValueType,
+    ) -> &Self::KeyType;
 }
 
-pub struct TrivialValueWithHeapHandle<ValueType, PosT: PrimitiveNum> {
-    pub value: ValueType,
-    handle: HeapHandle<PosT>,
-}
-
-pub struct TrivialHeapValueUtil<
-    ValueType: ValueWithHeapHandle<PosT>,
-    PosT: PrimitiveNum,
-> where ValueType::KeyType: Ord + Clone
-{
+/// A demo of heap value util for heap which directly maintains value where the
+/// handle is stored together.
+///
+/// Do not use this heap value util in real application.
+pub struct TrivialHeapValueUtil<ValueType: Ord + Clone, PosT: PrimitiveNum> {
     __marker_pos_t: PhantomData<PosT>,
     __marker_value_type: PhantomData<ValueType>,
 }
 
-impl<ValueType, PosT: PrimitiveNum>
-    TrivialValueWithHeapHandle<ValueType, PosT>
-{
-    pub fn new(value: ValueType) -> Self {
-        Self {
-            value: value,
-            handle: unsafe { mem::uninitialized() },
-        }
-    }
-}
-
-impl<ValueType: PartialEq, PosT: PrimitiveNum> PartialEq
-    for TrivialValueWithHeapHandle<ValueType, PosT>
-{
-    fn eq(&self, other: &Self) -> bool { self.value.eq(&other.value) }
-}
-
-impl<ValueType: Eq, PosT: PrimitiveNum> Eq
-    for TrivialValueWithHeapHandle<ValueType, PosT>
-{
-}
-
-impl<ValueType: PartialOrd, PosT: PrimitiveNum> PartialOrd
-    for TrivialValueWithHeapHandle<ValueType, PosT>
-{
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.value.partial_cmp(&other.value)
-    }
-}
-
-impl<ValueType: Ord, PosT: PrimitiveNum> Ord
-    for TrivialValueWithHeapHandle<ValueType, PosT>
-{
-    fn cmp(&self, other: &Self) -> Ordering { self.value.cmp(&other.value) }
-}
-
-impl<ValueType, PosT: PrimitiveNum> ValueWithHeapHandle<PosT>
-    for TrivialValueWithHeapHandle<ValueType, PosT>
-{
-    type KeyType = ValueType;
-
-    fn get_handle_mut(&mut self) -> &mut HeapHandle<PosT> { &mut self.handle }
-}
-
-impl<ValueType, PosT: PrimitiveNum> AsRef<ValueType>
-    for TrivialValueWithHeapHandle<ValueType, PosT>
-{
-    fn as_ref(&self) -> &ValueType { &self.value }
-}
-
 // Derive doesn't work because it unreasonably requires that ValueType is
 // default.
-impl<PosT: PrimitiveNum, ValueType: ValueWithHeapHandle<PosT>> Default
+impl<PosT: PrimitiveNum, ValueType: Ord + Clone> Default
     for TrivialHeapValueUtil<ValueType, PosT>
-where ValueType::KeyType: Ord + Clone
 {
     fn default() -> Self {
         Self {
@@ -142,27 +104,37 @@ where ValueType::KeyType: Ord + Clone
     }
 }
 
-impl<
-        PosT: PrimitiveNum,
-        KeyType: Ord + Clone,
-        ValueType: ValueWithHeapHandle<PosT, KeyType = KeyType> + AsRef<KeyType>,
-    > HeapValueUtil<ValueType, PosT> for TrivialHeapValueUtil<ValueType, PosT>
+impl<PosT: PrimitiveNum, ValueType: Ord + Clone>
+    HeapValueUtil<TrivialValueWithHeapHandle<ValueType, PosT>, PosT>
+    for TrivialHeapValueUtil<ValueType, PosT>
 {
-    type KeyType = KeyType;
+    type KeyType = ValueType;
 
-    fn set_heap_handle(&mut self, value: &mut ValueType, pos: PosT) {
+    fn set_heap_handle(
+        &mut self, value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
+        pos: PosT,
+    )
+    {
         value.set_heap_handle(pos);
     }
 
-    fn set_heap_handle_final(&mut self, value: &mut ValueType, pos: PosT) {
+    fn set_heap_handle_final(
+        &mut self, value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
+        pos: PosT,
+    )
+    {
         value.set_heap_handle(pos);
     }
 
-    fn set_heap_removed(&mut self, value: &mut ValueType) {
+    fn set_heap_removed(
+        &mut self, value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
+    ) {
         value.set_heap_removed();
     }
 
-    fn get_key_for_comparison<'v>(&self, value: &'v ValueType) -> &'v KeyType {
+    fn get_key_for_comparison<'a>(
+        &'a self, value: &'a TrivialValueWithHeapHandle<ValueType, PosT>,
+    ) -> &ValueType {
         value.as_ref()
     }
 }
@@ -521,6 +493,8 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     }
 
     /// Unsafe because the emptiness is unchecked.
+    /// Please note that the value_util.set_heap_removed isn't called from this
+    /// method. Please call outside this method when necessary.
     pub unsafe fn replace_head_unchecked_with_hole<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
@@ -550,8 +524,10 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         let hole =
             Hole::new_from_value_ptr_read(self.array.as_mut_ptr(), value);
 
-        self.replace_head_unchecked_with_hole(hole, value, value_util);
+        // The value may be in-place updated so set_heap_removed must be called
+        // before set_heap_handle is called from Hole.
         value_util.set_heap_removed(value);
+        self.replace_head_unchecked_with_hole(hole, value, value_util);
     }
 
     pub fn pop_head<ValueUtilT: HeapValueUtil<ValueType, PosT>>(
@@ -589,6 +565,10 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
                         self.get_unchecked_mut(last_element_pos),
                         1,
                     );
+                    value_util.set_heap_handle(
+                        self.get_unchecked_mut(last_element_pos),
+                        last_element_pos,
+                    );
                 }
                 self.array.set_len(new_len);
 
@@ -599,16 +579,18 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     }
 
     /// Unsafe because pos is unchecked, and because of using of hole.
+    /// Please note that the value_util.set_heap_removed isn't called from this
+    /// method. Please call outside this method when necessary.
     pub unsafe fn replace_at_unchecked_with_hole<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self, pos: PosT, hole: Hole<ValueType>, replaced: &mut ValueType,
+        &mut self, pos: PosT, hole: Hole<ValueType>, replaced: *mut ValueType,
         value_util: &mut ValueUtilT,
     )
     {
         ptr::copy_nonoverlapping(self.get_unchecked_mut(pos), replaced, 1);
 
-        if value_util.get_key_for_comparison(replaced)
+        if value_util.get_key_for_comparison(self.get_unchecked_mut(pos))
             < value_util.get_key_for_comparison(&hole.value)
         {
             self.sift_down_with_hole(pos, hole, value_util);
@@ -625,11 +607,45 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         value_util: &mut ValueUtilT,
     )
     {
-        let hole =
-            Hole::new_from_value_ptr_read(self.get_unchecked_mut(pos), value);
+        let hole = {
+            let replaced = self.get_unchecked_mut(pos);
+            let hole = Hole::new_from_value_ptr_read(replaced, value);
 
+            // The value may be in-place updated so set_heap_removed must be
+            // called before set_heap_handle is called from Hole.
+            value_util.set_heap_removed(replaced);
+
+            hole
+        };
         self.replace_at_unchecked_with_hole(pos, hole, value, value_util);
-        value_util.set_heap_removed(value);
+    }
+
+    /// Unsafe because the pos is unchecked.
+    pub unsafe fn move_out_from_heap_at_unchecked<
+        ValueUtilT: HeapValueUtil<ValueType, PosT>,
+    >(
+        &mut self, pos: PosT, value_util: &mut ValueUtilT,
+    ) {
+        self.heap_size -= PosT::from(1);
+        let heap_last_pos = self.heap_size;
+        if pos < heap_last_pos {
+            let hole = Hole::new_from_value_ptr_read(
+                self.get_unchecked_mut(pos),
+                self.get_unchecked_mut(heap_last_pos),
+            );
+            let ptr_heap_last_element =
+                self.get_unchecked_mut(heap_last_pos) as *mut ValueType;
+            self.replace_at_unchecked_with_hole(
+                pos,
+                hole,
+                ptr_heap_last_element,
+                value_util,
+            );
+            value_util.set_heap_handle(
+                self.get_unchecked_mut(heap_last_pos),
+                heap_last_pos,
+            );
+        }
     }
 
     /// Unsafe because the pos is unchecked.
@@ -643,7 +659,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
             self.heap_size -= PosT::from(1);
             let last_element_pos = self.heap_size;
             let hole = Hole::new_from_value_ptr_read(
-                self.get_unchecked_mut(PosT::from(0)),
+                self.get_unchecked_mut(pos),
                 self.get_unchecked_mut(last_element_pos),
             );
 
@@ -666,6 +682,8 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
                 self.get_unchecked_mut(hole_pos),
                 1,
             );
+            value_util
+                .set_heap_handle(self.get_unchecked_mut(hole_pos), hole_pos);
         }
         self.array.set_len(new_len);
 
@@ -784,4 +802,29 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
             }
         }
     }
+}
+
+impl<ValueType: PartialEq, PosT: PrimitiveNum> PartialEq
+    for TrivialValueWithHeapHandle<ValueType, PosT>
+{
+    fn eq(&self, other: &Self) -> bool { self.value.eq(&other.value) }
+}
+
+impl<ValueType: Eq, PosT: PrimitiveNum> Eq
+    for TrivialValueWithHeapHandle<ValueType, PosT>
+{
+}
+
+impl<ValueType: PartialOrd, PosT: PrimitiveNum> PartialOrd
+    for TrivialValueWithHeapHandle<ValueType, PosT>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.value.partial_cmp(&other.value)
+    }
+}
+
+impl<ValueType: Ord, PosT: PrimitiveNum> Ord
+    for TrivialValueWithHeapHandle<ValueType, PosT>
+{
+    fn cmp(&self, other: &Self) -> Ordering { self.value.cmp(&other.value) }
 }
