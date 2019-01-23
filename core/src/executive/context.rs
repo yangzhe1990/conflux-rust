@@ -260,8 +260,20 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
         }
     }
 
-    fn log(&mut self, _topics: Vec<H256>, _data: &[u8]) -> vm::Result<()> {
-        // TODO
+    fn log(&mut self, topics: Vec<H256>, data: &[u8]) -> vm::Result<()> {
+        use primitives::log_entry::LogEntry;
+
+        if self.static_flag {
+            return Err(vm::Error::MutableCallInStaticContext);
+        }
+
+        let address = self.origin.address.clone();
+        self.substate.logs.push(LogEntry {
+            address: address,
+            topics: topics,
+            data: data.to_vec(),
+        });
+
         Ok(())
     }
 
