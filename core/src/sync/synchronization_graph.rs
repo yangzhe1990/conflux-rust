@@ -451,7 +451,7 @@ impl SynchronizationGraphInner {
 
 pub struct SynchronizationGraph {
     pub inner: RwLock<SynchronizationGraphInner>,
-    pub block_headers: RwLock<HashMap<H256, Arc<BlockHeader>>>,
+    pub block_headers: Arc<RwLock<HashMap<H256, Arc<BlockHeader>>>>,
     pub compact_blocks: RwLock<HashMap<H256, CompactBlock>>,
     pub blocks: Arc<RwLock<HashMap<H256, Arc<Block>>>>,
     genesis_block_hash: H256,
@@ -468,21 +468,21 @@ impl SynchronizationGraph {
         verification_config: VerificationConfig,
     ) -> Self
     {
-        let genesis_block = consensus.genesis_block();
-        let genesis_block_hash = genesis_block.hash();
-
-        let mut block_headers = HashMap::new();
-        let genesis_header = Arc::new(genesis_block.block_header.clone());
-        block_headers.insert(genesis_block_hash, genesis_header.clone());
-
+        let genesis_block_hash = consensus.genesis_block().hash();
+        let genesis_block_header = consensus
+            .block_headers
+            .read()
+            .get(&genesis_block_hash)
+            .expect("genesis exists")
+            .clone();
         let mut sync_graph = SynchronizationGraph {
             inner: RwLock::new(SynchronizationGraphInner::with_genesis_block(
-                genesis_header,
+                genesis_block_header,
                 pow_config,
             )),
-            block_headers: RwLock::new(block_headers),
             compact_blocks: RwLock::new(HashMap::new()),
             blocks: consensus.blocks.clone(),
+            block_headers: consensus.block_headers.clone(),
             genesis_block_hash,
             initial_missed_block_hashes: Mutex::new(HashSet::new()),
             consensus,
@@ -499,7 +499,7 @@ impl SynchronizationGraph {
             {
                 Some(terminals) => {
                     let rlp = Rlp::new(&terminals);
-                    rlp.list_at::<H256>(0).expect("Failed to decode terminals!")
+                    rlp.as_list::<H256>().expect("Failed to decode terminals!")
                 }
                 None => {
                     return;
@@ -545,7 +545,9 @@ impl SynchronizationGraph {
     }
 
     pub fn block_header_by_hash(&self, hash: &H256) -> Option<BlockHeader> {
-        self.consensus.block_header_by_hash(hash)
+        self.consensus
+            .block_header_by_hash(hash)
+            .map(|header| (*header).clone())
     }
 
     pub fn block_height_by_hash(&self, hash: &H256) -> Option<u64> {
@@ -897,6 +899,10 @@ impl SynchronizationGraph {
 
         // Post-processing invalid blocks.
         self.process_invalid_blocks(inner.deref_mut(), &invalid_set);
+        if self.consensus.db.key_value().flush().is_err() {
+            warn!("db error when flushing block data");
+            insert_success = false;
+        }
 
         (insert_success, need_to_relay)
     }

@@ -13,6 +13,7 @@ rlp_derive = { path = "../util/rlp_derive" }
 ethcore-bytes = { path = "../util/bytes" }
 unexpected = { path = "../util/unexpected" }
 heapsize = "0.4"
+log = "0.3"
 lru = "0.1"
 byteorder = "1.2.7"
 rand = "0.5"

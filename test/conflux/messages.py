@@ -37,10 +37,14 @@ GET_BLOCKS_RESPONSE = 0x0d
 GET_BLOCK_BODIES_RESPONSE = 0x08
 GET_BLOCK_HASHES_RESPONSE = 0x04
 GET_BLOCK_HEADERS_RESPONSE = 0x06
+GET_BLOCK_TXN_RESPONSE = 0x12
 GET_BLOCKS = 0x0c
 GET_BLOCK_BODIES = 0x07
 GET_BLOCK_HASHES = 0x03
 GET_BLOCK_HEADERS = 0x05
+GET_BLOCK_TXN = 0x11
+GET_CMPCT_BLOCKS = 0x0e
+GET_CMPCT_BLOCKS_RESPONSE = 0x10
 GET_TERMINAL_BLOCK_HASHES = 0x0b
 NEW_BLOCK = 0x09
 NEW_BLOCK_HASHES = 0x01
@@ -324,6 +328,44 @@ class Blocks(rlp.Serializable):
     ]
 
 
+class GetCompactBlocks(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("hashes", CountableList(hash32)),
+    ]
+
+
+class CompactBlock(rlp.Serializable):
+    fields = [
+        ("block_header", BlockHeader),
+        ("nonce", big_endian_int),
+        ("tx_short_ids", CountableList(big_endian_int)),
+    ]
+
+
+class GetCompactBlocksResponse(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("blocks", CountableList(CompactBlock))
+    ]
+
+
+class GetBlockTxn(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("block_hash", hash32),
+        ("indexes", CountableList(big_endian_int)),
+    ]
+
+
+class GetBlockTxnResponse(rlp.Serializable):
+    fields = [
+        ("reqid", big_endian_int),
+        ("block_hash", hash32),
+        ("block_txn", CountableList(Transaction))
+    ]
+
+
 class Account(rlp.Serializable):
     fields = [
         ("balance", big_endian_int),
@@ -347,7 +389,11 @@ msg_id_dict = {
     TerminalBlockHashes: GET_TERMINAL_BLOCK_HASHES_RESPONSE,
     GetTerminalBlockHashes: GET_TERMINAL_BLOCK_HASHES,
     GetBlocks: GET_BLOCKS,
-    Blocks: GET_BLOCKS_RESPONSE
+    Blocks: GET_BLOCKS_RESPONSE,
+    GetCompactBlocks: GET_CMPCT_BLOCKS,
+    GetCompactBlocksResponse: GET_CMPCT_BLOCKS_RESPONSE,
+    GetBlockTxn: GET_BLOCK_TXN,
+    GetBlockTxnResponse: GET_BLOCK_TXN_RESPONSE,
 }
 
 msg_class_dict = {}

@@ -276,7 +276,10 @@ impl OverlayAccount {
             Some(code) => {
                 if !code.is_empty() {
                     db.set_raw(
-                        &StorageKey::new_code_key(&self.address, &self.code_hash),
+                        &StorageKey::new_code_key(
+                            &self.address,
+                            &self.code_hash,
+                        ),
                         &code.as_ref(),
                     )?;
                 }

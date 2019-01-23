@@ -29,6 +29,7 @@ use crate::{
 use std::{
     cmp::{self, Ordering},
     collections::{BinaryHeap, HashSet, VecDeque},
+    iter::FromIterator,
     sync::{
         atomic::{AtomicBool, Ordering as AtomicOrdering},
         Arc,
@@ -42,8 +43,6 @@ pub const MAX_HEADERS_TO_SEND: u64 = 512;
 pub const MAX_BLOCKS_TO_SEND: u64 = 256;
 const MIN_PEERS_PROPAGATION: usize = 4;
 const MAX_PEERS_PROPAGATION: usize = 128;
-const HEADERS_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const BLOCKS_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_GET_HEADERS_NUM: u64 = 1;
 
 const TX_TIMER: TimerToken = 0;
@@ -52,11 +51,21 @@ const BLOCK_CACHE_GC_TIMER: TimerToken = 2;
 const PERSIST_TERMINAL_TIMER: TimerToken = 3;
 
 pub struct SynchronizationProtocolHandler {
+    protocol_config: ProtocolConfiguration,
     graph: SharedSynchronizationGraph,
     syn: RwLock<SynchronizationState>,
     headers_in_flight: Mutex<HashSet<H256>>,
     blocks_in_flight: Mutex<HashSet<H256>>,
     requests_queue: Mutex<BinaryHeap<Arc<TimedSyncRequests>>>,
+}
+
+pub struct ProtocolConfiguration {
+    pub send_tx_period: Duration,
+    pub check_request_period: Duration,
+    pub block_cache_gc_period: Duration,
+    pub persist_terminal_period: Duration,
+    pub headers_request_timeout: Duration,
+    pub blocks_request_timeout: Duration,
 }
 
 #[derive(Debug)]
@@ -81,12 +90,14 @@ impl TimedSyncRequests {
 
     pub fn from_request(
         peer_id: PeerId, request_id: u64, msg: &RequestMessage,
-    ) -> TimedSyncRequests {
+        conf: &ProtocolConfiguration,
+    ) -> TimedSyncRequests
+    {
         let timeout = match *msg {
-            RequestMessage::Headers(_) => HEADERS_REQUEST_TIMEOUT,
+            RequestMessage::Headers(_) => conf.headers_request_timeout,
             RequestMessage::Blocks(_)
             | RequestMessage::Compact(_)
-            | RequestMessage::BlockTxn(_) => BLOCKS_REQUEST_TIMEOUT,
+            | RequestMessage::BlockTxn(_) => conf.blocks_request_timeout,
             _ => Duration::default(),
         };
         TimedSyncRequests::new(peer_id, timeout, request_id)
@@ -112,11 +123,13 @@ impl PartialEq for TimedSyncRequests {
 
 impl SynchronizationProtocolHandler {
     pub fn new(
+        protocol_config: ProtocolConfiguration,
         consensus_graph: SharedConsensusGraph, pow_config: ProofOfWorkConfig,
         verification_config: VerificationConfig,
     ) -> Self
     {
         SynchronizationProtocolHandler {
+            protocol_config,
             graph: Arc::new(SynchronizationGraph::new(
                 consensus_graph.clone(),
                 pow_config,
@@ -234,12 +247,25 @@ impl SynchronizationProtocolHandler {
         &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error> {
         let resp: GetCompactBlocksResponse = rlp.as_val()?;
-        debug!("on_get_compact_blocks_response");
-        self.match_request(io, peer, resp.request_id())?;
+        debug!("on_get_compact_blocks_response {:?}", resp);
+        let req = self.match_request(io, peer, resp.request_id())?;
         let mut failed_blocks = Vec::new();
         let mut completed_blocks = Vec::new();
+        let mut requested_blocks: HashSet<H256> = match req {
+            RequestMessage::Compact(request) => {
+                HashSet::from_iter(request.hashes.iter().cloned())
+            }
+            _ => {
+                warn!("Get response not matching the request! req={:?}, resp={:?}", req, resp);
+                return Err(ErrorKind::UnexpectedResponse.into());
+            }
+        };
         for mut cmpct in resp.blocks {
             let hash = cmpct.hash();
+            if !requested_blocks.remove(&hash) {
+                warn!("Response has not requested compact block {:?}", hash);
+                continue;
+            }
             if self.graph.contains_block(&hash) {
                 debug!(
                     "Get cmpct block, but full block already received, hash={}",
@@ -304,9 +330,13 @@ impl SynchronizationProtocolHandler {
                 }
             }
         }
+
+        // Request full block if reconstruction fails
         if !failed_blocks.is_empty() {
             self.request_blocks(io, peer, failed_blocks);
         }
+
+        // Broadcast completed block_header_ready blocks
         if !completed_blocks.is_empty() {
             let new_block_hash_msg: Box<dyn Message> =
                 Box::new(NewBlockHashes {
@@ -317,6 +347,22 @@ impl SynchronizationProtocolHandler {
                 PeerId::max_value(),
                 new_block_hash_msg.as_ref(),
             )?;
+        }
+
+        // Request missing compact blocks from another random peer
+        if !requested_blocks.is_empty() {
+            {
+                let mut blocks_in_flight = self.blocks_in_flight.lock();
+                for hash in &requested_blocks {
+                    blocks_in_flight.remove(hash);
+                }
+            }
+            let chosen_peer = self.choose_peer_after_failure(peer);
+            self.request_compact_block(
+                io,
+                chosen_peer,
+                requested_blocks.into_iter().collect(),
+            );
         }
         Ok(())
     }
@@ -356,6 +402,13 @@ impl SynchronizationProtocolHandler {
                     "Get blocktxn request of non-existent block, hash={}",
                     req.block_hash
                 );
+
+                let resp = GetBlockTxnResponce {
+                    request_id: req.request_id,
+                    block_hash: H256::default(),
+                    block_txn: Vec::new(),
+                };
+                self.send_message(io, peer, &resp)?;
             }
         }
         Ok(())
@@ -366,8 +419,21 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), Error> {
         let resp: GetBlockTxnResponce = rlp.as_val()?;
         debug!("on_get_blocktxn_response");
-        self.match_request(io, peer, resp.request_id())?;
         let hash = resp.block_hash;
+        let req = self.match_request(io, peer, resp.request_id())?;
+        let req = match req {
+            RequestMessage::BlockTxn(request) => request,
+            _ => {
+                warn!("Get response not matching the request! req={:?}, resp={:?}", req, resp);
+                return Err(ErrorKind::UnexpectedResponse.into());
+            }
+        };
+        if hash != req.block_hash {
+            warn!("Response blocktxn is not the requested block, req={:?}, resp={:?}", req.block_hash, hash);
+            let chosen_peer = self.choose_peer_after_failure(peer);
+            self.request_blocktxn(io, chosen_peer, req.block_hash, req.indexes);
+            return Err(ErrorKind::UnexpectedResponse.into());
+        }
         if self.graph.contains_block(&hash) {
             debug!(
                 "Get blocktxn, but full block already received, hash={}",
@@ -775,35 +841,43 @@ impl SynchronizationProtocolHandler {
                 .map(|b| b.block_header.hash())
                 .collect::<Vec<H256>>()
         );
-        self.match_request(io, peer, blocks.request_id())?;
+        let req = self.match_request(io, peer, blocks.request_id())?;
+        let req = match req {
+            RequestMessage::Blocks(request) => request,
+            _ => {
+                warn!("Get response not matching the request! req={:?}, resp={:?}", req, blocks);
+                return Err(ErrorKind::UnexpectedResponse.into());
+            }
+        };
+        let mut requested_blocks: HashSet<H256> =
+            req.hashes.into_iter().collect();
 
         let mut need_to_relay = Vec::new();
-        {
-            let mut blocks_in_flight = self.blocks_in_flight.lock();
+        for mut block in blocks.blocks {
+            let hash = block.hash();
+            if !requested_blocks.remove(&hash) {
+                warn!("Response has not requested block {:?}", hash);
+                continue;
+            }
+            block.recover_public(
+                &mut *self
+                    .get_transaction_pool()
+                    .transaction_pubkey_cache
+                    .write(),
+            )?;
 
-            for mut block in blocks.blocks {
-                block.recover_public(
-                    &mut *self
-                        .get_transaction_pool()
-                        .transaction_pubkey_cache
-                        .write(),
-                )?;
-                let hash = block.hash();
-                blocks_in_flight.remove(&hash);
+            let res = self
+                .graph
+                .insert_block_header(block.block_header.clone(), true);
+            if res.0 {
+                need_to_relay.extend(res.1);
+            } else {
+                continue;
+            }
 
-                let res = self
-                    .graph
-                    .insert_block_header(block.block_header.clone(), true);
-                if res.0 {
-                    need_to_relay.extend(res.1);
-                } else {
-                    continue;
-                }
-
-                let (_, to_relay) = self.graph.insert_block(block, true, true);
-                if to_relay {
-                    need_to_relay.push(hash);
-                }
+            let (_, to_relay) = self.graph.insert_block(block, true, true);
+            if to_relay {
+                need_to_relay.push(hash);
             }
         }
 
@@ -817,6 +891,16 @@ impl SynchronizationProtocolHandler {
                 PeerId::max_value(),
                 new_block_hash_msg.as_ref(),
             )?;
+        }
+
+        // Request missing blocks from another random peer
+        if !requested_blocks.is_empty() {
+            let chosen_peer = self.choose_peer_after_failure(peer);
+            self.request_blocks(
+                io,
+                chosen_peer,
+                requested_blocks.into_iter().collect(),
+            );
         }
 
         Ok(())
@@ -1105,7 +1189,10 @@ impl SynchronizationProtocolHandler {
                         warn!("Error while send_message, err={:?}", e);
                     });
                 let timed_req = Arc::new(TimedSyncRequests::from_request(
-                    peer_id, request_id, &msg,
+                    peer_id,
+                    request_id,
+                    &msg,
+                    &self.protocol_config,
                 ));
                 peer.append_inflight_request(
                     request_id,
@@ -1114,7 +1201,7 @@ impl SynchronizationProtocolHandler {
                 );
                 return Some(timed_req);
             } else {
-                warn!("Append requests for later:{:?}", msg);
+                trace!("Append requests for later:{:?}", msg);
                 peer.append_pending_request(msg);
                 return None;
             }
@@ -1125,7 +1212,7 @@ impl SynchronizationProtocolHandler {
 
     fn match_request(
         &self, io: &NetworkContext, peer_id: PeerId, request_id: u64,
-    ) -> Result<Option<RequestMessage>, Error> {
+    ) -> Result<RequestMessage, Error> {
         let mut syn = self.syn.write();
         if let Some(ref mut peer) = syn.peers.get_mut(&peer_id) {
             if let Some(removed_req) = self.remove_request(peer, request_id) {
@@ -1140,6 +1227,7 @@ impl SynchronizationProtocolHandler {
                                 peer_id,
                                 new_request_id,
                                 &pending_msg,
+                                &self.protocol_config,
                             ));
                         peer.append_inflight_request(
                             new_request_id,
@@ -1151,7 +1239,7 @@ impl SynchronizationProtocolHandler {
                         break;
                     }
                 }
-                Ok(Some(removed_req))
+                Ok(removed_req)
             } else {
                 warn!(
                     "Unexpected Responce: peer={:?} request_id={:?}",
@@ -1161,6 +1249,17 @@ impl SynchronizationProtocolHandler {
             }
         } else {
             Err(ErrorKind::UnknownPeer.into())
+        }
+    }
+
+    fn choose_peer_after_failure(&self, failed_peer: PeerId) -> PeerId {
+        let syn = self.syn.read();
+        if syn.peers.len() <= 1 {
+            failed_peer
+        } else {
+            let mut exclude = HashSet::new();
+            exclude.insert(failed_peer);
+            syn.get_random_peer(&exclude).expect("Has available peer")
         }
     }
 
@@ -1333,58 +1432,62 @@ impl SynchronizationProtocolHandler {
         }
         for sync_req in timeout_requests {
             trace!("Timeout sync_req: {:?}", sync_req);
-            let req = self
-                .match_request(io, sync_req.peer_id, sync_req.request_id)
-                .unwrap_or_else(|_| {
-                    warn!("Cannot get original timed-out requests");
-                    None
-                });
-            if let Some(request) = req {
-                // TODO may have better choice than random peer
-                debug!("Timeout request: {:?}", request);
-                let chosen_peer = {
-                    let syn = self.syn.read();
-                    let peers_vec: Vec<&PeerId> = syn.peers.keys().collect();
-                    let p = peers_vec
-                        .get(random::new().gen_range(0, peers_vec.len()))
-                        .unwrap();
-                    **p
-                };
-                match request {
-                    RequestMessage::Headers(get_headers) => {
-                        self.request_block_headers(
-                            io,
-                            chosen_peer,
-                            &get_headers.hash,
-                            get_headers.max_blocks,
-                        );
-                    }
-                    RequestMessage::Blocks(get_blocks) => {
-                        self.request_blocks(io, chosen_peer, get_blocks.hashes);
-                    }
-                    RequestMessage::Compact(get_compact) => {
-                        {
-                            let mut blocks_in_flight =
-                                self.blocks_in_flight.lock();
-                            for hash in &get_compact.hashes {
-                                blocks_in_flight.remove(hash);
-                            }
+            let req =
+                self.match_request(io, sync_req.peer_id, sync_req.request_id);
+            match req {
+                Ok(request) => {
+                    // TODO may have better choice than random peer
+                    debug!("Timeout request: {:?}", request);
+                    let chosen_peer = {
+                        let syn = self.syn.read();
+                        let peers_vec: Vec<&PeerId> =
+                            syn.peers.keys().collect();
+                        let p = peers_vec
+                            .get(random::new().gen_range(0, peers_vec.len()))
+                            .unwrap();
+                        **p
+                    };
+                    match request {
+                        RequestMessage::Headers(get_headers) => {
+                            self.request_block_headers(
+                                io,
+                                chosen_peer,
+                                &get_headers.hash,
+                                get_headers.max_blocks,
+                            );
                         }
-                        self.request_blocks(
-                            io,
-                            chosen_peer,
-                            get_compact.hashes,
-                        );
+                        RequestMessage::Blocks(get_blocks) => {
+                            self.request_blocks(
+                                io,
+                                chosen_peer,
+                                get_blocks.hashes,
+                            );
+                        }
+                        RequestMessage::Compact(get_compact) => {
+                            {
+                                let mut blocks_in_flight =
+                                    self.blocks_in_flight.lock();
+                                for hash in &get_compact.hashes {
+                                    blocks_in_flight.remove(hash);
+                                }
+                            }
+                            self.request_blocks(
+                                io,
+                                chosen_peer,
+                                get_compact.hashes,
+                            );
+                        }
+                        RequestMessage::BlockTxn(blocktxn) => {
+                            let mut hashes = Vec::new();
+                            hashes.push(blocktxn.block_hash);
+                            self.request_blocks(io, chosen_peer, hashes);
+                        }
+                        _ => {}
                     }
-                    RequestMessage::BlockTxn(blocktxn) => {
-                        let mut hashes = Vec::new();
-                        hashes.push(blocktxn.block_hash);
-                        self.request_blocks(io, chosen_peer, hashes);
-                    }
-                    _ => {}
                 }
-            } else {
-                warn!("Request is None");
+                Err(e) => {
+                    warn!("match request err={:?}", e);
+                }
             }
         }
         debug!("headers_in_flight: {:?}", *self.headers_in_flight.lock());
@@ -1422,14 +1525,23 @@ impl SynchronizationProtocolHandler {
 
 impl NetworkProtocolHandler for SynchronizationProtocolHandler {
     fn initialize(&self, io: &NetworkContext) {
-        io.register_timer(TX_TIMER, Duration::from_millis(1300))
+        io.register_timer(TX_TIMER, self.protocol_config.send_tx_period)
             .expect("Error registering transactions timer");
-        io.register_timer(CHECK_REQUEST_TIMER, Duration::from_secs(5))
-            .expect("Error registering transactions timer");
-        io.register_timer(BLOCK_CACHE_GC_TIMER, Duration::from_secs(5))
-            .expect("Error registering block_cache_gc timer");
-        io.register_timer(PERSIST_TERMINAL_TIMER, Duration::from_secs(60))
-            .expect("Error registering persist terminals timer");
+        io.register_timer(
+            CHECK_REQUEST_TIMER,
+            self.protocol_config.check_request_period,
+        )
+        .expect("Error registering transactions timer");
+        io.register_timer(
+            BLOCK_CACHE_GC_TIMER,
+            self.protocol_config.block_cache_gc_period,
+        )
+        .expect("Error registering block_cache_gc timer");
+        io.register_timer(
+            PERSIST_TERMINAL_TIMER,
+            self.protocol_config.persist_terminal_period,
+        )
+        .expect("Error registering persist terminals timer");
     }
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, raw: &[u8]) {

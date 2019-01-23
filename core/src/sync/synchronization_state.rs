@@ -5,7 +5,10 @@ use message::{
 };
 use network::PeerId;
 //use slab::Slab;
-use crate::sync::synchronization_protocol_handler::TimedSyncRequests;
+use crate::sync::{
+    random, synchronization_protocol_handler::TimedSyncRequests,
+};
+use rand::Rng;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     mem,
@@ -168,5 +171,14 @@ impl SynchronizationState {
             peers: HashMap::new(),
             handshaking_peers: HashMap::new(),
         }
+    }
+
+    /// Choose one random peer excluding the given `exclude` set.
+    /// Return None if there is no peer to choose from
+    pub fn get_random_peer(&self, exclude: &HashSet<PeerId>) -> Option<PeerId> {
+        let peer_set: HashSet<PeerId> = self.peers.keys().cloned().collect();
+        let choose_from: Vec<&PeerId> = peer_set.difference(exclude).collect();
+        let mut rand = random::new();
+        rand.choose(&choose_from).cloned().cloned()
     }
 }

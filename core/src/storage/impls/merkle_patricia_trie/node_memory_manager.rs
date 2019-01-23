@@ -136,12 +136,13 @@ impl NodeMemoryManager {
         kvdb: Arc<KeyValueDB>,
     ) -> Self
     {
+        let size_limit = cache_size + idle_size;
         Self {
-            size_limit: cache_size + idle_size,
+            size_limit,
             idle_size,
-            allocator: RwLock::new(Slab::with_capacity(start_size as usize)),
+            allocator: RwLock::new(Slab::with_capacity(size_limit as usize)),
             cache: RwLock::new(CacheManager {
-                node_ref_map: NodeRefMapDeltaMpt::new(start_size as usize),
+                node_ref_map: NodeRefMapDeltaMpt::new(size_limit as usize),
                 lru_cache_algorithm: LRU::<u32, DeltaMptDbKey>::new(
                     cache_size,
                     // TODO(yz): add back when LFRU is finally ready.

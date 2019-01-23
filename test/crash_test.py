@@ -21,7 +21,8 @@ from test_framework.util import *
 class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 16
+        self.num_nodes = 8
+        self.conf_parameters = {"persist-terminal-period-ms": "500"}
 
     def setup_network(self):
         self.add_nodes(self.num_nodes)
@@ -57,6 +58,8 @@ class P2PTest(ConfluxTestFramework):
         sync_blocks(self.nodes, timeout=30)
         self.log.info("Pass 1")
 
+        for i in range(1, self.num_nodes):
+            self.stop_node(i)
         self.nodes[0].add_p2p_connection(P2PInterface())
         network_thread_start()
         self.nodes[0].p2p.wait_for_status()
@@ -70,11 +73,8 @@ class P2PTest(ConfluxTestFramework):
         self.log.debug("New tx %s: %s send value %d to %s", encode_hex(tx.hash), eth_utils.encode_hex(privtoaddr(sender_key))[-4:],
                        value, eth_utils.encode_hex(privtoaddr(receiver_sk))[-4:])
         def check_packed():
-            block = self.nodes[0].generateoneblock(1)
-            if len(self.nodes[0].getblock(block)["transactions"]) == 1:
-                return True
-            else:
-                return False
+            self.nodes[0].generateoneblock(1)
+            return checktx(self.nodes[0], tx.hash_hex())
         wait_until(lambda: check_packed())
         sender_addr = eth_utils.encode_hex(privtoaddr(sender_key))
         receiver_addr = eth_utils.encode_hex(privtoaddr(receiver_sk))
@@ -82,12 +82,13 @@ class P2PTest(ConfluxTestFramework):
         self.nodes[0].generate(5, 0)
         assert_equal(parse_as_int(self.nodes[0].getbalance(sender_addr)), sender_balance)
         assert_equal(parse_as_int(self.nodes[0].getbalance(receiver_addr)), value)
+        time.sleep(1)
         self.stop_node(0)
         self.start_node(0)
         wait_until(lambda: parse_as_int(self.nodes[0].getbalance(sender_addr)) == sender_balance)
         wait_until(lambda: parse_as_int(self.nodes[0].getbalance(receiver_addr)) == value)
         self.log.info("Pass 2")
-
+        
 
 class DefaultNode(P2PInterface):
     def __init__(self):

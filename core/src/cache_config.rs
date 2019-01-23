@@ -30,6 +30,5 @@ impl CacheConfig {
     pub fn db_cache_size(&self) -> usize { max(MIN_DB_CACHE_MB, self.db) }
 
     /// Size of the ledger cache.
-    #[allow(dead_code)]
     pub fn ledger_mb(&self) -> usize { max(self.ledger, MIN_LEDGER_CACHE_MB) }
 }

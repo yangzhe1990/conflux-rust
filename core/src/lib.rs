@@ -49,7 +49,7 @@ pub(crate) mod snapshot;
 pub mod state;
 pub mod statedb;
 pub mod storage;
-mod sync;
+pub mod sync;
 pub mod transaction_pool;
 pub mod verification;
 pub mod vm;

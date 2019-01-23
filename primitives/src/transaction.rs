@@ -1,9 +1,10 @@
 use crate::{bytes::Bytes, hash::keccak};
 use ethereum_types::{Address, H160, H256, U256};
 use ethkey::{self, public_to_address, recover, Public, Secret, Signature};
+use heapsize::HeapSizeOf;
 use lru::LruCache;
 use rlp::{self, Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use std::{error, fmt, ops::Deref, sync::Arc};
+use std::{error, fmt, mem, ops::Deref, sync::Arc};
 use unexpected::OutOfBounds;
 
 /// Fake address for unsigned transactions.
@@ -448,4 +449,8 @@ impl SignedTransaction {
     }
 
     pub fn public(&self) -> &Option<Public> { &self.public }
+}
+
+impl HeapSizeOf for SignedTransaction {
+    fn heap_size_of_children(&self) -> usize { mem::size_of::<Self>() }
 }

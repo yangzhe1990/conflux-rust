@@ -176,8 +176,16 @@ fn main() {
             };
             // Should add new crate names here
             for crate_name in [
-                "blockgen", "core", "conflux", "db", "eth_key", "network",
-                "rpc", "txgen", "client",
+                "blockgen",
+                "core",
+                "conflux",
+                "db",
+                "eth_key",
+                "network",
+                "rpc",
+                "txgen",
+                "client",
+                "primitives",
             ]
             .iter()
             {

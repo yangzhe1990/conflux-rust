@@ -12,7 +12,7 @@ class P2PTest(ConfluxTestFramework):
         self.setup_clean_chain = True
         self.num_nodes = 8
         self.n_shard = 2
-        self.conf_parameters = {"log-level": "\"error\""}
+        self.conf_parameters = {"log-level": "\"debug\""}
 
     def setup_network(self):
         self.setup_nodes()

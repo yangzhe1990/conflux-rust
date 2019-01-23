@@ -337,8 +337,19 @@ class P2PInterface(P2PConnection):
                     self._log_message("receive", "NEW_BLOCK_HASHES, {} hashes".format(len(msg.block_hashes)))
                 elif packet_type == GET_BLOCKS_RESPONSE:
                     self._log_message("receive", "BLOCKS, {} blocks".format(len(msg.blocks)))
+                elif packet_type == GET_CMPCT_BLOCKS_RESPONSE:
+                    self._log_message("receive", "GET_CMPCT_BLOCKS_RESPONSE, {} blocks".format(len(msg.blocks)))
+                elif packet_type == GET_BLOCK_TXN_RESPONSE:
+                    self._log_message("receive", "GET_BLOCK_TXN_RESPONSE, block:{}".format(len(msg.block_hash)))
                 elif packet_type == GET_BLOCKS:
                     self._log_message("receive", "GET_BLOCKS, {} hashes".format(len(msg.hashes)))
+                    self.on_get_blocks(msg)
+                elif packet_type == GET_CMPCT_BLOCKS:
+                    self._log_message("receive", "GET_CMPCT_BLOCKS, {} hashes".format(len(msg.hashes)))
+                    self.on_get_compact_blocks(msg)
+                elif packet_type == GET_BLOCK_TXN:
+                    self._log_message("receive", "GET_BLOCK_TXN, hash={}".format(len(msg.block_hash)))
+                    self.on_get_blocktxn(msg)
                 else:
                     self._log_message("receive", "Unknown packet {}".format(packet_type))
                     return
@@ -394,7 +405,17 @@ class P2PInterface(P2PConnection):
 
     def on_close(self): pass
 
+    def on_get_blocks(self, msg):
+        resp = Blocks(reqid=msg.reqid, blocks=[])
+        self.send_protocol_msg(resp)
 
+    def on_get_compact_blocks(self, msg):
+        resp = GetCompactBlocksResponse(reqid=msg.reqid, blocks=[])
+        self.send_protocol_msg(resp)
+
+    def on_get_blocktxn(self, msg):
+        resp = GetBlockTxnResponse(reqid=msg.reqid, block_hash=b'0x00'*32, block_txn=[])
+        self.send_protocol_msg(resp)
 # Keep our own socket map for asyncore, so that we can track disconnects
 # ourselves (to work around an issue with closing an asyncore socket when
 # using select)

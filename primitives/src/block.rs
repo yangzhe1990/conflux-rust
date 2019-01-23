@@ -10,7 +10,12 @@ use lru::LruCache;
 use rand::Rng;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use siphasher::sip::SipHasher24;
-use std::{collections::HashMap, hash::Hasher, mem, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Formatter},
+    hash::Hasher,
+    sync::Arc,
+};
 
 /// A block, encoded as it is on the block chain.
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -25,7 +30,7 @@ impl HeapSizeOf for Block {
     fn heap_size_of_children(&self) -> usize {
         // Ignores the size of Arc<SignedTransaction>
         self.block_header.heap_size_of_children()
-            + self.transactions.len() * mem::size_of::<SignedTransaction>()
+            + self.transactions.heap_size_of_children()
     }
 }
 
@@ -134,7 +139,7 @@ impl Decodable for Block {
 
 // TODO Some optimization may be made if short_id hash collission is detected,
 // but should be rare
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Clone, PartialEq)]
 pub struct CompactBlock {
     /// The block header
     pub block_header: BlockHeader,
@@ -145,6 +150,16 @@ pub struct CompactBlock {
 
     /// Store the txes reconstructed, None means not received
     pub reconstructed_txes: Vec<Option<Arc<SignedTransaction>>>,
+}
+
+impl Debug for CompactBlock {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "CompactBlock{{ block_header: {:?}, nonce: {:?}}}",
+            self.block_header, self.nonce
+        )
+    }
 }
 
 impl CompactBlock {

@@ -157,7 +157,7 @@ impl StateManager {
                 .build(),
             transactions: Vec::new(),
         };
-        debug!("Genesis Block:{:?}", genesis);
+        debug!("Genesis Block:{:?} hash={:?}", genesis, genesis.hash());
         state.commit(genesis.block_header.hash()).unwrap();
         secret_store.insert(kp);
         genesis

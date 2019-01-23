@@ -211,7 +211,7 @@ impl TransactionPool {
             inner: RwLock::new(TransactionPoolInner::new()),
             storage_manager,
             // TODO Cache capacity should be set seperately
-            transaction_pubkey_cache: RwLock::new(LruCache::new(capacity )),
+            transaction_pubkey_cache: RwLock::new(LruCache::new(capacity)),
             worker_pool: Mutex::new(worker_pool),
         }
     }
@@ -529,7 +529,9 @@ impl TransactionPool {
         );
 
         loop {
-            if packed_transactions.len() >= num_txs || inner.ready_transactions.len() == 0 {
+            if packed_transactions.len() >= num_txs
+                || inner.ready_transactions.len() == 0
+            {
                 break;
             }
             let sum_gas_price = inner.ready_transactions.sum_weight();

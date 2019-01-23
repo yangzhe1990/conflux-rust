@@ -76,6 +76,7 @@ where T: Eq + Hash
         for _ in 0..COLLECTION_QUEUE_SIZE {
             if let Some(back) = self.cache_usage.pop_back() {
                 let current_size = notify_unused(back);
+                debug!("Cache Manager new_size={}", current_size);
                 self.cache_usage.push_front(Default::default());
                 if current_size < self.max_cache_size {
                     break;

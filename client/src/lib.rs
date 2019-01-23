@@ -123,8 +123,10 @@ impl Client {
         };
         let pow_config = conf.pow_config();
         let verification_config = conf.verification_config();
+        let protocol_config = conf.protocol_config();
         let mut sync = core::SynchronizationService::new(
             sync_config,
+            protocol_config,
             pow_config.clone(),
             verification_config,
         );

@@ -1,4 +1,6 @@
-use core::storage::state_manager::StorageConfiguration;
+use core::{
+    storage::state_manager::StorageConfiguration, sync::ProtocolConfiguration,
+};
 use txgen::TransactionGeneratorConfig;
 /// usage:
 /// ```
@@ -42,6 +44,12 @@ build_config! {
         (storage_cache_size, (u32), 20_000_000)
         (storage_idle_size, (u32), 200_000)
         (storage_lfru_factor, (f64), 4.0)
+        (send_tx_period_ms, (u64), 1300)
+        (check_request_period_ms, (u64), 5000)
+        (block_cache_gc_period_ms, (u64), 5000)
+        (persist_terminal_period_ms, (u64), 60_000)
+        (headers_request_timeout_ms, (u64), 30_000)
+        (blocks_request_timeout_ms, (u64), 120_000)
     }
     {
         (
@@ -168,6 +176,29 @@ impl Configuration {
             cache_size: self.raw_conf.storage_cache_size,
             idle_size: self.raw_conf.storage_idle_size,
             lfru_factor: self.raw_conf.storage_lfru_factor,
+        }
+    }
+
+    pub fn protocol_config(&self) -> ProtocolConfiguration {
+        ProtocolConfiguration {
+            send_tx_period: Duration::from_millis(
+                self.raw_conf.send_tx_period_ms,
+            ),
+            check_request_period: Duration::from_millis(
+                self.raw_conf.check_request_period_ms,
+            ),
+            block_cache_gc_period: Duration::from_millis(
+                self.raw_conf.block_cache_gc_period_ms,
+            ),
+            persist_terminal_period: Duration::from_millis(
+                self.raw_conf.persist_terminal_period_ms,
+            ),
+            headers_request_timeout: Duration::from_millis(
+                self.raw_conf.headers_request_timeout_ms,
+            ),
+            blocks_request_timeout: Duration::from_millis(
+                self.raw_conf.blocks_request_timeout_ms,
+            ),
         }
     }
 }

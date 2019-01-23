@@ -228,7 +228,7 @@ def wait_until(predicate,
             if predicate():
                 return
         attempt += 1
-        time.sleep(0.05)
+        time.sleep(0.5)
 
     # Print the cause of the timeout
     predicate_source = inspect.getsourcelines(predicate)
@@ -252,14 +252,17 @@ def initialize_datadir(dirname, n, conf_parameters):
         os.makedirs(datadir)
     with open(
             os.path.join(datadir, "conflux.conf"), 'w', encoding='utf8') as f:
-        f.write("port=" + str(p2p_port(n)) + "\n")
-        f.write("jsonrpc-http-port=" + str(rpc_port(n)) + "\n")
-        f.write("log-file=\"" + os.path.join(datadir, "conflux.log") + "\"\n")
-        f.write("test-mode=true\n")
-        if "log-level" not in conf_parameters:
-            conf_parameters["log-level"] = "\"trace\""
+        local_conf = {"port": str(p2p_port(n)),
+                        "jsonrpc-http-port": str(rpc_port(n)),
+                        "log-file": "\"{}\"".format(os.path.join(datadir, "conflux.log")),
+                        "test-mode": "true",
+                        "log-level": "\"trace\"",
+                        "storage_cache_size": "200000",
+                        }
         for k in conf_parameters:
-            f.write("{}={}\n".format(k, conf_parameters[k]))
+            local_conf[k] = conf_parameters[k]
+        for k in local_conf:
+            f.write("{}={}\n".format(k, local_conf[k]))
         os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)
         os.makedirs(os.path.join(datadir, 'stdout'), exist_ok=True)
     return datadir
@@ -487,3 +490,10 @@ def get_ip_address(ifname):
         0x8915,  # SIOCGIFADDR
         struct.pack('256s', bytes(ifname[:15], 'utf-8'))
     )[20:24]
+
+
+def checktx(node, tx_hash):
+    if node.gettransactionreceipt(tx_hash) is None:
+        return False
+    else:
+        return True

@@ -6,6 +6,7 @@ extern crate keccak_hash as hash;
 extern crate rlp;
 #[macro_use]
 extern crate rlp_derive;
+extern crate log;
 extern crate unexpected;
 
 pub type CardinalNumber = u64;
@@ -17,6 +18,7 @@ pub mod epoch;
 pub mod log_entry;
 pub mod receipt;
 pub mod transaction;
+pub mod transaction_address;
 
 pub use crate::{
     account::Account,
@@ -27,4 +29,5 @@ pub use crate::{
     transaction::{
         Action, SignedTransaction, Transaction, TransactionWithSignature,
     },
+    transaction_address::TransactionAddress,
 };

@@ -24,8 +24,8 @@ use std::{
 mod types;
 
 use self::types::{
-    Block as RpcBlock, Status as RpcStatus, Transaction as RpcTransaction,
-    H256 as RpcH256,
+    Block as RpcBlock, Receipt as RpcReceipt, Status as RpcStatus,
+    Transaction as RpcTransaction, H256 as RpcH256,
 };
 use primitives::{
     Action, SignedTransaction, Transaction, TransactionWithSignature,
@@ -125,8 +125,8 @@ build_rpc_trait! {
         #[rpc(name = "generateoneblock")]
         fn generate_one_block(&self, usize) -> RpcResult<H256>;
 
-        #[rpc(name = "checktx")]
-        fn check_tx(&self, H256) -> RpcResult<(bool, bool)>;
+        #[rpc(name = "gettransactionreceipt")]
+        fn get_transaction_receipt(&self, H256) -> RpcResult<Option<RpcReceipt>>;
 
         #[rpc(name = "cfx_call")]
         fn call(&self, RpcTransaction) -> RpcResult<Vec<u8>>;
@@ -314,18 +314,16 @@ impl Rpc for RpcImpl {
     /// The first element is true if the tx is executed in a confirmed block.
     /// The second element indicate the execution result (standin
     /// for receipt)
-    fn check_tx(&self, tx_hash: H256) -> RpcResult<(bool, bool)> {
-        let result = match self.consensus.get_block_for_tx_execution(&tx_hash) {
-            Some((success, ref block_hash)) => {
-                if self.consensus.check_block_confirmation(block_hash) {
-                    (true, success)
-                } else {
-                    (false, false)
-                }
-            }
-            None => (false, false),
-        };
-        Ok(result)
+    fn get_transaction_receipt(
+        &self, tx_hash: H256,
+    ) -> RpcResult<Option<RpcReceipt>> {
+        let maybe_receipt = self
+            .consensus
+            .get_transaction_receipt(&tx_hash)
+            .map(|receipt| {
+                RpcReceipt::new(receipt.gas_used.into(), receipt.outcome_status)
+            });
+        Ok(maybe_receipt)
     }
 
     fn call(&self, rpc_tx: RpcTransaction) -> RpcResult<Vec<u8>> {

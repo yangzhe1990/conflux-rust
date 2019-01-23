@@ -11,7 +11,8 @@ pub use self::{
         SynchronizationGraphInner, SynchronizationGraphNode,
     },
     synchronization_protocol_handler::{
-        SynchronizationProtocolHandler, SYNCHRONIZATION_PROTOCOL_VERSION,
+        ProtocolConfiguration, SynchronizationProtocolHandler,
+        SYNCHRONIZATION_PROTOCOL_VERSION,
     },
     synchronization_service::{
         SharedSynchronizationService, SynchronizationConfiguration,

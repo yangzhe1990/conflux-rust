@@ -33,8 +33,10 @@ pub const COL_DELTA_TRIE: Option<u32> = Some(1);
 pub const COL_BLOCKS: Option<u32> = Some(2);
 /// Column for Block Receipts.
 pub const COL_BLOCK_RECEIPTS: Option<u32> = Some(3);
+/// Column for Transaction Index
+pub const COL_TX_ADDRESS: Option<u32> = Some(4);
 /// Number of columns in DB
-pub const NUM_COLUMNS: Option<u32> = Some(4);
+pub const NUM_COLUMNS: Option<u32> = Some(5);
 
 /// Modes for updating caches.
 #[derive(Clone, Copy)]

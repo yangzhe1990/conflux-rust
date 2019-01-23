@@ -21,8 +21,8 @@ from test_framework.util import *
 class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 40
-        self.conf_parameters = {"generate-tx":"true", "generate-tx-period-ms":"40", "log-level":"\"debug\""}
+        self.num_nodes = 15
+        self.conf_parameters = {"generate-tx": "true", "generate-tx-period-ms": "7", "log-level": "\"debug\""}
 
     def setup_network(self):
         node_per_host = 1

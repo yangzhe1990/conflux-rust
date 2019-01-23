@@ -4,6 +4,7 @@ use super::{
 };
 use crate::{
     consensus::SharedConsensusGraph, pow::ProofOfWorkConfig,
+    sync::synchronization_protocol_handler::ProtocolConfiguration,
     verification::VerificationConfig,
 };
 use ethereum_types::H256;
@@ -29,13 +30,15 @@ pub struct SynchronizationService {
 
 impl SynchronizationService {
     pub fn new(
-        config: SynchronizationConfiguration, pow_config: ProofOfWorkConfig,
+        config: SynchronizationConfiguration,
+        protocol_config: ProtocolConfiguration, pow_config: ProofOfWorkConfig,
         verification_config: VerificationConfig,
     ) -> Self
     {
         SynchronizationService {
             network: NetworkService::new(config.network),
             protocol_handler: Arc::new(SynchronizationProtocolHandler::new(
+                protocol_config,
                 config.consensus,
                 pow_config,
                 verification_config,
