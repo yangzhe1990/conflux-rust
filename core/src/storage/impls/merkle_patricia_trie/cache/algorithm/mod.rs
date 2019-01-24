@@ -154,6 +154,14 @@ pub trait CacheAlgorithm<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> {
 
     /// When an element is removed because of external logic, update the cache
     /// algorithm.
+    ///
+    /// Note 1: do not use cache_store_util which implements special
+    /// logic for most recently accessed cache index, because the case
+    /// doesn't apply in deletion.
+    ///
+    /// Note 2: Since the cache deletion updates cache_algo_data for the element
+    /// to delete, caller must actually delete the item after the call to
+    /// delete has finished.
     fn delete<
         CacheStoreUtilT: CacheStoreUtil<
             ElementIndex = CacheIndexT,

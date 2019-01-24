@@ -1,6 +1,6 @@
 use super::{
     lru::{LRUHandle, LRU},
-    removable_heap::{HeapHandle, HeapValueUtil, Hole, RemovableHeap},
+    removable_heap::{HeapValueUtil, Hole, RemovableHeap},
     CacheAccessResult, CacheAlgoDataAdapter, CacheAlgoDataTrait,
     CacheAlgorithm, CacheIndexTrait, CacheStoreUtil, MyInto, PrimitiveNum,
 };
@@ -40,7 +40,7 @@ impl<PosT: PrimitiveNum> LFRUHandle<PosT> {
 
     fn placement_new_evicted(&mut self) { self.set_evicted(); }
 
-    fn is_lru_hit(&self) -> bool { self.pos != PosT::from(Self::NULL_POS) }
+    pub fn is_lru_hit(&self) -> bool { self.pos != PosT::from(Self::NULL_POS) }
 
     fn is_lfu_hit<CacheIndexT: CacheIndexTrait>(
         &self, heap: &RemovableHeap<PosT, LFRUMetadata<PosT, CacheIndexT>>,
@@ -145,9 +145,8 @@ impl<
         &mut self, value: &mut LFRUMetadata<PosT, CacheIndexT>,
     ) {
         unsafe {
-            self.frequency_lru
-                .get_cache_index_mut(value.lru_handle)
-                .set_handle(PosT::from(HeapHandle::<PosT>::NULL_POS));
+            // There is no need to update lru cache_index because heap removal
+            // always happens after frequency_lru removal.
             CacheAlgoDataAdapter::new_mut(
                 self.cache_store_util,
                 value.cache_index,
@@ -301,11 +300,13 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
 
                     if has_space {
                         let heap_size = heap.get_heap_size();
-                        hole.move_to(
-                            heap.get_unchecked_mut(heap_size),
-                            heap_size,
-                            &mut heap_util,
-                        );
+                        if heap_size != lfru_handle.get_handle() {
+                            hole.move_to(
+                                heap.get_unchecked_mut(heap_size),
+                                lfru_handle.get_handle(),
+                                &mut heap_util,
+                            );
+                        }
                         heap.set_heap_size_unchecked(heap_size + PosT::from(1));
 
                         heap.sift_up_with_hole(heap_size, hole, &mut heap_util);
@@ -314,7 +315,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                     } else {
                         hole.move_to(
                             heap.get_unchecked_mut(PosT::from(0)),
-                            PosT::from(0),
+                            lfru_handle.get_handle(),
                             &mut heap_util,
                         );
                         heap.sift_down_with_hole(
@@ -424,7 +425,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                                 unsafe {
                                     heap.get_unchecked_mut(PosT::from(0))
                                 },
-                                PosT::from(0),
+                                lru_evicted.pos,
                                 &mut heap_util,
                             );
 
@@ -454,8 +455,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
         cache_store_util: &mut CacheStoreUtilT,
     )
     {
-        let lfru_handle =
-            cache_store_util.get_most_recently_accessed(cache_index);
+        let lfru_handle = cache_store_util.get(cache_index);
         self.frequency_lru
             .delete(lfru_handle, &mut self.frequency_heap.get_array_mut());
         // Remove from heap.

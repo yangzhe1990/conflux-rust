@@ -75,6 +75,10 @@ pub trait HeapValueUtil<ValueType, PosT: PrimitiveNum> {
     // cache_util, the hole operates the most-recently-accessed element.
     // Test LFRU.
     fn set_heap_handle_final(&mut self, value: &mut ValueType, pos: PosT);
+    /// In the current implementation set_heap_removed is always called when the
+    /// value still lives in heap. However it works perfectly fine when the
+    /// value is already removed from heap, so please do not access the heap
+    /// at the old position for the removed value.
     fn set_heap_removed(&mut self, value: &mut ValueType);
 
     fn get_key_for_comparison<'a>(
@@ -230,7 +234,7 @@ trait OrderChecker<
         if let Some(pointer_parent) = order_checker.calculate_next(value_util) {
             Some((order_checker, pointer_parent))
         } else {
-            value_util.set_heap_handle(
+            value_util.set_heap_handle_final(
                 unsafe { &mut *order_checker.pointer_pos() },
                 pos,
             );
@@ -537,6 +541,9 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
             None
         } else {
             unsafe {
+                value_util
+                    .set_heap_removed(self.get_unchecked_mut(PosT::from(0)));
+
                 self.heap_size -= PosT::from(1);
                 let mut ret = Some(mem::uninitialized());
                 let last_element_pos = self.heap_size;
@@ -572,7 +579,6 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
                 }
                 self.array.set_len(new_len);
 
-                value_util.set_heap_removed(ret.as_mut().unwrap());
                 ret
             }
         }
@@ -655,20 +661,23 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         &mut self, pos: PosT, value_util: &mut ValueUtilT,
     ) -> ValueType {
         let mut removed = mem::uninitialized();
+        value_util.set_heap_removed(self.get_unchecked_mut(pos));
         let hole_pos = if self.heap_size > pos {
             self.heap_size -= PosT::from(1);
             let last_element_pos = self.heap_size;
-            let hole = Hole::new_from_value_ptr_read(
-                self.get_unchecked_mut(pos),
-                self.get_unchecked_mut(last_element_pos),
-            );
+            if last_element_pos != pos {
+                let hole = Hole::new_from_value_ptr_read(
+                    self.get_unchecked_mut(pos),
+                    self.get_unchecked_mut(last_element_pos),
+                );
 
-            self.replace_at_unchecked_with_hole(
-                pos,
-                hole,
-                &mut removed,
-                value_util,
-            );
+                self.replace_at_unchecked_with_hole(
+                    pos,
+                    hole,
+                    &mut removed,
+                    value_util,
+                );
+            }
             last_element_pos
         } else {
             let value_to_remove = self.get_unchecked_mut(pos);
@@ -687,7 +696,6 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         }
         self.array.set_len(new_len);
 
-        value_util.set_heap_removed(&mut removed);
         removed
     }
 

@@ -1,3 +1,4 @@
+mod lfru;
 mod lru;
 mod removable_heap;
 use rand::{ChaChaRng, SeedableRng};

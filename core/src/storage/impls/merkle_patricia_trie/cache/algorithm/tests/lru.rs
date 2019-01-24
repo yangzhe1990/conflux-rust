@@ -228,7 +228,7 @@ mod test_lru_algorithm {
     impl<'a> CacheUtil<'a> {
         fn prepare(&mut self, key: i32) { self.most_recent_key = Some(key); }
 
-        fn push(&mut self, key: i32) { self.most_recent_key.take(); }
+        fn done(&mut self, key: i32) { self.most_recent_key.take(); }
     }
 
     #[derive(Debug)]
@@ -315,7 +315,7 @@ mod test_lru_algorithm {
                 KeyActions::Access(key) => {
                     cache_util.prepare(key);
                     lru.access(key, &mut cache_util);
-                    cache_util.push(key);
+                    cache_util.done(key);
                 }
             }
         }
