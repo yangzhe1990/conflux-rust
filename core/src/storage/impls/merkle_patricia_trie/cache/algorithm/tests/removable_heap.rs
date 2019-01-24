@@ -260,14 +260,14 @@ fn initialize_heap_with_removals_and_updates(
 
 fn check_and_sort_heap_array_pos(
     heap: &mut RemovableHeap<u32, u32>,
-    values: &mut Vec<TrivialValueWithHeapHandle<i64, u32>>, capacity: u32,
+    values: &mut Vec<TrivialValueWithHeapHandle<i64, u32>>, size: u32,
     non_heap_size: u32,
 )
 {
     {
         let mut pos_set = HashSet::new();
         pos_set.insert(HeapHandle::default().get_pos());
-        for i in 0..capacity {
+        for i in 0..size {
             let pos = *unsafe { heap.get_unchecked_mut(i) };
             assert_eq!(i, values[pos as usize].get_handle_mut().get_pos());
             assert_eq!(true, pos_set.get(&pos).is_none());
@@ -275,13 +275,18 @@ fn check_and_sort_heap_array_pos(
         }
     }
 
-    let value_pos = heap
-        .pop_head(&mut ArrayPosHeapValueUtil::new(values))
-        .unwrap();
-    let value = values[value_pos as usize].value;
+    let value;
+    if size - non_heap_size - 1 > 0 {
+        let value_pos = heap
+            .pop_head(&mut ArrayPosHeapValueUtil::new(values))
+            .unwrap();
+        value = values[value_pos as usize].value;
+        assert_eq!(true, value >= 0);
+    } else {
+        value = 0;
+    }
     let mut sum = value;
-    assert_eq!(true, value >= 0);
-    for i in 1..capacity - non_heap_size - 1 {
+    for i in 1..size - non_heap_size - 1 {
         let value_pos = heap
             .pop_head(&mut ArrayPosHeapValueUtil::new(values))
             .unwrap();
@@ -333,4 +338,36 @@ fn test_removal_and_sort_with_heap_handle_check() {
         25100u32, 100u32, 24999u32, 100u32, 30000u32,
     );
     check_and_sort_heap_array_pos(&mut heap, &mut values, 50000u32, 100u32);
+}
+
+#[test]
+fn test_corner_cases() {
+    let (mut heap, mut values) = initialize_heap_with_removals_and_updates(
+        10u32, 10u32, 0u32, 0u32, 0u32,
+    );
+    check_and_sort_heap_array_pos(&mut heap, &mut values, 1u32, 0u32);
+    let (mut heap, mut values) = initialize_heap_with_removals_and_updates(
+        10u32, 10u32, 10u32, 0u32, 0u32,
+    );
+    check_and_sort_heap_array_pos(&mut heap, &mut values, 11u32, 0u32);
+    let (mut heap, mut values) = initialize_heap_with_removals_and_updates(
+        10u32, 1u32, 0u32, 9u32, 0u32,
+    );
+    check_and_sort_heap_array_pos(&mut heap, &mut values, 10u32, 9u32);
+    let (mut heap, mut values) = initialize_heap_with_removals_and_updates(
+        10u32, 9u32, 0u32, 1u32, 0u32,
+    );
+    check_and_sort_heap_array_pos(&mut heap, &mut values, 2u32, 1u32);
+    let (mut heap, mut values) = initialize_heap_with_removals_and_updates(
+        10u32, 0u32, 0u32, 10u32, 0u32,
+    );
+    check_and_sort_heap_array_pos(&mut heap, &mut values, 11u32, 10u32);
+    let (mut heap, mut values) = initialize_heap_with_removals_and_updates(
+        10u32, 0u32, 1u32, 10u32, 0u32,
+    );
+    check_and_sort_heap_array_pos(&mut heap, &mut values, 12u32, 10u32);
+    let (mut heap, mut values) = initialize_heap_with_removals_and_updates(
+        10u32, 0u32, 1u32, 9u32, 0u32,
+    );
+    check_and_sort_heap_array_pos(&mut heap, &mut values, 12u32, 9u32);
 }
