@@ -28,4 +28,4 @@ enum-map-derive = "0.4.0"
 strum = "0.11.0"
 strum_macros = "0.11.0"
 ethkey = { path = "../ethkey" }
-ethcore-bytes = { path = "../util/bytes" }
+ethcore-bytes = "0.1.1"

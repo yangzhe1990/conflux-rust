@@ -7,6 +7,6 @@ edition = "2018"
 [dependencies]
 rlp = { git = "https://github.com/paritytech/parity-common" }
 ethereum-types = "0.4"
-ethcore-bytes = { path = "../util/bytes" }
+ethcore-bytes = "0.1.1"
 primitives = { path = "../primitives" }
 log = "0.3"

@@ -11,7 +11,7 @@ edition = "2018"
 keccak-hash = { git = "https://github.com/paritytech/parity-common" }
 ethereum-types = "0.4"
 primitives = { path = "../primitives" }
-ethcore-bytes = { path = "../util/bytes" }
+ethcore-bytes = "0.1.1"
 parking_lot = "0.6"
 network = { path = "../network" }
 io = { path = "../util/io" }

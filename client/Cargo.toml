@@ -18,8 +18,7 @@ parity-version = { path = "../util/version" }
 panic_hook = { path = "../util/panic_hook" }
 dir = { path = "../util/dir" }
 io = { path = "../util/io" }
-ethcore-crypto = { path = "../crypto" }
-ethcore-bytes = { path = "../util/bytes" }
+ethcore-bytes = "0.1.1"
 ethkey = { path = "../ethkey" }
 ctrlc = { git = "https://github.com/paritytech/rust-ctrlc.git" }
 jsonrpc-core = { git = "ssh://git@base.conflux-chain.org:2222/source/jsonrpc.git", branch = "parity-1.11" }

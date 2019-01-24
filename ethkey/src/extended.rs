@@ -210,7 +210,7 @@ impl ExtendedKeyPair {
 mod derivation {
     use super::{Derivation, Label};
     use crate::{keccak, math::curve_order, SECP256K1};
-    use ethcore_crypto::hmac;
+    use parity_crypto::hmac;
     use ethereum_types::{H256, H512, U256, U512};
     use secp256k1::key::{PublicKey, SecretKey};
 

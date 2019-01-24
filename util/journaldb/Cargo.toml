@@ -7,7 +7,7 @@ license = "GPL3"
 edition = "2018"
 
 [dependencies]
-ethcore-bytes = { path = "../bytes" }
+ethcore-bytes = "0.1.1"
 ethereum-types = "0.4"
 hashdb = { path = "../hashdb" }
 heapsize = "0.4"

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-use ethcore_crypto::error::SymmError;
+use parity_crypto::error::SymmError;
 use secp256k1;
 use std::io;
 
@@ -69,7 +69,7 @@ pub mod ecdh {
 pub mod ecies {
     use super::{ecdh, Error};
     use crate::{Generator, Public, Random, Secret};
-    use ethcore_crypto::{aes, digest, hmac, is_equal};
+    use parity_crypto::{aes, digest, hmac, is_equal};
     use ethereum_types::H128;
 
     /// Encrypt a message with a public key, writing an HMAC covering both
