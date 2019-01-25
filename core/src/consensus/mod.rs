@@ -812,8 +812,10 @@ impl ConsensusGraph {
                     self.transaction_addresses.write();
                 for (idx, transaction) in block.transactions.iter().enumerate()
                 {
+                    let mut need_to_record_transaction_address = true;
+                    let mut transaction_logs = Vec::new();
                     let r = ex.transact(transaction);
-                    match &r {
+                    match r {
                         Err(ExecutionError::NotEnoughBaseGas {
                             required: _,
                             got: _,
@@ -826,15 +828,12 @@ impl ConsensusGraph {
                             );
                             tx_outcome_status = TRANSACTION_OUTCOME_EXCEPTION;
                         }
-                        Err(ExecutionError::InvalidNonce {
-                            ref expected,
-                            ref got,
-                        }) => {
+                        Err(ExecutionError::InvalidNonce { expected, got }) => {
                             n_invalid_nonce += 1;
                             trace!("tx execution InvalidNonce without inc_nonce: transaction={:?}, err={:?}", transaction.clone(), r);
                             // Add future transactions back to pool if we are
                             // not verifying forking chain
-                            if on_latest && *got > *expected {
+                            if on_latest && got > expected {
                                 trace!(
                                     "To re-add transaction ({:?}) to pending pool",
                                     transaction.clone()
@@ -842,13 +841,15 @@ impl ConsensusGraph {
                                 to_pending.push(transaction.clone());
                             }
                             tx_outcome_status = TRANSACTION_OUTCOME_EXCEPTION;
+                            need_to_record_transaction_address = false;
                         }
-                        Ok(ref executed) => {
+                        Ok(executed) => {
                             last_cumulative_gas_used =
                                 executed.cumulative_gas_used;
                             n_ok += 1;
                             trace!("tx executed successfully: transaction={:?}, result={:?}, in block {:?}", transaction, executed, arena[*index].hash.clone());
                             accumulated_fee += executed.fee;
+                            transaction_logs = executed.logs;
                         }
                         _ => {
                             tx_outcome_status = TRANSACTION_OUTCOME_EXCEPTION;
@@ -859,29 +860,25 @@ impl ConsensusGraph {
                     let receipt = Receipt::new(
                         tx_outcome_status,
                         last_cumulative_gas_used,
+                        transaction_logs,
                     );
                     receipts.push(receipt);
+
                     if on_latest {
-                        match r {
-                            Err(ExecutionError::InvalidNonce {
-                                expected: _,
-                                got: _,
-                            }) => {}
-                            _ => {
-                                let hash = transaction.hash();
-                                let tx_addr = TransactionAddress {
-                                    block_hash: block.hash(),
-                                    index: idx,
-                                };
-                                self.insert_transaction_address_to_kv(
-                                    &hash, &tx_addr,
+                        if need_to_record_transaction_address {
+                            let hash = transaction.hash();
+                            let tx_addr = TransactionAddress {
+                                block_hash: block.hash(),
+                                index: idx,
+                            };
+                            self.insert_transaction_address_to_kv(
+                                &hash, &tx_addr,
+                            );
+                            if transaction_addresses.contains_key(&hash) {
+                                transaction_addresses.insert(hash, tx_addr);
+                                self.cache_man.lock().note_used(
+                                    CacheId::TransactionAddress(hash),
                                 );
-                                if transaction_addresses.contains_key(&hash) {
-                                    transaction_addresses.insert(hash, tx_addr);
-                                    self.cache_man.lock().note_used(
-                                        CacheId::TransactionAddress(hash),
-                                    );
-                                }
                             }
                         }
                     }
