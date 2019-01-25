@@ -271,11 +271,13 @@ impl SynchronizationProtocolHandler {
                     "Get cmpct block, but full block already received, hash={}",
                     hash
                 );
+                self.blocks_in_flight.lock().remove(&hash);
                 continue;
             } else {
                 if self.graph.contains_block_header(&hash) {
                     if self.graph.contains_compact_block(&hash) {
                         debug!("Cmpct block already received, hash={}", hash);
+                        self.blocks_in_flight.lock().remove(&hash);
                         continue;
                     } else {
                         debug!("Cmpct block Processing, hash={}", hash);
@@ -326,6 +328,7 @@ impl SynchronizationProtocolHandler {
                         "Get cmpct block, but header not received, hash={}",
                         hash
                     );
+                    self.blocks_in_flight.lock().remove(&hash);
                     continue;
                 }
             }
@@ -1068,7 +1071,9 @@ impl SynchronizationProtocolHandler {
         max_blocks: u64,
     )
     {
-        if self.headers_in_flight.lock().contains(hash) {
+        let syn = &mut *self.syn.write();
+        let mut headers_in_flight = self.headers_in_flight.lock();
+        if headers_in_flight.contains(hash) {
             return;
         }
 
@@ -1080,6 +1085,7 @@ impl SynchronizationProtocolHandler {
                 hash: *hash,
                 max_blocks,
             })),
+            syn,
         ) {
             debug!(
                 "Requesting {:?} block headers starting at {:?} from peer {:?} request_id={:?}",
@@ -1088,7 +1094,7 @@ impl SynchronizationProtocolHandler {
                 peer_id,
                 timed_req.request_id
             );
-            self.headers_in_flight.lock().insert(hash.clone());
+            headers_in_flight.insert(hash.clone());
             self.requests_queue.lock().push(timed_req);
         }
     }
@@ -1096,10 +1102,9 @@ impl SynchronizationProtocolHandler {
     fn request_blocks(
         &self, io: &NetworkContext, peer_id: PeerId, mut hashes: Vec<H256>,
     ) {
-        {
-            let blocks_in_flight = self.blocks_in_flight.lock();
-            hashes.retain(|hash| !blocks_in_flight.contains(hash));
-        }
+        let syn = &mut *self.syn.write();
+        let mut blocks_in_flight = self.blocks_in_flight.lock();
+        hashes.retain(|hash| !blocks_in_flight.contains(hash));
 
         if let Some(timed_req) = self.send_request(
             io,
@@ -1108,16 +1113,14 @@ impl SynchronizationProtocolHandler {
                 request_id: 0.into(),
                 hashes: hashes.clone(),
             })),
+            syn,
         ) {
             debug!(
                 "Requesting blocks {:?} from {:?} request_id={}",
                 hashes, peer_id, timed_req.request_id
             );
-            {
-                let mut blocks_in_flight = self.blocks_in_flight.lock();
-                for hash in hashes {
-                    blocks_in_flight.insert(hash);
-                }
+            for hash in hashes {
+                blocks_in_flight.insert(hash);
             }
             self.requests_queue.lock().push(timed_req);
         }
@@ -1126,10 +1129,9 @@ impl SynchronizationProtocolHandler {
     fn request_compact_block(
         &self, io: &NetworkContext, peer_id: PeerId, mut hashes: Vec<H256>,
     ) {
-        {
-            let blocks_in_flight = self.blocks_in_flight.lock();
-            hashes.retain(|hash| !blocks_in_flight.contains(hash));
-        }
+        let syn = &mut *self.syn.write();
+        let mut blocks_in_flight = self.blocks_in_flight.lock();
+        hashes.retain(|hash| !blocks_in_flight.contains(hash));
 
         if let Some(timed_req) = self.send_request(
             io,
@@ -1138,16 +1140,14 @@ impl SynchronizationProtocolHandler {
                 request_id: 0.into(),
                 hashes: hashes.clone(),
             })),
+            syn,
         ) {
             debug!(
                 "Requesting compact blocks {:?} from {:?} request_id={}",
                 hashes, peer_id, timed_req.request_id
             );
-            {
-                let mut blocks_in_flight = self.blocks_in_flight.lock();
-                for hash in hashes {
-                    blocks_in_flight.insert(hash);
-                }
+            for hash in hashes {
+                blocks_in_flight.insert(hash);
             }
             self.requests_queue.lock().push(timed_req);
         }
@@ -1158,6 +1158,7 @@ impl SynchronizationProtocolHandler {
         indexes: Vec<usize>,
     )
     {
+        let syn = &mut *self.syn.write();
         if let Some(timed_req) = self.send_request(
             io,
             peer_id,
@@ -1166,6 +1167,7 @@ impl SynchronizationProtocolHandler {
                 block_hash: block_hash.clone(),
                 indexes: indexes.clone(),
             })),
+            syn,
         ) {
             debug!(
                 "Requesting blocktxn {:?} from {:?} request_id={}",
@@ -1177,10 +1179,9 @@ impl SynchronizationProtocolHandler {
 
     fn send_request(
         &self, io: &NetworkContext, peer_id: PeerId,
-        mut msg: Box<RequestMessage>,
+        mut msg: Box<RequestMessage>, syn: &mut SynchronizationState,
     ) -> Option<Arc<TimedSyncRequests>>
     {
-        let mut syn = self.syn.write();
         if let Some(ref mut peer) = syn.peers.get_mut(&peer_id) {
             if let Some(request_id) = peer.get_next_request_id() {
                 msg.set_request_id(request_id);

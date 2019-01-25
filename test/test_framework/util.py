@@ -257,8 +257,10 @@ def initialize_datadir(dirname, n, conf_parameters):
                         "log-file": "\"{}\"".format(os.path.join(datadir, "conflux.log")),
                         "test-mode": "true",
                         "log-level": "\"trace\"",
-                        "storage_cache_size": "200000",
-                        }
+                        "storage-cache-size": "200000",
+                        "storage-start-size": "200000",
+                        "storage-idle-size": "200000",
+                      }
         for k in conf_parameters:
             local_conf[k] = conf_parameters[k]
         for k in local_conf:
