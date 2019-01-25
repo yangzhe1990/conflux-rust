@@ -25,8 +25,7 @@ impl Default for MaybeNodeRefDeltaMptCompact {
 
 impl NodeRefDeltaMptCompact {
     /// Valid dirty slot ranges from [0..DIRTY_SLOT_LIMIT).
-    /// The DB_KEY_LIMIT is reserved for MaybeNodeRefDeltaMptCompact#NULL and
-    /// for CacheableNodeRefDeltaMpt#NULL_SLOT.
+    /// The DIRTY_SLOT_LIMIT is reserved for MaybeNodeRefDeltaMptCompact#NULL.
     pub const DIRTY_SLOT_LIMIT: u32 = 0x7fffffff;
     const PERSISTENT_KEY_BIT: u32 = 0x80000000;
 

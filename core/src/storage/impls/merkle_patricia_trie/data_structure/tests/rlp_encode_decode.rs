@@ -84,14 +84,17 @@ fn test_trie_node_encode_decode() {
     }
 
     // TrieNode without compressed path.
-    let x = TrieNode::new(
+    let x = TrieNode::<CacheAlgoDataDeltaMpt>::new(
         &Default::default(),
         children_table,
         Some(b"asdf".to_vec()),
         Default::default(),
     );
     let rlp_bytes = x.rlp_bytes();
-    let rlp_parsed = TrieNode::decode(&Rlp::new(rlp_bytes.as_slice())).unwrap();
+    let rlp_parsed = TrieNode::<CacheAlgoDataDeltaMpt>::decode(&Rlp::new(
+        rlp_bytes.as_slice(),
+    ))
+    .unwrap();
 
     assert_eq!(rlp_parsed, x);
 }

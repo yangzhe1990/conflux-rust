@@ -141,7 +141,8 @@ mod test_lru_algorithm_size_1 {
                             assert_eq!(
                                 ret,
                                 CacheAccessResult::MissReplaced {
-                                    evicted: key
+                                    evicted: vec![key],
+                                    evicted_keep_cache_algo_data: vec![],
                                 }
                             );
                         }

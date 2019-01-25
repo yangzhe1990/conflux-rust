@@ -83,10 +83,11 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> LRU<PosT, CacheIndexT> {
     }
 }
 
-impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
-    CacheAlgorithm<PosT, CacheIndexT> for LRU<PosT, CacheIndexT>
+impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
+    for LRU<PosT, CacheIndexT>
 {
     type CacheAlgoData = LRUHandle<PosT>;
+    type CacheIndex = CacheIndexT;
 
     fn access<
         CacheStoreUtilT: CacheStoreUtil<
@@ -235,7 +236,8 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
             }
 
             CacheAccessResult::MissReplaced {
-                evicted: evicted_cache_index,
+                evicted: vec![evicted_cache_index],
+                evicted_keep_cache_algo_data: vec![],
             }
         }
     }

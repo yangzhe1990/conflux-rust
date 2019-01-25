@@ -251,10 +251,11 @@ impl<'a, 'b, PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheStoreUtil
     }
 }
 
-impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
-    CacheAlgorithm<PosT, CacheIndexT> for LFRU<PosT, CacheIndexT>
+impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
+    for LFRU<PosT, CacheIndexT>
 {
     type CacheAlgoData = LFRUHandle<PosT>;
+    type CacheIndex = CacheIndexT;
 
     fn access<
         CacheStoreUtilT: CacheStoreUtil<
@@ -324,7 +325,10 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                             &mut heap_util,
                         );
                         CacheAccessResult::MissReplaced {
-                            evicted: (*lfru_metadata_ptr).cache_index,
+                            evicted: vec![],
+                            evicted_keep_cache_algo_data: vec![
+                                (*lfru_metadata_ptr).cache_index,
+                            ],
                         }
                     }
                 }
@@ -369,9 +373,10 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                     );
 
                     CacheAccessResult::MissReplaced {
-                        evicted: unsafe {
+                        evicted: vec![],
+                        evicted_keep_cache_algo_data: vec![unsafe {
                             heap.get_unchecked_mut(pos).cache_index
-                        },
+                        }],
                     }
                 }
             } else {
@@ -394,8 +399,13 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
 
                 match lru_access_result {
                     CacheAccessResult::MissReplaced {
-                        evicted: lru_evicted,
+                        evicted: lru_evicted_keys,
+                        evicted_keep_cache_algo_data: _, // known to be empty.
                     } => {
+                        // It's known to contain exactly one item.
+                        let lru_evicted =
+                            unsafe { lru_evicted_keys.get_unchecked(0) };
+
                         let evicted_lfru_metadata_ptr = unsafe {
                             heap.get_unchecked_mut(lru_evicted.pos)
                                 as *mut LFRUMetadata<PosT, CacheIndexT>
@@ -416,11 +426,19 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                                     &mut heap_util,
                                 )
                             };
+                            CacheAccessResult::MissReplaced {
+                                evicted: vec![evicted_cache_index],
+                                evicted_keep_cache_algo_data: vec![],
+                            }
                         } else {
                             // The element removed from LRU lives outside LFU.
                             // Replace the least frequently visited with the
-                            // newly accessed item.
-
+                            // newly accessed item and keep the least frequently
+                            // visited in LRU.
+                            let lfu_evicted = unsafe {
+                                heap.get_unchecked_mut(PosT::from(0))
+                                    .cache_index
+                            };
                             hole.move_to(
                                 unsafe {
                                     heap.get_unchecked_mut(PosT::from(0))
@@ -434,9 +452,11 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
                                 hole,
                                 &mut heap_util,
                             );
-                        }
-                        CacheAccessResult::MissReplaced {
-                            evicted: evicted_cache_index,
+
+                            CacheAccessResult::MissReplaced {
+                                evicted: vec![evicted_cache_index],
+                                evicted_keep_cache_algo_data: vec![lfu_evicted],
+                            }
                         }
                     }
                     _ => unsafe { hint::unreachable_unchecked() },

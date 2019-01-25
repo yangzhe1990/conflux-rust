@@ -89,7 +89,7 @@ impl<'a> State<'a> {
     }
 
     fn do_db_commit(
-        &mut self, epoch_id: EpochId, cache_manager: &mut CacheManager,
+        &mut self, epoch_id: EpochId, cache_manager: &mut CacheManagerLFRU,
     ) -> Result<()> {
         self.dirty = false;
 
@@ -308,16 +308,8 @@ impl<'a> StateTrait for State<'a> {
         );
         if commit_result.is_err() {
             self.revert();
-        } else {
-            // Add all nodes into cache.
-            let owned_node_set = self.owned_node_set.as_ref().unwrap();
-            for owned_node in owned_node_set {
-                self.delta_trie
-                    .get_node_memory_manager()
-                    .dirty_node_committed(owned_node);
-            }
         }
-        Ok(())
+        commit_result
     }
 
     fn revert(&mut self) {
@@ -326,8 +318,9 @@ impl<'a> StateTrait for State<'a> {
         // Free all modified nodes.
         let owned_node_set = self.owned_node_set.as_ref().unwrap();
         for owned_node in owned_node_set {
-            let cow_node = CowNodeRef::new(owned_node.clone(), owned_node_set);
-            cow_node.delete_node(&self.delta_trie.get_node_memory_manager());
+            self.delta_trie
+                .get_node_memory_manager()
+                .free_node(&mut owned_node.clone());
         }
     }
 }

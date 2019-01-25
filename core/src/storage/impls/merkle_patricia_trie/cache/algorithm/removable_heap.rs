@@ -68,12 +68,19 @@ impl<ValueType, PosT: PrimitiveNum> AsRef<ValueType>
 pub trait HeapValueUtil<ValueType, PosT: PrimitiveNum> {
     type KeyType: Ord + Clone;
 
-    // Update heap handle for value being moved in heap.
+    /// Update heap handle for value being moved in heap.
     fn set_heap_handle(&mut self, value: &mut ValueType, pos: PosT);
-    // A special one to set the heap handle for the value being changed by Hole.
-    // FIXME(yz): check that in all cases when it's called with special
-    // cache_util, the hole operates the most-recently-accessed element.
-    // Test LFRU.
+
+    /// A special one to set the heap handle for the value being changed by
+    /// Hole. This method should only be implemented differently for special
+    /// access, e.g. operating the element to insert into cache which hasn't
+    /// yet been inserted. For the special cases any hole used in
+    /// heap operations must be exactly for the special element.
+    ///
+    /// Please pay extra attention because this method is called on finalize
+    /// method for all Hole object, i.e. all heap operations.
+
+    // FIXME: test case.
     fn set_heap_handle_final(&mut self, value: &mut ValueType, pos: PosT);
     /// In the current implementation set_heap_removed is always called when the
     /// value still lives in heap. However it works perfectly fine when the

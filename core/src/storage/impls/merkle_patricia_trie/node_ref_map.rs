@@ -1,8 +1,15 @@
 use super::{
-    data_structure::NodeRefDeltaMptCompact, node_memory_manager::*,
+    cache::algorithm::{CacheAlgoDataTrait, CacheAlgorithm},
+    node_memory_manager::*,
     row_number::RowNumberUnderlyingType,
 };
-use std::vec::Vec;
+use std::{marker::PhantomData, vec::Vec};
+
+#[derive(Clone)]
+pub enum TrieCacheSlotOrCacheAlgoData<CacheAlgoDataT: CacheAlgoDataTrait> {
+    TrieCacheSlot(ActualSlabIndex),
+    CacheAlgoData(CacheAlgoDataT),
+}
 
 /// CacheableNodeRef maintains the information of cached node and possibly
 /// non-cached children of cached node.
@@ -17,27 +24,27 @@ use std::vec::Vec;
 /// reference count is necessary to prevent NodeRef for non-cached node from
 /// staying forever in the memory.
 #[derive(Clone)]
-pub struct CacheableNodeRefDeltaMpt {
-    trie_cache_slot: ActualSlabIndex,
+pub struct CacheableNodeRefDeltaMpt<CacheAlgoDataT: CacheAlgoDataTrait> {
+    cached: TrieCacheSlotOrCacheAlgoData<CacheAlgoDataT>,
 }
 
-impl CacheableNodeRefDeltaMpt {
-    pub const NULL_SLOT: ActualSlabIndex =
-        NodeRefDeltaMptCompact::DIRTY_SLOT_LIMIT;
-
-    pub fn to_slot(&self) -> Option<ActualSlabIndex> {
-        if self.trie_cache_slot == Self::NULL_SLOT {
-            None
-        } else {
-            Some(self.trie_cache_slot)
-        }
+impl<CacheAlgoDataT: CacheAlgoDataTrait>
+    CacheableNodeRefDeltaMpt<CacheAlgoDataT>
+{
+    pub fn new(cached: TrieCacheSlotOrCacheAlgoData<CacheAlgoDataT>) -> Self {
+        Self { cached: cached }
     }
-}
 
-impl Default for CacheableNodeRefDeltaMpt {
-    fn default() -> Self {
-        Self {
-            trie_cache_slot: Self::NULL_SLOT,
+    pub fn get_cache_info(
+        &self,
+    ) -> &TrieCacheSlotOrCacheAlgoData<CacheAlgoDataT> {
+        &self.cached
+    }
+
+    pub fn get_slot(&self) -> Option<ActualSlabIndex> {
+        match self.cached {
+            TrieCacheSlotOrCacheAlgoData::CacheAlgoData(_) => None,
+            TrieCacheSlotOrCacheAlgoData::TrieCacheSlot(slot) => Some(slot),
         }
     }
 }
@@ -48,21 +55,35 @@ impl Default for CacheableNodeRefDeltaMpt {
 /// need to persist, therefore we could use "row number" as db key.
 pub type DeltaMptDbKey = RowNumberUnderlyingType;
 
-pub struct NodeRefMapDeltaMpt {
+pub struct NodeRefMapDeltaMpt<
+    CacheAlgoDataT: CacheAlgoDataTrait,
+    CacheAlgorithmT: CacheAlgorithm<CacheAlgoData = CacheAlgoDataT, CacheIndex = DeltaMptDbKey>,
+> {
     /// Only in unusual situation base_row_number could go higher than 0.
     base_row_number: DeltaMptDbKey,
-    map: Vec<CacheableNodeRefDeltaMpt>,
+    map: Vec<Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>>,
+    __marker_algorithm: PhantomData<CacheAlgorithmT>,
 }
 
-impl NodeRefMapDeltaMpt {
+impl<
+        CacheAlgoDataT: CacheAlgoDataTrait,
+        CacheAlgorithmT: CacheAlgorithm<
+            CacheAlgoData = CacheAlgoDataT,
+            CacheIndex = DeltaMptDbKey,
+        >,
+    > NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
+{
     /// We allow at most 200M (most recent) nodes for cache of delta trie.
     /// Assuming 2h lifetime for Delta MPT it's around 27k new node per second.
     const MAX_CAPACITY: DeltaMptDbKey = 200_000_000;
 
     pub fn new(start_size: usize) -> Self {
         let mut mpt = Self {
-            base_row_number: Default::default(),
+            // Explicitly specify one item so that only the fields are default
+            // initialized.
             map: Default::default(),
+            base_row_number: Default::default(),
+            __marker_algorithm: Default::default(),
         };
 
         mpt.map.reserve(start_size);
@@ -71,9 +92,19 @@ impl NodeRefMapDeltaMpt {
     }
 }
 
-impl Default for NodeRefMapDeltaMpt {
+impl<
+        CacheAlgoDataT: CacheAlgoDataTrait,
+        CacheAlgorithmT: CacheAlgorithm<
+            CacheAlgoData = CacheAlgoDataT,
+            CacheIndex = DeltaMptDbKey,
+        >,
+    > Default for NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
+{
     fn default() -> Self {
-        Self::new(NodeMemoryManager::START_CAPACITY as usize)
+        Self::new(
+            NodeMemoryManager::<CacheAlgoDataT, CacheAlgorithmT>::START_CAPACITY
+                as usize,
+        )
     }
 }
 
@@ -84,16 +115,30 @@ pub trait NodeRefMapTrait {
     type MaybeCacheSlotIndex;
 }
 
-impl NodeRefMapTrait for NodeRefMapDeltaMpt {
+impl<
+        CacheAlgoDataT: CacheAlgoDataTrait,
+        CacheAlgorithmT: CacheAlgorithm<
+            CacheAlgoData = CacheAlgoDataT,
+            CacheIndex = DeltaMptDbKey,
+        >,
+    > NodeRefMapTrait for NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
+{
     type MaybeCacheSlotIndex = ActualSlabIndex;
-    type NodeRef = CacheableNodeRefDeltaMpt;
+    type NodeRef = CacheableNodeRefDeltaMpt<CacheAlgoDataT>;
     type StorageAccessKey = DeltaMptDbKey;
 }
 
-impl NodeRefMapDeltaMpt {
+impl<
+        CacheAlgoDataT: CacheAlgoDataTrait,
+        CacheAlgorithmT: CacheAlgorithm<
+            CacheAlgoData = CacheAlgoDataT,
+            CacheIndex = DeltaMptDbKey,
+        >,
+    > NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
+{
     unsafe fn get_unchecked(
         &self, key: DeltaMptDbKey,
-    ) -> &CacheableNodeRefDeltaMpt {
+    ) -> &Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
         self.map.get_unchecked(Self::key_to_subscription(key))
     }
 
@@ -102,8 +147,12 @@ impl NodeRefMapDeltaMpt {
     }
 
     fn reset(
-        &mut self, key: DeltaMptDbKey, node_memory_manager: &NodeMemoryManager,
-        cache_algorithm: &mut CacheAlgorithmDeltaMpt,
+        &mut self, key: DeltaMptDbKey,
+        node_memory_manager: &NodeMemoryManager<
+            CacheAlgoDataT,
+            CacheAlgorithmT,
+        >,
+        cache_algorithm: &mut CacheAlgorithmT,
     )
     {
         let maybe_slot = unsafe { self.delete(key) };
@@ -119,16 +168,18 @@ impl NodeRefMapDeltaMpt {
                 key,
                 slot,
             );
-            *self.map.get_unchecked_mut(Self::key_to_subscription(key)) =
-                CacheableNodeRefDeltaMpt::default();
+            *self.map.get_unchecked_mut(Self::key_to_subscription(key)) = None;
         }
     }
 
     pub fn insert(
         &mut self, key: DeltaMptDbKey, slot: ActualSlabIndex,
-        node_memory_manager: &NodeMemoryManager,
-        cache_algorithm: &mut CacheAlgorithmDeltaMpt,
-    ) -> Option<CacheableNodeRefDeltaMpt>
+        node_memory_manager: &NodeMemoryManager<
+            CacheAlgoDataT,
+            CacheAlgorithmT,
+        >,
+        cache_algorithm: &mut CacheAlgorithmT,
+    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>
     {
         if key < self.base_row_number {
             return None;
@@ -156,40 +207,48 @@ impl NodeRefMapDeltaMpt {
                 Self::MAX_CAPACITY
             }) as usize;
             self.map.reserve_exact(new_len);
-            self.map
-                .resize(new_len, CacheableNodeRefDeltaMpt::default());
+            self.map.resize(new_len, None);
         }
-        self.set_cache_slot(key, slot);
-        Some(unsafe { self.get_unchecked(key).clone() })
+        self.set_cache_info(
+            key,
+            Some(CacheableNodeRefDeltaMpt::new(
+                TrieCacheSlotOrCacheAlgoData::TrieCacheSlot(slot),
+            )),
+        );
+        unsafe { self.get_unchecked(key).clone() }
     }
 
-    pub fn get(&self, key: DeltaMptDbKey) -> Option<CacheableNodeRefDeltaMpt> {
+    pub fn get(
+        &self, key: DeltaMptDbKey,
+    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
         if key >= self.base_row_number
             && key
                 < self.base_row_number
                     + self.map.len() as RowNumberUnderlyingType
         {
-            Some(unsafe { self.get_unchecked(key).clone() })
+            unsafe { self.get_unchecked(key).clone() }
         } else {
             None
         }
     }
 
-    fn set_cache_slot(
-        &mut self, key: DeltaMptDbKey, slot: ActualSlabIndex,
-    ) -> Option<ActualSlabIndex> {
+    pub fn set_cache_info(
+        &mut self, key: DeltaMptDbKey,
+        cache_info: Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>,
+    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>
+    {
         let node_ref = unsafe {
             self.map.get_unchecked_mut(Self::key_to_subscription(key))
         };
-        let old_slot = node_ref.to_slot();
-        node_ref.trie_cache_slot = slot;
+        let old_slot = node_ref.clone();
+        *node_ref = cache_info;
 
         old_slot
     }
 
     pub unsafe fn delete(
         &mut self, key: DeltaMptDbKey,
-    ) -> Option<ActualSlabIndex> {
-        self.set_cache_slot(key, CacheableNodeRefDeltaMpt::NULL_SLOT)
+    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
+        self.set_cache_info(key, None)
     }
 }

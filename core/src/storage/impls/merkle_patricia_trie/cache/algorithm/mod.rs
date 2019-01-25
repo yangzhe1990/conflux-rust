@@ -133,10 +133,14 @@ where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
 pub enum CacheAccessResult<CacheIndexT> {
     Hit,
     MissInsert,
-    MissReplaced { evicted: CacheIndexT },
+    MissReplaced {
+        evicted: Vec<CacheIndexT>,
+        evicted_keep_cache_algo_data: Vec<CacheIndexT>,
+    },
 }
 
-pub trait CacheAlgorithm<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> {
+pub trait CacheAlgorithm {
+    type CacheIndex: CacheIndexTrait;
     type CacheAlgoData: CacheAlgoDataTrait;
 
     /// The cache index is the identifier for content being cached. If user want
@@ -144,13 +148,13 @@ pub trait CacheAlgorithm<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> {
     /// done in the cache storage.
     fn access<
         CacheStoreUtilT: CacheStoreUtil<
-            ElementIndex = CacheIndexT,
+            ElementIndex = Self::CacheIndex,
             CacheAlgoData = Self::CacheAlgoData,
         >,
     >(
-        &mut self, cache_index: CacheIndexT,
+        &mut self, cache_index: Self::CacheIndex,
         cache_store_util: &mut CacheStoreUtilT,
-    ) -> CacheAccessResult<CacheIndexT>;
+    ) -> CacheAccessResult<Self::CacheIndex>;
 
     /// When an element is removed because of external logic, update the cache
     /// algorithm.
@@ -160,15 +164,15 @@ pub trait CacheAlgorithm<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> {
     /// doesn't apply in deletion.
     ///
     /// Note 2: Since the cache deletion updates cache_algo_data for the element
-    /// to delete, caller must actually delete the item after the call to
-    /// delete has finished.
+    /// to delete, caller must delete the item after the call to this delete
+    /// method has finished.
     fn delete<
         CacheStoreUtilT: CacheStoreUtil<
-            ElementIndex = CacheIndexT,
+            ElementIndex = Self::CacheIndex,
             CacheAlgoData = Self::CacheAlgoData,
         >,
     >(
-        &mut self, cache_index: CacheIndexT,
+        &mut self, cache_index: Self::CacheIndex,
         cache_store_util: &mut CacheStoreUtilT,
     );
 }
