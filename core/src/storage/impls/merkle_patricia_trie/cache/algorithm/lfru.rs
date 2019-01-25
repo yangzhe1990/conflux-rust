@@ -4,6 +4,7 @@ use super::{
     CacheAccessResult, CacheAlgoDataAdapter, CacheAlgoDataTrait,
     CacheAlgorithm, CacheIndexTrait, CacheStoreUtil, MyInto, PrimitiveNum,
 };
+use rand::{ChaChaRng, FromEntropy, Rng};
 use std::{hint, mem};
 
 /// In LFRU we keep an LRU to maintain frequency for alpha * cache_slots
@@ -19,10 +20,8 @@ pub struct LFRU<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> {
     capacity: PosT,
     frequency_lru: LRU<PosT, LFRUHandle<PosT>>,
     frequency_heap: RemovableHeap<PosT, LFRUMetadata<PosT, CacheIndexT>>,
+    counter_rng: ChaChaRng,
 }
-
-type FrequencyType = u16;
-const MAX_VISIT_COUNT: FrequencyType = ::std::u16::MAX;
 
 /// LFRUHandle points to the location where frequency data is stored. A non-null
 /// pos means that the object is maintained in LRU.
@@ -66,6 +65,15 @@ impl<PosT: PrimitiveNum> Default for LFRUHandle<PosT> {
 
 impl<PosT: PrimitiveNum> CacheIndexTrait for LFRUHandle<PosT> {}
 
+type FrequencyType = u16;
+// Use 4 bits to randomize order of cache elements with same frequency. This is
+// intended to avoid always replacing the most recently accessed element with
+// frequency 1 from LRU.
+const RANDOM_BITS: FrequencyType = (1u16 << 4) - 1;
+const COUNTER_MASK: FrequencyType = !RANDOM_BITS;
+/// MAX_VISIT_COUNT == COUNTER_MASK
+const MAX_VISIT_COUNT: FrequencyType = ::std::u16::MAX & COUNTER_MASK;
+
 struct LFRUMetadata<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> {
     frequency: FrequencyType,
     lru_handle: LRUHandle<PosT>,
@@ -75,9 +83,19 @@ struct LFRUMetadata<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> {
 impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
     LFRUMetadata<PosT, CacheIndexT>
 {
-    fn inc_visit_counter(&mut self) {
-        if self.frequency != MAX_VISIT_COUNT {
-            self.frequency += 1
+    fn is_visit_counter_maximum(&self) -> bool {
+        self.frequency & COUNTER_MASK == MAX_VISIT_COUNT
+    }
+
+    fn init_visit_counter_random_bits<RngT: Rng>(
+        rng: &mut RngT,
+    ) -> FrequencyType {
+           RANDOM_BITS & rng.gen::<FrequencyType>()
+    }
+
+    fn inc_visit_counter<RngT: Rng>(&mut self, rng: &mut RngT) {
+        if !self.is_visit_counter_maximum() {
+            self.frequency += (RANDOM_BITS + 1)
         }
     }
 }
@@ -197,14 +215,16 @@ struct CacheStoreUtilLRUMiss<
 impl<'a, 'b, PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
     CacheStoreUtilLRUMiss<'a, 'b, PosT, CacheIndexT>
 {
-    fn new(
+    fn new<RngT: Rng>(
         lfru_metadata: CacheStoreUtilLRUHit<'a, PosT, CacheIndexT>,
         cache_index: CacheIndexT,
-        new_metadata: &'b mut LFRUMetadata<PosT, CacheIndexT>,
+        new_metadata: &'b mut LFRUMetadata<PosT, CacheIndexT>, rng: &mut RngT,
     ) -> Self
     {
         *new_metadata = LFRUMetadata::<PosT, CacheIndexT> {
-            frequency: 1,
+            frequency: LFRUMetadata::<PosT, CacheIndexT>::init_visit_counter_random_bits(
+                rng,
+            ),
             lru_handle: Default::default(),
             cache_index: cache_index,
         };
@@ -277,7 +297,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
             unsafe {
                 self.frequency_heap
                     .get_unchecked_mut(lfru_handle.get_handle())
-                    .inc_visit_counter()
+                    .inc_visit_counter(&mut self.counter_rng)
             };
 
             let has_space = self.has_space();
@@ -341,6 +361,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
                         self.frequency_heap.get_array_mut(),
                         cache_index,
                         &mut hole.value,
+                        &mut self.counter_rng,
                     );
 
                     self.frequency_lru
@@ -386,6 +407,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
                         self.frequency_heap.get_array_mut(),
                         cache_index,
                         &mut hole.value,
+                        &mut self.counter_rng,
                     );
                     lru_access_result = self
                         .frequency_lru
@@ -503,6 +525,7 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> LFRU<PosT, CacheIndexT> {
             capacity: capacity,
             frequency_heap: RemovableHeap::new(lru_capacity),
             frequency_lru: LRU::new(lru_capacity),
+            counter_rng: ChaChaRng::from_entropy(),
         }
     }
 
