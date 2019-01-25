@@ -228,6 +228,14 @@ impl SynchronizationProtocolHandler {
             if let Some(compact_block) = self.graph.compact_block_by_hash(hash)
             {
                 compact_blocks.push(compact_block);
+            } else if let Some(block) = self.graph.block_by_hash(hash) {
+                debug!("Have complete block but no compact block, return complete block instead");
+                let block_resp = GetBlocksResponse {
+                    request_id: req.request_id,
+                    blocks: vec![block.as_ref().clone()],
+                };
+                self.send_message(io, peer, &block_resp)?;
+                return Ok(());
             } else {
                 warn!(
                     "Peer {} requested non-existent compact block {}",
@@ -293,10 +301,7 @@ impl SynchronizationProtocolHandler {
                                 missing.len(),
                                 hash
                             );
-                            self.graph
-                                .compact_blocks
-                                .write()
-                                .insert(hash.clone(), cmpct);
+                            self.graph.insert_compact_block(cmpct);
                             self.request_blocktxn(io, peer, hash, missing);
                         } else {
                             let trans = cmpct
@@ -431,74 +436,87 @@ impl SynchronizationProtocolHandler {
                 return Err(ErrorKind::UnexpectedResponse.into());
             }
         };
+        let mut request_again = false;
         if hash != req.block_hash {
             warn!("Response blocktxn is not the requested block, req={:?}, resp={:?}", req.block_hash, hash);
-            let chosen_peer = self.choose_peer_after_failure(peer);
-            self.request_blocktxn(io, chosen_peer, req.block_hash, req.indexes);
-            return Err(ErrorKind::UnexpectedResponse.into());
-        }
-        if self.graph.contains_block(&hash) {
-            debug!(
-                "Get blocktxn, but full block already received, hash={}",
-                hash
-            );
+            request_again = true;
         } else {
-            if self.graph.contains_block_header(&hash) {
-                debug!("Process blocktxn hash={:?}", hash);
-                let signed_txes = SignedTransaction::batch_recover_with_cache(
-                    &resp.block_txn,
-                    &mut *self
-                        .get_transaction_pool()
-                        .transaction_pubkey_cache
-                        .write(),
-                )?;
-                match self.graph.compact_block_by_hash(&hash) {
-                    Some(cmpct) => {
-                        let mut trans =
-                            Vec::with_capacity(cmpct.reconstructed_txes.len());
-                        let mut index = 0;
-                        for tx in cmpct.reconstructed_txes {
-                            match tx {
-                                Some(tx) => trans.push(tx),
-                                None => {
-                                    trans.push(signed_txes[index].clone());
-                                    index += 1;
+            if self.graph.contains_block(&hash) {
+                debug!(
+                    "Get blocktxn, but full block already received, hash={}",
+                    hash
+                );
+            } else {
+                if self.graph.contains_block_header(&hash) {
+                    debug!("Process blocktxn hash={:?}", hash);
+                    let signed_txes =
+                        SignedTransaction::batch_recover_with_cache(
+                            &resp.block_txn,
+                            &mut *self
+                                .get_transaction_pool()
+                                .transaction_pubkey_cache
+                                .write(),
+                        )?;
+                    match self.graph.compact_block_by_hash(&hash) {
+                        Some(cmpct) => {
+                            let mut trans = Vec::with_capacity(
+                                cmpct.reconstructed_txes.len(),
+                            );
+                            let mut index = 0;
+                            for tx in cmpct.reconstructed_txes {
+                                match tx {
+                                    Some(tx) => trans.push(tx),
+                                    None => {
+                                        trans.push(signed_txes[index].clone());
+                                        index += 1;
+                                    }
                                 }
                             }
-                        }
 
-                        let (success, to_relay) = self.graph.insert_block(
-                            Block {
-                                block_header: cmpct.block_header,
-                                transactions: trans,
-                            },
-                            true,
-                            true,
-                        );
+                            let (success, to_relay) = self.graph.insert_block(
+                                Block {
+                                    block_header: cmpct.block_header,
+                                    transactions: trans,
+                                },
+                                true,
+                                true,
+                            );
 
-                        let mut blocks = Vec::new();
-                        blocks.push(hash);
-                        // May fail due to transactions hash collision
-                        if !success {
-                            self.request_blocks(io, peer, blocks.clone());
+                            let mut blocks = Vec::new();
+                            blocks.push(hash);
+                            // May fail due to transactions hash collision
+                            if !success {
+                                self.request_blocks(io, peer, blocks.clone());
+                            }
+                            if to_relay {
+                                let new_block_hash_msg: Box<dyn Message> =
+                                    Box::new(NewBlockHashes {
+                                        block_hashes: blocks,
+                                    });
+                                self.broadcast_message(
+                                    io,
+                                    PeerId::max_value(),
+                                    new_block_hash_msg.as_ref(),
+                                )?;
+                            }
                         }
-                        if to_relay {
-                            let new_block_hash_msg: Box<dyn Message> =
-                                Box::new(NewBlockHashes {
-                                    block_hashes: blocks,
-                                });
-                            self.broadcast_message(
-                                io,
-                                PeerId::max_value(),
-                                new_block_hash_msg.as_ref(),
-                            )?;
+                        None => {
+                            request_again = true;
+                            warn!("Get blocktxn, but misses compact block, hash={}", hash);
                         }
                     }
-                    None => {}
+                } else {
+                    request_again = true;
+                    warn!(
+                        "Get blocktxn, but header not received, hash={}",
+                        hash
+                    );
                 }
-            } else {
-                warn!("Get blocktxn, but header not received, hash={}", hash);
             }
+        }
+        if request_again {
+            let chosen_peer = self.choose_peer_after_failure(peer);
+            self.request_blocks(io, chosen_peer, vec![req.block_hash]);
         }
         Ok(())
     }
@@ -845,15 +863,16 @@ impl SynchronizationProtocolHandler {
                 .collect::<Vec<H256>>()
         );
         let req = self.match_request(io, peer, blocks.request_id())?;
-        let req = match req {
-            RequestMessage::Blocks(request) => request,
+        let req_hashes_vec = match req {
+            RequestMessage::Blocks(request) => request.hashes,
+            RequestMessage::Compact(request) => request.hashes,
             _ => {
                 warn!("Get response not matching the request! req={:?}, resp={:?}", req, blocks);
                 return Err(ErrorKind::UnexpectedResponse.into());
             }
         };
         let mut requested_blocks: HashSet<H256> =
-            req.hashes.into_iter().collect();
+            req_hashes_vec.into_iter().collect();
 
         let mut need_to_relay = Vec::new();
         for mut block in blocks.blocks {

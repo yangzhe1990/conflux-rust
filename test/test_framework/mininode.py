@@ -414,7 +414,7 @@ class P2PInterface(P2PConnection):
         self.send_protocol_msg(resp)
 
     def on_get_blocktxn(self, msg):
-        resp = GetBlockTxnResponse(reqid=msg.reqid, block_hash=b'0x00'*32, block_txn=[])
+        resp = GetBlockTxnResponse(reqid=msg.reqid, block_hash=b'\x00'*32, block_txn=[])
         self.send_protocol_msg(resp)
 # Keep our own socket map for asyncore, so that we can track disconnects
 # ourselves (to work around an issue with closing an asyncore socket when

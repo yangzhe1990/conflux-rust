@@ -9,14 +9,13 @@ use crate::{
     state::{CleanupMode, State},
     statedb::StateDb,
     storage::{state::StateTrait, StorageManager, StorageManagerTrait},
-    sync::SynchronizationGraphInner,
+    sync::{CacheId, SynchronizationGraphInner},
     transaction_pool::SharedTransactionPool,
     triehash::ordered_trie_root,
     vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
 };
 use ethereum_types::{Address, H256, U256, U512};
-use heapsize::HeapSizeOf;
 use parking_lot::{Mutex, RwLock};
 use primitives::{
     receipt::{
@@ -216,6 +215,7 @@ impl ConsensusGraphInner {
             .difference(anticone)
             .cloned()
             .collect::<HashSet<_>>();
+        debug!("Get {} fork terminals", fork_terminals.len());
 
         for terminal in fork_terminals {
             let mut me = me_in_consensus;
@@ -250,6 +250,11 @@ impl ConsensusGraphInner {
 
             min_fork_height = min(min_fork_height, self.arena[prev_me].height);
         }
+        debug!(
+            "Get {} fork_points, {} pivot_points",
+            fork_points.len(),
+            pivot_points.len()
+        );
 
         if fork_points.is_empty() {
             debug_assert!(pivot_points.is_empty());
@@ -284,6 +289,7 @@ impl ConsensusGraphInner {
                 upper = self.arena[upper].parent;
             }
         }
+        debug!("Finish difficulty contribution removal");
 
         // Check the pivot selection decision.
         for (index, fork_info) in fork_points {
@@ -521,30 +527,6 @@ impl ConsensusGraphInner {
     }
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone)]
-enum CacheId {
-    Block(H256),
-    BlockReceipts(H256),
-    TransactionAddress(H256),
-}
-
-#[derive(Debug)]
-pub struct CacheSize {
-    /// Blocks cache size.
-    pub blocks: usize,
-    /// Block Receipts cache size.
-    pub block_receipts: usize,
-    /// Transaction Addresses cache size.
-    pub transaction_addresses: usize,
-}
-
-impl CacheSize {
-    /// Total amount used by the cache.
-    pub fn total(&self) -> usize {
-        self.blocks + self.block_receipts + self.transaction_addresses
-    }
-}
-
 pub struct ConsensusGraph {
     pub blocks: Arc<RwLock<HashMap<H256, Arc<Block>>>>,
     pub block_headers: Arc<RwLock<HashMap<H256, Arc<BlockHeader>>>>,
@@ -557,7 +539,7 @@ pub struct ConsensusGraph {
     // ledger structure, like block- or transaction-related
     // stuffs.
     pub db: Arc<SystemDB>,
-    cache_man: Mutex<CacheManager<CacheId>>,
+    pub cache_man: Arc<Mutex<CacheManager<CacheId>>>,
     pub invalid_blocks: RwLock<HashSet<H256>>,
 }
 
@@ -590,7 +572,7 @@ impl ConsensusGraph {
             genesis_block: Arc::new(genesis_block),
             txpool,
             db,
-            cache_man: Mutex::new(cache_man),
+            cache_man: Arc::new(Mutex::new(cache_man)),
             invalid_blocks: RwLock::new(HashSet::new()),
         };
 
@@ -1706,18 +1688,6 @@ impl ConsensusGraph {
         self.inner.write().call_virtual(tx)
     }
 
-    /// Get current cache size.
-    pub fn cache_size(&self) -> CacheSize {
-        CacheSize {
-            blocks: self.blocks.read().heap_size_of_children(),
-            block_receipts: self.block_receipts.read().heap_size_of_children(),
-            transaction_addresses: self
-                .transaction_addresses
-                .read()
-                .heap_size_of_children(),
-        }
-    }
-
     pub fn persist_terminals(&self) {
         let terminals = {
             let inner = self.inner.read();
@@ -1738,38 +1708,5 @@ impl ConsensusGraph {
         let mut dbops = self.db.key_value().transaction();
         dbops.put(COL_MISC, b"terminals", &rlp_stream.drain());
         self.db.key_value().write(dbops).expect("db error");
-    }
-
-    pub fn block_cache_gc(&self) {
-        let current_size = self.cache_size().total();
-        debug!("Before gc cache_size={}", current_size);
-        let mut blocks = self.blocks.write();
-        let mut block_receipts = self.block_receipts.write();
-        let mut transaction_addresses = self.transaction_addresses.write();
-
-        let mut cache_man = self.cache_man.lock();
-        cache_man.collect_garbage(current_size, |ids| {
-            for id in &ids {
-                match *id {
-                    CacheId::Block(ref h) => {
-                        blocks.remove(h);
-                    }
-                    CacheId::BlockReceipts(ref h) => {
-                        block_receipts.remove(h);
-                    }
-                    CacheId::TransactionAddress(ref h) => {
-                        transaction_addresses.remove(h);
-                    }
-                }
-            }
-
-            blocks.shrink_to_fit();
-            block_receipts.shrink_to_fit();
-            transaction_addresses.shrink_to_fit();
-
-            blocks.heap_size_of_children()
-                + block_receipts.heap_size_of_children()
-                + transaction_addresses.heap_size_of_children()
-        });
     }
 }

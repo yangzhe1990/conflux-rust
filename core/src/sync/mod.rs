@@ -7,8 +7,9 @@ mod synchronization_state;
 pub use self::{
     error::{Error, ErrorKind},
     synchronization_graph::{
-        BestInformation, SharedSynchronizationGraph, SynchronizationGraph,
-        SynchronizationGraphInner, SynchronizationGraphNode,
+        BestInformation, CacheId, SharedSynchronizationGraph,
+        SynchronizationGraph, SynchronizationGraphInner,
+        SynchronizationGraphNode,
     },
     synchronization_protocol_handler::{
         ProtocolConfiguration, SynchronizationProtocolHandler,

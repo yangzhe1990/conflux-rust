@@ -147,7 +147,6 @@ pub struct CompactBlock {
     pub nonce: u64,
     /// A list of tx short ids
     pub tx_short_ids: Vec<TxShortId>,
-
     /// Store the txes reconstructed, None means not received
     pub reconstructed_txes: Vec<Option<Arc<SignedTransaction>>>,
 }
@@ -159,6 +158,13 @@ impl Debug for CompactBlock {
             "CompactBlock{{ block_header: {:?}, nonce: {:?}}}",
             self.block_header, self.nonce
         )
+    }
+}
+
+impl HeapSizeOf for CompactBlock {
+    fn heap_size_of_children(&self) -> usize {
+        self.tx_short_ids.heap_size_of_children()
+            + self.reconstructed_txes.heap_size_of_children()
     }
 }
 
