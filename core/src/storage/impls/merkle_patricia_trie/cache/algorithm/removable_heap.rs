@@ -12,11 +12,9 @@ impl<PosT: PrimitiveNum> HeapHandle<PosT> {
     pub fn get_pos(&self) -> PosT { self.pos }
 
     // Update heap handle for value being moved in heap.
-    pub fn set_heap_handle(&mut self, pos: PosT) { self.pos = pos; }
+    pub fn set_handle(&mut self, pos: PosT) { self.pos = pos; }
 
-    pub fn set_heap_removed(&mut self) {
-        self.pos = PosT::from(Self::NULL_POS);
-    }
+    pub fn set_removed(&mut self) { self.pos = PosT::from(Self::NULL_POS); }
 }
 
 impl<PosT: PrimitiveNum> Default for HeapHandle<PosT> {
@@ -47,13 +45,11 @@ impl<ValueType, PosT: PrimitiveNum>
     }
 
     // Update heap handle for value being moved in heap.
-    pub fn set_heap_handle(&mut self, pos: PosT) {
-        self.get_handle_mut().set_heap_handle(pos);
+    pub fn set_handle(&mut self, pos: PosT) {
+        self.get_handle_mut().set_handle(pos);
     }
 
-    pub fn set_heap_removed(&mut self) {
-        self.get_handle_mut().set_heap_removed();
-    }
+    pub fn set_removed(&mut self) { self.get_handle_mut().set_removed(); }
 }
 
 impl<ValueType, PosT: PrimitiveNum> AsRef<ValueType>
@@ -68,11 +64,12 @@ impl<ValueType, PosT: PrimitiveNum> AsRef<ValueType>
 pub trait HeapValueUtil<ValueType, PosT: PrimitiveNum> {
     type KeyType: Ord + Clone;
 
-    /// Update heap handle for value being moved in heap.
-    fn set_heap_handle(&mut self, value: &mut ValueType, pos: PosT);
+    /// Update handle for value being moved in heap(or the latter non-heap
+    /// part).
+    fn set_handle(&mut self, value: &mut ValueType, pos: PosT);
 
-    /// A special one to set the heap handle for the value being changed by
-    /// Hole. This method should only be implemented differently for special
+    /// A special one to set the handle for the value being changed by Hole.
+    /// This method should only be implemented differently for special
     /// access, e.g. operating the element to insert into cache which hasn't
     /// yet been inserted. For the special cases any hole used in
     /// heap operations must be exactly for the special element.
@@ -81,12 +78,12 @@ pub trait HeapValueUtil<ValueType, PosT: PrimitiveNum> {
     /// method for all Hole object, i.e. all heap operations.
 
     // FIXME: test case.
-    fn set_heap_handle_final(&mut self, value: &mut ValueType, pos: PosT);
-    /// In the current implementation set_heap_removed is always called when the
+    fn set_handle_final(&mut self, value: &mut ValueType, pos: PosT);
+    /// In the current implementation set_removed is always called when the
     /// value still lives in heap. However it works perfectly fine when the
     /// value is already removed from heap, so please do not access the heap
     /// at the old position for the removed value.
-    fn set_heap_removed(&mut self, value: &mut ValueType);
+    fn set_removed(&mut self, value: &mut ValueType);
 
     fn get_key_for_comparison<'a>(
         &'a self, value: &'a ValueType,
@@ -121,26 +118,26 @@ impl<PosT: PrimitiveNum, ValueType: Ord + Clone>
 {
     type KeyType = ValueType;
 
-    fn set_heap_handle(
+    fn set_handle(
         &mut self, value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
         pos: PosT,
     )
     {
-        value.set_heap_handle(pos);
+        value.set_handle(pos);
     }
 
-    fn set_heap_handle_final(
+    fn set_handle_final(
         &mut self, value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
         pos: PosT,
     )
     {
-        value.set_heap_handle(pos);
+        value.set_handle(pos);
     }
 
-    fn set_heap_removed(
+    fn set_removed(
         &mut self, value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
     ) {
-        value.set_heap_removed();
+        value.set_removed();
     }
 
     fn get_key_for_comparison<'a>(
@@ -209,8 +206,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
                 self.get_unchecked_mut(array_pos),
                 1,
             );
-            value_util
-                .set_heap_handle(self.get_unchecked_mut(array_pos), array_pos);
+            value_util.set_handle(self.get_unchecked_mut(array_pos), array_pos);
         }
         hole.pointer_pos = self.get_unchecked_mut(pos);
 
@@ -241,7 +237,7 @@ trait OrderChecker<
         if let Some(pointer_parent) = order_checker.calculate_next(value_util) {
             Some((order_checker, pointer_parent))
         } else {
-            value_util.set_heap_handle_final(
+            value_util.set_handle_final(
                 unsafe { &mut *order_checker.pointer_pos() },
                 pos,
             );
@@ -447,7 +443,7 @@ impl<ValueType> Hole<ValueType> {
         mut self, pos: PosT, value_updater: &mut ValueUtilT,
     ) {
         unsafe {
-            value_updater.set_heap_handle_final(&mut self.value, pos);
+            value_updater.set_handle_final(&mut self.value, pos);
             ptr::write(self.pointer_pos, self.value);
         };
     }
@@ -461,7 +457,7 @@ impl<ValueType> Hole<ValueType> {
     )
     {
         unsafe {
-            value_updater.set_heap_handle(&mut *pointer_new_pos, pos);
+            value_updater.set_handle(&mut *pointer_new_pos, pos);
             ptr::copy_nonoverlapping(pointer_new_pos, self.pointer_pos, 1);
             self.pointer_pos = pointer_new_pos;
         }
@@ -504,7 +500,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     }
 
     /// Unsafe because the emptiness is unchecked.
-    /// Please note that the value_util.set_heap_removed isn't called from this
+    /// Please note that the value_util.set_removed isn't called from this
     /// method. Please call outside this method when necessary.
     pub unsafe fn replace_head_unchecked_with_hole<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
@@ -535,9 +531,9 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         let hole =
             Hole::new_from_value_ptr_read(self.array.as_mut_ptr(), value);
 
-        // The value may be in-place updated so set_heap_removed must be called
-        // before set_heap_handle is called from Hole.
-        value_util.set_heap_removed(value);
+        // The value may be in-place updated so set_removed must be called
+        // before set_handle is called from Hole.
+        value_util.set_removed(value);
         self.replace_head_unchecked_with_hole(hole, value, value_util);
     }
 
@@ -548,8 +544,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
             None
         } else {
             unsafe {
-                value_util
-                    .set_heap_removed(self.get_unchecked_mut(PosT::from(0)));
+                value_util.set_removed(self.get_unchecked_mut(PosT::from(0)));
 
                 self.heap_size -= PosT::from(1);
                 let mut ret = Some(mem::uninitialized());
@@ -579,7 +574,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
                         self.get_unchecked_mut(last_element_pos),
                         1,
                     );
-                    value_util.set_heap_handle(
+                    value_util.set_handle(
                         self.get_unchecked_mut(last_element_pos),
                         last_element_pos,
                     );
@@ -592,7 +587,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     }
 
     /// Unsafe because pos is unchecked, and because of using of hole.
-    /// Please note that the value_util.set_heap_removed isn't called from this
+    /// Please note that the value_util.set_removed isn't called from this
     /// method. Please call outside this method when necessary.
     pub unsafe fn replace_at_unchecked_with_hole<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
@@ -624,9 +619,9 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
             let replaced = self.get_unchecked_mut(pos);
             let hole = Hole::new_from_value_ptr_read(replaced, value);
 
-            // The value may be in-place updated so set_heap_removed must be
-            // called before set_heap_handle is called from Hole.
-            value_util.set_heap_removed(replaced);
+            // The value may be in-place updated so set_removed must be
+            // called before set_handle is called from Hole.
+            value_util.set_removed(replaced);
 
             hole
         };
@@ -654,7 +649,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
                 ptr_heap_last_element,
                 value_util,
             );
-            value_util.set_heap_handle(
+            value_util.set_handle(
                 self.get_unchecked_mut(heap_last_pos),
                 heap_last_pos,
             );
@@ -668,7 +663,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         &mut self, pos: PosT, value_util: &mut ValueUtilT,
     ) -> ValueType {
         let mut removed = mem::uninitialized();
-        value_util.set_heap_removed(self.get_unchecked_mut(pos));
+        value_util.set_removed(self.get_unchecked_mut(pos));
         let hole_pos = if self.heap_size > pos {
             self.heap_size -= PosT::from(1);
             let last_element_pos = self.heap_size;
@@ -698,8 +693,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
                 self.get_unchecked_mut(hole_pos),
                 1,
             );
-            value_util
-                .set_heap_handle(self.get_unchecked_mut(hole_pos), hole_pos);
+            value_util.set_handle(self.get_unchecked_mut(hole_pos), hole_pos);
         }
         self.array.set_len(new_len);
 

@@ -116,23 +116,23 @@ impl<
 {
     type KeyType = ValueType;
 
-    fn set_heap_handle(&mut self, value: &mut PosT, pos: HeapHandlePosT) {
+    fn set_handle(&mut self, value: &mut PosT, pos: HeapHandlePosT) {
         unsafe {
             self.array
                 .get_unchecked_mut(MyInto::<usize>::into(*value))
-                .set_heap_handle(pos);
+                .set_handle(pos);
         }
     }
 
-    fn set_heap_handle_final(&mut self, value: &mut PosT, pos: HeapHandlePosT) {
-        self.set_heap_handle(value, pos);
+    fn set_handle_final(&mut self, value: &mut PosT, pos: HeapHandlePosT) {
+        self.set_handle(value, pos);
     }
 
-    fn set_heap_removed(&mut self, value: &mut PosT) {
+    fn set_removed(&mut self, value: &mut PosT) {
         unsafe {
             self.array
                 .get_unchecked_mut(MyInto::<usize>::into(*value))
-                .set_heap_removed();
+                .set_removed();
         }
     }
 

@@ -49,7 +49,7 @@ impl<PosT: PrimitiveNum> LFRUHandle<PosT> {
             && self.pos != PosT::from(Self::NULL_POS)
     }
 
-    fn set_evicted(&mut self) { self.pos = PosT::from(Self::NULL_POS); }
+    pub fn set_evicted(&mut self) { self.pos = PosT::from(Self::NULL_POS); }
 
     fn get_handle(&self) -> PosT { self.pos }
 
@@ -111,7 +111,7 @@ impl<
 {
     type KeyType = FrequencyType;
 
-    fn set_heap_handle(
+    fn set_handle(
         &mut self, value: &mut LFRUMetadata<PosT, CacheIndexT>, pos: PosT,
     ) {
         unsafe {
@@ -126,7 +126,7 @@ impl<
         }
     }
 
-    fn set_heap_handle_final(
+    fn set_handle_final(
         &mut self, value: &mut LFRUMetadata<PosT, CacheIndexT>, pos: PosT,
     ) {
         unsafe {
@@ -141,9 +141,7 @@ impl<
         }
     }
 
-    fn set_heap_removed(
-        &mut self, value: &mut LFRUMetadata<PosT, CacheIndexT>,
-    ) {
+    fn set_removed(&mut self, value: &mut LFRUMetadata<PosT, CacheIndexT>) {
         unsafe {
             // There is no need to update lru cache_index because heap removal
             // always happens after frequency_lru removal.
@@ -406,14 +404,27 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
                         let lru_evicted =
                             unsafe { lru_evicted_keys.get_unchecked(0) };
 
-                        let evicted_lfru_metadata_ptr = unsafe {
-                            heap.get_unchecked_mut(lru_evicted.pos)
-                                as *mut LFRUMetadata<PosT, CacheIndexT>
-                        };
-                        let evicted_cache_index =
-                            unsafe { (*evicted_lfru_metadata_ptr).cache_index };
-                        hole.pointer_pos = evicted_lfru_metadata_ptr;
+                        let evicted_cache_index;
+                        let evicted_lfru_metadata_ptr;
+                        {
+                            let evicted_lfru_metadata = unsafe {
+                                heap.get_unchecked_mut(lru_evicted.pos)
+                            };
+                            evicted_cache_index =
+                                evicted_lfru_metadata.cache_index;
+                            hole.pointer_pos = evicted_lfru_metadata;
 
+                            // The caller should read the the returned
+                            // CacheAccessResult and
+                            // removes the evicted keys.
+                            // set_removed isn't necessary but prevent
+                            // mysterious
+                            // errors if the caller doesn't.
+                            heap_util.set_removed(evicted_lfru_metadata);
+
+                            evicted_lfru_metadata_ptr = evicted_lfru_metadata
+                                as *mut LFRUMetadata<PosT, CacheIndexT>
+                        }
                         if lru_evicted.is_lfu_hit(heap) {
                             // The element removed from LRU also lives in LFU.
                             // Replace it with the newly accessed item.

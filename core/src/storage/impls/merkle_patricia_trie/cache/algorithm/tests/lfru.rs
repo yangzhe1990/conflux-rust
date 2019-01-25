@@ -1,4 +1,8 @@
-use super::super::{lfru::*, *};
+use super::{
+    super::{lfru::*, *},
+    *,
+};
+use rand::distributions::{uniform::*, *};
 
 struct CacheUtil<'a> {
     cache_algo_data: &'a mut [LFRUHandle<u32>],
@@ -49,7 +53,7 @@ impl<'a> CacheStoreUtil for CacheUtil<'a> {
         // If access then check the most recently accessed key.
         // If delete the most_recent_key is none and there is nothing to check.
         if self.most_recent_key.is_some() {
-            assert_eq!(Some(element_index), self.most_recent_key);
+            assert_eq!(self.most_recent_key, Some(element_index));
         }
         self.cache_algo_data[element_index as usize] = *algo_data;
     }
@@ -69,7 +73,7 @@ enum KeyActions {
 
 /// Check the correctness of the algorithm.
 #[test]
-fn test_lfru_algorithm_small_test() {
+fn test_lfru_algorithm_smoke_test() {
     let key_range = 10;
 
     let mut cache_algo_data =
@@ -82,7 +86,7 @@ fn test_lfru_algorithm_small_test() {
 
     let mut lfru = LFRU::<u32, i32>::new(3, 6);
 
-    let cache_actions = vec![
+    let mut cache_actions = vec![
         KeyActions::Access(0),
         KeyActions::Access(1),
         KeyActions::Access(1),
@@ -113,8 +117,29 @@ fn test_lfru_algorithm_small_test() {
         // Test frequency counter of final state.
     ];
 
+    let state_check_pos = cache_actions.len();
+
+    let mut rng = get_rng_for_test();
+
+    let candidate_sampler = Uniform::new(0, key_range);
+    let probability_sampler = Uniform::new(0.0, 1.0);
+    let delete_probability = 0.1;
+    for actions in 1..10000 {
+        let key = candidate_sampler.sample(&mut rng);
+
+        if probability_sampler.sample(&mut rng) >= delete_probability {
+            cache_actions.push(KeyActions::Access(key));
+        } else {
+            cache_actions.push(KeyActions::Delete(key));
+        }
+    }
+
+    let mut pos = 0;
     for action in cache_actions.iter() {
-        println!("action: {:?}", action);
+        if pos == state_check_pos {
+            // TODO(yz): check final state after hard coded sequence.
+        }
+        pos += 1;
         match *action {
             KeyActions::Delete(key) => {
                 cache_util.done(key);
@@ -128,11 +153,20 @@ fn test_lfru_algorithm_small_test() {
             }
             KeyActions::Access(key) => {
                 cache_util.prepare(key);
-                lfru.access(key, &mut cache_util);
+                match lfru.access(key, &mut cache_util) {
+                    CacheAccessResult::MissReplaced {
+                        evicted: evicted_keys,
+                        evicted_keep_cache_algo_data: _,
+                    } => {
+                        for evicted in evicted_keys {
+                            cache_util.cache_algo_data[evicted as usize]
+                                .set_evicted();
+                        }
+                    }
+                    _ => {}
+                }
                 cache_util.done(key);
             }
         }
     }
-
-    // TODO(yz): check final state.
 }

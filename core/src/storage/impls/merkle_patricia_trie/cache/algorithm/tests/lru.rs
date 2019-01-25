@@ -221,7 +221,7 @@ mod test_lru_algorithm {
         fn set_most_recently_accessed(
             &mut self, element_index: i32, algo_data: &LRUHandle<u32>,
         ) {
-            assert_eq!(Some(element_index), self.most_recent_key);
+            assert_eq!(self.most_recent_key, Some(element_index));
             self.cache_algo_data[element_index as usize] = *algo_data;
         }
     }
