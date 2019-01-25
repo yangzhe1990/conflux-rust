@@ -34,8 +34,6 @@ use std::{
     vec::Vec,
 };
 
-pub type TrieNodeLFRU = TrieNode<CacheAlgoDataDeltaMpt>;
-
 // TODO(yz): choose the best place to attach the consts.
 impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     const BITS_0_3_MASK: u8 = 0x0f;
@@ -123,17 +121,12 @@ unsafe impl<CacheAlgoDataT: CacheAlgoDataTrait> Sync
 {
 }
 
-// FIXME: implement EntryTrait for TrieNode.
-pub type TrieNodeSlabEntry<CacheAlgoDataT> =
-    super::slab::Entry<TrieNode<CacheAlgoDataT>>;
-pub type TrieNodeSlabEntryLFRU = super::slab::Entry<TrieNodeLFRU>;
-pub type VacantEntry<'a, CacheAlgoDataT> = super::slab::VacantEntry<
+pub type VacantEntry<'a, TrieNode> = super::slab::VacantEntry<
     'a,
-    TrieNode<CacheAlgoDataT>,
-    TrieNodeSlabEntry<CacheAlgoDataT>,
+    TrieNode,
+    // FIXME: implement EntryTrait for TrieNode.
+    super::slab::Entry<TrieNode>,
 >;
-pub type VacantEntryLFRU<'a> =
-    super::slab::VacantEntry<'a, TrieNodeLFRU, TrieNodeSlabEntryLFRU>;
 
 /// Key length should be multiple of 8.
 // TODO(yz): align key @8B with mask.
@@ -889,9 +882,12 @@ pub type OwnedNodeSet = BTreeSet<NodeRefDeltaMpt>;
 
 impl CowNodeRef {
     pub fn new_uninitialized_node<'a>(
-        allocator: AllocatorRefRefLFRU<'a>, owned_node_set: &mut OwnedNodeSet,
-    ) -> Result<(Self, VacantEntryLFRU<'a>)> {
-        let (node_ref, new_entry) = NodeMemoryManagerLFRU::new_node(allocator)?;
+        allocator: AllocatorRefRefDeltaMpt<'a>,
+        owned_node_set: &mut OwnedNodeSet,
+    ) -> Result<(Self, SlabVacantEntryDeltaMpt<'a>)>
+    {
+        let (node_ref, new_entry) =
+            NodeMemoryManagerDeltaMpt::new_node(allocator)?;
         owned_node_set.insert(node_ref.clone());
 
         Ok((
@@ -929,16 +925,17 @@ impl CowNodeRef {
     }
 
     fn convert_to_owned<'a>(
-        &mut self, node_memory_manager: &'a NodeMemoryManagerLFRU,
-        allocator: AllocatorRefRefLFRU<'a>, owned_node_set: &mut OwnedNodeSet,
-    ) -> Result<Option<VacantEntryLFRU<'a>>>
+        &mut self, node_memory_manager: &'a NodeMemoryManagerDeltaMpt,
+        allocator: AllocatorRefRefDeltaMpt<'a>,
+        owned_node_set: &mut OwnedNodeSet,
+    ) -> Result<Option<SlabVacantEntryDeltaMpt<'a>>>
     {
         if self.owned {
             Ok(None)
         } else {
             // TODO(yz): maybe use Self::new_uninitialized_node().
             let (node_ref, new_entry) =
-                NodeMemoryManagerLFRU::new_node(&allocator)?;
+                NodeMemoryManagerDeltaMpt::new_node(&allocator)?;
             owned_node_set.insert(node_ref.clone());
             self.node_ref = node_ref;
 
@@ -946,7 +943,9 @@ impl CowNodeRef {
         }
     }
 
-    pub fn delete_node(mut self, node_memory_manager: &NodeMemoryManagerLFRU) {
+    pub fn delete_node(
+        mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
+    ) {
         if self.owned {
             node_memory_manager.free_node(&mut self.node_ref);
             self.owned = false;
@@ -966,10 +965,10 @@ impl CowNodeRef {
 
     fn commit_children(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeLFRU,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
         commit_transaction: &mut AtomicCommitTransaction,
-        cache_manager: &mut CacheManagerLFRU,
-        allocator_ref: AllocatorRefRefLFRU,
+        cache_manager: &mut CacheManagerDeltaMpt,
+        allocator_ref: AllocatorRefRefDeltaMpt,
     ) -> Result<()>
     {
         for (i, node_ref_mut) in trie_node.children_table.iter_mut() {
@@ -1005,7 +1004,7 @@ impl CowNodeRef {
 
     fn set_merkle(
         &mut self, children_merkles: MaybeMerkleTableRef,
-        trie_node: &mut TrieNodeLFRU,
+        trie_node: &mut TrieNodeDeltaMpt,
     ) -> MerkleHash
     {
         let path_merkle = compute_merkle(
@@ -1021,7 +1020,8 @@ impl CowNodeRef {
     /// Get if unowned, compute if owned.
     pub fn get_or_compute_merkle(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
-        owned_node_set: &mut OwnedNodeSet, allocator_ref: AllocatorRefRefLFRU,
+        owned_node_set: &mut OwnedNodeSet,
+        allocator_ref: AllocatorRefRefDeltaMpt,
     ) -> Result<MerkleHash>
     {
         if self.owned {
@@ -1053,8 +1053,8 @@ impl CowNodeRef {
     // FIXME: get allocator outside recursion. do the same for commit.
     fn get_or_compute_children_merkles(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeLFRU,
-        allocator_ref: AllocatorRefRefLFRU,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
+        allocator_ref: AllocatorRefRefDeltaMpt,
     ) -> Result<MaybeMerkleTable>
     {
         match trie_node.children_table.get_children_count() {
@@ -1090,10 +1090,10 @@ impl CowNodeRef {
     }
 
     // FIXME: unit test.
-    fn iterate_internal<TrieNodeRef: Deref<Target = TrieNodeLFRU>>(
+    fn iterate_internal<TrieNodeRef: Deref<Target = TrieNodeDeltaMpt>>(
         &self, owned_node_set: &OwnedNodeSet,
         trie: &MultiVersionMerklePatriciaTrie,
-        allocator_ref: AllocatorRefRefLFRU, trie_node: TrieNodeRef,
+        allocator_ref: AllocatorRefRefDeltaMpt, trie_node: TrieNodeRef,
         key_prefix: CompressedPathRaw, values: &mut Vec<(Vec<u8>, Box<[u8]>)>,
     ) -> Result<()>
     {
@@ -1135,10 +1135,10 @@ impl CowNodeRef {
     /// Recursively commit dirty nodes.
     pub fn commit(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeLFRU,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
         commit_transaction: &mut AtomicCommitTransaction,
-        cache_manager: &mut CacheManagerLFRU,
-        allocator_ref: AllocatorRefRefLFRU,
+        cache_manager: &mut CacheManagerDeltaMpt,
+        allocator_ref: AllocatorRefRefDeltaMpt,
     ) -> Result<bool>
     {
         if self.owned {
@@ -1182,7 +1182,7 @@ impl CowNodeRef {
 
     // FIXME: why mut TrieNode when Cow doesn't own it?
     unsafe fn delete_value_unchecked_if_owned(
-        &mut self, trie_node: &mut TrieNodeLFRU,
+        &mut self, trie_node: &mut TrieNodeDeltaMpt,
     ) -> Box<[u8]> {
         if self.owned {
             trie_node.delete_value_unchecked()
@@ -1192,9 +1192,9 @@ impl CowNodeRef {
     }
 
     fn cow_set_compressed_path(
-        &mut self, node_memory_manager: &NodeMemoryManagerLFRU,
+        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
         owned_node_set: &mut OwnedNodeSet, path: CompressedPathRaw,
-        trie_node: &mut TrieNodeLFRU,
+        trie_node: &mut TrieNodeDeltaMpt,
     ) -> Result<()>
     {
         let allocator = node_memory_manager.get_allocator();
@@ -1217,8 +1217,8 @@ impl CowNodeRef {
     }
 
     fn cow_delete_value_unchecked(
-        &mut self, node_memory_manager: &NodeMemoryManagerLFRU,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeLFRU,
+        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
     ) -> Result<Box<[u8]>>
     {
         let allocator = node_memory_manager.get_allocator();
@@ -1239,8 +1239,8 @@ impl CowNodeRef {
     }
 
     fn cow_replace_value_valid(
-        &mut self, node_memory_manager: &NodeMemoryManagerLFRU,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeLFRU,
+        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
         value: &[u8],
     ) -> Result<Option<Box<[u8]>>>
     {
@@ -1266,8 +1266,8 @@ impl CowNodeRef {
     }
 
     fn cow_delete_children_table(
-        &mut self, node_memory_manager: &NodeMemoryManagerLFRU,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeLFRU,
+        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
     ) -> Result<()>
     {
         let allocator = node_memory_manager.get_allocator();
@@ -1294,8 +1294,8 @@ impl CowNodeRef {
     }
 
     unsafe fn cow_replace_child_unchecked(
-        &mut self, node_memory_manager: &NodeMemoryManagerLFRU,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeLFRU,
+        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
         child_index: u8, child_node: NodeRefDeltaMptCompact,
     ) -> Result<()>
     {
@@ -1321,8 +1321,8 @@ impl CowNodeRef {
     }
 
     unsafe fn cow_delete_child_unchecked(
-        &mut self, node_memory_manager: &NodeMemoryManagerLFRU,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeLFRU,
+        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
         child_index: u8,
     ) -> Result<()>
     {
@@ -1349,8 +1349,8 @@ impl CowNodeRef {
 
     // FIXME: How to replace duplicated code?
     unsafe fn cow_add_new_child_unchecked(
-        &mut self, node_memory_manager: &NodeMemoryManagerLFRU,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeLFRU,
+        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
+        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
         child_index: u8, child_node: NodeRefDeltaMptCompact,
     ) -> Result<()>
     {
@@ -1437,7 +1437,7 @@ impl<'trie> SubTrieVisitor<'trie> {
         self.trie_ref
     }
 
-    fn node_memory_manager(&self) -> &'trie NodeMemoryManagerLFRU {
+    fn node_memory_manager(&self) -> &'trie NodeMemoryManagerDeltaMpt {
         &self.get_trie_ref().get_node_memory_manager()
     }
 
@@ -1448,12 +1448,12 @@ impl<'trie> SubTrieVisitor<'trie> {
     }
 
     fn get_trie_node<'a>(
-        &self, key: KeyPart, allocator_ref: AllocatorRefRefLFRU<'a>,
+        &self, key: KeyPart, allocator_ref: AllocatorRefRefDeltaMpt<'a>,
     ) -> Result<
         Option<
             GuardedValue<
-                RwLockWriteGuard<'a, CacheManagerLFRU>,
-                &'a TrieNodeLFRU,
+                RwLockWriteGuard<'a, CacheManagerDeltaMpt>,
+                &'a TrieNodeDeltaMpt,
             >,
         >,
     >
@@ -2122,8 +2122,8 @@ impl<'trie> SubTrieVisitor<'trie> {
     }
 
     pub fn set(self, key: KeyPart, value: &[u8]) -> Result<NodeRefDeltaMpt> {
-        TrieNodeLFRU::check_key_size(key)?;
-        TrieNodeLFRU::check_value_size(value)?;
+        TrieNodeDeltaMpt::check_key_size(key)?;
+        TrieNodeDeltaMpt::check_value_size(value)?;
         let new_root;
         unsafe {
             new_root = self.insert_checked_value(key, value)?.1;

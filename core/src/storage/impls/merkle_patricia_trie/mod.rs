@@ -1,5 +1,5 @@
 use self::{
-    cache::algorithm::lfru::LFRU, data_structure::*, merkle::*,
+    cache::algorithm::ghost_lfu::GhostLFU, data_structure::*, merkle::*,
     node_memory_manager::*, node_ref_map::*,
 };
 use super::errors::*;
@@ -37,20 +37,20 @@ pub struct MultiVersionMerklePatriciaTrie {
     ///
     /// The node memory manager holds reference to db on disk which stores MPT
     /// nodes.
-    node_memory_manager: NodeMemoryManagerLFRU,
+    node_memory_manager: NodeMemoryManagerDeltaMpt,
 }
 
 impl MultiVersionMerklePatriciaTrie {
     pub fn new(kvdb: Arc<KeyValueDB>, conf: StorageConfiguration) -> Self {
         Self {
             root_by_version: Default::default(),
-            node_memory_manager: NodeMemoryManagerLFRU::new(
+            node_memory_manager: NodeMemoryManagerDeltaMpt::new(
                 conf.start_size,
                 conf.cache_size,
                 conf.idle_size,
-                LFRU::<u32, DeltaMptDbKey>::new(
+                GhostLFU::<u32, DeltaMptDbKey>::new(
                     conf.cache_size,
-                    (conf.cache_size as f64 * conf.lfru_factor) as u32,
+                    (conf.cache_size as f64 * conf.ghost_lfu_factor) as u32,
                 ),
                 kvdb,
             ),
@@ -76,7 +76,7 @@ impl MultiVersionMerklePatriciaTrie {
         root
     }
 
-    pub fn get_node_memory_manager(&self) -> &NodeMemoryManagerLFRU {
+    pub fn get_node_memory_manager(&self) -> &NodeMemoryManagerDeltaMpt {
         &self.node_memory_manager
     }
 

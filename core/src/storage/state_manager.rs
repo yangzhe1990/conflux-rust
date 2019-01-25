@@ -30,5 +30,5 @@ pub struct StorageConfiguration {
     pub start_size: u32,
     pub cache_size: u32,
     pub idle_size: u32,
-    pub lfru_factor: f64,
+    pub ghost_lfu_factor: f64,
 }

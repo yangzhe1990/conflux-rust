@@ -1,19 +1,19 @@
 use super::{
-    super::{lfru::*, *},
+    super::{ghost_lfu::*, *},
     *,
 };
 use rand::distributions::{uniform::*, *};
 
 struct CacheUtil<'a> {
-    cache_algo_data: &'a mut [LFRUHandle<u32>],
+    cache_algo_data: &'a mut [GhostLFUHandle<u32>],
     most_recent_key: Option<i32>,
 }
 
 impl<'a> CacheStoreUtil for CacheUtil<'a> {
-    type CacheAlgoData = LFRUHandle<u32>;
+    type CacheAlgoData = GhostLFUHandle<u32>;
     type ElementIndex = i32;
 
-    fn get(&self, element_index: i32) -> LFRUHandle<u32> {
+    fn get(&self, element_index: i32) -> GhostLFUHandle<u32> {
         match self.most_recent_key {
             None => {}
             Some(key) => {
@@ -28,12 +28,12 @@ impl<'a> CacheStoreUtil for CacheUtil<'a> {
 
     fn get_most_recently_accessed(
         &self, element_index: i32,
-    ) -> LFRUHandle<u32> {
+    ) -> GhostLFUHandle<u32> {
         assert_eq!(Some(element_index), self.most_recent_key);
         self.cache_algo_data[element_index as usize]
     }
 
-    fn set(&mut self, element_index: i32, algo_data: &LFRUHandle<u32>) {
+    fn set(&mut self, element_index: i32, algo_data: &GhostLFUHandle<u32>) {
         match self.most_recent_key {
             None => {}
             Some(key) => {
@@ -48,7 +48,7 @@ impl<'a> CacheStoreUtil for CacheUtil<'a> {
     }
 
     fn set_most_recently_accessed(
-        &mut self, element_index: i32, algo_data: &LFRUHandle<u32>,
+        &mut self, element_index: i32, algo_data: &GhostLFUHandle<u32>,
     ) {
         // If access then check the most recently accessed key.
         // If delete the most_recent_key is none and there is nothing to check.
@@ -71,20 +71,19 @@ enum KeyActions {
     Delete(i32),
 }
 
-/// Check the correctness of the algorithm.
 #[test]
-fn test_lfru_algorithm_smoke_test() {
+fn g_lfu_algorithm_smoke_test() {
     let key_range = 10;
 
     let mut cache_algo_data =
-        vec![LFRUHandle::<u32>::default(); key_range as usize];
+        vec![GhostLFUHandle::<u32>::default(); key_range as usize];
 
     let mut cache_util = CacheUtil {
         cache_algo_data: &mut cache_algo_data,
         most_recent_key: None,
     };
 
-    let mut lfru = LFRU::<u32, i32>::new(3, 6);
+    let mut lfru = GhostLFU::<u32, i32>::new(3, 6);
 
     let mut cache_actions = vec![
         KeyActions::Access(0),

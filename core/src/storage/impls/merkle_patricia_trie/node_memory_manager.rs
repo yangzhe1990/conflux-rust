@@ -1,8 +1,8 @@
 use super::{
     super::{super::super::db::COL_DELTA_TRIE, errors::*},
     cache::algorithm::{
-        lfru::LFRU, CacheAccessResult, CacheAlgoDataTrait, CacheAlgorithm,
-        CacheIndexTrait, CacheStoreUtil,
+        ghost_lfu::GhostLFU, CacheAccessResult, CacheAlgoDataTrait,
+        CacheAlgorithm, CacheIndexTrait, CacheStoreUtil,
     },
     data_structure::*,
     guarded_value::*,
@@ -15,27 +15,32 @@ use rlp::*;
 use std::{hint::unreachable_unchecked, sync::Arc};
 
 pub type ActualSlabIndex = u32;
-type Allocator<CacheAlgoDataT> =
-    Slab<TrieNode<CacheAlgoDataT>, TrieNodeSlabEntry<CacheAlgoDataT>>;
-type AllocatorLFRU = Slab<TrieNodeLFRU, TrieNodeSlabEntryLFRU>;
+type Allocator<CacheAlgoDataT> = Slab<
+    TrieNode<CacheAlgoDataT>,
+    super::slab::Entry<TrieNode<CacheAlgoDataT>>,
+>;
+
 pub type AllocatorRef<'a, CacheAlgoDataT> =
     RwLockReadGuard<'a, Allocator<CacheAlgoDataT>>;
 pub type AllocatorRefRef<'a, CacheAlgoDataT> =
     &'a AllocatorRef<'a, CacheAlgoDataT>;
-pub type AllocatorRefRefLFRU<'a> = &'a AllocatorRef<'a, CacheAlgoDataDeltaMpt>;
 
-pub type LFRUPosT = u32;
-pub type CacheAlgorithmDeltaMpt = LFRU<LFRUPosT, DeltaMptDbKey>;
+pub type GLFUPosT = u32;
+pub type CacheAlgorithmDeltaMpt = GhostLFU<GLFUPosT, DeltaMptDbKey>;
 pub type CacheAlgoDataDeltaMpt =
     <CacheAlgorithmDeltaMpt as CacheAlgorithm>::CacheAlgoData;
-// FIXME: LFRU suffix?
-pub type NodeMemoryManagerLFRU =
-    NodeMemoryManager<CacheAlgoDataDeltaMpt, CacheAlgorithmDeltaMpt>;
-pub type CacheManagerLFRU =
-    CacheManager<CacheAlgoDataDeltaMpt, CacheAlgorithmDeltaMpt>;
 
-pub type CacheManagerMut<'a, CacheAlgoDataT, CacheAlgorithmT> =
-    RwLockWriteGuard<'a, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>;
+pub type TrieNodeDeltaMpt = TrieNode<CacheAlgoDataDeltaMpt>;
+pub type SlabVacantEntryDeltaMpt<'a> = VacantEntry<'a, TrieNodeDeltaMpt>;
+type AllocatorDeltaMpt =
+    Slab<TrieNodeDeltaMpt, super::slab::Entry<TrieNodeDeltaMpt>>;
+pub type AllocatorRefRefDeltaMpt<'a> =
+    &'a AllocatorRef<'a, CacheAlgoDataDeltaMpt>;
+
+pub type NodeMemoryManagerDeltaMpt =
+    NodeMemoryManager<CacheAlgoDataDeltaMpt, CacheAlgorithmDeltaMpt>;
+pub type CacheManagerDeltaMpt =
+    CacheManager<CacheAlgoDataDeltaMpt, CacheAlgorithmDeltaMpt>;
 
 impl CacheIndexTrait for DeltaMptDbKey {}
 
@@ -119,14 +124,14 @@ impl<
         >,
     > NodeMemoryManager<CacheAlgoDataT, CacheAlgorithmT>
 {
-    pub const LFRU_FACTOR: f64 = 4.0;
+    pub const G_LFU_FACTOR: f64 = 4.0;
     /// In disk hybrid solution, the nodes in memory are merely LRU cache of
-    /// non-leaf nodes. So the memory consumption is (192B Trie + 10B LFRU +
+    /// non-leaf nodes. So the memory consumption is (192B Trie + 10B G_LFU +
     /// 12B*4x LRU) * number of nodes + 200M * 4B NodeRef. 5GB + extra 800M
     /// ~ 20_000_000 nodes.
     // TODO(yz): Need to calculate a factor in LRU (currently made up to 4).
     pub const MAX_CACHED_TRIE_NODES_DISK_HYBRID: u32 = 20_000_000;
-    pub const MAX_CACHED_TRIE_NODES_LFRU_COUNTER: u32 = (Self::LFRU_FACTOR
+    pub const MAX_CACHED_TRIE_NODES_G_LFU_COUNTER: u32 = (Self::G_LFU_FACTOR
         * Self::MAX_CACHED_TRIE_NODES_DISK_HYBRID as f64)
         as u32;
     /// Splitting out dirty trie nodes may remove the hard limit, however it
@@ -177,7 +182,7 @@ impl<
 
     pub fn get_cache_manager_mut(
         &self,
-    ) -> CacheManagerMut<CacheAlgoDataT, CacheAlgorithmT> {
+    ) -> RwLockWriteGuard<CacheManager<CacheAlgoDataT, CacheAlgorithmT>> {
         self.cache.write()
     }
 
@@ -452,7 +457,8 @@ impl<
 
     pub fn new_node<'a>(
         allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
-    ) -> Result<(NodeRefDeltaMpt, VacantEntry<'a, CacheAlgoDataT>)> {
+    ) -> Result<(NodeRefDeltaMpt, VacantEntry<'a, TrieNode<CacheAlgoDataT>>)>
+    {
         let vacant_entry = allocator.vacant_entry()?;
         let node = NodeRefDeltaMpt::Dirty {
             index: vacant_entry.key() as ActualSlabIndex,

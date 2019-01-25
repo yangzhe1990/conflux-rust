@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-pub(in super::super) mod lfru;
+pub(in super::super) mod ghost_lfu;
 pub(in super::super) mod lru;
 pub mod removable_heap;
 

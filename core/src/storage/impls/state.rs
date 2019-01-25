@@ -89,7 +89,7 @@ impl<'a> State<'a> {
     }
 
     fn do_db_commit(
-        &mut self, epoch_id: EpochId, cache_manager: &mut CacheManagerLFRU,
+        &mut self, epoch_id: EpochId, cache_manager: &mut CacheManagerDeltaMpt,
     ) -> Result<()> {
         self.dirty = false;
 
