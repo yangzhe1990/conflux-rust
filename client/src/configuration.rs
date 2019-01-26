@@ -43,7 +43,7 @@ build_config! {
         (storage_start_size, (u32), 1_000_000)
         (storage_cache_size, (u32), 20_000_000)
         (storage_idle_size, (u32), 200_000)
-        (storage_ghost_lfu_factor, (f64), 4.0)
+        (storage_recent_lfu_factor, (f64), 4.0)
         (send_tx_period_ms, (u64), 1300)
         (check_request_period_ms, (u64), 5000)
         (block_cache_gc_period_ms, (u64), 5000)
@@ -175,7 +175,7 @@ impl Configuration {
             start_size: self.raw_conf.storage_start_size,
             cache_size: self.raw_conf.storage_cache_size,
             idle_size: self.raw_conf.storage_idle_size,
-            ghost_lfu_factor: self.raw_conf.storage_ghost_lfu_factor,
+            recent_lfu_factor: self.raw_conf.storage_recent_lfu_factor,
         }
     }
 

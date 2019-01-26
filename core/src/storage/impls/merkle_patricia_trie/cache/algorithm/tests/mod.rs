@@ -1,5 +1,5 @@
-mod ghost_lfu;
 mod lru;
+mod recent_lfu;
 mod removable_heap;
 use rand::{ChaChaRng, SeedableRng};
 

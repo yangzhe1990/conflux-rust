@@ -1,5 +1,5 @@
 use self::{
-    cache::algorithm::ghost_lfu::GhostLFU, data_structure::*, merkle::*,
+    cache::algorithm::recent_lfu::RecentLFU, data_structure::*, merkle::*,
     node_memory_manager::*, node_ref_map::*,
 };
 use super::errors::*;
@@ -48,9 +48,9 @@ impl MultiVersionMerklePatriciaTrie {
                 conf.start_size,
                 conf.cache_size,
                 conf.idle_size,
-                GhostLFU::<u32, DeltaMptDbKey>::new(
+                RecentLFU::<u32, DeltaMptDbKey>::new(
                     conf.cache_size,
-                    (conf.cache_size as f64 * conf.ghost_lfu_factor) as u32,
+                    (conf.cache_size as f64 * conf.recent_lfu_factor) as u32,
                 ),
                 kvdb,
             ),

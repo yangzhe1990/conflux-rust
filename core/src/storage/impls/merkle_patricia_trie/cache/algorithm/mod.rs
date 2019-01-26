@@ -7,8 +7,8 @@ use std::{
     },
 };
 
-pub(in super::super) mod ghost_lfu;
 pub(in super::super) mod lru;
+pub(in super::super) mod recent_lfu;
 pub mod removable_heap;
 
 #[cfg(test)]

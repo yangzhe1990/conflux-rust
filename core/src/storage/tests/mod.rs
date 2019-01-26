@@ -50,7 +50,7 @@ pub fn new_state_manager_for_testing() -> StateManager {
             start_size: 1_000_000,
             cache_size: 20_000_000,
             idle_size: 200_000,
-            ghost_lfu_factor: 4.0,
+            recent_lfu_factor: 4.0,
         },
     )
 }

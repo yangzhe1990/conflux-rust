@@ -1,7 +1,7 @@
 use super::{
     super::{super::super::db::COL_DELTA_TRIE, errors::*},
     cache::algorithm::{
-        ghost_lfu::GhostLFU, CacheAccessResult, CacheAlgoDataTrait,
+        recent_lfu::RecentLFU, CacheAccessResult, CacheAlgoDataTrait,
         CacheAlgorithm, CacheIndexTrait, CacheStoreUtil,
     },
     data_structure::*,
@@ -26,7 +26,7 @@ pub type AllocatorRefRef<'a, CacheAlgoDataT> =
     &'a AllocatorRef<'a, CacheAlgoDataT>;
 
 pub type GLFUPosT = u32;
-pub type CacheAlgorithmDeltaMpt = GhostLFU<GLFUPosT, DeltaMptDbKey>;
+pub type CacheAlgorithmDeltaMpt = RecentLFU<GLFUPosT, DeltaMptDbKey>;
 pub type CacheAlgoDataDeltaMpt =
     <CacheAlgorithmDeltaMpt as CacheAlgorithm>::CacheAlgoData;
 
@@ -124,14 +124,13 @@ impl<
         >,
     > NodeMemoryManager<CacheAlgoDataT, CacheAlgorithmT>
 {
-    pub const G_LFU_FACTOR: f64 = 4.0;
     /// In disk hybrid solution, the nodes in memory are merely LRU cache of
-    /// non-leaf nodes. So the memory consumption is (192B Trie + 10B G_LFU +
+    /// non-leaf nodes. So the memory consumption is (192B Trie + 10B R_LFU +
     /// 12B*4x LRU) * number of nodes + 200M * 4B NodeRef. 5GB + extra 800M
     /// ~ 20_000_000 nodes.
     // TODO(yz): Need to calculate a factor in LRU (currently made up to 4).
     pub const MAX_CACHED_TRIE_NODES_DISK_HYBRID: u32 = 20_000_000;
-    pub const MAX_CACHED_TRIE_NODES_G_LFU_COUNTER: u32 = (Self::G_LFU_FACTOR
+    pub const MAX_CACHED_TRIE_NODES_R_LFU_COUNTER: u32 = (Self::R_LFU_FACTOR
         * Self::MAX_CACHED_TRIE_NODES_DISK_HYBRID as f64)
         as u32;
     /// Splitting out dirty trie nodes may remove the hard limit, however it
@@ -147,6 +146,7 @@ impl<
     /// multiple version tree, so we have a factor of 3.3 (extra layers) per
     /// leaf node. This assumption is for delta_trie.
     pub const MAX_TRIE_NODES_MEM_ONLY: u32 = 27_600_000;
+    pub const R_LFU_FACTOR: f64 = 4.0;
     pub const START_CAPACITY: u32 = 1_000_000;
 }
 
