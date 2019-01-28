@@ -499,6 +499,17 @@ impl CowNodeRef {
 }
 
 use super::{
-    super::{super::state::OwnedNodeSet, MultiVersionMerklePatriciaTrie},
+    super::{
+        super::{
+            errors::*,
+            state::OwnedNodeSet,
+            state_manager::{AtomicCommitTransaction, COL_DELTA_TRIE},
+        },
+        node_memory_manager::*,
+        MultiVersionMerklePatriciaTrie,
+    },
+    merkle::*,
     *,
 };
+use rlp::*;
+use std::{hint::unreachable_unchecked, ops::Deref};

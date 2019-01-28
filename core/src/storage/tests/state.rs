@@ -1,11 +1,3 @@
-use super::{
-    super::{state::*, state_manager::*},
-    new_state_manager_for_testing,
-};
-use ethereum_types::H256;
-use rand::{ChaChaRng, Rng, SeedableRng};
-use std::mem;
-
 fn generate_keys() -> Vec<[u8; 4]> {
     let number_of_keys = 100000;
     let mut rng = get_rng_for_test();
@@ -188,8 +180,11 @@ fn test_set_delete() {
 fn print(key: &[u8]) {
     print!("key = (");
     for char in key {
-        // FIXME: use byte order defined in data_structure mod
-        print!("{}, {}, ", char & 0x0f, char >> 4);
+        print!(
+            "{}, {}, ",
+            CompressedPathRaw::first_nibble(*char),
+            CompressedPathRaw::second_nibble(*char)
+        );
     }
     println!(")");
 }
@@ -242,3 +237,14 @@ fn test_set_order() {
     assert_eq!(merkle_0, merkle_1);
     assert_eq!(merkle_0, merkle_2);
 }
+
+use super::{
+    super::{
+        impls::multi_version_merkle_patricia_trie::merkle_patricia_trie::CompressedPathRaw,
+        state::*, state_manager::*,
+    },
+    new_state_manager_for_testing,
+};
+use ethereum_types::H256;
+use rand::{ChaChaRng, Rng, SeedableRng};
+use std::mem;

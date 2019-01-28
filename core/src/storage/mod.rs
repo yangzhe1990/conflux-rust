@@ -12,7 +12,7 @@ mod impls;
 pub use self::{
     impls::{
         errors::{Error, ErrorKind, Result},
-        merkle_patricia_trie::data_structure::MerkleHash,
+        multi_version_merkle_patricia_trie::merkle_patricia_trie::MerkleHash,
     },
     state::{State as Storage, StateTrait as StorageTrait},
     state_manager::{

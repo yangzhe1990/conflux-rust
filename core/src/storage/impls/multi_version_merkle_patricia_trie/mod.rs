@@ -1,7 +1,6 @@
 pub mod cache;
-pub(in super::super) mod data_structure;
 mod guarded_value;
-pub(self) mod maybe_in_place_byte_array;
+pub(in super::super) mod merkle_patricia_trie;
 pub(in super::super) mod node_memory_manager;
 pub(self) mod node_ref_map;
 pub(super) mod return_after_use;
@@ -86,7 +85,7 @@ impl MultiVersionMerklePatriciaTrie {
 }
 
 use self::{
-    cache::algorithm::recent_lfu::RecentLFU, data_structure::*,
+    cache::algorithm::recent_lfu::RecentLFU, merkle_patricia_trie::*,
     node_memory_manager::*, node_ref_map::*,
 };
 use super::errors::*;

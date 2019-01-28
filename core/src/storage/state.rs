@@ -41,6 +41,7 @@ pub trait StateTrait {
 }
 
 use super::impls::{
-    errors::*, merkle_patricia_trie::data_structure::MerkleHash,
+    errors::*,
+    multi_version_merkle_patricia_trie::merkle_patricia_trie::MerkleHash,
 };
 use primitives::EpochId;

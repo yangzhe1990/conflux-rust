@@ -1,23 +1,4 @@
-use super::super::state_manager::*;
-
-use super::{
-    super::{super::db::COL_DELTA_TRIE, state::*},
-    errors::*,
-    merkle_patricia_trie::{data_structure::NodeRefDeltaMpt, row_number::*, *},
-};
-use crate::{
-    ext_db::SystemDB, snapshot::snapshot::Snapshot, statedb::StorageKey,
-};
-use ethereum_types::{H256, U256};
-use ethkey::KeyPair;
-use kvdb::{DBTransaction, DBValue};
-use primitives::{Account, Block, BlockHeaderBuilder, EpochId};
-use rlp::encode;
-use secret_store::SecretStore;
-use std::{
-    io, str,
-    sync::{Arc, Mutex, MutexGuard},
-};
+pub use super::super::super::db::COL_DELTA_TRIE;
 
 #[derive(Default)]
 pub struct AtomicCommit {
@@ -179,3 +160,24 @@ impl StateManagerTrait for StateManager {
 
     fn drop_state_outside(&self, epoch_id: EpochId) { unimplemented!() }
 }
+
+use super::{
+    super::{state::*, state_manager::*},
+    errors::*,
+    multi_version_merkle_patricia_trie::{
+        merkle_patricia_trie::NodeRefDeltaMpt, row_number::*, *,
+    },
+};
+use crate::{
+    ext_db::SystemDB, snapshot::snapshot::Snapshot, statedb::StorageKey,
+};
+use ethereum_types::{H256, U256};
+use ethkey::KeyPair;
+use kvdb::{DBTransaction, DBValue};
+use primitives::{Account, Block, BlockHeaderBuilder, EpochId};
+use rlp::encode;
+use secret_store::SecretStore;
+use std::{
+    io, str,
+    sync::{Arc, Mutex, MutexGuard},
+};

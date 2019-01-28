@@ -160,7 +160,7 @@ impl<'a> State<'a> {
         self.delta_trie.get_node_memory_manager().enlarge().ok();
     }
 
-    // FIXME: move to data_structure mod
+    // FIXME: move to merkle_patricia_trie mod
     fn get_root_node(&self) -> Option<NodeRefDeltaMpt> {
         self.root_node.clone()
     }
@@ -325,8 +325,8 @@ impl<'a> State<'a> {
 use super::{
     super::{super::db::COL_DELTA_TRIE, state::*, state_manager::*},
     errors::*,
-    merkle_patricia_trie::{
-        data_structure::{merkle::MERKLE_NULL_NODE, *},
+    multi_version_merkle_patricia_trie::{
+        merkle_patricia_trie::{merkle::MERKLE_NULL_NODE, *},
         MultiVersionMerklePatriciaTrie,
     },
 };

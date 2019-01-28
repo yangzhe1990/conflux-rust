@@ -1,7 +1,3 @@
-use super::super::{children_table::*, *};
-
-use lazy_static::lazy_static;
-
 lazy_static! {
     static ref NEW_CHILDREN_VALUE: NodeRefDeltaMptCompact =
         NodeRefDeltaMptCompact::new(CHILDREN_COUNT as u32);
@@ -275,3 +271,7 @@ fn test_children_table_iteration_modification() {
         assert_eq!(next_index, CHILDREN_COUNT);
     })
 }
+
+use super::super::{children_table::*, *};
+use lazy_static::lazy_static;
+use rlp::*;

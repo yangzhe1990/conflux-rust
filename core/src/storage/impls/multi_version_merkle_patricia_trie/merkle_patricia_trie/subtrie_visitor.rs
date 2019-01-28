@@ -694,6 +694,16 @@ impl<'trie> SubTrieVisitor<'trie> {
 }
 
 use super::{
-    super::{super::state::OwnedNodeSet, MultiVersionMerklePatriciaTrie},
+    super::{
+        super::{errors::*, state::OwnedNodeSet},
+        guarded_value::GuardedValue,
+        node_memory_manager::*,
+        return_after_use::ReturnAfterUse,
+        MultiVersionMerklePatriciaTrie,
+    },
+    merkle::*,
+    trie_node::{access_mode::*, *},
     *,
 };
+use parking_lot::RwLockWriteGuard;
+use std::hint::unreachable_unchecked;

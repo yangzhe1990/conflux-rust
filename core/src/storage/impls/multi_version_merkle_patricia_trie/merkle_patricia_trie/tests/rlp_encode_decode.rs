@@ -1,5 +1,3 @@
-use super::super::{children_table::*, node_ref::*, *};
-
 #[test]
 fn test_node_ref_delta_mpt_compact_encode_decode() {
     let x = NodeRefDeltaMptCompact::new(1234);
@@ -98,3 +96,9 @@ fn test_trie_node_encode_decode() {
 
     assert_eq!(rlp_parsed, x);
 }
+
+use super::super::{
+    super::node_memory_manager::CacheAlgoDataDeltaMpt, children_table::*,
+    node_ref::*, *,
+};
+use rlp::*;

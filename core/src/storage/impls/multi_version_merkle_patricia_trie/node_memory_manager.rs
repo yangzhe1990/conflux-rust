@@ -1,25 +1,16 @@
-use super::{
-    super::{super::super::db::COL_DELTA_TRIE, errors::*},
-    cache::algorithm::{
-        recent_lfu::RecentLFU, CacheAccessResult, CacheAlgoDataTrait,
-        CacheAlgorithm, CacheIndexTrait, CacheStoreUtil,
-    },
-    data_structure::*,
-    guarded_value::*,
-    node_ref_map::*,
-    slab::Slab,
-};
-use kvdb::KeyValueDB;
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use rlp::*;
-use std::{hint::unreachable_unchecked, sync::Arc};
-
 pub type ActualSlabIndex = u32;
+
+pub type VacantEntry<'a, TrieNode> = super::slab::VacantEntry<
+    'a,
+    TrieNode,
+    // FIXME: implement EntryTrait for TrieNode.
+    super::slab::Entry<TrieNode>,
+>;
+
 type Allocator<CacheAlgoDataT> = Slab<
     TrieNode<CacheAlgoDataT>,
     super::slab::Entry<TrieNode<CacheAlgoDataT>>,
 >;
-
 pub type AllocatorRef<'a, CacheAlgoDataT> =
     RwLockReadGuard<'a, Allocator<CacheAlgoDataT>>;
 pub type AllocatorRefRef<'a, CacheAlgoDataT> =
@@ -31,6 +22,7 @@ pub type CacheAlgoDataDeltaMpt =
     <CacheAlgorithmDeltaMpt as CacheAlgorithm>::CacheAlgoData;
 
 pub type TrieNodeDeltaMpt = TrieNode<CacheAlgoDataDeltaMpt>;
+
 pub type SlabVacantEntryDeltaMpt<'a> = VacantEntry<'a, TrieNodeDeltaMpt>;
 type AllocatorDeltaMpt =
     Slab<TrieNodeDeltaMpt, super::slab::Entry<TrieNodeDeltaMpt>>;
@@ -597,3 +589,19 @@ impl<
         node_memory_manager.call_cache_algorithm_access(self, db_key);
     }
 }
+
+use super::{
+    super::{super::super::db::COL_DELTA_TRIE, errors::*},
+    cache::algorithm::{
+        recent_lfu::RecentLFU, CacheAccessResult, CacheAlgoDataTrait,
+        CacheAlgorithm, CacheIndexTrait, CacheStoreUtil,
+    },
+    guarded_value::*,
+    merkle_patricia_trie::*,
+    node_ref_map::*,
+    slab::Slab,
+};
+use kvdb::KeyValueDB;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use rlp::*;
+use std::{hint::unreachable_unchecked, sync::Arc};
