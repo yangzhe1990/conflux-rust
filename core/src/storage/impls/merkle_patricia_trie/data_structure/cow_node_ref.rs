@@ -92,6 +92,7 @@ impl CowNodeRef {
         }
     }
 
+    // FIXME: maybe forbid calling for un-owned node?
     pub fn into_child(mut self) -> Option<NodeRefDeltaMptCompact> {
         if self.owned {
             self.owned = false;
@@ -101,7 +102,7 @@ impl CowNodeRef {
         }
     }
 
-    fn commit_children(
+    fn commit_dirty_recurse_into_children(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
         commit_transaction: &mut AtomicCommitTransaction,
@@ -112,29 +113,24 @@ impl CowNodeRef {
         for (i, node_ref_mut) in trie_node.children_table.iter_mut() {
             let node_ref = node_ref_mut.clone();
             let mut cow_child_node = Self::new(node_ref.into(), owned_node_set);
-            let trie_node = trie
-                .get_node_memory_manager()
-                .node_as_mut_with_cache_manager(
-                    allocator_ref,
-                    &mut cow_child_node.node_ref,
+            if cow_child_node.get_owned() {
+                let trie_node = unsafe {
+                    trie.get_node_memory_manager().dirty_node_as_mut_unchecked(
+                        allocator_ref,
+                        &mut cow_child_node.node_ref,
+                    )
+                }?;
+                let was_owned = cow_child_node.commit_dirty_recursively(
+                    trie,
+                    owned_node_set,
+                    trie_node,
+                    commit_transaction,
                     cache_manager,
+                    allocator_ref,
                 )?;
-            let was_owned = cow_child_node.commit(
-                trie,
-                owned_node_set,
-                trie_node,
-                commit_transaction,
-                cache_manager,
-                allocator_ref,
-            )?;
 
-            // An owned child TrieNode now have a new NodeRef.
-            // Unowned child TrieNode isn't changed so it's safe
-            // to not reset children
-            // table in parent node.
-            let new_node_ref = cow_child_node.into_child();
-            if was_owned {
-                *node_ref_mut = new_node_ref.clone().unwrap();
+                // An owned child TrieNode now have a new NodeRef.
+                *node_ref_mut = cow_child_node.into_child().unwrap();
             }
         }
         Ok(())
@@ -163,12 +159,11 @@ impl CowNodeRef {
     ) -> Result<MerkleHash>
     {
         if self.owned {
-            // FIXME: refactor.
-            // It's safe because owned nodes are not owned by cache manager.
             let trie_node = unsafe {
-                trie.get_node_memory_manager()
-                    .node_as_mut(allocator_ref, &mut self.node_ref)?
-                    .into_value()
+                trie.get_node_memory_manager().dirty_node_as_mut_unchecked(
+                    allocator_ref,
+                    &mut self.node_ref,
+                )?
             };
             let children_merkles = self.get_or_compute_children_merkles(
                 trie,
@@ -270,7 +265,7 @@ impl CowNodeRef {
     }
 
     /// Recursively commit dirty nodes.
-    pub fn commit(
+    pub fn commit_dirty_recursively(
         &mut self, trie: &MultiVersionMerklePatriciaTrie,
         owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
         commit_transaction: &mut AtomicCommitTransaction,
@@ -279,7 +274,7 @@ impl CowNodeRef {
     ) -> Result<bool>
     {
         if self.owned {
-            self.commit_children(
+            self.commit_dirty_recurse_into_children(
                 trie,
                 owned_node_set,
                 trie_node,

@@ -132,13 +132,7 @@ impl<'a> StateTrait for State<'a> {
 
         // TODO(yz): Think about leaving these node dirty and only commit when
         // the dirty node is removed from cache.
-        let commit_result = self.do_db_commit(
-            epoch_id,
-            &mut *self
-                .delta_trie
-                .get_node_memory_manager()
-                .get_cache_manager_mut(),
-        );
+        let commit_result = self.do_db_commit(epoch_id);
         if commit_result.is_err() {
             self.revert();
         }
@@ -216,61 +210,72 @@ impl<'a> State<'a> {
         }
     }
 
-    fn do_db_commit(
-        &mut self, epoch_id: EpochId, cache_manager: &mut CacheManagerDeltaMpt,
-    ) -> Result<()> {
+    fn do_db_commit(&mut self, epoch_id: EpochId) -> Result<()> {
         self.dirty = false;
 
-        let tmp_root_node = self.root_node.clone();
-        match &tmp_root_node {
+        let maybe_root_node = self.root_node.clone();
+        match maybe_root_node {
             None => {
-                // Don't commit empty state. Empty state shouldn't exists since
+                // Don't commit empty state. Empty state shouldn't exists after
                 // genesis block.
             }
-            Some(ref root_node) => {
+            Some(root_node) => {
                 // Use coarse lock to prevent row number from interleaving,
-                // which makes it cleaner to restart from db
-                // failure. Without a coarse lock all threads
-                // may not be able to do anything else
-                // because they compete with each other on slowly writing db.
+                // which makes it cleaner to restart from db failure. It also
+                // benefits performance because without a coarse lock all
+                // threads may not be able to do anything else when they compete
+                // with each other on slow db writing.
                 let mut commit_transaction = self.manager.start_commit();
 
                 let mut cow_root = CowNodeRef::new(
-                    root_node.clone(),
+                    root_node,
                     self.owned_node_set.as_ref().unwrap(),
                 );
-                let allocator =
-                    self.delta_trie.get_node_memory_manager().get_allocator();
-                let trie_node_root = self
-                    .delta_trie
-                    .get_node_memory_manager()
-                    .node_as_mut_with_cache_manager(
+
+                if cow_root.get_owned() {
+                    let allocator = self
+                        .delta_trie
+                        .get_node_memory_manager()
+                        .get_allocator();
+                    let trie_node_mut = unsafe {
+                        self.delta_trie
+                            .get_node_memory_manager()
+                            .dirty_node_as_mut_unchecked(
+                                &allocator,
+                                &mut cow_root.node_ref,
+                            )
+                    }?;
+                    let result = cow_root.commit_dirty_recursively(
+                        self.delta_trie,
+                        self.owned_node_set.as_mut().unwrap(),
+                        trie_node_mut,
+                        &mut commit_transaction,
+                        &mut *self
+                            .delta_trie
+                            .get_node_memory_manager()
+                            .get_cache_manager_mut(),
                         &allocator,
-                        &mut cow_root.node_ref,
-                        cache_manager,
-                    )?;
-                let result = cow_root.commit(
-                    self.delta_trie,
-                    self.owned_node_set.as_mut().unwrap(),
-                    trie_node_root,
-                    &mut commit_transaction,
-                    cache_manager,
-                    &allocator,
-                );
-                self.root_node = cow_root.into_child().map(|r| r.into());
-                result?;
+                    );
+                    self.root_node = cow_root.into_child().map(|r| r.into());
+                    result?;
 
-                commit_transaction.transaction.put(
-                    COL_DELTA_TRIE,
-                    "last_row_number".as_bytes(),
-                    commit_transaction.info.row_number.to_string().as_bytes(),
-                );
+                    commit_transaction.transaction.put(
+                        COL_DELTA_TRIE,
+                        "last_row_number".as_bytes(),
+                        commit_transaction
+                            .info
+                            .row_number
+                            .to_string()
+                            .as_bytes(),
+                    );
+                }
 
-                let db_key = {
-                    match *root_node {
-                        NodeRefDeltaMpt::Dirty { index } => {
-                            commit_transaction.info.row_number.value - 1
-                        }
+                let db_key = *{
+                    match self.root_node.as_ref().unwrap() {
+                        // Dirty state are committed.
+                        NodeRefDeltaMpt::Dirty { index } => unsafe {
+                            unreachable_unchecked();
+                        },
                         // Empty block's state root points to its base state.
                         NodeRefDeltaMpt::Committed { db_key } => db_key,
                     }
@@ -322,9 +327,8 @@ use super::{
     errors::*,
     merkle_patricia_trie::{
         data_structure::{merkle::MERKLE_NULL_NODE, *},
-        node_memory_manager::*,
         MultiVersionMerklePatriciaTrie,
     },
 };
 use primitives::EpochId;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, hint::unreachable_unchecked};

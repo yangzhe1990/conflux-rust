@@ -213,16 +213,15 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 .path_prepended(path_prefix, child_index);
                         }
                         // FIXME: error processing for OOM.
-                        let mut child_trie_node = node_memory_manager
-                            .node_as_mut(
-                                &allocator,
-                                &mut child_node_cow.node_ref,
-                            )?;
+                        let child_trie_node = node_memory_manager.node_as_ref(
+                            &allocator,
+                            &mut child_node_cow.node_ref,
+                        )?;
                         child_node_cow.cow_set_compressed_path(
                             &node_memory_manager,
                             self.owned_node_set.get_mut(),
                             new_path,
-                            &mut child_trie_node,
+                            &child_trie_node,
                         )?;
 
                         node_cow.delete_node(self.node_memory_manager());
@@ -293,8 +292,8 @@ impl<'trie> SubTrieVisitor<'trie> {
                                     )?
                                     .path_prepended(path_prefix, child_index);
                             }
-                            let mut child_trie_node = node_memory_manager
-                                .node_as_mut(
+                            let child_trie_node = node_memory_manager
+                                .node_as_ref(
                                     &allocator,
                                     &mut child_node_cow.node_ref,
                                 )?;
@@ -302,7 +301,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 &node_memory_manager,
                                 self.owned_node_set.get_mut(),
                                 new_path,
-                                &mut child_trie_node,
+                                &child_trie_node,
                             )?;
 
                             node_cow.delete_node(self.node_memory_manager());
@@ -439,8 +438,8 @@ impl<'trie> SubTrieVisitor<'trie> {
                                     )?
                                     .path_prepended(path_prefix, child_index);
                             }
-                            let mut child_trie_node = node_memory_manager
-                                .node_as_mut(
+                            let child_trie_node = node_memory_manager
+                                .node_as_ref(
                                     &allocator,
                                     &mut child_node_cow.node_ref,
                                 )?;
@@ -448,7 +447,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 &node_memory_manager,
                                 self.owned_node_set.get_mut(),
                                 new_path,
-                                &mut child_trie_node,
+                                &child_trie_node,
                             )?;
 
                             node_cow.delete_node(self.node_memory_manager());

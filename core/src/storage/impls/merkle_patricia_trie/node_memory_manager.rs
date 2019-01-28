@@ -428,33 +428,27 @@ impl<
         Ok(GuardedValue::new(cache_manager_lock, trie_node))
     }
 
-    // FIXME: should add a proof of ownership in parameter list.
-    // FIXME: CacheManager is only relevant for committed node.
-    pub fn node_as_mut<'a>(
+    /// Get mutable reference to TrieNode from dirty (owned) trie node. There is
+    /// no need to lock cache manager in this case.
+    ///
+    /// unsafe because it's unchecked that the node is dirty.
+    pub unsafe fn dirty_node_as_mut_unchecked<'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: &mut NodeRefDeltaMpt,
-    ) -> Result<
-        GuardedValue<
-            RwLockWriteGuard<CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
-            &'a mut TrieNode<CacheAlgoDataT>,
-        >,
-    >
-    {
-        let mut cache_manager_lock = self.cache.write();
-        let trie_node =
-            self.load_node_internal(allocator, node, &mut *cache_manager_lock)?;
-
-        Ok(GuardedValue::new(cache_manager_lock, trie_node))
-    }
-
-    // FIXME: should add a proof of ownership in parameter list.
-    pub fn node_as_mut_with_cache_manager<'a>(
-        &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
-        node: &mut NodeRefDeltaMpt,
-        cache_manager: &mut CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
     ) -> Result<&'a mut TrieNode<CacheAlgoDataT>>
     {
-        self.load_node_internal(allocator, node, cache_manager)
+        match node {
+            NodeRefDeltaMpt::Committed { ref db_key } => {
+                unreachable_unchecked();
+            }
+            NodeRefDeltaMpt::Dirty { ref index } => Ok(NodeMemoryManager::<
+                CacheAlgoDataT,
+                CacheAlgorithmT,
+            >::get_in_memory_node_mut(
+                &allocator,
+                *index as usize,
+            )),
+        }
     }
 
     pub fn new_node<'a>(
