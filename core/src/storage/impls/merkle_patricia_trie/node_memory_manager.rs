@@ -428,6 +428,7 @@ impl<
         Ok(GuardedValue::new(cache_manager_lock, trie_node))
     }
 
+    // FIXME: should add a proof of ownership in parameter list.
     // FIXME: CacheManager is only relevant for committed node.
     pub fn node_as_mut<'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
@@ -446,6 +447,7 @@ impl<
         Ok(GuardedValue::new(cache_manager_lock, trie_node))
     }
 
+    // FIXME: should add a proof of ownership in parameter list.
     pub fn node_as_mut_with_cache_manager<'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: &mut NodeRefDeltaMpt,
