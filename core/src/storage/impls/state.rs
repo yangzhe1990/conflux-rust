@@ -1,14 +1,4 @@
-use super::super::state::*;
-
-use super::{
-    super::{super::db::COL_DELTA_TRIE, state_manager::*},
-    errors::*,
-    merkle_patricia_trie::{
-        data_structure::*, merkle::*, node_memory_manager::*,
-        MultiVersionMerklePatriciaTrie,
-    },
-};
-use primitives::EpochId;
+pub type OwnedNodeSet = BTreeSet<NodeRefDeltaMpt>;
 
 pub struct State<'a> {
     manager: &'a StateManager,
@@ -30,7 +20,145 @@ impl<'a> State<'a> {
             dirty: false,
         }
     }
+}
 
+impl<'a> Drop for State<'a> {
+    fn drop(&mut self) {
+        if self.dirty {
+            panic!("State is dirty however is not committed before free.");
+        }
+    }
+}
+
+impl<'a> StateTrait for State<'a> {
+    fn does_exist(&self) -> bool { self.get_root_node().is_some() }
+
+    fn get_merkle_hash(&self, access_key: &[u8]) -> Result<Option<MerkleHash>> {
+        // Get won't create any new nodes so it's fine to pass an empty
+        // owned_node_set.
+        let mut empty_owned_node_set: Option<OwnedNodeSet> =
+            Some(Default::default());
+        match self.get_root_node() {
+            None => Ok(None),
+            Some(root_node) => SubTrieVisitor::new(
+                self.delta_trie,
+                root_node,
+                &mut empty_owned_node_set,
+            )
+            .get_merkle_hash_wo_compressed_path(access_key),
+        }
+    }
+
+    fn get(&self, access_key: &[u8]) -> Result<Option<Box<[u8]>>> {
+        // Get won't create any new nodes so it's fine to pass an empty
+        // owned_node_set.
+        let mut empty_owned_node_set: Option<OwnedNodeSet> =
+            Some(Default::default());
+        let maybe_root_node = self.get_root_node();
+        match maybe_root_node {
+            None => Ok(None),
+            Some(root_node) => SubTrieVisitor::new(
+                self.delta_trie,
+                root_node,
+                &mut empty_owned_node_set,
+            )
+            .get(access_key),
+        }
+    }
+
+    fn set(&mut self, access_key: &[u8], value: &[u8]) -> Result<()> {
+        self.pre_modification();
+
+        self.root_node = SubTrieVisitor::new(
+            self.delta_trie,
+            self.get_or_create_root_node()?,
+            &mut self.owned_node_set,
+        )
+        .set(access_key, value)?
+        .into();
+
+        Ok(())
+    }
+
+    fn delete(&mut self, access_key: &[u8]) -> Result<Option<Box<[u8]>>> {
+        self.pre_modification();
+
+        match self.get_root_node() {
+            None => Ok(None),
+            Some(old_root_node) => {
+                let (old_value, _, root_node) = SubTrieVisitor::new(
+                    self.delta_trie,
+                    old_root_node,
+                    &mut self.owned_node_set,
+                )
+                .delete(access_key)?;
+                self.root_node = root_node.map(|maybe_node| maybe_node.into());
+                Ok(old_value)
+            }
+        }
+    }
+
+    fn delete_all(
+        &mut self, access_key_prefix: &[u8],
+    ) -> Result<Option<Vec<(Vec<u8>, Box<[u8]>)>>> {
+        self.pre_modification();
+
+        match self.get_root_node() {
+            None => Ok(None),
+            Some(old_root_node) => {
+                let (deleted, _, root_node) = SubTrieVisitor::new(
+                    self.delta_trie,
+                    old_root_node,
+                    &mut self.owned_node_set,
+                )
+                .delete_all(access_key_prefix, access_key_prefix)?;
+                self.root_node = root_node.map(|maybe_node| maybe_node.into());
+                Ok(deleted)
+            }
+        }
+    }
+
+    fn compute_state_root(&mut self) -> Result<MerkleHash> {
+        self.compute_merkle_root()
+    }
+
+    fn get_state_root(&self) -> Result<Option<MerkleHash>> {
+        self.delta_trie.get_merkle(self.root_node.clone())
+    }
+
+    // TODO(yz): replace coarse lock with a queue.
+    fn commit(&mut self, epoch_id: EpochId) -> Result<()> {
+        self.state_root_check()?;
+
+        // TODO(yz): Think about leaving these node dirty and only commit when
+        // the dirty node is removed from cache.
+        let commit_result = self.do_db_commit(
+            epoch_id,
+            &mut *self
+                .delta_trie
+                .get_node_memory_manager()
+                .get_cache_manager_mut(),
+        );
+        if commit_result.is_err() {
+            self.revert();
+        }
+        commit_result
+    }
+
+    fn revert(&mut self) {
+        self.dirty = false;
+
+        // Free all modified nodes.
+        let owned_node_set = self.owned_node_set.as_ref().unwrap();
+        for owned_node in owned_node_set {
+            self.delta_trie
+                .get_node_memory_manager()
+                .free_node(&mut owned_node.clone());
+        }
+    }
+}
+
+impl<'a> State<'a> {
     fn pre_modification(&mut self) {
         if !self.dirty {
             self.dirty = true
@@ -189,138 +317,14 @@ impl<'a> State<'a> {
     }
 }
 
-impl<'a> Drop for State<'a> {
-    fn drop(&mut self) {
-        if self.dirty {
-            panic!("State is dirty however is not committed before free.");
-        }
-    }
-}
-
-impl<'a> StateTrait for State<'a> {
-    fn does_exist(&self) -> bool { self.get_root_node().is_some() }
-
-    fn get_merkle_hash(&self, access_key: &[u8]) -> Result<Option<MerkleHash>> {
-        // Get won't create any new nodes so it's fine to pass an empty
-        // owned_node_set.
-        let mut empty_owned_node_set: Option<OwnedNodeSet> =
-            Some(Default::default());
-        match self.get_root_node() {
-            None => Ok(None),
-            Some(root_node) => SubTrieVisitor::new(
-                self.delta_trie,
-                root_node,
-                &mut empty_owned_node_set,
-            )
-            .get_merkle_hash_wo_compressed_path(access_key),
-        }
-    }
-
-    fn get(&self, access_key: &[u8]) -> Result<Option<Box<[u8]>>> {
-        // Get won't create any new nodes so it's fine to pass an empty
-        // owned_node_set.
-        let mut empty_owned_node_set: Option<OwnedNodeSet> =
-            Some(Default::default());
-        let maybe_root_node = self.get_root_node();
-        match maybe_root_node {
-            None => Ok(None),
-            Some(root_node) => SubTrieVisitor::new(
-                self.delta_trie,
-                root_node,
-                &mut empty_owned_node_set,
-            )
-            .get(access_key),
-        }
-    }
-
-    fn set(&mut self, access_key: &[u8], value: &[u8]) -> Result<()> {
-        self.pre_modification();
-
-        self.root_node = SubTrieVisitor::new(
-            self.delta_trie,
-            self.get_or_create_root_node()?,
-            &mut self.owned_node_set,
-        )
-        .set(access_key, value)?
-        .into();
-
-        Ok(())
-    }
-
-    fn delete(&mut self, access_key: &[u8]) -> Result<Option<Box<[u8]>>> {
-        self.pre_modification();
-
-        match self.get_root_node() {
-            None => Ok(None),
-            Some(old_root_node) => {
-                let (old_value, _, root_node) = SubTrieVisitor::new(
-                    self.delta_trie,
-                    old_root_node,
-                    &mut self.owned_node_set,
-                )
-                .delete(access_key)?;
-                self.root_node = root_node.map(|maybe_node| maybe_node.into());
-                Ok(old_value)
-            }
-        }
-    }
-
-    fn delete_all(
-        &mut self, access_key_prefix: &[u8],
-    ) -> Result<Option<Vec<(Vec<u8>, Box<[u8]>)>>> {
-        self.pre_modification();
-
-        match self.get_root_node() {
-            None => Ok(None),
-            Some(old_root_node) => {
-                let (deleted, _, root_node) = SubTrieVisitor::new(
-                    self.delta_trie,
-                    old_root_node,
-                    &mut self.owned_node_set,
-                )
-                .delete_all(access_key_prefix, access_key_prefix)?;
-                self.root_node = root_node.map(|maybe_node| maybe_node.into());
-                Ok(deleted)
-            }
-        }
-    }
-
-    fn compute_state_root(&mut self) -> Result<MerkleHash> {
-        self.compute_merkle_root()
-    }
-
-    fn get_state_root(&self) -> Result<Option<MerkleHash>> {
-        self.delta_trie.get_merkle(self.root_node.clone())
-    }
-
-    // TODO(yz): replace coarse lock with a queue.
-    fn commit(&mut self, epoch_id: EpochId) -> Result<()> {
-        self.state_root_check()?;
-
-        // TODO(yz): Think about leaving these node dirty and only commit when
-        // the dirty node is removed from cache.
-        let commit_result = self.do_db_commit(
-            epoch_id,
-            &mut *self
-                .delta_trie
-                .get_node_memory_manager()
-                .get_cache_manager_mut(),
-        );
-        if commit_result.is_err() {
-            self.revert();
-        }
-        commit_result
-    }
-
-    fn revert(&mut self) {
-        self.dirty = false;
-
-        // Free all modified nodes.
-        let owned_node_set = self.owned_node_set.as_ref().unwrap();
-        for owned_node in owned_node_set {
-            self.delta_trie
-                .get_node_memory_manager()
-                .free_node(&mut owned_node.clone());
-        }
-    }
-}
+use super::{
+    super::{super::db::COL_DELTA_TRIE, state::*, state_manager::*},
+    errors::*,
+    merkle_patricia_trie::{
+        data_structure::{merkle::MERKLE_NULL_NODE, *},
+        node_memory_manager::*,
+        MultiVersionMerklePatriciaTrie,
+    },
+};
+use primitives::EpochId;
+use std::collections::BTreeSet;

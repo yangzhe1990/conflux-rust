@@ -1,25 +1,13 @@
-use self::{
-    cache::algorithm::recent_lfu::RecentLFU, data_structure::*, merkle::*,
-    node_memory_manager::*, node_ref_map::*,
-};
-use super::errors::*;
-use crate::storage::state_manager::StorageConfiguration;
-use kvdb::KeyValueDB;
-use parking_lot::RwLock;
-use primitives::EpochId;
-use std::{collections::HashMap, sync::Arc};
-
 pub mod cache;
 pub(in super::super) mod data_structure;
 mod guarded_value;
 pub(self) mod maybe_in_place_byte_array;
-pub mod merkle;
 pub(in super::super) mod node_memory_manager;
 pub(self) mod node_ref_map;
 pub(super) mod return_after_use;
 pub(super) mod row_number;
 
-/// Fork of upstre  am slab in order to compact data and to provide internal
+/// Fork of upstream slab in order to compact data and to provide internal
 /// mutability.
 mod slab;
 
@@ -80,7 +68,6 @@ impl MultiVersionMerklePatriciaTrie {
         &self.node_memory_manager
     }
 
-    // FIXME: use MaybeNodeRef or ?
     pub fn get_merkle(
         &self, maybe_node: Option<NodeRefDeltaMpt>,
     ) -> Result<Option<MerkleHash>> {
@@ -97,3 +84,14 @@ impl MultiVersionMerklePatriciaTrie {
         }
     }
 }
+
+use self::{
+    cache::algorithm::recent_lfu::RecentLFU, data_structure::*,
+    node_memory_manager::*, node_ref_map::*,
+};
+use super::errors::*;
+use crate::storage::state_manager::StorageConfiguration;
+use kvdb::KeyValueDB;
+use parking_lot::RwLock;
+use primitives::EpochId;
+use std::{collections::HashMap, sync::Arc};

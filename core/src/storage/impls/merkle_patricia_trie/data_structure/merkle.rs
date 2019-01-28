@@ -1,15 +1,12 @@
-use super::data_structure::CHILDREN_COUNT;
+use super::*;
+use crate::hash::{keccak, KECCAK_EMPTY};
+use rlp::*;
 
-use ethereum_types::H256;
-pub type MerkleHash = H256;
 pub type ChildrenMerkleTable = [MerkleHash; CHILDREN_COUNT];
 pub type MaybeMerkleTable = Option<ChildrenMerkleTable>;
 pub type MaybeMerkleTableRef<'a> = Option<&'a ChildrenMerkleTable>;
 
-use super::data_structure::*;
-use crate::hash::{keccak, KECCAK_EMPTY};
-use rlp::*;
-
+pub type MerkleHash = H256;
 pub const MERKLE_NULL_NODE: MerkleHash = KECCAK_EMPTY;
 
 pub fn compute_merkle_for_rlp(rlp_stream: &RlpStream) -> MerkleHash {

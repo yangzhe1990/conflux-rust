@@ -11,6 +11,8 @@ pub enum TrieCacheSlotOrCacheAlgoData<CacheAlgoDataT: CacheAlgoDataTrait> {
     CacheAlgoData(CacheAlgoDataT),
 }
 
+// TODO(yz): Rename class and explain how this class interact with the lifecycle
+// of trie node.
 /// CacheableNodeRef maintains the information of cached node and possibly
 /// non-cached children of cached node.
 ///

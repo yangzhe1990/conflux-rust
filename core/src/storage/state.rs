@@ -1,6 +1,3 @@
-use super::impls::{errors::*, merkle_patricia_trie::merkle::MerkleHash};
-use primitives::EpochId;
-
 /// A block defines a list of transactions that it sees and the sequence of
 /// the transactions (ledger). At the view of a block, after all
 /// transactions being executed, the data associated with all addresses is
@@ -42,3 +39,8 @@ pub trait StateTrait {
 
     // TODO(yz): verifiable proof related methods.
 }
+
+use super::impls::{
+    errors::*, merkle_patricia_trie::data_structure::MerkleHash,
+};
+use primitives::EpochId;
