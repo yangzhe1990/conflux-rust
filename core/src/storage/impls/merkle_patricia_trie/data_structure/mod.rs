@@ -640,7 +640,6 @@ enum TrieNodeAction {
         child_index: u8,
         child_node_ref: NodeRefDeltaMpt,
     },
-    DeleteChildrenTable,
 }
 
 /// Update
@@ -831,16 +830,14 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     ) -> TrieNodeAction {
         if new_child_node.is_none() {
             match self.get_children_count() {
-                1 => {
-                    // There is no children left after deletion.
-                    TrieNodeAction::DeleteChildrenTable
+                2 => {
+                    return self
+                        .merge_path_action_after_child_deletion(child_index);
                 }
-                2 => self.merge_path_action_after_child_deletion(child_index),
-                _ => TrieNodeAction::Modify,
+                _ => {}
             }
-        } else {
-            TrieNodeAction::Modify
         }
+        return TrieNodeAction::Modify;
     }
 }
 

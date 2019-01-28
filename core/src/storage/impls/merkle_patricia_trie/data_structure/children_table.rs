@@ -115,10 +115,35 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
     }
 }
 
+#[cfg(test)]
+impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
+    pub fn assert_no_alloc_in_empty_children_table(&self) {
+        assert_eq!(
+            true,
+            self.children_count != 0
+                || self.table_ptr == null_mut()
+                || self.table_ptr as usize == mem::align_of::<NodeRefT>()
+        )
+    }
+}
+
 impl<NodeRefT: NodeRefTrait> Drop for CompactedChildrenTable<NodeRefT> {
     fn drop(&mut self) {
         if self.children_count != 0 {
             drop(unsafe { self.into_managed_slice() });
+        } else {
+            // When children_count is 0, the table_ptr must be null.
+            // If the table_ptr is an "empty array" there could be memory leak.
+            //
+            // The assertion is commented out here because it's checked in unit
+            // test.
+            /*
+            assert_eq!(
+                true,
+                self.table_ptr == null_mut()
+                    || self.table_ptr as usize == mem::align_of::<NodeRefT>()
+            );
+            */
         }
     }
 }

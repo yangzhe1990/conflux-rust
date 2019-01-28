@@ -1,10 +1,11 @@
 /// CowNodeRef facilities access and modification to trie nodes in multi-version
 /// MPT. It offers read-only access to the original trie node, and creates an
 /// unique owned trie node once there is any modification. The ownership is
-/// maintained centralized in owned_node_set which is passed into many methods as
-/// argument. When CowNodeRef is created from an owned node, the ownership is transferred
-/// into the CowNodeRef object. The visitor of MPT makes sure that ownership of any trie node
-/// is not transferred more than once at the same time.
+/// maintained centralized in owned_node_set which is passed into many methods
+/// as argument. When CowNodeRef is created from an owned node, the ownership is
+/// transferred into the CowNodeRef object. The visitor of MPT makes sure that
+/// ownership of any trie node is not transferred more than once at the same
+/// time.
 pub struct CowNodeRef {
     owned: bool,
     pub node_ref: NodeRefDeltaMpt,
@@ -398,35 +399,6 @@ impl CowNodeRef {
                 trie_node.value_clone()
             }
         })
-    }
-
-    // FIXME: is this still necessary?
-    pub fn cow_delete_children_table(
-        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &mut TrieNodeDeltaMpt,
-    ) -> Result<()>
-    {
-        let allocator = node_memory_manager.get_allocator();
-        let copied = self.convert_to_owned(
-            node_memory_manager,
-            &allocator,
-            owned_node_set,
-        )?;
-        match copied {
-            None => {
-                trie_node.children_table = ChildrenTableDeltaMpt::default();
-            }
-            Some(new_entry) => {
-                new_entry.insert(unsafe {
-                    trie_node.copy_and_replace_fields(
-                        None,
-                        None,
-                        Some(ChildrenTableDeltaMpt::default()),
-                    )
-                });
-            }
-        }
-        Ok(())
     }
 
     pub unsafe fn cow_replace_child_unchecked(

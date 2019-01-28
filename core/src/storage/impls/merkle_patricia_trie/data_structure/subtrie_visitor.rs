@@ -245,7 +245,6 @@ impl<'trie> SubTrieVisitor<'trie> {
 
                         Ok((Some(value), node_changed, node_cow.into_child()))
                     }
-                    _ => unsafe { unreachable_unchecked() },
                 }
             }
             WalkStop::Descent {
@@ -319,16 +318,6 @@ impl<'trie> SubTrieVisitor<'trie> {
                             node_cow.delete_node(self.node_memory_manager());
 
                             Ok((value, true, child_node_cow.into_child()))
-                        }
-                        TrieNodeAction::DeleteChildrenTable => {
-                            let node_changed = !node_cow.get_owned();
-                            node_cow.cow_delete_children_table(
-                                &node_memory_manager,
-                                self.owned_node_set.get_mut(),
-                                &mut trie_node_mut,
-                            )?;
-
-                            Ok((value, node_changed, node_cow.into_child()))
                         }
                         TrieNodeAction::Modify => unsafe {
                             let node_changed = !node_cow.get_owned();
@@ -482,20 +471,6 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 value,
                                 true,
                                 child_node_cow.into_child(),
-                            ));
-                        }
-                        TrieNodeAction::DeleteChildrenTable => {
-                            let node_changed = !node_cow.get_owned();
-                            node_cow.cow_delete_children_table(
-                                &node_memory_manager,
-                                self.owned_node_set.get_mut(),
-                                &mut trie_node_mut,
-                            )?;
-
-                            return Ok((
-                                value,
-                                node_changed,
-                                node_cow.into_child(),
                             ));
                         }
                         TrieNodeAction::Modify => unsafe {

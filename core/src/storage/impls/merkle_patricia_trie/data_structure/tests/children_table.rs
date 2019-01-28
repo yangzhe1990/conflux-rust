@@ -61,6 +61,39 @@ fn do_enumerate<
 }
 
 #[test]
+/// When children_count is 0, the table_ptr must be null.
+/// If the table_ptr is an "empty array" there could be memory leak.
+fn test_no_alloc_in_empty_children_table() {
+    let empty_children_table = ChildrenTableDeltaMpt::default();
+    empty_children_table.assert_no_alloc_in_empty_children_table();
+    let cloned_table = empty_children_table.clone();
+    cloned_table.assert_no_alloc_in_empty_children_table();
+
+    let rlp_bytes = empty_children_table.to_ref().rlp_bytes();
+    let rlp_parsed =
+        ChildrenTableManagedDeltaMpt::decode(&Rlp::new(rlp_bytes.as_slice()))
+            .unwrap();
+    let decoded_table = ChildrenTableDeltaMpt::from(rlp_parsed);
+    decoded_table.assert_no_alloc_in_empty_children_table();
+
+    let index = 3;
+    let one_element_table = unsafe {
+        ChildrenTableDeltaMpt::insert_child_unchecked(
+            empty_children_table.to_ref(),
+            index,
+            default_children_value(index),
+        )
+    };
+    let cleared_table = unsafe {
+        ChildrenTableDeltaMpt::delete_child_unchecked(
+            one_element_table.to_ref(),
+            index,
+        )
+    };
+    cleared_table.assert_no_alloc_in_empty_children_table();
+}
+
+#[test]
 fn test_children_table_updates() {
     enumerate_and_test(|existence, children_list, children_table| {
         // Enumerate updates.
@@ -131,27 +164,6 @@ fn test_children_table_updates() {
         }
     });
 }
-
-/*
-fn get_rng_for_test() -> ChaChaRng { ChaChaRng::from_seed([123; 32]) }
-
-fn generate_random_children_set(rng: &mut ChaChaRng) -> (Vec<u8>, Vec<bool>) {
-    let mut list = Vec::new();
-    let mut bitmap = Vec::new();
-    for i in 0..CHILDREN_COUNT as u8 {
-        if rng.gen_bool(0.5) {
-            list.push(i);
-            bitmap.push(true);
-        } else {
-            bitmap.push(false);
-        }
-    }
-
-    (list, bitmap)
-}
-
-fn build_children_table(children: Vec<(u8, NodeRefDeltaMptCompact)>) {}
-*/
 
 #[test]
 fn test_children_table_type_conversions() {
