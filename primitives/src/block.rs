@@ -53,6 +53,13 @@ impl Block {
         ret
     }
 
+    pub fn transaction_hashes(&self) -> Vec<H256> {
+        self.transactions
+            .iter()
+            .map(|tx| tx.hash())
+            .collect::<Vec<_>>()
+    }
+
     /// Construct a new compact block with random nonce
     /// This block will be relayed with the new compact block to prevent
     /// adversaries to make tx shortId collision

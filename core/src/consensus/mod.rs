@@ -15,14 +15,17 @@ use crate::{
     vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
 };
-use ethereum_types::{Address, H256, U256, U512};
+use ethereum_types::{Address, Bloom, H256, U256, U512};
 use parking_lot::{Mutex, RwLock};
 use primitives::{
+    filter::{Filter, FilterError},
+    log_entry::{LocalizedLogEntry, LogEntry},
     receipt::{
         Receipt, TRANSACTION_OUTCOME_EXCEPTION, TRANSACTION_OUTCOME_SUCCESS,
     },
     Block, BlockHeader, SignedTransaction, TransactionAddress,
 };
+use rayon::prelude::*;
 use rlp::{Encodable, Rlp, RlpStream};
 use slab::Slab;
 use std::{
@@ -531,6 +534,7 @@ pub struct ConsensusGraph {
     pub blocks: Arc<RwLock<HashMap<H256, Arc<Block>>>>,
     pub block_headers: Arc<RwLock<HashMap<H256, Arc<BlockHeader>>>>,
     pub block_receipts: RwLock<HashMap<H256, Arc<Vec<Receipt>>>>,
+    pub block_log_blooms: RwLock<HashMap<H256, Bloom>>,
     pub transaction_addresses: RwLock<HashMap<H256, TransactionAddress>>,
     pub inner: RwLock<ConsensusGraphInner>,
     genesis_block: Arc<Block>,
@@ -568,6 +572,7 @@ impl ConsensusGraph {
             blocks: Arc::new(RwLock::new(HashMap::new())),
             block_headers: Arc::new(RwLock::new(HashMap::new())),
             block_receipts: RwLock::new(HashMap::new()),
+            block_log_blooms: RwLock::new(HashMap::new()),
             transaction_addresses: RwLock::new(HashMap::new()),
             genesis_block: Arc::new(genesis_block),
             txpool,
@@ -674,6 +679,15 @@ impl ConsensusGraph {
             dbops.put(COL_BLOCK_RECEIPTS, &hash, &rlp_stream.drain());
             self.db.key_value().write_buffered(dbops);
         }
+
+        // TODO: make it managed by cache manager
+        self.block_log_blooms.write().insert(
+            hash,
+            block_receipts.iter().fold(Bloom::zero(), |mut b, r| {
+                b.accrue_bloom(&r.log_bloom);
+                b
+            }),
+        );
 
         self.block_receipts.write().insert(hash, block_receipts);
         self.cache_man
@@ -1705,5 +1719,125 @@ impl ConsensusGraph {
         let mut dbops = self.db.key_value().transaction();
         dbops.put(COL_MISC, b"terminals", &rlp_stream.drain());
         self.db.key_value().write(dbops).expect("db error");
+    }
+
+    pub fn logs(
+        &self, filter: Filter,
+    ) -> Result<Vec<LocalizedLogEntry>, FilterError> {
+        let block_hashes = if filter.block_hashes.is_none() {
+            if filter.from_epoch >= filter.to_epoch {
+                return Err(FilterError::InvalidEpochNumber {
+                    from_epoch: filter.from_epoch,
+                    to_epoch: filter.to_epoch,
+                });
+            }
+
+            let inner = self.inner.read();
+
+            if filter.from_epoch >= inner.pivot_chain.len() {
+                return Ok(Vec::new());
+            }
+
+            let from_epoch = filter.from_epoch;
+            let to_epoch = min(filter.to_epoch, inner.pivot_chain.len());
+
+            let blooms = filter.bloom_possibilities();
+            let bloom_match = |block_log_bloom: &Bloom| {
+                blooms
+                    .iter()
+                    .any(|bloom| block_log_bloom.contains_bloom(bloom))
+            };
+
+            let mut blocks = Vec::new();
+            for epoch_idx in from_epoch..to_epoch {
+                for index in inner
+                    .indices_in_epochs
+                    .get(&inner.pivot_chain[epoch_idx])
+                    .unwrap()
+                {
+                    let hash = inner.arena[*index].hash;
+                    let block_log_blooms = self.block_log_blooms.read();
+                    if let Some(block_log_bloom) = block_log_blooms.get(&hash) {
+                        if !bloom_match(block_log_bloom) {
+                            continue;
+                        }
+                    }
+                    blocks.push(hash);
+                }
+            }
+
+            blocks
+        } else {
+            filter.block_hashes.as_ref().unwrap().clone()
+        };
+
+        Ok(self.logs_from_blocks(
+            block_hashes,
+            |entry| filter.matches(entry),
+            filter.limit,
+        ))
+    }
+
+    /// Returns logs matching given filter. The order of logs returned will be
+    /// the same as the order of the blocks provided. And it's the callers
+    /// responsibility to sort blocks provided in advance.
+    pub fn logs_from_blocks<F>(
+        &self, mut blocks: Vec<H256>, matches: F, limit: Option<usize>,
+    ) -> Vec<LocalizedLogEntry>
+    where
+        F: Fn(&LogEntry) -> bool + Send + Sync,
+        Self: Sized,
+    {
+        // sort in reverse order
+        blocks.reverse();
+
+        let mut logs = blocks
+            .chunks(128)
+            .flat_map(move |blocks_chunk| {
+                blocks_chunk.into_par_iter()
+                    .filter_map(|hash| self.block_receipts_by_hash(&hash).map(|r| (hash, (*r).clone())))
+                    .filter_map(|(hash, receipts)| self.block_by_hash(&hash).map(|b| (hash, receipts, b.transaction_hashes())))
+                    .flat_map(|(hash, mut receipts, mut hashes)| {
+                        if receipts.len() != hashes.len() {
+                            warn!("Block ({}) has different number of receipts ({}) to transactions ({}). Database corrupt?", hash, receipts.len(), hashes.len());
+                            assert!(false);
+                        }
+                        let mut log_index = receipts.iter().fold(0, |sum, receipt| sum + receipt.logs.len());
+
+                        let receipts_len = receipts.len();
+                        hashes.reverse();
+                        receipts.reverse();
+                        receipts.into_iter()
+                            .map(|receipt| receipt.logs)
+                            .zip(hashes)
+                            .enumerate()
+                            .flat_map(move |(index, (mut logs, tx_hash))| {
+                                let current_log_index = log_index;
+                                let no_of_logs = logs.len();
+                                log_index -= no_of_logs;
+
+                                logs.reverse();
+                                logs.into_iter()
+                                    .enumerate()
+                                    .map(move |(i, log)| LocalizedLogEntry {
+                                        entry: log,
+                                        block_hash: *hash,
+                                        transaction_hash: tx_hash,
+                                        // iterating in reverse order
+                                        transaction_index: receipts_len - index - 1,
+                                        transaction_log_index: no_of_logs - i - 1,
+                                        log_index: current_log_index - i - 1,
+                                    })
+                            })
+                            .filter(|log_entry| matches(&log_entry.entry))
+                            .take(limit.unwrap_or(::std::usize::MAX))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .take(limit.unwrap_or(::std::usize::MAX))
+            .collect::<Vec<LocalizedLogEntry>>();
+        logs.reverse();
+        logs
     }
 }

@@ -38,6 +38,7 @@ parity-crypto = "0.2"
 bn = { git = "https://github.com/paritytech/bn", default-features = false }
 lru = "0.1.11"
 threadpool = "1.0"
+rayon = "1.0"
 
 [dev-dependencies]
 rustc-hex = "1.0"

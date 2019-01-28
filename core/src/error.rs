@@ -1,5 +1,5 @@
 use ethereum_types::{Address, H256, U256};
-use primitives::transaction::TransactionError;
+use primitives::{filter::FilterError, transaction::TransactionError};
 use std::{error, fmt, time::SystemTime};
 use unexpected::{Mismatch, OutOfBounds};
 
@@ -103,6 +103,7 @@ error_chain! {
     foreign_links {
         Block(BlockError) #[doc = "Error concerning block processing."];
         Transaction(TransactionError) #[doc = "Error concerning transaction processing."];
+        Filter(FilterError) #[doc = "Error concerning log filtering."];
     }
 
     errors {
