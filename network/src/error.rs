@@ -1,5 +1,5 @@
 use crate::io::IoError;
-use ethkey;
+use keylib;
 use rlp;
 use std::{fmt, io, net};
 
@@ -110,12 +110,12 @@ impl From<rlp::DecoderError> for Error {
     fn from(_err: rlp::DecoderError) -> Self { ErrorKind::Decoder.into() }
 }
 
-impl From<ethkey::Error> for Error {
-    fn from(_err: ethkey::Error) -> Self { ErrorKind::Auth.into() }
+impl From<keylib::Error> for Error {
+    fn from(_err: keylib::Error) -> Self { ErrorKind::Auth.into() }
 }
 
-impl From<ethkey::crypto::Error> for Error {
-    fn from(_err: ethkey::crypto::Error) -> Self { ErrorKind::Auth.into() }
+impl From<keylib::crypto::Error> for Error {
+    fn from(_err: keylib::crypto::Error) -> Self { ErrorKind::Auth.into() }
 }
 
 impl From<net::AddrParseError> for Error {

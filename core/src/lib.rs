@@ -3,7 +3,7 @@ extern crate core;
 extern crate elastic_array;
 extern crate ethcore_bytes as bytes;
 extern crate ethereum_types;
-extern crate ethkey;
+extern crate keylib;
 extern crate io;
 extern crate keccak_hash as hash;
 #[macro_use]

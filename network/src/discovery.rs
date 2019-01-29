@@ -6,7 +6,7 @@ use crate::{
 };
 use ethcore_bytes::Bytes;
 use ethereum_types::{H256, H520};
-use ethkey::{recover, sign, KeyPair, Secret};
+use keylib::{recover, sign, KeyPair, Secret};
 use rlp::{Rlp, RlpStream};
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},

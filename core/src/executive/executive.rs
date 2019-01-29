@@ -1211,7 +1211,7 @@ mod tests {
         },
     };
     use ethereum_types::{Address, H256, U256, U512};
-    use ethkey::{Generator, Random};
+    use keylib::{Generator, Random};
     use primitives::{EpochId, Transaction};
     use rustc_hex::FromHex;
     use std::str::FromStr;

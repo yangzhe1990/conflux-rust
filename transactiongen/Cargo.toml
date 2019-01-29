@@ -18,7 +18,7 @@ rlp = { git = "https://github.com/paritytech/parity-common" }
 rand = "0.5"
 secret-store = { path = "../secret_store" }
 network = { path = "../network" }
-ethkey = { path = "../ethkey" }
+keylib = { path = "../key_manager" }
 log = "0.4"
 ethcore-bytes = "0.1.1"
 db = { path = "../db" }

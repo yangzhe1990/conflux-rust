@@ -1,6 +1,6 @@
 use crate::{bytes::Bytes, hash::keccak};
 use ethereum_types::{Address, H160, H256, U256};
-use ethkey::{self, public_to_address, recover, Public, Secret, Signature};
+use keylib::{self, public_to_address, recover, Public, Secret, Signature};
 use heapsize::HeapSizeOf;
 use lru::LruCache;
 use rlp::{self, Decodable, DecoderError, Encodable, Rlp, RlpStream};
@@ -66,8 +66,8 @@ pub enum TransactionError {
     InvalidRlp(String),
 }
 
-impl From<ethkey::Error> for TransactionError {
-    fn from(err: ethkey::Error) -> Self {
+impl From<keylib::Error> for TransactionError {
+    fn from(err: keylib::Error) -> Self {
         TransactionError::InvalidSignature(format!("{}", err))
     }
 }
@@ -174,7 +174,7 @@ impl Transaction {
     }
 
     pub fn sign(self, secret: &Secret) -> SignedTransaction {
-        let sig = ::ethkey::sign(secret, &self.hash())
+        let sig = ::keylib::sign(secret, &self.hash())
             .expect("data is valid and context has signing capabilities; qed");
         let tx_with_sig = self.with_signature(sig);
         let public = tx_with_sig
@@ -314,9 +314,9 @@ impl TransactionWithSignature {
     }
 
     /// Checks whether the signature has a low 's' value.
-    pub fn check_low_s(&self) -> Result<(), ethkey::Error> {
+    pub fn check_low_s(&self) -> Result<(), keylib::Error> {
         if !self.signature().is_low_s() {
-            Err(ethkey::Error::InvalidSignature.into())
+            Err(keylib::Error::InvalidSignature.into())
         } else {
             Ok(())
         }
@@ -325,7 +325,7 @@ impl TransactionWithSignature {
     pub fn hash(&self) -> H256 { self.hash }
 
     /// Recovers the public key of the sender.
-    pub fn recover_public(&self) -> Result<Public, ethkey::Error> {
+    pub fn recover_public(&self) -> Result<Public, keylib::Error> {
         Ok(recover(&self.signature(), &self.unsigned.hash())?)
     }
 
@@ -335,7 +335,7 @@ impl TransactionWithSignature {
 
         // Disallow unsigned transactions
         if self.is_unsigned() {
-            return Err(ethkey::Error::InvalidSignature.into());
+            return Err(keylib::Error::InvalidSignature.into());
         }
 
         Ok(())

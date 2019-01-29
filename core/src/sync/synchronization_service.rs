@@ -8,7 +8,7 @@ use crate::{
     verification::VerificationConfig,
 };
 use ethereum_types::H256;
-use ethkey::KeyPair;
+use keylib::KeyPair;
 use network::{
     node_table::{NodeEntry, NodeId},
     Error as NetworkError, NetworkConfiguration, NetworkService, PeerInfo,

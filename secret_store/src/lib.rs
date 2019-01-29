@@ -1,8 +1,8 @@
-extern crate ethkey;
+extern crate keylib;
 extern crate parking_lot;
 extern crate rustc_hex;
 
-use ethkey::KeyPair;
+use keylib::KeyPair;
 use parking_lot::RwLock;
 use rustc_hex::ToHex;
 use std::{collections::HashMap, sync::Arc};

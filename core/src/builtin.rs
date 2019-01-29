@@ -27,7 +27,7 @@ use parity_crypto::digest;
 
 use crate::{bytes::BytesRef, hash::keccak};
 use ethereum_types::{H256, U256};
-use ethkey::{recover as ec_recover, Signature};
+use keylib::{recover as ec_recover, Signature};
 
 /// Execution error.
 #[derive(Debug)]

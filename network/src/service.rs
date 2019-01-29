@@ -9,7 +9,7 @@ use crate::{
     NetworkProtocolHandler, PeerId, PeerInfo, ProtocolId,
 };
 use ethcore_bytes::Bytes;
-use ethkey::{sign, Generator, KeyPair, Random, Secret};
+use keylib::{sign, Generator, KeyPair, Random, Secret};
 use keccak_hash::keccak;
 use mio::{deprecated::EventLoop, tcp::*, udp::*, *};
 use parity_path::restrict_permissions_owner;

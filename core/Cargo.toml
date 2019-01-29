@@ -18,7 +18,7 @@ io = { path = "../util/io" }
 log = "0.3"
 rlp = { git = "https://github.com/paritytech/parity-common" }
 lazy_static = "1.1.0"
-ethkey = { path = "../ethkey" }
+keylib = { path = "../key_manager" }
 secret-store = { path = "../secret_store" }
 rand = "0.5"
 message = { path = "../message" }

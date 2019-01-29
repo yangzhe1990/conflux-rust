@@ -12,7 +12,7 @@ use crate::{
 };
 use ethcore_bytes;
 use ethereum_types::H520;
-use ethkey::{recover, sign};
+use keylib::{recover, sign};
 use io::*;
 use mio::{deprecated::*, tcp::*, *};
 use rlp::{Rlp, RlpStream};

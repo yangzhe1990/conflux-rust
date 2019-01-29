@@ -1,6 +1,6 @@
 extern crate core;
 extern crate ethereum_types;
-extern crate ethkey;
+extern crate keylib;
 extern crate keccak_hash as hash;
 extern crate parking_lot;
 extern crate primitives;

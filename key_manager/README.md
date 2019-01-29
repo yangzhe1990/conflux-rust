@@ -1,29 +1,21 @@
-# ethkey
+# keymgr
 
 [![Build Status][travis-image]][travis-url]
 
-[travis-image]: https://travis-ci.org/paritytech/ethkey.svg?branch=master
-[travis-url]: https://travis-ci.org/paritytech/ethkey
-
-Ethereum keys generator.
-
-[Documentation](http://paritytech.github.io/ethkey/ethkey/index.html)
+Key generator.
 
 ### Usage
 
 ```
-Ethereum keys generator.
-  Copyright 2016, 2017 Parity Technologies (UK) Ltd
-
 Usage:
-    ethkey info <secret-or-phrase> [options]
-    ethkey generate random [options]
-    ethkey generate prefix <prefix> [options]
-    ethkey sign <secret> <message>
-    ethkey verify public <public> <signature> <message>
-    ethkey verify address <address> <signature> <message>
-    ethkey recover <address> <known-phrase>
-    ethkey [-h | --help]
+    keymgr info <secret-or-phrase> [options]
+    keymgr generate random [options]
+    keymgr generate prefix <prefix> [options]
+    keymgr sign <secret> <message>
+    keymgr verify public <public> <signature> <message>
+    keymgr verify address <address> <signature> <message>
+    keymgr recover <address> <known-phrase>
+    keymgr [-h | --help]
 
 Options:
     -h, --help         Display this message and exit.
@@ -49,7 +41,7 @@ Commands:
 - `<secret>` - ethereum secret, 32 bytes long
 
 ```
-ethkey info 17d08f5fe8c77af811caa0c9a187e668ce3b74a99acc3f6d976f075fa8e0be55
+keymgr info 17d08f5fe8c77af811caa0c9a187e668ce3b74a99acc3f6d976f075fa8e0be55
 ```
 
 ```
@@ -67,7 +59,7 @@ address: 26d1ec50b4e62c1d1a40d16e7cacc6a6580757d5
 - `<phrase>` - Parity recovery phrase, 12 words
 
 ```
-ethkey info --brain "this is sparta"
+keymgr info --brain "this is sparta"
 ```
 
 ```
@@ -84,7 +76,7 @@ address: 006e27b6a72e1f34c626762f3c4761547aff1421
 *Generate new keypair randomly.*
 
 ```
-ethkey generate random
+keymgr generate random
 ```
 
 ```
@@ -99,7 +91,7 @@ address: a8fa5dd30a87bb9e3288d604eb74949c515ab66e
 *Generate new keypair with recovery phrase randomly.*
 
 ```
-ethkey generate random --brain
+keymgr generate random --brain
 ```
 
 ```
@@ -118,7 +110,7 @@ address: 00cf3711cbd3a1512570639280758118ba0b2bcb
 - `<prefix>` - desired address prefix, 0 - 32 bytes long.
 
 ```
-ethkey generate prefix ff
+keymgr generate prefix ff
 ```
 
 ```
@@ -135,7 +127,7 @@ address: fff7e25dff2aa60f61f9d98130c8646a01f31649
 - `<prefix>` - desired address prefix, 0 - 32 bytes long.
 
 ```
-ethkey generate prefix --brain 00cf
+keymgr generate prefix --brain 00cf
 ```
 
 ```
@@ -154,7 +146,7 @@ address: 00cf3711cbd3a1512570639280758118ba0b2bcb
 - `<message>` - message to sign, 32 bytes long
 
 ```
-ethkey sign 17d08f5fe8c77af811caa0c9a187e668ce3b74a99acc3f6d976f075fa8e0be55 bd50b7370c3f96733b31744c6c45079e7ae6c8d299613246d28ebcef507ec987
+keymgr sign 17d08f5fe8c77af811caa0c9a187e668ce3b74a99acc3f6d976f075fa8e0be55 bd50b7370c3f96733b31744c6c45079e7ae6c8d299613246d28ebcef507ec987
 ```
 
 ```
@@ -171,7 +163,7 @@ c1878cf60417151c766a712653d26ef350c8c75393458b7a9be715f053215af63dfd3b02c2ae65a8
 - `<message>` - message, 32 bytes long
 
 ```
-ethkey verify public 689268c0ff57a20cd299fa60d3fb374862aff565b20b5f1767906a99e6e09f3ff04ca2b2a5cd22f62941db103c0356df1a8ed20ce322cab2483db67685afd124 c1878cf60417151c766a712653d26ef350c8c75393458b7a9be715f053215af63dfd3b02c2ae65a8677917a8efa3172acb71cb90196e42106953ea0363c5aaf200 bd50b7370c3f96733b31744c6c45079e7ae6c8d299613246d28ebcef507ec987
+keymgr verify public 689268c0ff57a20cd299fa60d3fb374862aff565b20b5f1767906a99e6e09f3ff04ca2b2a5cd22f62941db103c0356df1a8ed20ce322cab2483db67685afd124 c1878cf60417151c766a712653d26ef350c8c75393458b7a9be715f053215af63dfd3b02c2ae65a8677917a8efa3172acb71cb90196e42106953ea0363c5aaf200 bd50b7370c3f96733b31744c6c45079e7ae6c8d299613246d28ebcef507ec987
 ```
 
 ```
@@ -188,7 +180,7 @@ true
 - `<message>` - message, 32 bytes long
 
 ```
-ethkey verify address 689268c0ff57a20cd299fa60d3fb374862aff565b20b5f1767906a99e6e09f3ff04ca2b2a5cd22f62941db103c0356df1a8ed20ce322cab2483db67685afd124 c1878cf60417151c766a712653d26ef350c8c75393458b7a9be715f053215af63dfd3b02c2ae65a8677917a8efa3172acb71cb90196e42106953ea0363c5aaf200 bd50b7370c3f96733b31744c6c45079e7ae6c8d299613246d28ebcef507ec987
+keymgr verify address 689268c0ff57a20cd299fa60d3fb374862aff565b20b5f1767906a99e6e09f3ff04ca2b2a5cd22f62941db103c0356df1a8ed20ce322cab2483db67685afd124 c1878cf60417151c766a712653d26ef350c8c75393458b7a9be715f053215af63dfd3b02c2ae65a8677917a8efa3172acb71cb90196e42106953ea0363c5aaf200 bd50b7370c3f96733b31744c6c45079e7ae6c8d299613246d28ebcef507ec987
 ```
 
 ```
@@ -204,24 +196,16 @@ true
 - `<known-phrase>` - known phrase, can be in a form of `thwarting * creamer`
 
 ```
-RUST_LOG="info" ethkey recover "00cf3711cbd3a1512570639280758118ba0b2bcb" "thwarting scandal creamer nuzzle asparagus blast crouch trusting anytime elixir frenzied octag"
+RUST_LOG="info" keymgr recover "00cf3711cbd3a1512570639280758118ba0b2bcb" "thwarting scandal creamer nuzzle asparagus blast crouch trusting anytime elixir frenzied octag"
 ```
 
 ```
-INFO:ethkey::brain_recover: Invalid word 'octag', looking for potential substitutions.
-INFO:ethkey::brain_recover: Closest words: ["ocean", "octagon", "octane", "outage", "tag", "acting", "acts", "aorta", "cage", "chug"]
-INFO:ethkey::brain_recover: Starting to test 7776 possible combinations.
+INFO:keylib::brain_recover: Invalid word 'octag', looking for potential substitutions.
+INFO:keylib::brain_recover: Closest words: ["ocean", "octagon", "octane", "outage", "tag", "acting", "acts", "aorta", "cage", "chug"]
+INFO:keylib::brain_recover: Starting to test 7776 possible combinations.
 
 thwarting scandal creamer nuzzle asparagus blast crouch trusting anytime elixir frenzied octagon
 secret:  001ce488d50d2f7579dc190c4655f32918d505cee3de63bddc7101bc91c0c2f0
 public:  4e19a5fdae82596e1485c69b687c9cc52b5078e5b0668ef3ce8543cd90e712cb00df822489bc1f1dcb3623538a54476c7b3def44e1a51dc174e86448b63f42d0
 address: 00cf3711cbd3a1512570639280758118ba0b2bcb
 ```
-
-
-# Parity toolchain
-*this project is a part of the parity toolchain*
-
-- [**ethkey**](https://github.com/paritytech/ethkey) - Ethereum keys generator and signer.
-- [**ethstore**](https://github.com/paritytech/ethstore) - Ethereum key management.
-- [**ethabi**](https://github.com/paritytech/ethabi) - Ethereum function calls encoding.

@@ -17,7 +17,7 @@ use core::{
 use criterion::Criterion;
 use ethcore_bytes::Bytes;
 use ethereum_types::{Address, H256, U256, U512};
-use ethkey::{Generator, KeyPair, Random};
+use keylib::{Generator, KeyPair, Random};
 use parking_lot::{Condvar, Mutex};
 use primitives::{Action, Transaction};
 use std::sync::Arc;

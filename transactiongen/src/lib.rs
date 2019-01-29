@@ -1,7 +1,7 @@
 extern crate core;
 extern crate ethcore_bytes as bytes;
 extern crate ethereum_types;
-extern crate ethkey;
+extern crate keylib;
 extern crate network;
 extern crate parking_lot;
 extern crate primitives;
@@ -18,7 +18,7 @@ use core::{
     SharedConsensusGraph, SharedTransactionPool,
 };
 use ethereum_types::{Address, H512, U256, U512};
-use ethkey::{public_to_address, Generator, KeyPair, Random};
+use keylib::{public_to_address, Generator, KeyPair, Random};
 use network::Error;
 use parking_lot::RwLock;
 use primitives::{transaction::Action, SignedTransaction, Transaction};

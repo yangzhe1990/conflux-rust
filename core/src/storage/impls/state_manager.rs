@@ -172,7 +172,7 @@ use crate::{
     ext_db::SystemDB, snapshot::snapshot::Snapshot, statedb::StorageKey,
 };
 use ethereum_types::{H256, U256};
-use ethkey::KeyPair;
+use keylib::KeyPair;
 use kvdb::{DBTransaction, DBValue};
 use primitives::{Account, Block, BlockHeaderBuilder, EpochId};
 use rlp::encode;

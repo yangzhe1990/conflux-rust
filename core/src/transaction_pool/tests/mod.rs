@@ -1,6 +1,6 @@
 use super::TreapMap;
 use ethereum_types::{H256, U256, U512};
-use ethkey::Signature;
+use keylib::Signature;
 use primitives::{Action, SignedTransaction, Transaction};
 use rand::{prng::XorShiftRng, ChaChaRng, Rng, RngCore, SeedableRng};
 use std::{
