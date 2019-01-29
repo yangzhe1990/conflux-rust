@@ -232,7 +232,7 @@ impl<'a> State<'a> {
                     self.owned_node_set.as_ref().unwrap(),
                 );
 
-                if cow_root.get_owned() {
+                if cow_root.is_owned() {
                     let allocator = self
                         .delta_trie
                         .get_node_memory_manager()

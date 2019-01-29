@@ -205,15 +205,15 @@ impl<
     }
 
     // FIXME: return a node.
-    fn load_from_db<'a>(
+    fn load_from_db<'c: 'a, 'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
-        cache_manager: &'a RwLock<
+        cache_manager: &'c RwLock<
             CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
         >,
         db_key: DeltaMptDbKey,
     ) -> Result<
         GuardedValue<
-            RwLockWriteGuard<'a, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
+            RwLockWriteGuard<'c, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
             &'a TrieNode<CacheAlgoDataT>,
         >,
     >
@@ -382,17 +382,17 @@ impl<
     }
 
     /// Unsafe because node is assumed to be committed.
-    unsafe fn load_unowned_node_internal_unchecked<'a>(
+    unsafe fn load_unowned_node_internal_unchecked<'c: 'a, 'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: &NodeRefDeltaMpt,
-        cache_manager: &'a RwLock<
+        cache_manager: &'c RwLock<
             CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
         >,
     ) -> Result<
         GuardedValue<
             Option<
                 RwLockWriteGuard<
-                    'a,
+                    'c,
                     CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
                 >,
             >,
@@ -458,14 +458,14 @@ impl<
     }
 
     // FIXME: apply 'a to node?
-    fn load_node<'a>(
-        &'a self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
+    fn load_node<'c: 'a, 'a>(
+        &'c self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: &NodeRefDeltaMpt,
     ) -> Result<
         GuardedValue<
             Option<
                 RwLockWriteGuard<
-                    'a,
+                    'c,
                     CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
                 >,
             >,
@@ -500,14 +500,14 @@ impl<
     }
 
     // FIXME: apply 'a to node?
-    pub fn node_as_ref<'a>(
-        &'a self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
+    pub fn node_as_ref<'c: 'a, 'a>(
+        &'c self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: &NodeRefDeltaMpt,
     ) -> Result<
         GuardedValue<
             Option<
                 RwLockWriteGuard<
-                    'a,
+                    'c,
                     CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
                 >,
             >,

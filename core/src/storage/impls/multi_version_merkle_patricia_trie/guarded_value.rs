@@ -21,6 +21,10 @@ impl<GuardType, ValueType> GuardedValue<GuardType, ValueType> {
     }
 
     pub fn into(self) -> (GuardType, ValueType) { (self.guard, self.value) }
+
+    /// Unsafe because the guard is dropped at the end of the statement. Using
+    /// of value is only safe within the statement.
+    pub unsafe fn into_value(self) -> ValueType { self.value }
 }
 
 impl<GuardType, ValueType: Clone> GuardedValue<GuardType, ValueType> {
@@ -29,24 +33,14 @@ impl<GuardType, ValueType: Clone> GuardedValue<GuardType, ValueType> {
     pub unsafe fn get_value(&self) -> ValueType { self.value.clone() }
 }
 
-impl<'a, GuardType, ValueType> Deref
-    for GuardedValue<GuardType, &'a ValueType>
-{
-    type Target = ValueType;
+impl<GuardType, ValueType: Deref> Deref for GuardedValue<GuardType, ValueType> {
+    type Target = ValueType::Target;
 
-    fn deref(&self) -> &Self::Target { self.value }
+    fn deref(&self) -> &Self::Target { self.value.deref() }
 }
 
-impl<'a, GuardType, ValueType> Deref
-    for GuardedValue<GuardType, &'a mut ValueType>
+impl<GuardType, ValueType: DerefMut> DerefMut
+    for GuardedValue<GuardType, ValueType>
 {
-    type Target = ValueType;
-
-    fn deref(&self) -> &Self::Target { self.value }
-}
-
-impl<'a, GuardType, ValueType> DerefMut
-    for GuardedValue<GuardType, &'a mut ValueType>
-{
-    fn deref_mut(&mut self) -> &mut Self::Target { self.value }
+    fn deref_mut(&mut self) -> &mut Self::Target { self.value.deref_mut() }
 }
