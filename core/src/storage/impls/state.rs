@@ -244,7 +244,7 @@ impl<'a> State<'a> {
                                 &allocator,
                                 &mut cow_root.node_ref,
                             )
-                    }?;
+                    };
                     let result = cow_root.commit_dirty_recursively(
                         self.delta_trie,
                         self.owned_node_set.as_mut().unwrap(),

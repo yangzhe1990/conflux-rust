@@ -20,9 +20,7 @@ impl<GuardType, ValueType> GuardedValue<GuardType, ValueType> {
         unimplemented!()
     }
 
-    /// There is no guarantee for the validity of value especially when
-    /// ValueType is reference type.
-    pub unsafe fn into_value(self) -> ValueType { self.value }
+    pub fn into(self) -> (GuardType, ValueType) { (self.guard, self.value) }
 }
 
 impl<GuardType, ValueType: Clone> GuardedValue<GuardType, ValueType> {

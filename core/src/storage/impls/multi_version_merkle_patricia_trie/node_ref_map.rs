@@ -1,10 +1,3 @@
-use super::{
-    cache::algorithm::{CacheAlgoDataTrait, CacheAlgorithm},
-    node_memory_manager::*,
-    row_number::RowNumberUnderlyingType,
-};
-use std::{marker::PhantomData, vec::Vec};
-
 #[derive(Clone)]
 pub enum TrieCacheSlotOrCacheAlgoData<CacheAlgoDataT: CacheAlgoDataTrait> {
     TrieCacheSlot(ActualSlabIndex),
@@ -43,8 +36,8 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait>
         &self.cached
     }
 
-    pub fn get_slot(&self) -> Option<ActualSlabIndex> {
-        match self.cached {
+    pub fn get_slot(&self) -> Option<&ActualSlabIndex> {
+        match &self.cached {
             TrieCacheSlotOrCacheAlgoData::CacheAlgoData(_) => None,
             TrieCacheSlotOrCacheAlgoData::TrieCacheSlot(slot) => Some(slot),
         }
@@ -157,18 +150,18 @@ impl<
         cache_algorithm: &mut CacheAlgorithmT,
     )
     {
-        let maybe_slot = unsafe { self.delete(key) };
-        if maybe_slot.is_none() {
+        let maybe_cache_info = self.delete(key);
+        if maybe_cache_info.is_none() {
             return;
         }
-        let slot = maybe_slot.unwrap();
+        let cache_info = maybe_cache_info.unwrap();
 
         unsafe {
             node_memory_manager.delete_from_cache(
                 cache_algorithm,
                 self,
                 key,
-                slot,
+                cache_info,
             );
             *self.map.get_unchecked_mut(Self::key_to_subscription(key)) = None;
         }
@@ -220,15 +213,18 @@ impl<
         unsafe { self.get_unchecked(key).clone() }
     }
 
+    /// The cache_info is only valid when the element still lives in cache.
+    /// Therefore we return the reference to the cache_info to represent the
+    /// lifetime requirement.
     pub fn get(
         &self, key: DeltaMptDbKey,
-    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
+    ) -> Option<&CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
         if key >= self.base_row_number
             && key
                 < self.base_row_number
                     + self.map.len() as RowNumberUnderlyingType
         {
-            unsafe { self.get_unchecked(key).clone() }
+            unsafe { self.get_unchecked(key).as_ref() }
         } else {
             None
         }
@@ -248,9 +244,16 @@ impl<
         old_slot
     }
 
-    pub unsafe fn delete(
+    pub fn delete(
         &mut self, key: DeltaMptDbKey,
     ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
         self.set_cache_info(key, None)
     }
 }
+
+use super::{
+    cache::algorithm::{CacheAlgoDataTrait, CacheAlgorithm},
+    node_memory_manager::*,
+    row_number::RowNumberUnderlyingType,
+};
+use std::{marker::PhantomData, vec::Vec};

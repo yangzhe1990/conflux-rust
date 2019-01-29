@@ -56,7 +56,7 @@ impl<'trie> SubTrieVisitor<'trie> {
     ) -> Result<
         Option<
             GuardedValue<
-                RwLockWriteGuard<'a, CacheManagerDeltaMpt>,
+                Option<RwLockWriteGuard<'a, CacheManagerDeltaMpt>>,
                 &'a TrieNodeDeltaMpt,
             >,
         >,
@@ -157,8 +157,8 @@ impl<'trie> SubTrieVisitor<'trie> {
         // TODO(yz): be compliant to borrow rule and avoid duplicated
 
         // FIXME: map_split?
-        let trie_node_ref = node_memory_manager
-            .node_as_ref(&allocator, &mut node_cow.node_ref)?;
+        let trie_node_ref =
+            node_memory_manager.node_as_ref(&allocator, &node_cow.node_ref)?;
         match trie_node_ref.walk::<Read>(key) {
             WalkStop::Arrived => {
                 // If value doesn't exists, returns invalid key error.
@@ -215,7 +215,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                         // FIXME: error processing for OOM.
                         let child_trie_node = node_memory_manager.node_as_ref(
                             &allocator,
-                            &mut child_node_cow.node_ref,
+                            &child_node_cow.node_ref,
                         )?;
                         child_node_cow.cow_set_compressed_path(
                             &node_memory_manager,
@@ -254,7 +254,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     return result;
                 }
                 let trie_node_ref = node_memory_manager
-                    .node_as_ref(&allocator, &mut node_cow.node_ref)?;
+                    .node_as_ref(&allocator, &node_cow.node_ref)?;
                 let (value, child_replaced, new_child_node) = result.unwrap();
                 if child_replaced {
                     let action = trie_node_ref
@@ -295,7 +295,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                             let child_trie_node = node_memory_manager
                                 .node_as_ref(
                                     &allocator,
-                                    &mut child_node_cow.node_ref,
+                                    &child_node_cow.node_ref,
                                 )?;
                             child_node_cow.cow_set_compressed_path(
                                 &node_memory_manager,
@@ -359,8 +359,8 @@ impl<'trie> SubTrieVisitor<'trie> {
         // TODO(yz): be compliant to borrow rule and avoid duplicated
 
         // FIXME: map_split?
-        let trie_node_ref = node_memory_manager
-            .node_as_ref(&allocator, &mut node_cow.node_ref)?;
+        let trie_node_ref =
+            node_memory_manager.node_as_ref(&allocator, &node_cow.node_ref)?;
 
         let key_prefix: CompressedPathRaw;
         match trie_node_ref.walk::<Read>(key_remaining) {
@@ -400,7 +400,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                     return result;
                 }
                 let trie_node_ref = node_memory_manager
-                    .node_as_ref(&allocator, &mut node_cow.node_ref)?;
+                    .node_as_ref(&allocator, &node_cow.node_ref)?;
                 let (value, child_replaced, new_child_node) = result.unwrap();
                 // FIXME: copied from delete(). Try to reuse code?
                 if child_replaced {
@@ -441,7 +441,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                             let child_trie_node = node_memory_manager
                                 .node_as_ref(
                                     &allocator,
-                                    &mut child_node_cow.node_ref,
+                                    &child_node_cow.node_ref,
                                 )?;
                             child_node_cow.cow_set_compressed_path(
                                 &node_memory_manager,
@@ -503,6 +503,7 @@ impl<'trie> SubTrieVisitor<'trie> {
             key_prefix,
             &mut old_values,
         )?;
+        // FIXME: should delete recursively?
         node_cow.delete_node(self.node_memory_manager());
 
         Ok((Some(old_values), true, None))
@@ -528,8 +529,8 @@ impl<'trie> SubTrieVisitor<'trie> {
         let mut node_cow = self.root.take();
         // TODO(yz): be compliant to borrow rule and avoid duplicated
 
-        let trie_node_ref = node_memory_manager
-            .node_as_ref(&allocator, &mut node_cow.node_ref)?;
+        let trie_node_ref =
+            node_memory_manager.node_as_ref(&allocator, &node_cow.node_ref)?;
         match trie_node_ref.walk::<Write>(key) {
             WalkStop::Arrived => {
                 let node_changed = !node_cow.get_owned();
@@ -558,7 +559,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 let (child_changed, new_child_node) = result.unwrap();
 
                 let trie_node_ref = node_memory_manager
-                    .node_as_ref(&allocator, &mut node_cow.node_ref)?;
+                    .node_as_ref(&allocator, &node_cow.node_ref)?;
                 if child_changed {
                     let node_changed = !node_cow.get_owned();
                     node_cow.cow_replace_child_unchecked(

@@ -81,8 +81,14 @@ impl CowNodeRef {
         }
     }
 
-    // FIXME: the trie node obtained from CowNodeRef should be invalidated at
-    // the same time of delete_node and into_child.
+    // FIXME: the trie node obtained from CowNodeRef
+    // should be invalidated at the same time of delete_node and into_child.
+    // FIXME: if the trie node obtained from CowNodeRef is through node_as_ref,
+    // the lifetime should be shorter than CowNodeRef, so there is no need
+    // to worry about using trie node after delete_node.
+    // FIXME: node_as_ref isn't implemented like above because cow_... calls are
+    // passed trie node which is a borrow of self, however the call itself
+    // borrows self mutably.
     pub fn delete_node(
         mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
     ) {
@@ -119,7 +125,7 @@ impl CowNodeRef {
                         allocator_ref,
                         &mut cow_child_node.node_ref,
                     )
-                }?;
+                };
                 let was_owned = cow_child_node.commit_dirty_recursively(
                     trie,
                     owned_node_set,
@@ -163,7 +169,7 @@ impl CowNodeRef {
                 trie.get_node_memory_manager().dirty_node_as_mut_unchecked(
                     allocator_ref,
                     &mut self.node_ref,
-                )?
+                )
             };
             let children_merkles = self.get_or_compute_children_merkles(
                 trie,
@@ -246,7 +252,7 @@ impl CowNodeRef {
                 Self::new((*node_ref).into(), owned_node_set);
             let child_node = trie
                 .get_node_memory_manager()
-                .node_as_ref(allocator_ref, &mut cow_child_node.node_ref)?;
+                .node_as_ref(allocator_ref, &cow_child_node.node_ref)?;
             let key_prefix = CompressedPathRaw::concat(
                 &key_prefix,
                 &child_node.compressed_path_ref(),
