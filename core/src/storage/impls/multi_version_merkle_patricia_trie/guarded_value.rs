@@ -21,10 +21,6 @@ impl<GuardType, ValueType> GuardedValue<GuardType, ValueType> {
     }
 
     pub fn into(self) -> (GuardType, ValueType) { (self.guard, self.value) }
-
-    /// Unsafe because the guard is dropped at the end of the statement. Using
-    /// of value is only safe within the statement.
-    pub unsafe fn into_value(self) -> ValueType { self.value }
 }
 
 impl<GuardType, ValueType: Clone> GuardedValue<GuardType, ValueType> {

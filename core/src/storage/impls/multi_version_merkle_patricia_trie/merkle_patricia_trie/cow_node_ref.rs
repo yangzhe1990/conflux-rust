@@ -15,6 +15,11 @@ pub struct MaybeOwnedTrieNode<'a> {
     trie_node: &'a TrieNodeDeltaMpt,
 }
 
+type GuardedMaybeOwnedTrieNodeAsCowCallParam<'c> = GuardedValue<
+    Option<RwLockWriteGuard<'c, CacheManagerDeltaMpt>>,
+    MaybeOwnedTrieNodeAsCowCallParam,
+>;
+
 /// This class can only be meaningfully used internally by CowNodeRef.
 pub struct MaybeOwnedTrieNodeAsCowCallParam {
     trie_node: *const TrieNodeDeltaMpt,
@@ -149,6 +154,13 @@ impl CowNodeRef {
         }
     }
 
+    /// The returned MaybeOwnedTrieNode is considered a borrow of CowNodeRef
+    /// because when it's owned user may use it as mutable borrow of
+    /// TrieNode. The lifetime is bounded by allocator for slab and by
+    /// node_memory_manager for cache.
+    ///
+    /// Lifetime of cache is separated because holding the lock itself shouldn't
+    /// prevent any further calls on self.
     pub fn get_trie_node<'a, 'c: 'a>(
         &'a mut self, node_memory_manager: &'c NodeMemoryManagerDeltaMpt,
         allocator: AllocatorRefRefDeltaMpt<'a>,
@@ -160,7 +172,11 @@ impl CowNodeRef {
     >
     {
         Ok(GuardedValue::into_wrapped(
-            node_memory_manager.node_as_ref(&allocator, &self.node_ref)?,
+            node_memory_manager.node_as_ref_with_cache_manager(
+                &allocator,
+                self.node_ref.clone(),
+                node_memory_manager.get_cache_manager(),
+            )?,
         ))
     }
 
@@ -168,7 +184,6 @@ impl CowNodeRef {
     /// of delete_node and into_child. when the trie node obtained from
     /// CowNodeRef is through get_trie_node, because the lifetime
     /// is shorter.
-    // FIXME: Remove calls to node_as_ref.
     pub fn delete_node(
         mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
     ) {
@@ -264,7 +279,11 @@ impl CowNodeRef {
         } else {
             let trie_node = trie
                 .get_node_memory_manager()
-                .node_as_ref(allocator_ref, &self.node_ref)?;
+                .node_as_ref_with_cache_manager(
+                    allocator_ref,
+                    self.node_ref.clone(),
+                    trie.get_node_memory_manager().get_cache_manager(),
+                )?;
             Ok(trie_node.merkle_hash)
         }
     }
@@ -308,34 +327,37 @@ impl CowNodeRef {
     }
 
     // FIXME: unit test.
-    pub fn iterate_internal<TrieNodeRef: Deref<Target = TrieNodeDeltaMpt>>(
+    pub fn iterate_internal(
         &self, owned_node_set: &OwnedNodeSet,
         trie: &MultiVersionMerklePatriciaTrie,
-        allocator_ref: AllocatorRefRefDeltaMpt, trie_node: TrieNodeRef,
+        allocator_ref: AllocatorRefRefDeltaMpt,
+        guarded_trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
         key_prefix: CompressedPathRaw, values: &mut Vec<(Vec<u8>, Box<[u8]>)>,
     ) -> Result<()>
     {
-        if trie_node.has_value() {
+        if guarded_trie_node.as_ref().as_ref().has_value() {
             assert_eq!(key_prefix.end_mask(), 0);
             values.push((
                 key_prefix.path_slice().to_vec(),
-                trie_node.value_clone().unwrap(),
+                guarded_trie_node.as_ref().as_ref().value_clone().unwrap(),
             ));
         }
 
-        let children_table = trie_node.children_table.clone();
+        let children_table =
+            guarded_trie_node.as_ref().as_ref().children_table.clone();
         // Free the lock for trie_node.
         // FIXME: try to share the lock.
-        drop(trie_node);
+        drop(guarded_trie_node);
         for (i, node_ref) in children_table.iter() {
-            let cow_child_node = Self::new((*node_ref).into(), owned_node_set);
-            let child_node = trie
-                .get_node_memory_manager()
-                .node_as_ref(allocator_ref, &cow_child_node.node_ref)?;
+            let mut cow_child_node =
+                Self::new((*node_ref).into(), owned_node_set);
+            let child_node = cow_child_node
+                .get_trie_node(trie.get_node_memory_manager(), allocator_ref)?;
             let key_prefix = CompressedPathRaw::concat(
                 &key_prefix,
                 &child_node.compressed_path_ref(),
             );
+            let child_node = GuardedValue::take(child_node);
             cow_child_node.iterate_internal(
                 owned_node_set,
                 trie,
@@ -400,19 +422,22 @@ impl CowNodeRef {
     /// When the node is unowned, it doesn't make sense to do copy-on-write
     /// creation because the new node will be deleted immediately.
     pub unsafe fn delete_value_unchecked_followed_by_node_deletion(
-        &mut self, trie_node: &mut MaybeOwnedTrieNode,
+        &mut self, mut trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
     ) -> Box<[u8]> {
         if self.owned {
-            trie_node.owned_as_mut_unchecked().delete_value_unchecked()
+            trie_node
+                .as_mut()
+                .owned_as_mut_unchecked()
+                .delete_value_unchecked()
         } else {
-            trie_node.value_clone().unwrap()
+            trie_node.as_ref().as_ref().value_clone().unwrap()
         }
     }
 
     pub fn cow_set_compressed_path(
         &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
         owned_node_set: &mut OwnedNodeSet, path: CompressedPathRaw,
-        trie_node: MaybeOwnedTrieNodeAsCowCallParam,
+        trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
     ) -> Result<()>
     {
         let path_to_take = Cell::new(Some(path));
@@ -444,7 +469,7 @@ impl CowNodeRef {
     pub unsafe fn cow_delete_value_unchecked(
         &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
         owned_node_set: &mut OwnedNodeSet,
-        trie_node: MaybeOwnedTrieNodeAsCowCallParam,
+        trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
     ) -> Result<Box<[u8]>>
     {
         self.cow_modify_with_operation(
@@ -469,7 +494,7 @@ impl CowNodeRef {
     pub fn cow_replace_value_valid(
         &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
         owned_node_set: &mut OwnedNodeSet,
-        trie_node: MaybeOwnedTrieNodeAsCowCallParam, value: &[u8],
+        trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam, value: &[u8],
     ) -> Result<Option<Box<[u8]>>>
     {
         self.cow_modify_with_operation(
@@ -505,8 +530,8 @@ impl CowNodeRef {
         &mut self, node_memory_manager: &'a NodeMemoryManagerDeltaMpt,
         allocator: AllocatorRefRefDeltaMpt<'a>,
         owned_node_set: &mut OwnedNodeSet,
-        mut trie_node: MaybeOwnedTrieNodeAsCowCallParam, f_owned: FOwned,
-        f_ref: FRef,
+        mut trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
+        f_owned: FOwned, f_ref: FRef,
     ) -> Result<OutputType>
     {
         let copied = self.convert_to_owned(
@@ -516,11 +541,12 @@ impl CowNodeRef {
         )?;
         match copied {
             None => unsafe {
-                let trie_node_mut = trie_node.owned_as_mut_unchecked();
+                let trie_node_mut = trie_node.as_mut().owned_as_mut_unchecked();
                 Ok(f_owned(trie_node_mut))
             },
             Some(new_entry) => {
-                let (new_trie_node, output) = f_ref(trie_node.as_ref());
+                let (new_trie_node, output) =
+                    f_ref(trie_node.as_ref().as_ref());
                 let key = new_entry.key();
                 new_entry.insert(new_trie_node);
                 Ok(output)
@@ -532,7 +558,7 @@ impl CowNodeRef {
         &mut self, node_memory_manager: &'a NodeMemoryManagerDeltaMpt,
         allocator: AllocatorRefRefDeltaMpt<'a>,
         owned_node_set: &mut OwnedNodeSet,
-        mut trie_node: MaybeOwnedTrieNodeAsCowCallParam,
+        mut trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
     ) -> Result<&'a mut TrieNodeDeltaMpt>
     {
         let copied = self.convert_to_owned(
@@ -541,9 +567,10 @@ impl CowNodeRef {
             owned_node_set,
         )?;
         match copied {
-            None => unsafe { Ok(trie_node.owned_as_mut_unchecked()) },
+            None => unsafe { Ok(trie_node.as_mut().owned_as_mut_unchecked()) },
             Some(new_entry) => unsafe {
                 let new_trie_node = trie_node
+                    .as_ref()
                     .as_ref()
                     .copy_and_replace_fields(None, None, None);
                 let key = new_entry.key();

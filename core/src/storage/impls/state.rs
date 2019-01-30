@@ -253,7 +253,8 @@ impl<'a> State<'a> {
                         &mut *self
                             .delta_trie
                             .get_node_memory_manager()
-                            .get_cache_manager_mut(),
+                            .get_cache_manager()
+                            .write(),
                         &allocator,
                     );
                     self.root_node = cow_root.into_child().map(|r| r.into());

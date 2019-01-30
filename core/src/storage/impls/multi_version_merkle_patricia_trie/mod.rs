@@ -71,11 +71,12 @@ impl MultiVersionMerklePatriciaTrie {
         &self, maybe_node: Option<NodeRefDeltaMpt>,
     ) -> Result<Option<MerkleHash>> {
         match maybe_node {
-            Some(ref node) => Ok(Some(
+            Some(node) => Ok(Some(
                 self.node_memory_manager
-                    .node_as_ref(
+                    .node_as_ref_with_cache_manager(
                         &self.node_memory_manager.get_allocator(),
                         node,
+                        self.node_memory_manager.get_cache_manager(),
                     )?
                     .merkle_hash,
             )),

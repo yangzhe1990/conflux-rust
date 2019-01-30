@@ -172,10 +172,10 @@ impl<
         self.allocator.read_recursive()
     }
 
-    pub fn get_cache_manager_mut(
+    pub fn get_cache_manager(
         &self,
-    ) -> RwLockWriteGuard<CacheManager<CacheAlgoDataT, CacheAlgorithmT>> {
-        self.cache.write()
+    ) -> &RwLock<CacheManager<CacheAlgoDataT, CacheAlgorithmT>> {
+        &self.cache
     }
 
     /// Method that requires mut borrow of allocator.
@@ -384,7 +384,7 @@ impl<
     /// Unsafe because node is assumed to be committed.
     unsafe fn load_unowned_node_internal_unchecked<'c: 'a, 'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
-        node: &NodeRefDeltaMpt,
+        node: NodeRefDeltaMpt,
         cache_manager: &'c RwLock<
             CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
         >,
@@ -457,42 +457,6 @@ impl<
         }
     }
 
-    // FIXME: apply 'a to node?
-    fn load_node<'c: 'a, 'a>(
-        &'c self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
-        node: &NodeRefDeltaMpt,
-    ) -> Result<
-        GuardedValue<
-            Option<
-                RwLockWriteGuard<
-                    'c,
-                    CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
-                >,
-            >,
-            &'a TrieNode<CacheAlgoDataT>,
-        >,
-    >
-    {
-        match node {
-            NodeRefDeltaMpt::Committed { ref db_key } => unsafe {
-                self.load_unowned_node_internal_unchecked(
-                    allocator,
-                    node,
-                    &self.cache,
-                )
-            },
-            NodeRefDeltaMpt::Dirty { ref index } => unsafe {
-                Ok(GuardedValue::new(None, NodeMemoryManager::<
-                CacheAlgoDataT,
-                CacheAlgorithmT,
-            >::get_in_memory_node_mut(
-                &allocator,
-                *index as usize,
-            )))
-            },
-        }
-    }
-
     // FIXME: pass a cache manager / node_ref_map to prove ownership.
     unsafe fn get_cached_node_mut_unchecked<'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
@@ -505,10 +469,18 @@ impl<
         )
     }
 
-    // FIXME: apply 'a to node?
-    pub fn node_as_ref<'c: 'a, 'a>(
-        &'c self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
-        node: &NodeRefDeltaMpt,
+    // FIXME: is this method useful to share lock guard in some cases?
+    // FIXME: if lock guard can be shared, we must implement load_unowned_node
+    // FIXME: one more time with lock guard instead of lock itself.
+
+    /// cache_manager is assigned a different lifetime because the
+    /// RwLockWriteGuard returned can be used independently.
+    pub fn node_as_ref_with_cache_manager<'c: 'a, 'a>(
+        &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
+        node: NodeRefDeltaMpt,
+        cache_manager: &'c RwLock<
+            CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
+        >,
     ) -> Result<
         GuardedValue<
             Option<
@@ -521,20 +493,6 @@ impl<
         >,
     >
     {
-        self.load_node(allocator, node)
-    }
-
-    // FIXME: is this method useful to share lock guard in some cases?
-    // FIXME: if lock guard can be shared, we must implement load_unowned_node
-    // FIXME: one more time with lock guard instead of lock itself.
-    pub fn node_as_ref_with_cache_manager<'a>(
-        &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
-        node: &NodeRefDeltaMpt,
-        cache_manager: &'a RwLock<
-            CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
-        >,
-    ) -> Result<&'a TrieNode<CacheAlgoDataT>>
-    {
         match node {
             NodeRefDeltaMpt::Committed { ref db_key } => unsafe {
                 self.load_unowned_node_internal_unchecked(
@@ -542,16 +500,15 @@ impl<
                     node,
                     cache_manager,
                 )
-                .map(|guarded| guarded.into().1)
             },
             NodeRefDeltaMpt::Dirty { ref index } => unsafe {
-                Ok(NodeMemoryManager::<
+                Ok(GuardedValue::new(None, NodeMemoryManager::<
                 CacheAlgoDataT,
                 CacheAlgorithmT,
             >::get_in_memory_node_mut(
                 &allocator,
                 *index as usize,
-            ))
+            )))
             },
         }
     }
