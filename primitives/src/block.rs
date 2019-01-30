@@ -108,6 +108,16 @@ impl Block {
         self.transactions = recovered_transactions;
         Ok(())
     }
+
+    pub fn compute_transaction_root(
+        transactions: &Vec<Arc<SignedTransaction>>,
+    ) -> H256 {
+        let mut rlp_stream = RlpStream::new_list(transactions.len());
+        for tx in transactions {
+            rlp_stream.append(tx.as_ref());
+        }
+        keccak(rlp_stream.out())
+    }
 }
 
 impl Encodable for Block {

@@ -1,8 +1,7 @@
 use crate::error::{BlockError, Error};
 //use ethereum_types::{H256, U256};
-use crate::{pow, triehash::ordered_trie_root};
+use crate::pow;
 use primitives::{Block, BlockHeader};
-use rlp::encode;
 use std::{
     collections::HashSet,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -101,14 +100,8 @@ impl VerificationConfig {
 
     /// Verify block data against header: transactions root
     fn verify_block_integrity(&self, block: &Block) -> Result<(), Error> {
-        let mut tx_rlps: Vec<Vec<u8>> = Vec::new();
-        for t in &block.transactions {
-            let t_rlp = encode(t.as_ref());
-            tx_rlps.push(t_rlp);
-        }
-
         let expected_root =
-            ordered_trie_root(tx_rlps.iter().map(|r| r.as_slice()));
+            Block::compute_transaction_root(&block.transactions);
         if &expected_root != block.block_header.transactions_root() {
             warn!("Invalid transaction root");
             bail!(BlockError::InvalidTransactionsRoot(Mismatch {

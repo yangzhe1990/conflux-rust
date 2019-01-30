@@ -32,7 +32,6 @@ extern crate parity_crypto;
 
 #[cfg(test)]
 extern crate rustc_hex;
-extern crate triehash_ethereum as triehash;
 extern crate unexpected;
 
 mod builtin;

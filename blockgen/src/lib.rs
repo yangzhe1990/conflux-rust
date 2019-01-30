@@ -1,27 +1,12 @@
-extern crate core;
-extern crate ethereum_types;
-extern crate keylib;
-extern crate keccak_hash as hash;
-extern crate parking_lot;
-extern crate primitives;
-extern crate rand;
-extern crate rlp;
-extern crate triehash_ethereum as triehash;
-extern crate txgen;
-
-#[macro_use]
-extern crate log;
-
-use crate::triehash::ordered_trie_root;
 use core::{
     consensus::DEFERRED_STATE_EPOCH_COUNT, pow::*,
     transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT, SharedSynchronizationGraph,
     SharedSynchronizationService, SharedTransactionPool,
 };
 use ethereum_types::{Address, H256};
+use log::{debug, trace, warn};
 use parking_lot::RwLock;
 use primitives::*;
-use rlp::encode;
 use std::{
     sync::{mpsc, Arc, Mutex},
     thread, time,
@@ -159,15 +144,10 @@ impl BlockGenerator {
             .txpool
             .pack_transactions(num_txs, self.txgen.get_best_state());
         trace!("{} txs packed", transactions.len());
-        let mut tx_rlps: Vec<Vec<u8>> = Vec::new();
-        for t in &transactions {
-            let t_rlp = encode(t.as_ref());
-            tx_rlps.push(t_rlp);
-        }
 
         let block_header = BlockHeaderBuilder::new()
-            .with_transactions_root(ordered_trie_root(
-                tx_rlps.iter().map(|r| r.as_slice()),
+            .with_transactions_root(Block::compute_transaction_root(
+                &transactions,
             ))
             .with_parent_hash(parent_hash)
             .with_height(parent_height + 1)

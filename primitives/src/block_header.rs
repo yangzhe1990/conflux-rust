@@ -1,11 +1,12 @@
 use crate::{
     bytes::Bytes,
-    hash::{keccak, KECCAK_NULL_RLP},
+    hash::{keccak, KECCAK_EMPTY_LIST_RLP, KECCAK_NULL_RLP},
+    receipt::Receipt,
 };
 use ethereum_types::{Address, H256, U256};
 use heapsize::HeapSizeOf;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
-use std::mem;
+use std::{mem, sync::Arc};
 
 /// A block header.
 #[derive(Clone, Debug, Eq)]
@@ -64,9 +65,9 @@ impl Default for BlockHeader {
             height: 0,
             timestamp: 0,
             author: Address::default(),
-            transactions_root: KECCAK_NULL_RLP,
+            transactions_root: KECCAK_EMPTY_LIST_RLP,
             deferred_state_root: KECCAK_NULL_RLP,
-            deferred_receipts_root: KECCAK_NULL_RLP,
+            deferred_receipts_root: KECCAK_EMPTY_LIST_RLP,
             difficulty: U256::zero(),
             gas_limit: U256::zero(),
             referee_hashes: Vec::new(),
@@ -211,9 +212,9 @@ impl BlockHeaderBuilder {
             height: 0,
             timestamp: 0,
             author: Address::default(),
-            transactions_root: KECCAK_NULL_RLP,
+            transactions_root: KECCAK_EMPTY_LIST_RLP,
             deferred_state_root: KECCAK_NULL_RLP,
-            deferred_receipts_root: KECCAK_NULL_RLP,
+            deferred_receipts_root: KECCAK_EMPTY_LIST_RLP,
             difficulty: U256::default(),
             gas_limit: U256::zero(),
             referee_hashes: Vec::new(),
@@ -299,6 +300,17 @@ impl BlockHeaderBuilder {
             nonce: self.nonce,
             hash: None,
         }
+    }
+
+    pub fn compute_block_receipts_root(
+        receipts: &Vec<Arc<Vec<Receipt>>>,
+    ) -> H256 {
+        let mut rlp_stream = RlpStream::new_list(receipts.len());
+        for r in receipts {
+            rlp_stream.append_list(r.as_ref());
+        }
+
+        keccak(rlp_stream.out())
     }
 }
 

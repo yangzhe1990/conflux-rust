@@ -24,4 +24,3 @@ network = { path = "../network" }
 kvdb-rocksdb = "0.1.3"
 secret-store = { path = "../secret_store" }
 toml = "0.4"
-triehash-ethereum = { version = "0.2",  path = "../util/triehash-ethereum" }

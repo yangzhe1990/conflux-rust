@@ -4,14 +4,13 @@ use crate::{
     db::{COL_BLOCKS, COL_BLOCK_RECEIPTS, COL_MISC, COL_TX_ADDRESS},
     executive::{ExecutionError, Executive},
     ext_db::SystemDB,
-    hash::KECCAK_NULL_RLP,
+    hash::KECCAK_EMPTY_LIST_RLP,
     machine::new_byzantium_test_machine,
     state::{CleanupMode, State},
     statedb::StateDb,
     storage::{state::StateTrait, StorageManager, StorageManagerTrait},
     sync::{CacheId, SynchronizationGraphInner},
     transaction_pool::SharedTransactionPool,
-    triehash::ordered_trie_root,
     vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
 };
@@ -23,10 +22,11 @@ use primitives::{
     receipt::{
         Receipt, TRANSACTION_OUTCOME_EXCEPTION, TRANSACTION_OUTCOME_SUCCESS,
     },
-    Block, BlockHeader, SignedTransaction, TransactionAddress,
+    Block, BlockHeader, BlockHeaderBuilder, SignedTransaction,
+    TransactionAddress,
 };
 use rayon::prelude::*;
-use rlp::{Encodable, Rlp, RlpStream};
+use rlp::{Rlp, RlpStream};
 use slab::Slab;
 use std::{
     cell::RefCell,
@@ -123,7 +123,7 @@ impl ConsensusGraphInner {
             .borrow_mut() = 0;
         inner.pivot_chain.push(inner.genesis_block_index);
         inner.parental_terminals.insert(inner.genesis_block_index);
-        assert!(inner.genesis_block_receipts_root == KECCAK_NULL_RLP);
+        assert!(inner.genesis_block_receipts_root == KECCAK_EMPTY_LIST_RLP);
         inner
             .block_receipts_root
             .insert(genesis_block.hash(), inner.genesis_block_receipts_root);
@@ -916,12 +916,7 @@ impl ConsensusGraph {
         }
         block_receipts_root.insert(
             arena[*epoch_blocks.last().expect("Epoch not empty")].hash,
-            ordered_trie_root(
-                epoch_receipts
-                    .iter()
-                    .flat_map(|receipts| receipts.iter())
-                    .map(|r| r.rlp_bytes()),
-            ),
+            BlockHeaderBuilder::compute_block_receipts_root(&epoch_receipts),
         );
         debug!("Finish processing tx for epoch");
     }

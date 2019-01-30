@@ -3,7 +3,7 @@ use crate::{
     consensus::SharedConsensusGraph,
     db::COL_MISC,
     error::{BlockError, Error},
-    hash::KECCAK_NULL_RLP,
+    hash::{KECCAK_EMPTY_LIST_RLP, KECCAK_NULL_RLP},
     pow::ProofOfWorkConfig,
     verification::*,
 };
@@ -92,7 +92,7 @@ impl SynchronizationGraphInner {
             best_block_hash: genesis_header.hash(),
             terminal_block_hashes: HashSet::new(),
             deferred_state_root: KECCAK_NULL_RLP,
-            deferred_receipts_root: KECCAK_NULL_RLP,
+            deferred_receipts_root: KECCAK_EMPTY_LIST_RLP,
         };
         inner.deferred_state_root =
             genesis_header.deferred_state_root().clone();
