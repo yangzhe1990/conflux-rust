@@ -33,6 +33,18 @@ impl<GuardType, ValueType: Clone> GuardedValue<GuardType, ValueType> {
     pub unsafe fn get_value(&self) -> ValueType { self.value.clone() }
 }
 
+impl<GuardType, ValueType> AsRef<ValueType>
+    for GuardedValue<GuardType, ValueType>
+{
+    fn as_ref(&self) -> &ValueType { &self.value }
+}
+
+impl<GuardType, ValueType> AsMut<ValueType>
+    for GuardedValue<GuardType, ValueType>
+{
+    fn as_mut(&mut self) -> &mut ValueType { &mut self.value }
+}
+
 impl<GuardType, ValueType: Deref> Deref for GuardedValue<GuardType, ValueType> {
     type Target = ValueType::Target;
 

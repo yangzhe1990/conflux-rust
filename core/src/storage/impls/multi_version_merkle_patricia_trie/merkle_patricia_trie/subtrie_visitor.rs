@@ -171,11 +171,11 @@ impl<'trie> SubTrieVisitor<'trie> {
                     TrieNodeAction::Delete => {
                         // The current node is going to be dropped if owned.
                         let value = unsafe {
-                            node_cow
-                                .delete_value_unchecked_if_owned(&trie_node_ref)
+                            node_cow.delete_value_unchecked_followed_by_node_deletion(
+                                GuardedValue::into_wrapped(trie_node_ref)
+                                    .as_mut(),
+                            )
                         };
-                        // FIXME: deal with deletion while holding the
-                        // trie_node_ref.
                         node_cow.delete_node(self.node_memory_manager());
                         Ok((Some(value), true, None))
                     }
@@ -184,27 +184,27 @@ impl<'trie> SubTrieVisitor<'trie> {
                         child_node_ref,
                     } => {
                         // The current node is going to be dropped if owned.
+                        let mut trie_node =
+                            GuardedValue::into_wrapped(trie_node_ref);
                         let value = unsafe {
-                            node_cow
-                                .delete_value_unchecked_if_owned(&trie_node_ref)
+                            node_cow.delete_value_unchecked_followed_by_node_deletion(
+                                trie_node.as_mut(),
+                            )
                         };
 
                         let new_path: CompressedPathRaw;
                         let mut child_node_cow: CowNodeRef;
                         {
                             let path_prefix = CompressedPathRaw::new(
-                                trie_node_ref
-                                    .compressed_path_ref()
-                                    .path_slice(),
-                                trie_node_ref.compressed_path_ref().end_mask(),
+                                trie_node.compressed_path_ref().path_slice(),
+                                trie_node.compressed_path_ref().end_mask(),
                             );
                             // COW modify child,
                             child_node_cow = CowNodeRef::new(
                                 child_node_ref,
                                 self.owned_node_set.get_ref(),
                             );
-                            // FIXME: try to share the lock.
-                            drop(trie_node_ref);
+                            drop(trie_node);
                             new_path = node_memory_manager
                                 .node_as_ref(
                                     &allocator,
@@ -230,11 +230,16 @@ impl<'trie> SubTrieVisitor<'trie> {
                     }
                     TrieNodeAction::Modify => {
                         let node_changed = !node_cow.is_owned();
-                        let value = node_cow.cow_delete_value_unchecked(
-                            &node_memory_manager,
-                            self.owned_node_set.get_mut(),
-                            &trie_node_ref,
-                        )?;
+                        let value = unsafe {
+                            node_cow.cow_delete_value_unchecked(
+                                &node_memory_manager,
+                                self.owned_node_set.get_mut(),
+                                GuardedValue::take(GuardedValue::into_wrapped(
+                                    trie_node_ref,
+                                ))
+                                .into_value(),
+                            )?
+                        };
 
                         Ok((Some(value), node_changed, node_cow.into_child()))
                     }
@@ -253,8 +258,9 @@ impl<'trie> SubTrieVisitor<'trie> {
                     node_cow.into_child();
                     return result;
                 }
-                let trie_node_ref = node_memory_manager
-                    .node_as_ref(&allocator, &node_cow.node_ref)?;
+                let is_owned = node_cow.is_owned();
+                let trie_node_ref =
+                    node_cow.get_trie_node(node_memory_manager, &allocator)?;
                 let (value, child_replaced, new_child_node) = result.unwrap();
                 if child_replaced {
                     let action = trie_node_ref
@@ -310,28 +316,35 @@ impl<'trie> SubTrieVisitor<'trie> {
                             Ok((value, true, child_node_cow.into_child()))
                         }
                         TrieNodeAction::Modify => unsafe {
-                            let node_changed = !node_cow.is_owned();
+                            let node_ref_changed = !is_owned;
+                            let trie_node = GuardedValue::take(trie_node_ref);
                             match new_child_node {
                                 None => {
-                                    node_cow.cow_delete_child_unchecked(
-                                        &node_memory_manager,
-                                        self.owned_node_set.get_mut(),
-                                        &trie_node_ref,
-                                        child_index,
-                                    )?;
+                                    node_cow
+                                        .cow_modify(
+                                            node_memory_manager,
+                                            &allocator,
+                                            self.owned_node_set.get_mut(),
+                                            trie_node.into_value(),
+                                        )?
+                                        .delete_child_unchecked(child_index);
                                 }
                                 Some(replacement) => {
-                                    node_cow.cow_replace_child_unchecked(
-                                        &node_memory_manager,
-                                        self.owned_node_set.get_mut(),
-                                        &trie_node_ref,
-                                        child_index,
-                                        replacement,
-                                    )?;
+                                    node_cow
+                                        .cow_modify(
+                                            node_memory_manager,
+                                            &allocator,
+                                            self.owned_node_set.get_mut(),
+                                            trie_node.into_value(),
+                                        )?
+                                        .replace_child_unchecked(
+                                            child_index,
+                                            replacement,
+                                        );
                                 }
                             }
 
-                            Ok((value, node_changed, node_cow.into_child()))
+                            Ok((value, node_ref_changed, node_cow.into_child()))
                         },
                         _ => unsafe { unreachable_unchecked() },
                     }
@@ -400,8 +413,9 @@ impl<'trie> SubTrieVisitor<'trie> {
                     node_cow.into_child();
                     return result;
                 }
-                let trie_node_ref = node_memory_manager
-                    .node_as_ref(&allocator, &node_cow.node_ref)?;
+                let is_owned = node_cow.is_owned();
+                let trie_node_ref =
+                    node_cow.get_trie_node(node_memory_manager, &allocator)?;
                 let (value, child_replaced, new_child_node) = result.unwrap();
                 // FIXME: copied from delete(). Try to reuse code?
                 if child_replaced {
@@ -461,30 +475,37 @@ impl<'trie> SubTrieVisitor<'trie> {
                             ));
                         }
                         TrieNodeAction::Modify => unsafe {
-                            let node_changed = !node_cow.is_owned();
+                            let node_ref_changed = !is_owned;
+                            let trie_node = GuardedValue::take(trie_node_ref);
                             match new_child_node {
                                 None => {
-                                    node_cow.cow_delete_child_unchecked(
-                                        &node_memory_manager,
-                                        self.owned_node_set.get_mut(),
-                                        &trie_node_ref,
-                                        child_index,
-                                    )?;
+                                    node_cow
+                                        .cow_modify(
+                                            node_memory_manager,
+                                            &allocator,
+                                            self.owned_node_set.get_mut(),
+                                            trie_node.into_value(),
+                                        )?
+                                        .delete_child_unchecked(child_index);
                                 }
                                 Some(replacement) => {
-                                    node_cow.cow_replace_child_unchecked(
-                                        &node_memory_manager,
-                                        self.owned_node_set.get_mut(),
-                                        &trie_node_ref,
-                                        child_index,
-                                        replacement,
-                                    )?;
+                                    node_cow
+                                        .cow_modify(
+                                            node_memory_manager,
+                                            &allocator,
+                                            self.owned_node_set.get_mut(),
+                                            trie_node.into_value(),
+                                        )?
+                                        .replace_child_unchecked(
+                                            child_index,
+                                            replacement,
+                                        );
                                 }
                             }
 
                             return Ok((
                                 value,
-                                node_changed,
+                                node_ref_changed,
                                 node_cow.into_child(),
                             ));
                         },
@@ -535,15 +556,18 @@ impl<'trie> SubTrieVisitor<'trie> {
             node_memory_manager.node_as_ref(&allocator, &node_cow.node_ref)?;
         match trie_node_ref.walk::<Write>(key) {
             WalkStop::Arrived => {
-                let node_changed = !node_cow.is_owned();
+                let node_ref_changed = !node_cow.is_owned();
                 node_cow.cow_replace_value_valid(
                     &node_memory_manager,
                     self.owned_node_set.get_mut(),
-                    &trie_node_ref,
+                    GuardedValue::take(GuardedValue::into_wrapped(
+                        trie_node_ref,
+                    ))
+                    .into_value(),
                     value,
                 )?;
 
-                Ok((node_changed, node_cow.into_child().unwrap()))
+                Ok((node_ref_changed, node_cow.into_child().unwrap()))
             }
             WalkStop::Descent {
                 key_remaining,
@@ -560,19 +584,22 @@ impl<'trie> SubTrieVisitor<'trie> {
                 }
                 let (child_changed, new_child_node) = result.unwrap();
 
-                let trie_node_ref = node_memory_manager
-                    .node_as_ref(&allocator, &node_cow.node_ref)?;
                 if child_changed {
-                    let node_changed = !node_cow.is_owned();
-                    node_cow.cow_replace_child_unchecked(
-                        &node_memory_manager,
-                        self.owned_node_set.get_mut(),
-                        &trie_node_ref,
-                        child_index,
-                        new_child_node,
-                    )?;
+                    let node_ref_changed = !node_cow.is_owned();
+                    let trie_node = GuardedValue::take(
+                        node_cow
+                            .get_trie_node(node_memory_manager, &allocator)?,
+                    );
+                    node_cow
+                        .cow_modify(
+                            node_memory_manager,
+                            &allocator,
+                            self.owned_node_set.get_mut(),
+                            trie_node.into_value(),
+                        )?
+                        .replace_child_unchecked(child_index, new_child_node);
 
-                    Ok((node_changed, node_cow.into_child().unwrap()))
+                    Ok((node_ref_changed, node_cow.into_child().unwrap()))
                 } else {
                     Ok((false, node_cow.into_child().unwrap()))
                 }
@@ -674,16 +701,23 @@ impl<'trie> SubTrieVisitor<'trie> {
                 new_child_node.replace_value_valid(value);
                 child_node_entry.insert(new_child_node);
 
-                let node_changed = !node_cow.is_owned();
-                node_cow.cow_add_new_child_unchecked(
-                    &node_memory_manager,
-                    self.owned_node_set.get_mut(),
-                    &trie_node_ref,
-                    child_index,
-                    child_node_cow.into_child().unwrap(),
-                )?;
+                let node_ref_changed = !node_cow.is_owned();
+                node_cow
+                    .cow_modify(
+                        node_memory_manager,
+                        &allocator,
+                        self.owned_node_set.get_mut(),
+                        GuardedValue::take(GuardedValue::into_wrapped(
+                            trie_node_ref,
+                        ))
+                        .into_value(),
+                    )?
+                    .add_new_child_unchecked(
+                        child_index,
+                        child_node_cow.into_child().unwrap(),
+                    );
 
-                Ok((node_changed, node_cow.into_child().unwrap()))
+                Ok((node_ref_changed, node_cow.into_child().unwrap()))
             }
         }
     }

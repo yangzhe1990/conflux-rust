@@ -198,10 +198,10 @@ impl<
         Ok(())
     }
 
-    fn get_in_memory_node_mut<'a>(
+    pub unsafe fn get_in_memory_node_mut<'a>(
         allocator: AllocatorRefRef<'a, CacheAlgoDataT>, cache_slot: usize,
     ) -> &'a mut TrieNode<CacheAlgoDataT> {
-        unsafe { allocator.get_unchecked_mut(cache_slot) }
+        allocator.get_unchecked_mut(cache_slot)
     }
 
     // FIXME: return a node.
@@ -474,16 +474,22 @@ impl<
     >
     {
         match node {
-            NodeRefDeltaMpt::Committed { ref db_key } => unsafe{
-                self.load_unowned_node_internal_unchecked(allocator, node, &self.cache)
-            }
-            NodeRefDeltaMpt::Dirty { ref index } => Ok(GuardedValue::new(None, NodeMemoryManager::<
+            NodeRefDeltaMpt::Committed { ref db_key } => unsafe {
+                self.load_unowned_node_internal_unchecked(
+                    allocator,
+                    node,
+                    &self.cache,
+                )
+            },
+            NodeRefDeltaMpt::Dirty { ref index } => unsafe {
+                Ok(GuardedValue::new(None, NodeMemoryManager::<
                 CacheAlgoDataT,
                 CacheAlgorithmT,
             >::get_in_memory_node_mut(
                 &allocator,
                 *index as usize,
-            ))),
+            )))
+            },
         }
     }
 
@@ -518,6 +524,9 @@ impl<
         self.load_node(allocator, node)
     }
 
+    // FIXME: is this method useful to share lock guard in some cases?
+    // FIXME: if lock guard can be shared, we must implement load_unowned_node
+    // FIXME: one more time with lock guard instead of lock itself.
     pub fn node_as_ref_with_cache_manager<'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: &NodeRefDeltaMpt,
@@ -535,13 +544,15 @@ impl<
                 )
                 .map(|guarded| guarded.into().1)
             },
-            NodeRefDeltaMpt::Dirty { ref index } => Ok(NodeMemoryManager::<
+            NodeRefDeltaMpt::Dirty { ref index } => unsafe {
+                Ok(NodeMemoryManager::<
                 CacheAlgoDataT,
                 CacheAlgorithmT,
             >::get_in_memory_node_mut(
                 &allocator,
                 *index as usize,
-            )),
+            ))
+            },
         }
     }
 

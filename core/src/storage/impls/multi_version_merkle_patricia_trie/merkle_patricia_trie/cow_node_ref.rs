@@ -21,12 +21,16 @@ pub struct MaybeOwnedTrieNodeAsCowCallParam {
 }
 
 impl MaybeOwnedTrieNodeAsCowCallParam {
-    unsafe fn owned_as_mut_unchecked(&mut self) -> &mut TrieNodeDeltaMpt {
+    // Returns a mutable reference to trie node when the trie_node is owned,
+    // however the precondition is unchecked.
+    unsafe fn owned_as_mut_unchecked<'a>(
+        &mut self,
+    ) -> &'a mut TrieNodeDeltaMpt {
         &mut *(self.trie_node as *mut TrieNodeDeltaMpt)
     }
 
     /// Do not implement in a trait to keep the call private.
-    fn as_ref(&self) -> &TrieNodeDeltaMpt { unsafe { &*self.trie_node } }
+    fn as_ref<'a>(&self) -> &'a TrieNodeDeltaMpt { unsafe { &*self.trie_node } }
 }
 
 impl<'a, GuardType> GuardedValue<GuardType, MaybeOwnedTrieNode<'a>> {
@@ -160,14 +164,11 @@ impl CowNodeRef {
         ))
     }
 
-    // FIXME: the trie node obtained from CowNodeRef
-    // should be invalidated at the same time of delete_node and into_child.
-    // FIXME: if the trie node obtained from CowNodeRef is through node_as_ref,
-    // the lifetime should be shorter than CowNodeRef, so there is no need
-    // to worry about using trie node after delete_node.
-    // FIXME: node_as_ref isn't implemented like above because cow_... calls are
-    // passed trie node which is a borrow of self, however the call itself
-    // borrows self mutably.
+    /// The trie node obtained from CowNodeRef is invalidated at the same time
+    /// of delete_node and into_child. when the trie node obtained from
+    /// CowNodeRef is through get_trie_node, because the lifetime
+    /// is shorter.
+    // FIXME: Remove calls to node_as_ref.
     pub fn delete_node(
         mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
     ) {
@@ -396,20 +397,13 @@ impl CowNodeRef {
         }
     }
 
-    // Upgrade a trie node ref to mut when this object ownes the trie_node,
-    // however the precondition is unchecked.
-    unsafe fn owned_trie_node_ref_to_mut_unchecked(
-        &mut self, trie_node: &TrieNodeDeltaMpt,
-    ) -> &mut TrieNodeDeltaMpt {
-        &mut *(trie_node as *const TrieNodeDeltaMpt as *mut TrieNodeDeltaMpt)
-    }
-
-    pub unsafe fn delete_value_unchecked_if_owned(
-        &mut self, trie_node: &TrieNodeDeltaMpt,
+    /// When the node is unowned, it doesn't make sense to do copy-on-write
+    /// creation because the new node will be deleted immediately.
+    pub unsafe fn delete_value_unchecked_followed_by_node_deletion(
+        &mut self, trie_node: &mut MaybeOwnedTrieNode,
     ) -> Box<[u8]> {
         if self.owned {
-            self.owned_trie_node_ref_to_mut_unchecked(trie_node)
-                .delete_value_unchecked()
+            trie_node.owned_as_mut_unchecked().delete_value_unchecked()
         } else {
             trie_node.value_clone().unwrap()
         }
@@ -418,171 +412,147 @@ impl CowNodeRef {
     pub fn cow_set_compressed_path(
         &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
         owned_node_set: &mut OwnedNodeSet, path: CompressedPathRaw,
-        mut trie_node: MaybeOwnedTrieNodeAsCowCallParam,
+        trie_node: MaybeOwnedTrieNodeAsCowCallParam,
     ) -> Result<()>
     {
-        let allocator = node_memory_manager.get_allocator();
-        let copied = self.convert_to_owned(
+        let path_to_take = Cell::new(Some(path));
+
+        self.cow_modify_with_operation(
             node_memory_manager,
-            &allocator,
+            &node_memory_manager.get_allocator(),
             owned_node_set,
-        )?;
-        match copied {
-            None => {
-                unsafe { trie_node.owned_as_mut_unchecked() }
-                    .set_compressed_path(path);
-            }
-            Some(new_entry) => {
-                new_entry.insert(unsafe {
-                    trie_node.as_ref().copy_and_replace_fields(
-                        None,
-                        Some(path),
-                        None,
-                    )
-                });
-            }
-        }
-        Ok(())
+            trie_node,
+            |owned_trie_node| {
+                owned_trie_node
+                    .set_compressed_path(path_to_take.replace(None).unwrap())
+            },
+            |read_only_trie_node| {
+                (
+                    unsafe {
+                        read_only_trie_node.copy_and_replace_fields(
+                            None,
+                            path_to_take.replace(None),
+                            None,
+                        )
+                    },
+                    (),
+                )
+            },
+        )
     }
 
-    pub fn cow_delete_value_unchecked(
+    pub unsafe fn cow_delete_value_unchecked(
         &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &TrieNodeDeltaMpt,
+        owned_node_set: &mut OwnedNodeSet,
+        trie_node: MaybeOwnedTrieNodeAsCowCallParam,
     ) -> Result<Box<[u8]>>
     {
-        let allocator = node_memory_manager.get_allocator();
-        let copied = self.convert_to_owned(
+        self.cow_modify_with_operation(
             node_memory_manager,
-            &allocator,
+            &node_memory_manager.get_allocator(),
             owned_node_set,
-        )?;
-        Ok(match copied {
-            None => unsafe {
-                self.owned_trie_node_ref_to_mut_unchecked(trie_node)
-                    .delete_value_unchecked()
+            trie_node,
+            |owned_trie_node| owned_trie_node.delete_value_unchecked(),
+            |read_only_trie_node| {
+                (
+                    read_only_trie_node.copy_and_replace_fields(
+                        Some(None),
+                        None,
+                        None,
+                    ),
+                    read_only_trie_node.value_clone().unwrap(),
+                )
             },
-            Some(new_entry) => {
-                new_entry.insert(unsafe {
-                    trie_node.copy_and_replace_fields(Some(None), None, None)
-                });
-                trie_node.value_clone().unwrap()
-            }
-        })
+        )
     }
 
     pub fn cow_replace_value_valid(
         &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &TrieNodeDeltaMpt,
-        value: &[u8],
+        owned_node_set: &mut OwnedNodeSet,
+        trie_node: MaybeOwnedTrieNodeAsCowCallParam, value: &[u8],
     ) -> Result<Option<Box<[u8]>>>
     {
-        let allocator = node_memory_manager.get_allocator();
-        let copied = self.convert_to_owned(
+        self.cow_modify_with_operation(
             node_memory_manager,
-            &allocator,
+            &node_memory_manager.get_allocator(),
             owned_node_set,
-        )?;
-        Ok(match copied {
-            None => {
-                unsafe { self.owned_trie_node_ref_to_mut_unchecked(trie_node) }
-                    .replace_value_valid(value)
-            }
-            Some(new_entry) => {
-                new_entry.insert(unsafe {
-                    trie_node.copy_and_replace_fields(
-                        Some(Some(value)),
-                        None,
-                        None,
-                    )
-                });
-                trie_node.value_clone()
-            }
-        })
+            trie_node,
+            |owned_trie_node| owned_trie_node.replace_value_valid(value),
+            |read_only_trie_node| {
+                (
+                    unsafe {
+                        read_only_trie_node.copy_and_replace_fields(
+                            Some(Some(value)),
+                            None,
+                            None,
+                        )
+                    },
+                    read_only_trie_node.value_clone(),
+                )
+            },
+        )
     }
 
-    pub unsafe fn cow_replace_child_unchecked(
-        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &TrieNodeDeltaMpt,
-        child_index: u8, child_node: NodeRefDeltaMptCompact,
-    ) -> Result<()>
+    /// If owned, run f_owned on trie node; otherwise run f_ref on the read-only
+    /// trie node to create the equivalent trie node and return value as the
+    /// final state of f_owned.
+    pub fn cow_modify_with_operation<
+        'a,
+        OutputType,
+        FOwned: FnOnce(&'a mut TrieNodeDeltaMpt) -> OutputType,
+        FRef: FnOnce(&'a TrieNodeDeltaMpt) -> (TrieNodeDeltaMpt, OutputType),
+    >(
+        &mut self, node_memory_manager: &'a NodeMemoryManagerDeltaMpt,
+        allocator: AllocatorRefRefDeltaMpt<'a>,
+        owned_node_set: &mut OwnedNodeSet,
+        mut trie_node: MaybeOwnedTrieNodeAsCowCallParam, f_owned: FOwned,
+        f_ref: FRef,
+    ) -> Result<OutputType>
     {
-        let allocator = node_memory_manager.get_allocator();
         let copied = self.convert_to_owned(
             node_memory_manager,
-            &allocator,
+            allocator,
             owned_node_set,
         )?;
         match copied {
-            None => {
-                self.owned_trie_node_ref_to_mut_unchecked(trie_node)
-                    .replace_child_unchecked(child_index, child_node);
-            }
+            None => unsafe {
+                let trie_node_mut = trie_node.owned_as_mut_unchecked();
+                Ok(f_owned(trie_node_mut))
+            },
             Some(new_entry) => {
-                let mut new_trie_node =
-                    trie_node.copy_and_replace_fields(None, None, None);
-                new_trie_node.replace_child_unchecked(child_index, child_node);
+                let (new_trie_node, output) = f_ref(trie_node.as_ref());
+                let key = new_entry.key();
                 new_entry.insert(new_trie_node);
+                Ok(output)
             }
         }
-
-        Ok(())
     }
 
-    pub unsafe fn cow_delete_child_unchecked(
-        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &TrieNodeDeltaMpt,
-        child_index: u8,
-    ) -> Result<()>
+    pub fn cow_modify<'a>(
+        &mut self, node_memory_manager: &'a NodeMemoryManagerDeltaMpt,
+        allocator: AllocatorRefRefDeltaMpt<'a>,
+        owned_node_set: &mut OwnedNodeSet,
+        mut trie_node: MaybeOwnedTrieNodeAsCowCallParam,
+    ) -> Result<&'a mut TrieNodeDeltaMpt>
     {
-        let allocator = node_memory_manager.get_allocator();
         let copied = self.convert_to_owned(
             node_memory_manager,
-            &allocator,
+            allocator,
             owned_node_set,
         )?;
         match copied {
-            None => {
-                self.owned_trie_node_ref_to_mut_unchecked(trie_node)
-                    .delete_child_unchecked(child_index);
-            }
-            Some(new_entry) => {
-                let mut new_trie_node =
-                    trie_node.copy_and_replace_fields(None, None, None);
-                new_trie_node.delete_child_unchecked(child_index);
+            None => unsafe { Ok(trie_node.owned_as_mut_unchecked()) },
+            Some(new_entry) => unsafe {
+                let new_trie_node = trie_node
+                    .as_ref()
+                    .copy_and_replace_fields(None, None, None);
+                let key = new_entry.key();
                 new_entry.insert(new_trie_node);
-            }
+                Ok(NodeMemoryManagerDeltaMpt::get_in_memory_node_mut(
+                    allocator, key,
+                ))
+            },
         }
-
-        Ok(())
-    }
-
-    // FIXME: How to replace duplicated code?
-    pub unsafe fn cow_add_new_child_unchecked(
-        &mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
-        owned_node_set: &mut OwnedNodeSet, trie_node: &TrieNodeDeltaMpt,
-        child_index: u8, child_node: NodeRefDeltaMptCompact,
-    ) -> Result<()>
-    {
-        let allocator = node_memory_manager.get_allocator();
-        let copied = self.convert_to_owned(
-            node_memory_manager,
-            &allocator,
-            owned_node_set,
-        )?;
-        match copied {
-            None => {
-                self.owned_trie_node_ref_to_mut_unchecked(trie_node)
-                    .add_new_child_unchecked(child_index, child_node);
-            }
-            Some(new_entry) => {
-                let mut new_trie_node =
-                    trie_node.copy_and_replace_fields(None, None, None);
-                new_trie_node.add_new_child_unchecked(child_index, child_node);
-                new_entry.insert(new_trie_node);
-            }
-        }
-
-        Ok(())
     }
 }
 
@@ -602,4 +572,4 @@ use super::{
 };
 use parking_lot::RwLockWriteGuard;
 use rlp::*;
-use std::{hint::unreachable_unchecked, ops::Deref};
+use std::{cell::Cell, hint::unreachable_unchecked, ops::Deref};
