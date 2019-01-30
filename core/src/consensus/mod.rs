@@ -598,7 +598,7 @@ impl ConsensusGraph {
             .expect("Low level database error when fetching block receipts. Some issue with disk?")?;
         let rlp = Rlp::new(&block_receipts);
         let block_receipts = rlp
-            .list_at::<Receipt>(0)
+            .as_list::<Receipt>()
             .expect("Wrong block receipts rlp format!");
         Some(block_receipts)
     }
