@@ -1,3 +1,4 @@
+use blockgen::BlockGeneratorConfig;
 use core::{
     storage::state_manager::StorageConfiguration, sync::ProtocolConfiguration,
 };
@@ -50,6 +51,7 @@ build_config! {
         (persist_terminal_period_ms, (u64), 60_000)
         (headers_request_timeout_ms, (u64), 30_000)
         (blocks_request_timeout_ms, (u64), 120_000)
+        (load_test_chain, (Option<String>), None)
     }
     {
         (
@@ -199,6 +201,12 @@ impl Configuration {
             blocks_request_timeout: Duration::from_millis(
                 self.raw_conf.blocks_request_timeout_ms,
             ),
+        }
+    }
+
+    pub fn blockgen_config(&self) -> BlockGeneratorConfig {
+        BlockGeneratorConfig {
+            test_chain_path: self.raw_conf.load_test_chain.clone(),
         }
     }
 }

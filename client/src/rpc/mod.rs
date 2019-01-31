@@ -6,7 +6,7 @@ use blockgen::BlockGenerator;
 use core::{
     state::State,
     statedb::StateDb,
-    storage::{StorageManager, StorageManagerTrait},
+    storage::{state_manager::StateManagerTrait, StorageManager},
     PeerInfo, SharedConsensusGraph, SharedSynchronizationService,
     SharedTransactionPool,
 };
@@ -21,15 +21,23 @@ use std::{
     sync::Arc,
 };
 
+mod impls;
+mod traits;
 mod types;
 
-use self::types::{
-    Block as RpcBlock, Receipt as RpcReceipt, Status as RpcStatus,
-    Transaction as RpcTransaction, H256 as RpcH256,
+use self::{
+    impls::cfx::CfxHandler,
+    traits::Cfx,
+    types::{
+        Receipt as RpcReceipt, Status as RpcStatus,
+        Transaction as RpcTransaction, H256 as RpcH256,
+    },
 };
 use primitives::{
     Action, SignedTransaction, Transaction, TransactionWithSignature,
 };
+
+pub use self::types::Block as RpcBlock;
 
 pub struct Dependencies {
     pub remote: TokioRemote,
@@ -195,11 +203,7 @@ impl Rpc for RpcImpl {
         info!("RPC Request: get_block({:?})", block_hash);
 
         if let Some(block) = self.sync.block_by_hash(&block_hash) {
-            Ok(RpcBlock::new(
-                &*block,
-                self.consensus.get_block_epoch_number(&block_hash),
-                self.consensus.get_block_total_difficulty(&block_hash),
-            ))
+            Ok(RpcBlock::new(&*block, self.consensus.clone(), false))
         } else {
             Err(RpcError::invalid_params("Invalid block hash"))
         }
@@ -336,7 +340,7 @@ impl Rpc for RpcImpl {
                 Some(to) => Action::Call(to.into()),
                 None => Action::Create,
             },
-            data: rpc_tx.data,
+            data: rpc_tx.data.into(),
         };
         let mut signed_tx = SignedTransaction::new_unsigned(
             TransactionWithSignature::new_unsigned(tx),
@@ -363,6 +367,15 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
             dependencies.block_gen.clone(),
             dependencies.tx_pool.clone(),
             dependencies.exit.clone(),
+        )
+        .to_delegate(),
+    );
+
+    handler.extend_with(
+        CfxHandler::new(
+            dependencies.consensus.clone(),
+            dependencies.storage_manager.clone(),
+            dependencies.sync.clone(),
         )
         .to_delegate(),
     );

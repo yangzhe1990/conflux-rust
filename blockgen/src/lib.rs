@@ -13,6 +13,10 @@ use std::{
 };
 use txgen::SharedTransactionGenerator;
 
+pub struct BlockGeneratorConfig {
+    pub test_chain_path: Option<String>,
+}
+
 enum MiningState {
     Start,
     Stop,

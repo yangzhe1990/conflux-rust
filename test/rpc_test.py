@@ -67,7 +67,7 @@ class RpcTest(ConfluxTestFramework):
         res = self.nodes[0].getblock(self.best_block_hash)
         self.log.info(res)
         assert_equal(self.best_block_hash, res['hash'])
-        assert_equal(self.block_number, res['number'])
+        assert_equal(self.block_number, int(res['epochNumber'], 0))
 
     def _test_getpeerinfo(self):
         self.log.info("Test getpeerinfo")

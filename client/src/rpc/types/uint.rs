@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-use ethereum_types::{U128 as EthU128, U256 as EthU256};
+use ethereum_types::{U128 as EthU128, U256 as EthU256, U64 as EthU64};
 use serde;
 use std::{fmt, str::FromStr};
 
@@ -40,6 +40,12 @@ macro_rules! impl_uint {
             }
         }
 
+        //        impl From<$name> for $other {
+        //            fn from(o: $name) -> Self {
+        //                o.0
+        //            }
+        //        }
+
         impl Into<$other> for $name {
             fn into(self) -> $other { self.0 }
         }
@@ -47,6 +53,23 @@ macro_rules! impl_uint {
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 write!(f, "{}", self.0)
+            }
+        }
+
+        impl $name {
+            #[inline]
+            #[allow(dead_code)]
+            pub fn as_usize(&self) -> usize {
+                let &$name($other(ref arr)) = self;
+                for i in 1..$size {
+                    if arr[i] != 0 {
+                        panic!("Integer overflow when casting U256")
+                    }
+                }
+                if arr[0] > usize::max_value() as u64 {
+                    panic!("Integer overflow when casting U256")
+                }
+                arr[0] as usize
             }
         }
 
@@ -113,7 +136,7 @@ macro_rules! impl_uint {
 
 impl_uint!(U128, EthU128, 2);
 impl_uint!(U256, EthU256, 4);
-impl_uint!(U64, u64, 1);
+impl_uint!(U64, EthU64, 1);
 
 impl serde::Serialize for U128 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

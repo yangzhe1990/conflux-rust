@@ -1,41 +1,81 @@
-use crate::rpc::types::{H160, H256, U256};
-use primitives::{transaction::Action, SignedTransaction};
-use serde_derive::{Deserialize, Serialize};
+use crate::rpc::types::{
+    Bytes, H160 as RpcH160, H256 as RpcH256, U256 as RpcU256,
+};
+use keylib::Error;
+use primitives::{
+    transaction::Action, SignedTransaction,
+    Transaction as PrimitiveTransaction, TransactionAddress,
+    TransactionWithSignature,
+};
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
-    pub hash: H256,
-    pub nonce: U256,
-    pub block_hash: Option<H256>,
-    pub block_number: Option<u64>,
-    pub transaction_index: Option<U256>,
-    pub from: H160,
-    pub to: Option<H160>,
-    pub value: U256,
-    pub gas_price: U256,
-    pub gas: U256,
-    pub data: Vec<u8>,
+    pub hash: RpcH256,
+    pub nonce: RpcU256,
+    pub block_hash: Option<RpcH256>,
+    pub transaction_index: Option<RpcU256>,
+    pub from: RpcH160,
+    pub to: Option<RpcH160>,
+    pub value: RpcU256,
+    pub gas_price: RpcU256,
+    pub gas: RpcU256,
+    pub data: Bytes,
+    /// The standardised V field of the signature.
+    pub v: RpcU256,
+    /// The R field of the signature.
+    pub r: RpcU256,
+    /// The S field of the signature.
+    pub s: RpcU256,
 }
 
 impl Transaction {
-    #[allow(dead_code)]
-    pub fn from_signed(t: &SignedTransaction) -> Transaction {
+    pub fn from_signed(
+        t: &SignedTransaction, transaction_address: Option<TransactionAddress>,
+    ) -> Transaction {
         Transaction {
             hash: t.transaction.hash().into(),
-            nonce: U256::from(t.nonce),
-            block_hash: None,
-            block_number: None,
-            transaction_index: None,
+            nonce: t.nonce.into(),
+            block_hash: transaction_address
+                .clone()
+                .map(|x| x.block_hash.into()),
+            transaction_index: transaction_address
+                .clone()
+                .map(|x| x.index.into()),
             from: t.sender().into(),
             to: match t.action {
                 Action::Create => None,
                 Action::Call(ref address) => Some(address.clone().into()),
             },
-            value: U256::from(t.value),
-            gas_price: U256::from(t.gas_price),
-            gas: U256::from(t.gas),
-            data: t.data.clone(),
+            value: t.value.into(),
+            gas_price: t.gas_price.into(),
+            gas: t.gas.into(),
+            data: t.data.clone().into(),
+            v: t.transaction.v.into(),
+            r: t.transaction.r.into(),
+            s: t.transaction.s.into(),
         }
+    }
+
+    pub fn into_signed(self) -> Result<SignedTransaction, Error> {
+        let tx_with_sig = TransactionWithSignature {
+            unsigned: PrimitiveTransaction {
+                nonce: self.nonce.into(),
+                gas_price: self.gas_price.into(),
+                gas: self.gas.into(),
+                action: match self.to {
+                    None => Action::Create,
+                    Some(address) => Action::Call(address.into()),
+                },
+                value: self.value.into(),
+                data: self.data.into(),
+            },
+            v: self.v.as_usize() as u8,
+            r: self.r.into(),
+            s: self.s.into(),
+            hash: self.hash.into(),
+        };
+        let public = tx_with_sig.recover_public()?;
+        Ok(SignedTransaction::new(public, tx_with_sig))
     }
 }

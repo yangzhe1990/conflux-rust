@@ -14,7 +14,7 @@ use crate::{
     vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
 };
-use ethereum_types::{Address, Bloom, H256, U256, U512};
+use ethereum_types::{Address, Bloom, H160, H256, U256, U512};
 use parking_lot::{Mutex, RwLock};
 use primitives::{
     filter::{Filter, FilterError},
@@ -22,6 +22,7 @@ use primitives::{
     receipt::{
         Receipt, TRANSACTION_OUTCOME_EXCEPTION, TRANSACTION_OUTCOME_SUCCESS,
     },
+    transaction::Action,
     Block, BlockHeader, BlockHeaderBuilder, SignedTransaction,
     TransactionAddress,
 };
@@ -43,6 +44,7 @@ const ANTICONE_PENALTY_RATIO: u64 = 100;
 const BASE_MINING_REWARD: u64 = 1000000;
 
 const NULL: usize = !0;
+const EPOCH_LIMIT_OF_RELATED_TRANSACTIONS: usize = 100;
 
 pub struct ConsensusGraphNodeData {
     pub epoch_number: RefCell<usize>,
@@ -127,6 +129,9 @@ impl ConsensusGraphInner {
         inner
             .block_receipts_root
             .insert(genesis_block.hash(), inner.genesis_block_receipts_root);
+        inner
+            .indices_in_epochs
+            .insert(0, vec![inner.genesis_block_index]);
 
         inner
     }
@@ -168,14 +173,14 @@ impl ConsensusGraphInner {
 
         if parent != NULL {
             self.parental_terminals.remove(&parent);
-            self.parental_terminals.insert(index);
             terminal_hashes.remove(&self.arena[parent].hash);
-            terminal_hashes.insert(hash);
             self.arena[parent].children.push(index);
-            let referees = self.arena[index].referees.clone();
-            for referee in referees {
-                self.arena[referee].referrers.push(index);
-            }
+        }
+        self.parental_terminals.insert(index);
+        terminal_hashes.insert(hash);
+        let referees = self.arena[index].referees.clone();
+        for referee in referees {
+            self.arena[referee].referrers.push(index);
         }
 
         index
@@ -487,6 +492,8 @@ impl ConsensusGraphInner {
         self.arena[self.pivot_chain[index]].hash
     }
 
+    pub fn best_state_epoch_number(&self) -> usize { self.pivot_chain.len() }
+
     pub fn deferred_state_root(&self, chain: &[usize]) -> Option<H256> {
         let chain_len = chain.len();
         let index = if chain_len < DEFERRED_STATE_EPOCH_COUNT as usize {
@@ -527,6 +534,35 @@ impl ConsensusGraphInner {
 
     pub fn deferred_receipts_root_following_best_block(&self) -> H256 {
         self.deferred_receipts_root(&self.pivot_chain).unwrap()
+    }
+
+    pub fn block_hashes_by_epoch(&self, epoch_number: usize) -> Vec<H256> {
+        let mut hashes = Vec::new();
+
+        debug!(
+            "block_hashes_by_epoch epoch_number={:?} pivot_chain={:?}",
+            epoch_number, self.pivot_chain
+        );
+
+        if epoch_number < self.pivot_chain.len() {
+            if let Some(indices) =
+                self.indices_in_epochs.get(&self.pivot_chain[epoch_number])
+            {
+                for index in indices {
+                    hashes.push(self.arena[*index].hash);
+                }
+            } else {
+                debug!("no indices");
+            }
+        }
+
+        hashes
+    }
+
+    pub fn epoch_hash(&self, epoch_number: usize) -> H256 {
+        assert!(epoch_number < self.pivot_chain.len());
+
+        self.arena[self.pivot_chain[epoch_number]].hash
     }
 }
 
@@ -635,7 +671,7 @@ impl ConsensusGraph {
         Some(tx_index)
     }
 
-    fn transaction_address_by_hash(
+    pub fn transaction_address_by_hash(
         &self, hash: &H256,
     ) -> Option<TransactionAddress> {
         {
@@ -693,6 +729,73 @@ impl ConsensusGraph {
         self.cache_man
             .lock()
             .note_used(CacheId::BlockReceipts(hash));
+    }
+
+    pub fn all_blocks_with_topo_order(&self) -> Vec<Block> {
+        self.persist_terminals();
+        let terminals = match self.db.key_value().get(COL_MISC, b"terminals")
+            .expect("Low-level database error when fetching 'terminals' block. Some issue with disk?")
+            {
+                Some(terminals) => {
+                    let rlp = Rlp::new(&terminals);
+                    rlp.as_list::<H256>().expect("Failed to decode terminals!")
+                }
+                None => {
+                    panic!("Error: No Terminals in db")
+                }
+            };
+
+        let inner = self.inner.read();
+        let mut index_set = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        for terminal in terminals {
+            if let Some(index) = inner.indices.get(&terminal) {
+                if index_set.insert(*index) {
+                    queue.push_back(*index);
+                }
+            }
+        }
+
+        while let Some(idx) = queue.pop_front() {
+            let parent = inner.arena[idx].parent.clone();
+            if parent != NULL {
+                if index_set.insert(parent) {
+                    queue.push_back(parent);
+                }
+            }
+            for referee in inner.arena[idx].referees.iter() {
+                if index_set.insert(*referee) {
+                    queue.push_back(*referee);
+                }
+            }
+        }
+
+        let block_indices: Vec<_> = index_set.into_iter().collect();
+
+        inner
+            .topological_sort(&block_indices)
+            .iter()
+            .map(|x| {
+                (*self
+                    .block_by_hash(&inner.arena[*x].hash)
+                    .expect("Error to get block by hash"))
+                .clone()
+            })
+            .collect()
+    }
+
+    pub fn block_hashes_by_epoch(&self, epoch_number: usize) -> Vec<H256> {
+        self.inner.read().block_hashes_by_epoch(epoch_number)
+    }
+
+    pub fn transaction_by_hash(
+        &self, hash: &H256,
+    ) -> Option<Arc<SignedTransaction>> {
+        let address = self.transaction_address_by_hash(hash)?;
+        let block = self.block_by_hash(&address.block_hash)?;
+        assert!(address.index < block.transactions.len());
+        Some(block.transactions[address.index].clone())
     }
 
     pub fn block_by_hash_from_db(&self, hash: &H256) -> Option<Block> {
@@ -786,6 +889,85 @@ impl ConsensusGraph {
         } else {
             None
         }
+    }
+
+    pub fn get_balance(
+        &self, address: H160, epoch_num: usize,
+    ) -> Result<U256, String> {
+        let r = self.inner.read();
+        let hash = if epoch_num == std::usize::MAX {
+            self.best_state_block_hash()
+        } else {
+            let best_epoch_number = self.best_state_epoch_number();
+            if epoch_num >= best_epoch_number {
+                return Err("Invalid params: expected a numbers with less than largest epoch number.".to_owned());
+            }
+            r.arena[r.pivot_chain[epoch_num]].hash
+        };
+        let state_db =
+            StateDb::new(r.storage_manager.get_state_at(hash).unwrap());
+        Ok(
+            if let Ok(maybe_acc) = state_db.get_account(&address, false) {
+                maybe_acc.map_or(U256::zero(), |acc| acc.balance).into()
+            } else {
+                0.into()
+            },
+        )
+    }
+
+    pub fn get_related_transactions(
+        &self, address: H160, num_txs: usize,
+    ) -> Vec<Arc<SignedTransaction>> {
+        let mut transactions = Vec::new();
+        if num_txs == 0 {
+            return transactions;
+        }
+        let _ = self.inner.read();
+
+        let best_epoch_number = self.best_state_epoch_number();
+        let earlist_epoch_number =
+            if best_epoch_number < EPOCH_LIMIT_OF_RELATED_TRANSACTIONS {
+                0
+            } else {
+                best_epoch_number - EPOCH_LIMIT_OF_RELATED_TRANSACTIONS + 1
+            };
+        let mut current_epoch_number = best_epoch_number;
+        let mut include_hashes = HashSet::new();
+
+        loop {
+            let hashes = self.block_hashes_by_epoch(current_epoch_number);
+            for hash in hashes {
+                let block = self
+                    .block_by_hash(&hash)
+                    .expect("Error: Cannot get block by hash.");
+                for tx in block.transactions.iter() {
+                    if include_hashes.contains(&tx.hash()) {
+                        continue;
+                    }
+                    let mut is_valid = false;
+                    if tx.sender() == address {
+                        is_valid = true;
+                    } else if let Action::Call(receiver_address) = tx.action {
+                        if receiver_address == address {
+                            is_valid = true;
+                        }
+                    }
+                    if is_valid {
+                        transactions.push(tx.clone());
+                        include_hashes.insert(tx.hash());
+                        if transactions.len() == num_txs {
+                            return transactions;
+                        }
+                    }
+                }
+            }
+            if current_epoch_number == earlist_epoch_number {
+                break;
+            }
+            current_epoch_number -= 1;
+        }
+
+        transactions
     }
 
     fn process_epoch_transactions(
@@ -1680,6 +1862,14 @@ impl ConsensusGraph {
 
     pub fn best_block_hash(&self) -> H256 {
         self.inner.read().best_block_hash()
+    }
+
+    pub fn best_state_epoch_number(&self) -> usize {
+        self.inner.read().best_state_epoch_number()
+    }
+
+    pub fn epoch_hash(&self, epoch_number: usize) -> H256 {
+        self.inner.read().epoch_hash(epoch_number)
     }
 
     pub fn best_state_block_hash(&self) -> H256 {

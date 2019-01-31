@@ -23,9 +23,9 @@ pub mod transaction_address;
 
 pub use crate::{
     account::Account,
-    block::Block,
+    block::{Block, BlockNumber},
     block_header::{BlockHeader, BlockHeaderBuilder},
-    epoch::EpochId,
+    epoch::{EpochId, EpochNumber},
     log_entry::LogEntry,
     transaction::{
         Action, SignedTransaction, Transaction, TransactionWithSignature,

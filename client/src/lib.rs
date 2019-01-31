@@ -6,6 +6,9 @@ use jsonrpc_tcp_server as tcp;
 extern crate log;
 
 #[macro_use]
+extern crate serde_derive;
+
+#[macro_use]
 mod config_macro;
 mod configuration;
 mod rpc;
@@ -21,13 +24,18 @@ use core::{
     TransactionPool,
 };
 
+use crate::rpc::RpcBlock;
 use ctrlc::CtrlC;
 use db::SystemDB;
 use parity_reactor::EventLoop;
 use parking_lot::{Condvar, Mutex};
+use primitives::Block;
 use secret_store::SecretStore;
 use std::{
     any::Any,
+    fs::File,
+    io::BufReader,
+    path::Path,
     sync::{Arc, Weak},
     thread,
     time::{Duration, Instant},
@@ -141,6 +149,30 @@ impl Client {
             secret_store.clone(),
             sync.net_key_pair().ok(),
         ));
+
+        let blockgen_config = conf.blockgen_config();
+        if let Some(chain_path) = blockgen_config.test_chain_path {
+            let file_path = Path::new(&chain_path);
+            let file = File::open(file_path).map_err(|e| {
+                format!("Failed to open test-chain file {:?}", e)
+            })?;
+            let reader = BufReader::new(file);
+            let rpc_blocks: Vec<RpcBlock> = serde_json::from_reader(reader)
+                .map_err(|e| {
+                    format!("Failed to parse blocks from json {:?}", e)
+                })?;
+            if rpc_blocks.is_empty() {
+                return Err(format!(
+                    "Error: The json data should not be empty."
+                ));
+            }
+            for rpc_block in rpc_blocks.into_iter().skip(1) {
+                let primitive_block: Block = rpc_block.into_primitive().map_err(|e| {
+                    format!("Failed to convert from a rpc_block to primitive block {:?}", e)
+                })?;
+                sync.on_mined_block(primitive_block);
+            }
+        }
 
         let blockgen = Arc::new(BlockGenerator::new(
             sync_graph.clone(),

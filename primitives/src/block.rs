@@ -1,8 +1,8 @@
+use byteorder::{ByteOrder, LittleEndian};
 use crate::{
     transaction::TxShortId, BlockHeader, SignedTransaction,
     TransactionWithSignature,
 };
-use byteorder::{ByteOrder, LittleEndian};
 use ethereum_types::{H256, U256};
 use heapsize::HeapSizeOf;
 use keccak_hash::keccak;
@@ -17,12 +17,14 @@ use std::{
     sync::Arc,
 };
 
+pub type BlockNumber = u64;
+
 /// A block, encoded as it is on the block chain.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Block {
     /// The header hash of this block.
     pub block_header: BlockHeader,
-    /// The¡ transactions in this block.
+    /// The transactions in this block.
     pub transactions: Vec<Arc<SignedTransaction>>,
 }
 

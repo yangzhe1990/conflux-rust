@@ -27,7 +27,7 @@ function check_client_tests {
 
     pushd $ROOT_DIR/client > /dev/null
     local result
-    result=`CARGO_TARGET_DIR=$ROOT_DIR/build cargo test`
+    result=`CARGO_TARGET_DIR=$ROOT_DIR/build RUSTFLAGS="-D warnings" cargo test`
     local exit_code=$?
     popd > /dev/null
 
@@ -42,7 +42,7 @@ function check_core_tests {
 
     pushd $ROOT_DIR/core > /dev/null
     local result
-    result=`CARGO_TARGET_DIR=$ROOT_DIR/build cargo test`
+    result=`CARGO_TARGET_DIR=$ROOT_DIR/build RUSTFLAGS="-D warnings" cargo test`
     local exit_code=$?
     popd > /dev/null
 

@@ -42,7 +42,7 @@ class P2PTest(ConfluxTestFramework):
         sync_blocks(self.nodes)
 
     def run_test(self):
-        erc20_contract = solc.get_contract_instance(source="erc20.sol", contract_name="FixedSupplyToken")
+        erc20_contract = solc.get_contract_instance(source=os.path.dirname(os.path.realpath(__file__)) + "/erc20.sol", contract_name="FixedSupplyToken")
 
         for node in self.nodes:
             node.add_p2p_connection(DefaultNode())
@@ -112,10 +112,12 @@ class P2PTest(ConfluxTestFramework):
 
     def get_balance(self, contract, token_address, nonce):
         tx = contract.functions.balanceOf(Web3.toChecksumAddress(encode_hex(token_address))).buildTransaction(self.tx_conf)
-        tx["data"] = list(decode_hex(tx["data"]))
         tx["value"] = int_to_hex(tx['value'])
         tx["hash"] = "0x"+"0"*64
         tx["nonce"] = int_to_hex(nonce)
+        tx["v"] = "0x0"
+        tx["r"] = "0x0"
+        tx["s"] = "0x0"
         balance = bytes_to_int(bytes(self.nodes[0].cfx_call(tx)))
         self.log.info("address=%s, balance=%s", encode_hex(token_address), balance)
         return balance

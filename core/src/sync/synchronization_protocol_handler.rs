@@ -946,7 +946,7 @@ impl SynchronizationProtocolHandler {
         res.1
     }
 
-    fn on_new_decoded_block(
+    pub fn on_new_decoded_block(
         &self, block: Block, need_to_verify: bool, persistent: bool,
     ) -> Result<Vec<H256>, Error> {
         let hash = block.block_header.hash();

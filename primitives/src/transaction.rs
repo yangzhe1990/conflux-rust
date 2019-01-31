@@ -225,16 +225,16 @@ impl Encodable for Transaction {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransactionWithSignature {
     /// Plain Transaction.
-    unsigned: Transaction,
+    pub unsigned: Transaction,
     /// The V field of the signature; helps describe which half of the curve
     /// our point falls in.
-    v: u8,
+    pub v: u8,
     /// The R field of the signature; helps describe the point on the curve.
-    r: U256,
+    pub r: U256,
     /// The S field of the signature; helps describe the point on the curve.
-    s: U256,
+    pub s: U256,
     /// Hash of the transaction
-    hash: H256,
+    pub hash: H256,
 }
 
 impl Deref for TransactionWithSignature {

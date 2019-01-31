@@ -146,6 +146,13 @@ fn main() {
                 .help("Sets the root path of db.")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("load-test-chain")
+                .long("load-test-chain")
+                .value_name("FILE")
+                .help("Sets the test chain json file.")
+                .takes_value(true),
+        )
         .get_matches_from(std::env::args().collect::<Vec<_>>());
 
     let conf = Configuration::parse(&matches).unwrap();
