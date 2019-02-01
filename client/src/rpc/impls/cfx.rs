@@ -44,7 +44,9 @@ impl Cfx for CfxHandler {
         Ok(self.consensus_graph.best_block_hash().into())
     }
 
-    fn gas_price(&self) -> Result<RpcU256> { Ok(RpcU256::default()) }
+    fn gas_price(&self) -> Result<RpcU256> {
+        Ok(self.consensus_graph.gas_price().unwrap_or(0.into()).into())
+    }
 
     fn epoch_number(&self) -> Result<RpcU256> {
         info!("RPC Request: cfx_epochNumber()");

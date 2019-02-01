@@ -42,6 +42,7 @@ const REWARD_EPOCH_COUNT: u64 = 100;
 const ANTICONE_PENALTY_UPPER_EPOCH_COUNT: u64 = 10;
 const ANTICONE_PENALTY_RATIO: u64 = 100;
 const BASE_MINING_REWARD: u64 = 1000000;
+const GAS_PRICE_SAMPLE_SIZE: usize = 100;
 
 const NULL: usize = !0;
 const EPOCH_LIMIT_OF_RELATED_TRANSACTIONS: usize = 100;
@@ -888,6 +889,39 @@ impl ConsensusGraph {
             Some(r.arena[*idx].data.epoch_number.borrow().clone())
         } else {
             None
+        }
+    }
+
+    pub fn gas_price(&self) -> Option<U256> {
+        let _ = self.inner.read();
+        let mut last_epoch_number = self.best_state_epoch_number();
+        let mut number_of_blocks_to_sample = GAS_PRICE_SAMPLE_SIZE;
+        let mut prices = Vec::new();
+        loop {
+            if number_of_blocks_to_sample == 0 || last_epoch_number == 0 {
+                break;
+            }
+            let mut hashes = self.block_hashes_by_epoch(last_epoch_number);
+            hashes.reverse();
+            last_epoch_number -= 1;
+
+            for hash in hashes {
+                let block = self.block_by_hash(&hash).unwrap();
+                for tx in block.transactions.iter() {
+                    prices.push(tx.gas_price().clone());
+                }
+                number_of_blocks_to_sample -= 1;
+                if number_of_blocks_to_sample == 0 {
+                    break;
+                }
+            }
+        }
+
+        prices.sort();
+        if prices.is_empty() {
+            None
+        } else {
+            Some(prices[prices.len() / 2])
         }
     }
 
