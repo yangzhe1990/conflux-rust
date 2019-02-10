@@ -98,7 +98,7 @@ impl<'trie> SubTrieVisitor<'trie> {
 
         Ok(match maybe_trie_node {
             None => None,
-            Some(trie_node) => trie_node.value_clone(),
+            Some(trie_node) => trie_node.value_clone().into_option(),
         })
     }
 
@@ -114,7 +114,7 @@ impl<'trie> SubTrieVisitor<'trie> {
                 if trie_node.get_compressed_path_size() == 0 {
                     Ok(Some(trie_node.merkle_hash))
                 } else {
-                    let maybe_value = trie_node.value_clone();
+                    let maybe_value = trie_node.value_clone().into_option();
                     let merkles = match trie_node
                         .children_table
                         .get_children_count()
@@ -356,6 +356,17 @@ impl<'trie> SubTrieVisitor<'trie> {
         }
     }
 
+    // FIXME: Without tombstone, delete_all is like delete, assuming the
+    // FIXME: existence of the prefix. However with tombstone, the
+    // FIXME: corresponding action is mark_delete_all, which can operate on
+    // FIXME: non-existing prefix in delta-MPT.
+    // FIXME: When iterating, maybe skip existing marks because they make no
+    // differences.
+    pub fn mark_delete_all() {
+        // FIXME: implement.
+        unimplemented!();
+    }
+
     /// The visitor can only be used once to modify.
     /// Returns (deleted value, is root node replaced, the current root node for
     /// the subtree).
@@ -514,16 +525,13 @@ impl<'trie> SubTrieVisitor<'trie> {
 
         let trie_node = GuardedValue::take(trie_node_ref);
         let mut old_values = vec![];
-        node_cow.iterate_internal(
+        node_cow.delete_subtree(
+            node_memory_manager,
             self.owned_node_set.get_ref(),
-            self.get_trie_ref(),
-            &allocator,
             trie_node,
             key_prefix,
             &mut old_values,
         )?;
-        // FIXME: should delete recursively?
-        node_cow.delete_node(self.node_memory_manager());
 
         Ok((Some(old_values), true, None))
     }

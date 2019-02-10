@@ -76,8 +76,6 @@ unsafe impl<CacheAlgoDataT: CacheAlgoDataTrait> Sync
 pub type KeyPart<'a> = &'a [u8];
 const EMPTY_KEY_PART: KeyPart = &[];
 
-/// Implement section.
-
 impl<CacheAlgoDataT: CacheAlgoDataTrait> Drop for TrieNode<CacheAlgoDataT> {
     fn drop(&mut self) {
         unsafe {
@@ -95,6 +93,10 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     const MAX_VALUE_SIZE: usize = 0xfffffffe;
     /// A special value to use in Delta Mpt to indicate that the value is
     /// deleted.
+    ///
+    /// In current implementation the TOMBSTONE is represented by empty string
+    /// in serialized trie node and in methods manipulating value for trie
+    /// node / MPT.
     const VALUE_TOMBSTONE: u32 = 0xffffffff;
 
     pub fn get_compressed_path_size(&self) -> u16 {
@@ -156,42 +158,42 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
         self.children_table.get_children_count()
     }
 
-    pub fn value_as_slice(&self) -> Option<&[u8]> {
+    pub fn value_as_slice(&self) -> MptValue<&[u8]> {
         let size = self.value_size;
         if size == 0 {
-            None
+            MptValue::None
         } else if size == Self::VALUE_TOMBSTONE {
-            Some(&[])
+            MptValue::TombStone
         } else {
-            Some(self.value.get_slice(size as usize))
+            MptValue::Some(self.value.get_slice(size as usize))
         }
     }
 
-    pub fn value_clone(&self) -> Option<Box<[u8]>> {
+    pub fn value_clone(&self) -> MptValue<Box<[u8]>> {
         let size = self.value_size;
         if size == 0 {
-            None
+            MptValue::None
         } else if size == Self::VALUE_TOMBSTONE {
-            Some(Box::<[u8]>::default())
+            MptValue::TombStone
         } else {
-            Some(self.value.get_slice(size as usize).into())
+            MptValue::Some(self.value.get_slice(size as usize).into())
         }
     }
 
     /// Take value out of self.
     /// This method can only be called by replace_value / delete_value because
-    /// empty node must be removed and pass compression must be maintained.
-    // FIXME: move this method into a special session.
-    fn value_into_boxed_slice(&mut self) -> Option<Box<[u8]>> {
+    /// empty node must be removed and path compression must be maintained.
+    fn value_into_boxed_slice(&mut self) -> MptValue<Box<[u8]>> {
         let size = self.value_size;
         let maybe_value;
         if size == 0 {
-            maybe_value = None;
+            maybe_value = MptValue::None;
         } else {
             if size == Self::VALUE_TOMBSTONE {
-                maybe_value = Some(Box::<[u8]>::default())
+                maybe_value = MptValue::TombStone
             } else {
-                maybe_value = Some(self.value.into_boxed_slice(size as usize));
+                maybe_value =
+                    MptValue::Some(self.value.into_boxed_slice(size as usize));
             }
             self.value_size = 0;
         }
@@ -200,7 +202,7 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
 
     pub fn replace_value_valid(
         &mut self, valid_value: &[u8],
-    ) -> Option<Box<[u8]>> {
+    ) -> MptValue<Box<[u8]>> {
         let old_value = self.value_into_boxed_slice();
         let value_size = valid_value.len();
         if value_size == 0 {
@@ -711,7 +713,7 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> Encodable
         s.begin_unbounded_list()
             .append(&self.merkle_hash)
             .append(&self.children_table.to_ref())
-            .append(&self.value_as_slice());
+            .append(&self.value_as_slice().into_option());
 
         let compressed_path_ref = self.compressed_path_ref();
         if compressed_path_ref.path_slice.len() > 0 {
@@ -770,6 +772,7 @@ use super::{
     children_table::*,
     compressed_path::*,
     maybe_in_place_byte_array::MaybeInPlaceByteArray,
+    mpt_value::MptValue,
 };
 use rlp::*;
 use std::{
