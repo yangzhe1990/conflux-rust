@@ -1,5 +1,5 @@
-use bytes::Bytes;
 use crate::io::{IoContext, StreamToken};
+use bytes::Bytes;
 use mio::{deprecated::*, tcp::*, *};
 use std::{
     collections::VecDeque,
@@ -200,12 +200,12 @@ mod tests {
     use std::{
         cmp,
         collections::VecDeque,
-        io::{Error, ErrorKind, Read, Result, Write},
+        io::{Read, Result, Write},
     };
 
     use super::*;
+    use crate::io::*;
     use bytes::{Buf, Bytes, IntoBuf};
-    use io::*;
     use mio::Ready;
 
     struct TestSocket {

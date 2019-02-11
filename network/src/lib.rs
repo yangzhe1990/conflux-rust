@@ -17,9 +17,9 @@ extern crate serde_derive;
 extern crate enum_map;
 extern crate ethcore_bytes;
 extern crate ethereum_types;
-extern crate keylib;
 extern crate igd;
 extern crate keccak_hash as hash;
+extern crate keylib;
 extern crate libc;
 extern crate parity_path;
 extern crate rand;
@@ -56,8 +56,8 @@ use crate::{
         DEFAULT_NODE_TABLE_TIMEOUT,
     },
 };
-use keylib::Secret;
 use ipnetwork::{IpNetwork, IpNetworkError};
+use keylib::Secret;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::{
     cmp::Ordering,

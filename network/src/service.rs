@@ -9,8 +9,8 @@ use crate::{
     NetworkProtocolHandler, PeerId, PeerInfo, ProtocolId,
 };
 use ethcore_bytes::Bytes;
-use keylib::{sign, Generator, KeyPair, Random, Secret};
 use keccak_hash::keccak;
+use keylib::{sign, Generator, KeyPair, Random, Secret};
 use mio::{deprecated::EventLoop, tcp::*, udp::*, *};
 use parity_path::restrict_permissions_owner;
 use parking_lot::{Mutex, RwLock};
@@ -727,7 +727,8 @@ impl NetworkServiceInner {
             .take(min(
                 max_handshakes_per_round as usize,
                 max_handshakes as usize - handshake_count,
-            )) {
+            ))
+        {
             self.connect_peer(&id, io);
             started += 1;
         }
