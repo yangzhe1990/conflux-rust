@@ -182,56 +182,31 @@ impl<'trie> SubTrieVisitor<'trie> {
                                 trie_node,
                             )
                         };
-                        node_cow.delete_node(self.node_memory_manager());
+                        node_cow.delete_node(
+                            node_memory_manager,
+                            self.owned_node_set.get_mut(),
+                        );
                         Ok((Some(value), true, None))
                     }
                     TrieNodeAction::MergePath {
                         child_index,
                         child_node_ref,
                     } => {
-                        // The current node is going to btrie_node_ref);
-                        let value;
+                        // The current node is going to be merged with its only
+                        // child after the value deletion.
+                        let value = trie_node_ref.value_clone().unwrap();
 
-                        let new_path: CompressedPathRaw;
-                        let mut child_node_cow: CowNodeRef;
-                        let child_trie_node;
-                        {
-                            let path_prefix = CompressedPathRaw::new(
-                                trie_node_ref
-                                    .compressed_path_ref()
-                                    .path_slice(),
-                                trie_node_ref.compressed_path_ref().end_mask(),
-                            );
-                            let trie_node = GuardedValue::take(trie_node_ref);
-                            value = unsafe {
-                                node_cow.delete_value_unchecked_followed_by_node_deletion(
-                                    trie_node,
-                                )
-                            };
-                            // COW modify child,
-                            child_node_cow = CowNodeRef::new(
-                                child_node_ref,
-                                self.owned_node_set.get_ref(),
-                            );
-                            // FIXME: error processing.
-                            child_trie_node = child_node_cow.get_trie_node(
-                                node_memory_manager,
-                                &allocator,
-                            )?;
-                            new_path = child_trie_node
-                                .path_prepended(path_prefix, child_index);
-                        }
-                        let child_trie_node =
-                            GuardedValue::take(child_trie_node);
-                        child_node_cow.cow_set_compressed_path(
-                            &node_memory_manager,
+                        let trie_node = GuardedValue::take(trie_node_ref);
+                        let merged_node_cow = node_cow.cow_merge_path(
+                            self.get_trie_ref(),
                             self.owned_node_set.get_mut(),
-                            new_path,
-                            child_trie_node,
+                            trie_node,
+                            child_node_ref,
+                            child_index,
                         )?;
-                        node_cow.delete_node(self.node_memory_manager());
 
-                        Ok((Some(value), true, child_node_cow.into_child()))
+                        // FIXME: true?
+                        Ok((Some(value), true, merged_node_cow.into_child()))
                     }
                     TrieNodeAction::Modify => {
                         let node_changed = !is_owned;
@@ -261,12 +236,11 @@ impl<'trie> SubTrieVisitor<'trie> {
                     node_cow.into_child();
                     return result;
                 }
-                let is_owned = node_cow.is_owned();
-                let trie_node =
+                let trie_node_ref =
                     node_cow.get_trie_node(node_memory_manager, &allocator)?;
                 let (value, child_replaced, new_child_node) = result.unwrap();
                 if child_replaced {
-                    let action = trie_node
+                    let action = trie_node_ref
                         .check_replace_or_delete_child_action(
                             child_index,
                             new_child_node,
@@ -276,47 +250,24 @@ impl<'trie> SubTrieVisitor<'trie> {
                             child_index,
                             child_node_ref,
                         } => {
-                            // FIXME: how to reuse code?
-                            let new_path: CompressedPathRaw;
-                            let mut child_node_cow: CowNodeRef;
-                            let child_trie_node;
-                            {
-                                let path_prefix = CompressedPathRaw::new(
-                                    trie_node
-                                        .compressed_path_ref()
-                                        .path_slice(),
-                                    trie_node.compressed_path_ref().end_mask(),
-                                );
-                                // COW modify child,
-                                child_node_cow = CowNodeRef::new(
-                                    child_node_ref,
-                                    self.owned_node_set.get_ref(),
-                                );
-                                drop(trie_node);
-                                child_trie_node = child_node_cow
-                                    .get_trie_node(
-                                        node_memory_manager,
-                                        &allocator,
-                                    )?;
-                                new_path = child_trie_node
-                                    .path_prepended(path_prefix, child_index);
-                            }
-                            let child_trie_node =
-                                GuardedValue::take(child_trie_node);
-                            child_node_cow.cow_set_compressed_path(
-                                &node_memory_manager,
+                            // The current node is going to be merged with its
+                            // only child after the
+                            // value deletion.
+                            let trie_node = GuardedValue::take(trie_node_ref);
+                            let merged_node_cow = node_cow.cow_merge_path(
+                                self.get_trie_ref(),
                                 self.owned_node_set.get_mut(),
-                                new_path,
-                                child_trie_node,
+                                trie_node,
+                                child_node_ref,
+                                child_index,
                             )?;
 
-                            node_cow.delete_node(self.node_memory_manager());
-
-                            Ok((value, true, child_node_cow.into_child()))
+                            // FIXME: true?
+                            Ok((value, true, merged_node_cow.into_child()))
                         }
                         TrieNodeAction::Modify => unsafe {
                             let node_ref_changed = !is_owned;
-                            let trie_node = GuardedValue::take(trie_node);
+                            let trie_node = GuardedValue::take(trie_node_ref);
                             match new_child_node {
                                 None => {
                                     node_cow
@@ -424,12 +375,12 @@ impl<'trie> SubTrieVisitor<'trie> {
                     return result;
                 }
                 let is_owned = node_cow.is_owned();
-                let trie_node =
+                let trie_node_ref =
                     node_cow.get_trie_node(node_memory_manager, &allocator)?;
                 let (value, child_replaced, new_child_node) = result.unwrap();
                 // FIXME: copied from delete(). Try to reuse code?
                 if child_replaced {
-                    let action = trie_node
+                    let action = trie_node_ref
                         .check_replace_or_delete_child_action(
                             child_index,
                             new_child_node,
@@ -439,50 +390,28 @@ impl<'trie> SubTrieVisitor<'trie> {
                             child_index,
                             child_node_ref,
                         } => {
-                            let new_path: CompressedPathRaw;
-                            let mut child_node_cow: CowNodeRef;
-                            let child_trie_node;
-                            {
-                                let path_prefix = CompressedPathRaw::new(
-                                    trie_node
-                                        .compressed_path_ref()
-                                        .path_slice(),
-                                    trie_node.compressed_path_ref().end_mask(),
-                                );
-                                // COW modify child,
-                                child_node_cow = CowNodeRef::new(
-                                    child_node_ref,
-                                    self.owned_node_set.get_ref(),
-                                );
-                                drop(trie_node);
-                                child_trie_node = child_node_cow
-                                    .get_trie_node(
-                                        node_memory_manager,
-                                        &allocator,
-                                    )?;
-                                new_path = child_trie_node
-                                    .path_prepended(path_prefix, child_index);
-                            }
-                            let child_trie_node =
-                                GuardedValue::take(child_trie_node);
-                            child_node_cow.cow_set_compressed_path(
-                                &node_memory_manager,
+                            // The current node is going to be merged with its
+                            // only child after the
+                            // value deletion.
+                            let trie_node = GuardedValue::take(trie_node_ref);
+                            let merged_node_cow = node_cow.cow_merge_path(
+                                self.get_trie_ref(),
                                 self.owned_node_set.get_mut(),
-                                new_path,
-                                child_trie_node,
+                                trie_node,
+                                child_node_ref,
+                                child_index,
                             )?;
 
-                            node_cow.delete_node(self.node_memory_manager());
-
+                            // FIXME: true?
                             return Ok((
                                 value,
                                 true,
-                                child_node_cow.into_child(),
+                                merged_node_cow.into_child(),
                             ));
                         }
                         TrieNodeAction::Modify => unsafe {
                             let node_ref_changed = !is_owned;
-                            let trie_node = GuardedValue::take(trie_node);
+                            let trie_node = GuardedValue::take(trie_node_ref);
                             match new_child_node {
                                 None => {
                                     node_cow
@@ -526,7 +455,7 @@ impl<'trie> SubTrieVisitor<'trie> {
         let trie_node = GuardedValue::take(trie_node_ref);
         let mut old_values = vec![];
         node_cow.delete_subtree(
-            node_memory_manager,
+            self.get_trie_ref(),
             self.owned_node_set.get_ref(),
             trie_node,
             key_prefix,

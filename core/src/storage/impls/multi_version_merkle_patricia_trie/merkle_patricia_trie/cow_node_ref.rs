@@ -186,17 +186,30 @@ impl CowNodeRef {
     /// is shorter.
     pub fn delete_node(
         mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
-    ) {
+        owned_node_set: &mut OwnedNodeSet,
+    )
+    {
         if self.owned {
             node_memory_manager.free_node(&mut self.node_ref);
+            owned_node_set.remove(&self.node_ref);
             self.owned = false;
+        }
+    }
+
+    // FIXME: maybe forbid calling for un-owned node?
+    pub fn into_child(mut self) -> Option<NodeRefDeltaMptCompact> {
+        if self.owned {
+            self.owned = false;
+            Some(self.node_ref.clone().into())
+        } else {
+            None
         }
     }
 
     /// The deletion is always successful. When return value is Error, the
     /// iteration fails.
     pub fn delete_subtree(
-        mut self, node_memory_manager: &NodeMemoryManagerDeltaMpt,
+        mut self, trie: &MultiVersionMerklePatriciaTrie,
         owned_node_set: &OwnedNodeSet,
         guarded_trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
         key_prefix: CompressedPathRaw, values: &mut Vec<(Vec<u8>, Box<[u8]>)>,
@@ -217,6 +230,7 @@ impl CowNodeRef {
             // FIXME: try to share the lock.
             drop(guarded_trie_node);
 
+            let node_memory_manager = trie.get_node_memory_manager();
             let allocator = node_memory_manager.get_allocator();
             for (i, node_ref) in children_table.iter() {
                 let mut cow_child_node =
@@ -229,7 +243,7 @@ impl CowNodeRef {
                 );
                 let child_node = GuardedValue::take(child_node);
                 cow_child_node.delete_subtree(
-                    node_memory_manager,
+                    trie,
                     owned_node_set,
                     child_node,
                     key_prefix,
@@ -243,21 +257,11 @@ impl CowNodeRef {
         } else {
             self.iterate_internal(
                 owned_node_set,
-                node_memory_manager,
+                trie,
                 guarded_trie_node,
                 key_prefix,
                 values,
             )
-        }
-    }
-
-    // FIXME: maybe forbid calling for un-owned node?
-    pub fn into_child(mut self) -> Option<NodeRefDeltaMptCompact> {
-        if self.owned {
-            self.owned = false;
-            Some(self.node_ref.clone().into())
-        } else {
-            None
         }
     }
 
@@ -386,10 +390,11 @@ impl CowNodeRef {
 
     // FIXME: unit test.
     // FIXME: It's unnecessary to use owned_node_set for read-only access.
-    // FIXME: This looks like a SubTrieVisitor method.
+    // FIXME: Where to put which method? CowNodeRef, MVMPT / MPT,
+    // FIXME: SubTrieVisitor?
     pub fn iterate_internal(
         &self, owned_node_set: &OwnedNodeSet,
-        node_memory_manager: &NodeMemoryManagerDeltaMpt,
+        trie: &MultiVersionMerklePatriciaTrie,
         guarded_trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
         key_prefix: CompressedPathRaw, values: &mut Vec<(Vec<u8>, Box<[u8]>)>,
     ) -> Result<()>
@@ -408,6 +413,7 @@ impl CowNodeRef {
         // FIXME: try to share the lock.
         drop(guarded_trie_node);
 
+        let node_memory_manager = trie.get_node_memory_manager();
         let allocator = node_memory_manager.get_allocator();
         for (i, node_ref) in children_table.iter() {
             let mut cow_child_node =
@@ -421,7 +427,7 @@ impl CowNodeRef {
             let child_node = GuardedValue::take(child_node);
             cow_child_node.iterate_internal(
                 owned_node_set,
-                node_memory_manager,
+                trie,
                 child_node,
                 key_prefix,
                 values,
@@ -477,6 +483,51 @@ impl CowNodeRef {
         } else {
             Ok(false)
         }
+    }
+
+    pub fn cow_merge_path(
+        self, trie: &MultiVersionMerklePatriciaTrie,
+        owned_node_set: &mut OwnedNodeSet,
+        trie_node: GuardedMaybeOwnedTrieNodeAsCowCallParam,
+        child_node_ref: NodeRefDeltaMpt, child_index: u8,
+    ) -> Result<CowNodeRef>
+    {
+        let node_memory_manager = trie.get_node_memory_manager();
+        let allocator = node_memory_manager.get_allocator();
+
+        let mut child_node_cow =
+            CowNodeRef::new(child_node_ref, owned_node_set);
+        let compressed_path_ref =
+            trie_node.as_ref().as_ref().compressed_path_ref();
+        let path_prefix = CompressedPathRaw::new(
+            compressed_path_ref.path_slice(),
+            compressed_path_ref.end_mask(),
+        );
+        // FIXME: Here we may hold the lock and get the trie node for the child
+        // FIXME: node. think about it.
+        drop(trie_node);
+        // COW modify child,
+        // FIXME: error processing. Error happens when child node isn't dirty.
+        // FIXME: State can be easily reverted if the trie node containing the
+        // FIXME: value or itself isn't dirty as well. However if a
+        // FIXME: dirty child node was removed, recovering the state
+        // FIXME: becomes difficult.
+        let child_trie_node =
+            child_node_cow.get_trie_node(node_memory_manager, &allocator)?;
+        let new_path = child_trie_node.path_prepended(path_prefix, child_index);
+
+        // FIXME: if child_trie_node isn't owned, but node_cow is owned, modify
+        // FIXME: node_cow.
+        let child_trie_node = GuardedValue::take(child_trie_node);
+        child_node_cow.cow_set_compressed_path(
+            &node_memory_manager,
+            owned_node_set,
+            new_path,
+            child_trie_node,
+        )?;
+        self.delete_node(node_memory_manager, owned_node_set);
+
+        Ok(child_node_cow)
     }
 
     /// When the node is unowned, it doesn't make sense to do copy-on-write
