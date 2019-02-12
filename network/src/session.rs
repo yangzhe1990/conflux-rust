@@ -342,7 +342,8 @@ impl Session {
             packet.put_slice(&protocol);
         }
         packet.put_slice(&data);
-        Ok(self.connection.send(io, &packet[..]))
+
+        self.connection.send(io, &packet[..])
     }
 
     pub fn disconnect<Message: Send + Sync + Clone>(

@@ -1,4 +1,7 @@
-use crate::io::{IoContext, StreamToken};
+use crate::{
+    io::{IoContext, StreamToken},
+    throttling::THROTTLING_SERVICE,
+};
 use bytes::Bytes;
 use mio::{deprecated::*, tcp::*, *};
 use std::{
@@ -91,6 +94,8 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
             }
             match self.socket.write(&buf.0[pos..]) {
                 Ok(size) => {
+                    THROTTLING_SERVICE.write().on_dequeue(size);
+
                     if pos + size < len {
                         buf.1 += size as u64;
                         Ok(WriteStatus::Ongoing)
@@ -115,9 +120,10 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
 
     pub fn send<Message: Sync + Send + Clone + 'static>(
         &mut self, io: &IoContext<Message>, data: &[u8],
-    ) -> SendQueueStatus {
+    ) -> Result<SendQueueStatus, Error> {
         if !data.is_empty() {
             trace!(target: "network", "Sending {} bytes token={:?}", data.len(), self.token);
+            THROTTLING_SERVICE.write().on_enqueue(data.len())?;
             let message = data.to_vec();
             self.send_queue.push_back((message, 0));
             if !self.interest.is_writable() {
@@ -126,9 +132,9 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
             io.update_registration(self.token).ok();
         }
 
-        SendQueueStatus {
+        Ok(SendQueueStatus {
             queue_length: self.send_queue.len(),
-        }
+        })
     }
 
     pub fn is_sending(&self) -> bool { self.interest.is_writable() }

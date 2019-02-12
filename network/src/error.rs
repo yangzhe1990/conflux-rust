@@ -99,6 +99,11 @@ error_chain! {
             description("IO Error"),
             display("Unexpected IO error: {}", err),
         }
+
+        QueueFull {
+            description("Sending queue full"),
+            display("Sending queue full"),
+        }
     }
 }
 

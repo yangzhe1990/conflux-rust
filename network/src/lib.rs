@@ -40,6 +40,7 @@ mod ip_utils;
 pub mod node_table;
 mod service;
 mod session;
+pub mod throttling;
 
 pub use crate::{
     error::{DisconnectReason, Error, ErrorKind},

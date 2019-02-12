@@ -12,8 +12,9 @@ use log4rs::{
     config::{Appender, Config as LogConfig, Logger, Root},
     encode::pattern::PatternEncoder,
 };
+use network::throttling::THROTTLING_SERVICE;
 use parking_lot::{Condvar, Mutex};
-use std::{io as stdio, io::Write, process, sync::Arc};
+use std::{io as stdio, io::Write, process, str::FromStr, sync::Arc};
 
 fn main() {
     let matches = App::new("conflux")
@@ -153,7 +154,40 @@ fn main() {
                 .help("Sets the test chain json file.")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("egress-queue-capacity")
+                .long("egress-queue-capacity")
+                .value_name("MB")
+                .help("Sets egress queue capacity of P2P network.")
+                .takes_value(true)
+                .default_value("256")
+                .validator(from_str_validator::<usize>),
+        )
+        .arg(
+            Arg::with_name("egress-min-throttle")
+                .long("egress-min-throttle")
+                .value_name("MB")
+                .help("Sets minimum throttling queue size of egress.")
+                .takes_value(true)
+                .default_value("10")
+                .validator(from_str_validator::<usize>),
+        )
+        .arg(
+            Arg::with_name("egress-max-throttle")
+                .long("egress-max-throttle")
+                .value_name("MB")
+                .help("Sets maximum throttling queue size of egress.")
+                .takes_value(true)
+                .default_value("64")
+                .validator(from_str_validator::<usize>),
+        )
         .get_matches_from(std::env::args().collect::<Vec<_>>());
+
+    THROTTLING_SERVICE.write().initialize(
+        value_from_str(&matches, "egress-queue-capacity"),
+        value_from_str(&matches, "egress-min-throttle"),
+        value_from_str(&matches, "egress-max-throttle"),
+    );
 
     let conf = Configuration::parse(&matches).unwrap();
 
@@ -217,4 +251,19 @@ fn main() {
             1
         }
     });
+}
+
+fn from_str_validator<T: FromStr>(arg: String) -> Result<(), String> {
+    match arg.parse::<T>() {
+        Ok(_) => Ok(()),
+        Err(_) => Err(arg),
+    }
+}
+
+fn value_from_str<T, S>(matches: &clap::ArgMatches, name: S) -> T
+where
+    T: FromStr,
+    S: AsRef<str>,
+{
+    matches.value_of(name).unwrap().parse::<T>().ok().unwrap()
 }
