@@ -204,7 +204,6 @@ impl<
         allocator.get_unchecked_mut(cache_slot)
     }
 
-    // FIXME: return a node.
     fn load_from_db<'c: 'a, 'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         cache_manager: &'c RwLock<
@@ -227,7 +226,7 @@ impl<
         let mut trie_node = TrieNode::decode(&rlp)?;
 
         let mut cache_manager_write = cache_manager.write();
-        let trie_node_ref;
+        let trie_node_ref: &TrieNode<CacheAlgoDataT>;
         {
             let cache_mut = &mut *cache_manager_write;
 
@@ -235,8 +234,25 @@ impl<
             match cache_mut.node_ref_map.get(db_key) {
                 None => {}
                 Some(cache_info) => match cache_info.get_cache_info() {
-                    TrieCacheSlotOrCacheAlgoData::TrieCacheSlot(_) => unsafe {
-                        unreachable_unchecked();
+                    TrieCacheSlotOrCacheAlgoData::TrieCacheSlot(cache_slot) => unsafe {
+                        // Normally this should not happen, however the node
+                        // might have been loaded
+                        // by another thread in the mean time. So we only need
+                        // to load the node.
+                        // TODO(yz): split the lock for cache_algorithm and
+                        // node_ref_map to make this branch
+                        // unreachable_unchecked().
+                        trie_node_ref = NodeMemoryManager::<
+                            CacheAlgoDataT,
+                            CacheAlgorithmT,
+                        >::get_in_memory_node_mut(
+                            &allocator,
+                            *cache_slot as usize,
+                        );
+                        return Ok(GuardedValue::new(
+                            cache_manager_write,
+                            trie_node_ref,
+                        ));
                     },
                     TrieCacheSlotOrCacheAlgoData::CacheAlgoData(
                         cache_algo_data,
@@ -422,7 +438,7 @@ impl<
                             // Compiler isn't smart enough to know that
                             // the variables are always initialized.
                             trie_node = mem::uninitialized();
-                            cache_manager_write = mem::uninitialized()
+                            cache_manager_write = mem::uninitialized();
                         }
                         Some(cache_slot) => {
                             trie_node = NodeMemoryManager::<
@@ -443,6 +459,10 @@ impl<
                     let guard_with_value = self
                         .load_from_db(allocator, cache_manager, *db_key)?
                         .into();
+                    // We hacked compiler previously, now we should prevent
+                    // destructor from running.
+                    mem::forget(cache_manager_write);
+                    mem::forget(trie_node);
                     cache_manager_write = guard_with_value.0;
                     trie_node = guard_with_value.1;
                 }
