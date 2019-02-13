@@ -40,7 +40,7 @@ impl CommonParams {
             network_id: 0x1,
             chain_id: 0x1,
             subprotocol_name: "cfx".into(),
-            min_gas_limit: 0x1388.into(),
+            min_gas_limit: 0x1387.into(),
             gas_limit_bound_divisor: 0x0400.into(),
             registrar: "0xc6d9d2cd449a754c494264e1809c50e34d64562b".into(),
             node_permission_contract: None,

@@ -4,6 +4,7 @@ use crate::{
     db::COL_MISC,
     error::{BlockError, Error},
     hash::{KECCAK_EMPTY_LIST_RLP, KECCAK_NULL_RLP},
+    machine::new_byzantium_test_machine,
     pow::ProofOfWorkConfig,
     verification::*,
 };
@@ -19,7 +20,7 @@ use std::{
     ops::DerefMut,
     sync::Arc,
 };
-use unexpected::Mismatch;
+use unexpected::{Mismatch, OutOfBounds};
 
 const NULL: usize = !0;
 const BLOCK_INVALID: u8 = 0;
@@ -363,6 +364,24 @@ impl SynchronizationGraphInner {
             return Err(From::from(BlockError::InvalidHeight(Mismatch {
                 expected: self.arena[parent].block_header.height() + 1,
                 found: epoch,
+            })));
+        }
+
+        let machine = new_byzantium_test_machine();
+        let gas_limit_divisor = machine.params().gas_limit_bound_divisor;
+        let min_gas_limit = machine.params().min_gas_limit;
+        let parent_gas_limit = *self.arena[parent].block_header.gas_limit();
+        let gas_lower = max(
+            parent_gas_limit - parent_gas_limit / gas_limit_divisor,
+            min_gas_limit,
+        );
+        let gas_upper = parent_gas_limit + parent_gas_limit / gas_limit_divisor;
+        let self_gas_limit = *self.arena[index].block_header.gas_limit();
+        if self_gas_limit <= gas_lower || self_gas_limit >= gas_upper {
+            return Err(From::from(BlockError::InvalidGasLimit(OutOfBounds {
+                min: Some(gas_lower),
+                max: Some(gas_upper),
+                found: self_gas_limit,
             })));
         }
 

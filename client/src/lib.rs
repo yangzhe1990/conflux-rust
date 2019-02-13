@@ -20,8 +20,8 @@ pub use crate::configuration::Configuration;
 use blockgen::BlockGenerator;
 use core::{
     pow::WORKER_COMPUTATION_PARALLELISM, storage::StorageManager,
-    vm_factory::VmFactory, ConsensusGraph, SynchronizationService,
-    TransactionPool,
+    transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT, vm_factory::VmFactory,
+    ConsensusGraph, SynchronizationService, TransactionPool,
 };
 
 use crate::rpc::RpcBlock;
@@ -106,7 +106,10 @@ impl Client {
             ledger_db.clone(),
             conf.storage_config(),
         ));
-        let genesis_block = storage_manager.initialize(secret_store.as_ref());
+        let genesis_block = storage_manager.initialize(
+            secret_store.as_ref(),
+            DEFAULT_MAX_BLOCK_GAS_LIMIT.into(),
+        );
         debug!("Initialize genesis_block={:?}", genesis_block);
 
         let txpool = Arc::new(TransactionPool::with_capacity(

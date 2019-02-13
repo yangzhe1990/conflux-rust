@@ -111,7 +111,9 @@ impl StateManager {
         }
     }
 
-    pub fn initialize(&self, secret_store: &SecretStore) -> Block {
+    pub fn initialize(
+        &self, secret_store: &SecretStore, genesis_gas_limit: U256,
+    ) -> Block {
         let mut state = self.get_state_at(H256::default()).unwrap();
         let kp = KeyPair::from_secret(
             "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"
@@ -135,6 +137,7 @@ impl StateManager {
         let genesis = Block {
             block_header: BlockHeaderBuilder::new()
                 .with_deferred_state_root(root)
+                .with_gas_limit(genesis_gas_limit)
                 .build(),
             transactions: Vec::new(),
         };

@@ -15,7 +15,7 @@ HASH_MAX = 1 << 256
 
 
 def create_block(parent_hash=default_config["GENESIS_PREVHASH"], height=0, timestamp=0, difficulty=TEST_DIFFICULTY, transactions=[],
-                 gas_limit=0, referee_hashes=[], author=default_config["GENESIS_COINBASE"], deferred_state_root=default_config["GENESIS_STATE_ROOT"], deferred_receipts_root=default_config["GENESIS_RECEIPTS_ROOT"]):
+                 gas_limit=3000000000, referee_hashes=[], author=default_config["GENESIS_COINBASE"], deferred_state_root=default_config["GENESIS_STATE_ROOT"], deferred_receipts_root=default_config["GENESIS_RECEIPTS_ROOT"]):
     tx_root = utils.sha3(rlp.encode(Transactions(transactions)))
     nonce = 0
     while True:
