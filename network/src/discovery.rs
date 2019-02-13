@@ -66,7 +66,9 @@ pub struct Discovery {
 
 impl Discovery {
     pub fn new(
-        key: &KeyPair, public: NodeEndpoint, ip_filter: IpFilter,
+        key: &KeyPair,
+        public: NodeEndpoint,
+        ip_filter: IpFilter,
     ) -> Discovery {
         Discovery {
             id: *key.public(),
@@ -89,7 +91,9 @@ impl Discovery {
     }
 
     pub fn try_ping_nodes(
-        &mut self, uio: &UdpIoContext, nodes: Vec<NodeEntry>,
+        &mut self,
+        uio: &UdpIoContext,
+        nodes: Vec<NodeEntry>,
     ) {
         for node in nodes {
             self.try_ping(uio, node);
@@ -122,7 +126,9 @@ impl Discovery {
     }
 
     fn ping(
-        &mut self, uio: &UdpIoContext, node: &NodeEntry,
+        &mut self,
+        uio: &UdpIoContext,
+        node: &NodeEntry,
     ) -> Result<(), Error> {
         let mut rlp = RlpStream::new_list(4);
         rlp.append(&DISCOVER_PROTOCOL_VERSION);
@@ -150,10 +156,12 @@ impl Discovery {
     }
 
     fn send_packet(
-        &mut self, uio: &UdpIoContext, packet_id: u8, address: &SocketAddr,
+        &mut self,
+        uio: &UdpIoContext,
+        packet_id: u8,
+        address: &SocketAddr,
         payload: &[u8],
-    ) -> Result<H256, Error>
-    {
+    ) -> Result<H256, Error> {
         let packet = assemble_packet(packet_id, payload, &self.secret)?;
         let hash = H256::from(&packet[1..(1 + 32)]);
         self.send_to(uio, packet, address.clone());
@@ -161,13 +169,19 @@ impl Discovery {
     }
 
     fn send_to(
-        &mut self, uio: &UdpIoContext, payload: Bytes, address: SocketAddr,
+        &mut self,
+        uio: &UdpIoContext,
+        payload: Bytes,
+        address: SocketAddr,
     ) {
         uio.send(payload, address);
     }
 
     pub fn on_packet(
-        &mut self, uio: &UdpIoContext, packet: &[u8], from: SocketAddr,
+        &mut self,
+        uio: &UdpIoContext,
+        packet: &[u8],
+        from: SocketAddr,
     ) -> Result<(), Error> {
         // validate packet
         if packet.len() < 32 + 65 + 4 + 1 {
@@ -214,10 +228,13 @@ impl Discovery {
     }
 
     fn on_ping(
-        &mut self, uio: &UdpIoContext, rlp: &Rlp, node_id: &NodeId,
-        from: &SocketAddr, echo_hash: &[u8],
-    ) -> Result<(), Error>
-    {
+        &mut self,
+        uio: &UdpIoContext,
+        rlp: &Rlp,
+        node_id: &NodeId,
+        from: &SocketAddr,
+        echo_hash: &[u8],
+    ) -> Result<(), Error> {
         trace!("Got Ping from {:?}", &from);
         let ping_from = NodeEndpoint::from_rlp(&rlp.at(1)?)?;
         let ping_to = NodeEndpoint::from_rlp(&rlp.at(2)?)?;
@@ -267,10 +284,12 @@ impl Discovery {
     }
 
     fn on_pong(
-        &mut self, uio: &UdpIoContext, rlp: &Rlp, node_id: &NodeId,
+        &mut self,
+        uio: &UdpIoContext,
+        rlp: &Rlp,
+        node_id: &NodeId,
         from: &SocketAddr,
-    ) -> Result<(), Error>
-    {
+    ) -> Result<(), Error> {
         trace!("Got Pong from {:?} ; node_id={:#x}", &from, node_id);
         let _pong_to = NodeEndpoint::from_rlp(&rlp.at(0)?)?;
         let echo_hash: H256 = rlp.val_at(1)?;
@@ -307,10 +326,12 @@ impl Discovery {
     }
 
     fn on_find_node(
-        &mut self, uio: &UdpIoContext, rlp: &Rlp, _node: &NodeId,
+        &mut self,
+        uio: &UdpIoContext,
+        rlp: &Rlp,
+        _node: &NodeId,
         from: &SocketAddr,
-    ) -> Result<(), Error>
-    {
+    ) -> Result<(), Error> {
         trace!("Got FindNode from {:?}", &from);
         let timestamp: u64 = rlp.val_at(0)?;
         self.check_timestamp(timestamp)?;
@@ -344,10 +365,12 @@ impl Discovery {
     }
 
     fn on_neighbours(
-        &mut self, uio: &UdpIoContext, rlp: &Rlp, node_id: &NodeId,
+        &mut self,
+        uio: &UdpIoContext,
+        rlp: &Rlp,
+        node_id: &NodeId,
         from: &SocketAddr,
-    ) -> Result<(), Error>
-    {
+    ) -> Result<(), Error> {
         let results_count = rlp.at(0)?.item_count()?;
 
         let is_expected = match self.in_flight_find_nodes.entry(*node_id) {
@@ -506,7 +529,9 @@ impl Discovery {
     }
 
     fn send_find_node(
-        &mut self, uio: &UdpIoContext, node: &NodeEntry,
+        &mut self,
+        uio: &UdpIoContext,
+        node: &NodeEntry,
     ) -> Result<(), Error> {
         let mut rlp = RlpStream::new_list(1);
         append_expiration(&mut rlp);
@@ -561,7 +586,9 @@ fn append_expiration(rlp: &mut RlpStream) {
 }
 
 fn assemble_packet(
-    packet_id: u8, bytes: &[u8], secret: &Secret,
+    packet_id: u8,
+    bytes: &[u8],
+    secret: &Secret,
 ) -> Result<Bytes, Error> {
     let mut packet = Bytes::with_capacity(bytes.len() + 32 + 65 + 1 + 1);
     packet.push(UDP_PROTOCOL_DISCOVERY);

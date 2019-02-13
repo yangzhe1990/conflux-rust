@@ -31,7 +31,8 @@ pub struct Transaction {
 
 impl Transaction {
     pub fn from_signed(
-        t: &SignedTransaction, transaction_address: Option<TransactionAddress>,
+        t: &SignedTransaction,
+        transaction_address: Option<TransactionAddress>,
     ) -> Transaction {
         Transaction {
             hash: t.transaction.hash().into(),

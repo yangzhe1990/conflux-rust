@@ -152,7 +152,9 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
         self.path = path.path;
     }
 
-    pub fn has_value(&self) -> bool { self.value_size > 0 }
+    pub fn has_value(&self) -> bool {
+        self.value_size > 0
+    }
 
     fn get_children_count(&self) -> u8 {
         self.children_table.get_children_count()
@@ -201,7 +203,8 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     }
 
     pub fn replace_value_valid(
-        &mut self, valid_value: &[u8],
+        &mut self,
+        valid_value: &[u8],
     ) -> MptValue<Box<[u8]>> {
         let old_value = self.value_into_boxed_slice();
         let value_size = valid_value.len();
@@ -314,11 +317,15 @@ pub mod access_mode {
     pub struct Write {}
 
     impl AccessMode for Read {
-        fn is_read_only() -> bool { return true; }
+        fn is_read_only() -> bool {
+            return true;
+        }
     }
 
     impl AccessMode for Write {
-        fn is_read_only() -> bool { return false; }
+        fn is_read_only() -> bool {
+            return false;
+        }
     }
 }
 
@@ -329,7 +336,8 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     /// current node, e.g. if compressed path starts at the second-half, so
     /// should be key.
     pub fn walk<'key, AM: AccessMode>(
-        &self, key: KeyPart<'key>,
+        &self,
+        key: KeyPart<'key>,
     ) -> WalkStop<'key> {
         let path = self.compressed_path_ref();
         let path_slice = path.path_slice;
@@ -508,10 +516,11 @@ pub enum TrieNodeAction {
 /// Update
 impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     pub fn new(
-        merkle: &MerkleHash, children_table: ChildrenTableDeltaMpt,
-        maybe_value: Option<Vec<u8>>, compressed_path: CompressedPathRaw,
-    ) -> TrieNode<CacheAlgoDataT>
-    {
+        merkle: &MerkleHash,
+        children_table: ChildrenTableDeltaMpt,
+        maybe_value: Option<Vec<u8>>,
+        compressed_path: CompressedPathRaw,
+    ) -> TrieNode<CacheAlgoDataT> {
         let mut ret = TrieNode::default();
 
         ret.merkle_hash = *merkle;
@@ -535,11 +544,11 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     /// 1. precondition on children_table;
     /// 2. delete value assumes that self contains some value.
     pub unsafe fn copy_and_replace_fields(
-        &self, new_value: Option<Option<&[u8]>>,
+        &self,
+        new_value: Option<Option<&[u8]>>,
         new_path: Option<CompressedPathRaw>,
         children_table: Option<ChildrenTableDeltaMpt>,
-    ) -> TrieNode<CacheAlgoDataT>
-    {
+    ) -> TrieNode<CacheAlgoDataT> {
         let mut ret = TrieNode::default();
 
         match new_value {
@@ -575,7 +584,9 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     }
 
     pub fn path_prepended(
-        &self, prefix: CompressedPathRaw, child_index: u8,
+        &self,
+        prefix: CompressedPathRaw,
+        child_index: u8,
     ) -> CompressedPathRaw {
         let prefix_size = prefix.path_slice().len();
         let path_size = self.get_compressed_path_size();
@@ -637,7 +648,8 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     }
 
     fn merge_path_action_after_child_deletion(
-        &self, child_index: u8,
+        &self,
+        child_index: u8,
     ) -> TrieNodeAction {
         for (i, node_ref) in self.children_table.iter() {
             if i != child_index {
@@ -655,14 +667,18 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
     }
 
     pub unsafe fn set_first_child_unchecked(
-        &mut self, child_index: u8, child: NodeRefDeltaMptCompact,
+        &mut self,
+        child_index: u8,
+        child: NodeRefDeltaMptCompact,
     ) {
         self.children_table =
             ChildrenTableDeltaMpt::new_from_one_child(child_index, child);
     }
 
     pub unsafe fn add_new_child_unchecked(
-        &mut self, child_index: u8, child: NodeRefDeltaMptCompact,
+        &mut self,
+        child_index: u8,
+        child: NodeRefDeltaMptCompact,
     ) {
         self.children_table = CompactedChildrenTable::insert_child_unchecked(
             self.children_table.to_ref(),
@@ -681,7 +697,9 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
 
     /// Unsafe because it's assumed that the child_index already exists.
     pub unsafe fn replace_child_unchecked(
-        &mut self, child_index: u8, new_child_node: NodeRefDeltaMptCompact,
+        &mut self,
+        child_index: u8,
+        new_child_node: NodeRefDeltaMptCompact,
     ) {
         self.children_table
             .set_child_unchecked(child_index, new_child_node);
@@ -689,7 +707,9 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> TrieNode<CacheAlgoDataT> {
 
     /// Returns old_child, is_self_about_to_delete, replacement_node_for_self
     pub fn check_replace_or_delete_child_action(
-        &self, child_index: u8, new_child_node: Option<NodeRefDeltaMptCompact>,
+        &self,
+        child_index: u8,
+        new_child_node: Option<NodeRefDeltaMptCompact>,
     ) -> TrieNodeAction {
         if new_child_node.is_none() {
             match self.get_children_count() {

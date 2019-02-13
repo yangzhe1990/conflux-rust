@@ -35,13 +35,15 @@ pub trait CacheStoreUtil {
     fn get(&self, element_index: Self::ElementIndex) -> Self::CacheAlgoData;
 
     fn get_most_recently_accessed(
-        &self, element_index: Self::ElementIndex,
+        &self,
+        element_index: Self::ElementIndex,
     ) -> Self::CacheAlgoData {
         self.get(element_index)
     }
 
     fn set(
-        &mut self, element_index: Self::ElementIndex,
+        &mut self,
+        element_index: Self::ElementIndex,
         algo_data: &Self::CacheAlgoData,
     );
 
@@ -53,10 +55,10 @@ pub trait CacheStoreUtil {
     /// Without an overriding implementation, calls to this method is forwarded
     /// to the normal set method.
     fn set_most_recently_accessed(
-        &mut self, element_index: Self::ElementIndex,
+        &mut self,
+        element_index: Self::ElementIndex,
         algo_data: &Self::CacheAlgoData,
-    )
-    {
+    ) {
         self.set(element_index, algo_data);
     }
 }
@@ -64,7 +66,8 @@ pub trait CacheStoreUtil {
 struct CacheAlgoDataAdapter<
     CacheStoreUtilT: CacheStoreUtil,
     CacheIndexT: CacheIndexTrait,
-> where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+> where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
     _marker_s: PhantomData<CacheStoreUtilT>,
     _marker_i: PhantomData<CacheIndexT>,
@@ -74,10 +77,12 @@ impl<
         CacheStoreUtilT: CacheStoreUtil<ElementIndex = CacheIndexT>,
         CacheIndexT: CacheIndexTrait,
     > CacheAlgoDataAdapter<CacheStoreUtilT, CacheIndexT>
-where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
     fn get(
-        util: &CacheStoreUtilT, index: CacheIndexT,
+        util: &CacheStoreUtilT,
+        index: CacheIndexT,
     ) -> CacheStoreUtilT::CacheAlgoData {
         util.get(index)
     }
@@ -85,7 +90,8 @@ where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
     /// It's impossible to abstract get_mut directly in CacheStoreUtil,
     /// therefore we have CacheAlgoDataAdapter.
     fn get_mut(
-        util: &mut CacheStoreUtilT, index: CacheIndexT,
+        util: &mut CacheStoreUtilT,
+        index: CacheIndexT,
     ) -> CacheAlgoDataSetter<CacheStoreUtilT, CacheIndexT> {
         let data = Self::get(util, index).clone();
         CacheAlgoDataSetter {
@@ -96,7 +102,8 @@ where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
     }
 
     fn get_mut_most_recently_accessed(
-        util: &mut CacheStoreUtilT, index: CacheIndexT,
+        util: &mut CacheStoreUtilT,
+        index: CacheIndexT,
     ) -> CacheAlgoDataSetterMostRecentlyAccessed<CacheStoreUtilT, CacheIndexT>
     {
         let data = util.get_most_recently_accessed(index).clone();
@@ -108,7 +115,8 @@ where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
     }
 
     unsafe fn new_mut(
-        util: &mut CacheStoreUtilT, index: CacheIndexT,
+        util: &mut CacheStoreUtilT,
+        index: CacheIndexT,
     ) -> CacheAlgoDataSetter<CacheStoreUtilT, CacheIndexT> {
         CacheAlgoDataSetter {
             cache_store_util: util,
@@ -118,7 +126,8 @@ where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
     }
 
     unsafe fn new_mut_most_recently_accessed(
-        util: &mut CacheStoreUtilT, index: CacheIndexT,
+        util: &mut CacheStoreUtilT,
+        index: CacheIndexT,
     ) -> CacheAlgoDataSetterMostRecentlyAccessed<CacheStoreUtilT, CacheIndexT>
     {
         CacheAlgoDataSetterMostRecentlyAccessed {
@@ -152,7 +161,8 @@ pub trait CacheAlgorithm {
             CacheAlgoData = Self::CacheAlgoData,
         >,
     >(
-        &mut self, cache_index: Self::CacheIndex,
+        &mut self,
+        cache_index: Self::CacheIndex,
         cache_store_util: &mut CacheStoreUtilT,
     ) -> CacheAccessResult<Self::CacheIndex>;
 
@@ -172,7 +182,8 @@ pub trait CacheAlgorithm {
             CacheAlgoData = Self::CacheAlgoData,
         >,
     >(
-        &mut self, cache_index: Self::CacheIndex,
+        &mut self,
+        cache_index: Self::CacheIndex,
         cache_store_util: &mut CacheStoreUtilT,
     );
 }
@@ -206,19 +217,27 @@ pub trait MyInto<X> {
 }
 
 impl MyFrom<usize> for u32 {
-    fn from(x: usize) -> Self { x as Self }
+    fn from(x: usize) -> Self {
+        x as Self
+    }
 }
 
 impl MyFrom<i32> for u32 {
-    fn from(x: i32) -> Self { x as Self }
+    fn from(x: i32) -> Self {
+        x as Self
+    }
 }
 
 impl MyInto<isize> for u32 {
-    fn into(self) -> isize { self as isize }
+    fn into(self) -> isize {
+        self as isize
+    }
 }
 
 impl MyInto<usize> for u32 {
-    fn into(self) -> usize { self as usize }
+    fn into(self) -> usize {
+        self as usize
+    }
 }
 
 impl PrimitiveNum for u32 {}
@@ -227,7 +246,8 @@ struct CacheAlgoDataSetter<
     'a,
     CacheStoreUtilT: 'a + CacheStoreUtil<ElementIndex = CacheIndexT>,
     CacheIndexT: CacheIndexTrait,
-> where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+> where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
     algo_data: CacheStoreUtilT::CacheAlgoData,
     element_index: CacheIndexT,
@@ -239,7 +259,8 @@ impl<
         CacheStoreUtilT: 'a + CacheStoreUtil<ElementIndex = CacheIndexT>,
         CacheIndexT: CacheIndexTrait,
     > Drop for CacheAlgoDataSetter<'a, CacheStoreUtilT, CacheIndexT>
-where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
     fn drop(&mut self) {
         let (util, index, data) = (
@@ -256,11 +277,14 @@ impl<
         CacheStoreUtilT: 'a + CacheStoreUtil<ElementIndex = CacheIndexT>,
         CacheIndexT: CacheIndexTrait,
     > Deref for CacheAlgoDataSetter<'a, CacheStoreUtilT, CacheIndexT>
-where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
     type Target = CacheStoreUtilT::CacheAlgoData;
 
-    fn deref(&self) -> &Self::Target { &self.algo_data }
+    fn deref(&self) -> &Self::Target {
+        &self.algo_data
+    }
 }
 
 impl<
@@ -268,16 +292,20 @@ impl<
         CacheStoreUtilT: 'a + CacheStoreUtil<ElementIndex = CacheIndexT>,
         CacheIndexT: CacheIndexTrait,
     > DerefMut for CacheAlgoDataSetter<'a, CacheStoreUtilT, CacheIndexT>
-where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
-    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.algo_data }
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.algo_data
+    }
 }
 
 struct CacheAlgoDataSetterMostRecentlyAccessed<
     'a,
     CacheStoreUtilT: 'a + CacheStoreUtil<ElementIndex = CacheIndexT>,
     CacheIndexT: CacheIndexTrait,
-> where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+> where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
     algo_data: CacheStoreUtilT::CacheAlgoData,
     element_index: CacheIndexT,
@@ -294,7 +322,8 @@ impl<
         CacheStoreUtilT,
         CacheIndexT,
     >
-where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
     fn drop(&mut self) {
         let (util, index, data) = (
@@ -316,11 +345,14 @@ impl<
         CacheStoreUtilT,
         CacheIndexT,
     >
-where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
     type Target = CacheStoreUtilT::CacheAlgoData;
 
-    fn deref(&self) -> &Self::Target { &self.algo_data }
+    fn deref(&self) -> &Self::Target {
+        &self.algo_data
+    }
 }
 
 impl<
@@ -333,7 +365,10 @@ impl<
         CacheStoreUtilT,
         CacheIndexT,
     >
-where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
+where
+    CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait,
 {
-    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.algo_data }
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.algo_data
+    }
 }

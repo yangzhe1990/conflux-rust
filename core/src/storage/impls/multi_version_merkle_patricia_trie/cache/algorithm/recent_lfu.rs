@@ -36,24 +36,37 @@ impl<PosT: PrimitiveNum> CacheAlgoDataTrait for RecentLFUHandle<PosT> {}
 impl<PosT: PrimitiveNum> RecentLFUHandle<PosT> {
     const NULL_POS: i32 = -1;
 
-    fn placement_new_handle(&mut self, pos: PosT) { self.set_handle(pos); }
+    fn placement_new_handle(&mut self, pos: PosT) {
+        self.set_handle(pos);
+    }
 
-    fn placement_new_evicted(&mut self) { self.set_evicted(); }
+    fn placement_new_evicted(&mut self) {
+        self.set_evicted();
+    }
 
-    pub fn is_lru_hit(&self) -> bool { self.pos != PosT::from(Self::NULL_POS) }
+    pub fn is_lru_hit(&self) -> bool {
+        self.pos != PosT::from(Self::NULL_POS)
+    }
 
     fn is_lfu_hit<CacheIndexT: CacheIndexTrait>(
-        &self, heap: &RemovableHeap<PosT, RecentLFUMetadata<PosT, CacheIndexT>>,
+        &self,
+        heap: &RemovableHeap<PosT, RecentLFUMetadata<PosT, CacheIndexT>>,
     ) -> bool {
         self.pos < heap.get_heap_size()
             && self.pos != PosT::from(Self::NULL_POS)
     }
 
-    pub fn set_evicted(&mut self) { self.pos = PosT::from(Self::NULL_POS); }
+    pub fn set_evicted(&mut self) {
+        self.pos = PosT::from(Self::NULL_POS);
+    }
 
-    fn get_handle(&self) -> PosT { self.pos }
+    fn get_handle(&self) -> PosT {
+        self.pos
+    }
 
-    fn set_handle(&mut self, pos: PosT) { self.pos = pos; }
+    fn set_handle(&mut self, pos: PosT) {
+        self.pos = pos;
+    }
 }
 
 impl<PosT: PrimitiveNum> Default for RecentLFUHandle<PosT> {
@@ -131,7 +144,9 @@ impl<
     type KeyType = FrequencyType;
 
     fn set_handle(
-        &mut self, value: &mut RecentLFUMetadata<PosT, CacheIndexT>, pos: PosT,
+        &mut self,
+        value: &mut RecentLFUMetadata<PosT, CacheIndexT>,
+        pos: PosT,
     ) {
         unsafe {
             self.frequency_lru
@@ -146,7 +161,9 @@ impl<
     }
 
     fn set_handle_final(
-        &mut self, value: &mut RecentLFUMetadata<PosT, CacheIndexT>, pos: PosT,
+        &mut self,
+        value: &mut RecentLFUMetadata<PosT, CacheIndexT>,
+        pos: PosT,
     ) {
         unsafe {
             self.frequency_lru
@@ -161,7 +178,8 @@ impl<
     }
 
     fn set_removed(
-        &mut self, value: &mut RecentLFUMetadata<PosT, CacheIndexT>,
+        &mut self,
+        value: &mut RecentLFUMetadata<PosT, CacheIndexT>,
     ) {
         unsafe {
             // There is no need to update lru cache_index because heap removal
@@ -175,7 +193,8 @@ impl<
     }
 
     fn get_key_for_comparison<'x>(
-        &'x self, value: &'x RecentLFUMetadata<PosT, CacheIndexT>,
+        &'x self,
+        value: &'x RecentLFUMetadata<PosT, CacheIndexT>,
     ) -> &Self::KeyType {
         &value.frequency
     }
@@ -195,10 +214,10 @@ impl<'a, PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheStoreUtil
     }
 
     fn set(
-        &mut self, element_index: Self::ElementIndex,
+        &mut self,
+        element_index: Self::ElementIndex,
         algo_data: &LRUHandle<PosT>,
-    )
-    {
+    ) {
         self[MyInto::<usize>::into(element_index.get_handle())].lru_handle =
             *algo_data
     }
@@ -223,8 +242,7 @@ impl<'a, 'b, PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
         cache_index: CacheIndexT,
         new_metadata: &'b mut RecentLFUMetadata<PosT, CacheIndexT>,
         rng: &mut RngT,
-    ) -> Self
-    {
+    ) -> Self {
         *new_metadata = RecentLFUMetadata::<PosT, CacheIndexT> {
             frequency:
                 RecentLFUMetadata::<PosT, CacheIndexT>::init_visit_counter_random_bits(
@@ -252,24 +270,25 @@ impl<'a, 'b, PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheStoreUtil
     }
 
     fn get_most_recently_accessed(
-        &self, element_index: Self::ElementIndex,
+        &self,
+        element_index: Self::ElementIndex,
     ) -> LRUHandle<PosT> {
         self.new_metadata.lru_handle
     }
 
     fn set(
-        &mut self, element_index: Self::ElementIndex,
+        &mut self,
+        element_index: Self::ElementIndex,
         algo_data: &LRUHandle<PosT>,
-    )
-    {
+    ) {
         self.metadata.set(element_index, algo_data);
     }
 
     fn set_most_recently_accessed(
-        &mut self, element_index: <Self as CacheStoreUtil>::ElementIndex,
+        &mut self,
+        element_index: <Self as CacheStoreUtil>::ElementIndex,
         algo_data: &LRUHandle<PosT>,
-    )
-    {
+    ) {
         self.new_metadata.lru_handle = *algo_data;
     }
 }
@@ -286,10 +305,10 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
             CacheAlgoData = RecentLFUHandle<PosT>,
         >,
     >(
-        &mut self, cache_index: CacheIndexT,
+        &mut self,
+        cache_index: CacheIndexT,
         cache_store_util: &mut CacheStoreUtilT,
-    ) -> CacheAccessResult<CacheIndexT>
-    {
+    ) -> CacheAccessResult<CacheIndexT> {
         let r_lfu_handle =
             cache_store_util.get_most_recently_accessed(cache_index);
         let is_lru_hit = r_lfu_handle.is_lru_hit();
@@ -509,10 +528,10 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
             CacheAlgoData = RecentLFUHandle<PosT>,
         >,
     >(
-        &mut self, cache_index: CacheIndexT,
+        &mut self,
+        cache_index: CacheIndexT,
         cache_store_util: &mut CacheStoreUtilT,
-    )
-    {
+    ) {
         let r_lfu_handle = cache_store_util.get(cache_index);
         self.frequency_lru
             .delete(r_lfu_handle, &mut self.frequency_heap.get_array_mut());
@@ -544,7 +563,8 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>
             CacheAlgoData = RecentLFUHandle<PosT>,
         >,
     >(
-        &'a mut self, cache_store_util: &'b mut CacheStoreUtilT,
+        &'a mut self,
+        cache_store_util: &'b mut CacheStoreUtilT,
     ) -> (
         &mut RemovableHeap<PosT, RecentLFUMetadata<PosT, CacheIndexT>>,
         MetadataHeapUtil<'a, 'b, PosT, CacheIndexT, CacheStoreUtilT>,

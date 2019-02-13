@@ -12,5 +12,7 @@ pub struct TransactionAddress {
 }
 
 impl HeapSizeOf for TransactionAddress {
-    fn heap_size_of_children(&self) -> usize { 0 }
+    fn heap_size_of_children(&self) -> usize {
+        0
+    }
 }

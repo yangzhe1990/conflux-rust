@@ -23,7 +23,7 @@ use primitives::{
         Receipt, TRANSACTION_OUTCOME_EXCEPTION, TRANSACTION_OUTCOME_SUCCESS,
     },
     transaction::Action,
-    Block, BlockHeader, BlockHeaderBuilder, SignedTransaction,
+    Block, BlockHeader, BlockHeaderBuilder, EpochNumber, SignedTransaction,
     TransactionAddress,
 };
 use rayon::prelude::*;
@@ -94,10 +94,10 @@ pub struct ConsensusGraphInner {
 
 impl ConsensusGraphInner {
     pub fn with_genesis_block(
-        genesis_block: &Block, storage_manager: Arc<StorageManager>,
+        genesis_block: &Block,
+        storage_manager: Arc<StorageManager>,
         vm: VmFactory,
-    ) -> Self
-    {
+    ) -> Self {
         let mut inner = ConsensusGraphInner {
             arena: Slab::new(),
             indices: HashMap::new(),
@@ -138,7 +138,9 @@ impl ConsensusGraphInner {
     }
 
     pub fn insert(
-        &mut self, block: &Block, terminal_hashes: &mut HashSet<H256>,
+        &mut self,
+        block: &Block,
+        terminal_hashes: &mut HashSet<H256>,
     ) -> usize {
         let hash = block.hash();
 
@@ -188,10 +190,10 @@ impl ConsensusGraphInner {
     }
 
     fn check_correct_parent(
-        &self, me_in_consensus: usize,
+        &self,
+        me_in_consensus: usize,
         sync_graph: &mut SynchronizationGraphInner,
-    ) -> bool
-    {
+    ) -> bool {
         struct ForkPointInfo {
             pivot_index: usize,
             fork_total_difficulty: U256,
@@ -451,7 +453,8 @@ impl ConsensusGraphInner {
     }
 
     pub fn call_virtual(
-        &self, tx: &SignedTransaction,
+        &self,
+        tx: &SignedTransaction,
     ) -> Result<Vec<u8>, ExecutionError> {
         let spec = Spec::new_byzantium();
         let machine = new_byzantium_test_machine();
@@ -493,7 +496,9 @@ impl ConsensusGraphInner {
         self.arena[self.pivot_chain[index]].hash
     }
 
-    pub fn best_state_epoch_number(&self) -> usize { self.pivot_chain.len() }
+    pub fn best_state_epoch_number(&self) -> usize {
+        self.pivot_chain.len()
+    }
 
     pub fn deferred_state_root(&self, chain: &[usize]) -> Option<H256> {
         let chain_len = chain.len();
@@ -588,11 +593,13 @@ pub type SharedConsensusGraph = Arc<ConsensusGraph>;
 
 impl ConsensusGraph {
     pub fn with_genesis_block(
-        genesis_block: Block, state_mananger: Arc<StorageManager>,
-        vm: VmFactory, txpool: SharedTransactionPool, db: Arc<SystemDB>,
+        genesis_block: Block,
+        state_mananger: Arc<StorageManager>,
+        vm: VmFactory,
+        txpool: SharedTransactionPool,
+        db: Arc<SystemDB>,
         cache_config: CacheConfig,
-    ) -> Self
-    {
+    ) -> Self {
         let mb = 1024 * 1024;
         let max_cache_size = cache_config.ledger_mb() * mb;
         let pref_cache_size = max_cache_size * 3 / 4;
@@ -629,7 +636,8 @@ impl ConsensusGraph {
     }
 
     pub fn block_receipts_by_hash_from_db(
-        &self, hash: &H256,
+        &self,
+        hash: &H256,
     ) -> Option<Vec<Receipt>> {
         let block_receipts = self.db.key_value().get(COL_BLOCK_RECEIPTS, hash)
             .expect("Low level database error when fetching block receipts. Some issue with disk?")?;
@@ -641,7 +649,8 @@ impl ConsensusGraph {
     }
 
     pub fn block_receipts_by_hash(
-        &self, hash: &H256,
+        &self,
+        hash: &H256,
     ) -> Option<Arc<Vec<Receipt>>> {
         // Check cache first
         {
@@ -663,7 +672,8 @@ impl ConsensusGraph {
     }
 
     fn transaction_address_by_hash_from_db(
-        &self, hash: &H256,
+        &self,
+        hash: &H256,
     ) -> Option<TransactionAddress> {
         let tx_index_encoded = self.db.key_value().get(COL_TX_ADDRESS, hash).expect("Low level database error when fetching transaction index. Some issue with disk?")?;
         let rlp = Rlp::new(&tx_index_encoded);
@@ -673,7 +683,8 @@ impl ConsensusGraph {
     }
 
     pub fn transaction_address_by_hash(
-        &self, hash: &H256,
+        &self,
+        hash: &H256,
     ) -> Option<TransactionAddress> {
         {
             if let Some(index) = self.transaction_addresses.read().get(hash) {
@@ -693,7 +704,9 @@ impl ConsensusGraph {
     }
 
     fn insert_transaction_address_to_kv(
-        &self, hash: &H256, tx_address: &TransactionAddress,
+        &self,
+        hash: &H256,
+        tx_address: &TransactionAddress,
     ) {
         let mut dbops = self.db.key_value().transaction();
         dbops.put(COL_TX_ADDRESS, hash, &rlp::encode(tx_address));
@@ -707,7 +720,10 @@ impl ConsensusGraph {
     }
 
     pub fn insert_block_receipts_to_kv(
-        &self, hash: H256, block_receipts: Arc<Vec<Receipt>>, persistent: bool,
+        &self,
+        hash: H256,
+        block_receipts: Arc<Vec<Receipt>>,
+        persistent: bool,
     ) {
         if persistent {
             let mut dbops = self.db.key_value().transaction();
@@ -791,7 +807,8 @@ impl ConsensusGraph {
     }
 
     pub fn transaction_by_hash(
-        &self, hash: &H256,
+        &self,
+        hash: &H256,
     ) -> Option<Arc<SignedTransaction>> {
         let address = self.transaction_address_by_hash(hash)?;
         let block = self.block_by_hash(&address.block_hash)?;
@@ -850,7 +867,8 @@ impl ConsensusGraph {
     }
 
     pub fn block_header_by_hash(
-        &self, hash: &H256,
+        &self,
+        hash: &H256,
     ) -> Option<Arc<BlockHeader>> {
         // TODO If we persist headers, we should try to get it from db
         self.block_headers
@@ -864,7 +882,9 @@ impl ConsensusGraph {
         Some(result.block_header.height())
     }
 
-    pub fn genesis_block(&self) -> Arc<Block> { self.genesis_block.clone() }
+    pub fn genesis_block(&self) -> Arc<Block> {
+        self.genesis_block.clone()
+    }
 
     pub fn verified_invalid(&self, hash: &H256) -> bool {
         self.invalid_blocks.read().contains(hash)
@@ -926,7 +946,9 @@ impl ConsensusGraph {
     }
 
     pub fn get_balance(
-        &self, address: H160, epoch_num: usize,
+        &self,
+        address: H160,
+        epoch_num: usize,
     ) -> Result<U256, String> {
         let r = self.inner.read();
         let hash = if epoch_num == std::usize::MAX {
@@ -950,7 +972,9 @@ impl ConsensusGraph {
     }
 
     pub fn get_related_transactions(
-        &self, address: H160, num_txs: usize,
+        &self,
+        address: H160,
+        num_txs: usize,
     ) -> Vec<Arc<SignedTransaction>> {
         let mut transactions = Vec::new();
         if num_txs == 0 {
@@ -1005,12 +1029,15 @@ impl ConsensusGraph {
     }
 
     fn process_epoch_transactions(
-        &self, state: &mut State, arena: &Slab<ConsensusGraphNode>,
+        &self,
+        state: &mut State,
+        arena: &Slab<ConsensusGraphNode>,
         block_receipts_root: &mut HashMap<H256, H256>,
-        epoch_blocks: &Vec<usize>, block_fees: &mut HashMap<usize, U256>,
-        on_latest: bool, to_pending: &mut Vec<Arc<SignedTransaction>>,
-    )
-    {
+        epoch_blocks: &Vec<usize>,
+        block_fees: &mut HashMap<usize, U256>,
+        on_latest: bool,
+        to_pending: &mut Vec<Arc<SignedTransaction>>,
+    ) {
         let spec = Spec::new_byzantium();
         let machine = new_byzantium_test_machine();
         let mut epoch_receipts = Vec::with_capacity(epoch_blocks.len());
@@ -1140,7 +1167,9 @@ impl ConsensusGraph {
     /// This is a very expensive call to force the engine to recompute the state
     /// root of a given block
     pub fn compute_state_for_block(
-        &self, block_hash: &H256, inner: &mut ConsensusGraphInner,
+        &self,
+        block_hash: &H256,
+        inner: &mut ConsensusGraphInner,
     ) -> (H256, H256) {
         // If we already computed the state of the block before, we should not
         // do it again FIXME: propagate the error up
@@ -1419,7 +1448,9 @@ impl ConsensusGraph {
     }
 
     pub fn compute_deferred_state_for_block(
-        &self, block_hash: &H256, delay: usize,
+        &self,
+        block_hash: &H256,
+        delay: usize,
     ) -> (H256, H256) {
         let inner = &mut *self.inner.write();
 
@@ -1436,10 +1467,12 @@ impl ConsensusGraph {
     }
 
     fn check_block_full_validity(
-        &self, new: usize, block: &Block, inner: &mut ConsensusGraphInner,
+        &self,
+        new: usize,
+        block: &Block,
+        inner: &mut ConsensusGraphInner,
         sync_graph: &mut SynchronizationGraphInner,
-    ) -> bool
-    {
+    ) -> bool {
         if inner.arena[inner.arena[new].parent].data.partial_invalid {
             warn!(
                 "Partially invalid due to partially invalid parent. {:?}",
@@ -1540,9 +1573,13 @@ impl ConsensusGraph {
     }
 
     fn process_rewards_and_fees<F>(
-        &self, state: &mut State, indices_in_epoch: &Vec<usize>,
-        pivot_index: usize, penalty_upper_anticone: &HashSet<usize>,
-        inner: &ConsensusGraphInner, block_fee_fn: F,
+        &self,
+        state: &mut State,
+        indices_in_epoch: &Vec<usize>,
+        pivot_index: usize,
+        penalty_upper_anticone: &HashSet<usize>,
+        inner: &ConsensusGraphInner,
+        block_fee_fn: F,
     ) where
         F: Fn(usize) -> U256,
     {
@@ -1617,7 +1654,9 @@ impl ConsensusGraph {
     }
 
     pub fn on_new_block(
-        &self, hash: &H256, sync_graph: &mut SynchronizationGraphInner,
+        &self,
+        hash: &H256,
+        sync_graph: &mut SynchronizationGraphInner,
     ) -> (H256, H256, H256) {
         let block = self.block_by_hash(hash).unwrap();
 
@@ -1906,14 +1945,54 @@ impl ConsensusGraph {
         self.inner.read().epoch_hash(epoch_number)
     }
 
+    pub fn get_hash_from_epoch_number(
+        &self,
+        epoch_number: EpochNumber,
+    ) -> Result<H256, String> {
+        Ok(match epoch_number {
+            EpochNumber::Earliest => self.genesis_block.hash(),
+            EpochNumber::Latest => self.best_state_block_hash(),
+            EpochNumber::Number(num) => {
+                let epoch_num: usize = num.as_usize();
+                let best_epoch_number = self.best_state_epoch_number();
+                if epoch_num >= best_epoch_number {
+                    return Err("Invalid params: expected a numbers with less than largest epoch number.".to_owned());
+                }
+                let r = self.inner.read();
+                r.arena[r.pivot_chain[epoch_num]].hash
+            }
+        })
+    }
+
+    pub fn transaction_count(
+        &self,
+        address: H160,
+        epoch_number: EpochNumber,
+    ) -> Result<U256, String> {
+        let r = self.inner.read();
+        let hash = self.get_hash_from_epoch_number(epoch_number)?;
+        let state_db = StateDb::new(r.storage_manager.get_state_at(hash).unwrap());
+        let state = State::new(
+            state_db,
+            0.into(),
+            Default::default(),
+        );
+        state
+            .nonce(&address)
+            .map_err(|err| format!("Get transaction count error: {:?}", err))
+    }
+
     pub fn best_state_block_hash(&self) -> H256 {
         self.inner.read().best_state_block_hash()
     }
 
-    pub fn block_count(&self) -> usize { self.inner.read().indices.len() }
+    pub fn block_count(&self) -> usize {
+        self.inner.read().indices.len()
+    }
 
     pub fn call_virtual(
-        &self, tx: &SignedTransaction,
+        &self,
+        tx: &SignedTransaction,
     ) -> Result<Vec<u8>, ExecutionError> {
         self.inner.write().call_virtual(tx)
     }
@@ -1941,7 +2020,8 @@ impl ConsensusGraph {
     }
 
     pub fn logs(
-        &self, filter: Filter,
+        &self,
+        filter: Filter,
     ) -> Result<Vec<LocalizedLogEntry>, FilterError> {
         let block_hashes = if filter.block_hashes.is_none() {
             if filter.from_epoch >= filter.to_epoch {
@@ -2001,7 +2081,10 @@ impl ConsensusGraph {
     /// the same as the order of the blocks provided. And it's the callers
     /// responsibility to sort blocks provided in advance.
     pub fn logs_from_blocks<F>(
-        &self, mut blocks: Vec<H256>, matches: F, limit: Option<usize>,
+        &self,
+        mut blocks: Vec<H256>,
+        matches: F,
+        limit: Option<usize>,
     ) -> Vec<LocalizedLogEntry>
     where
         F: Fn(&LogEntry) -> bool + Send + Sync,

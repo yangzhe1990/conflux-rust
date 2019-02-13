@@ -152,11 +152,13 @@ struct RpcImpl {
 
 impl RpcImpl {
     fn new(
-        storage_manager: Arc<StorageManager>, consensus: SharedConsensusGraph,
-        sync: SharedSynchronizationService, block_gen: Arc<BlockGenerator>,
-        tx_pool: SharedTransactionPool, exit: Arc<(Mutex<bool>, Condvar)>,
-    ) -> Self
-    {
+        storage_manager: Arc<StorageManager>,
+        consensus: SharedConsensusGraph,
+        sync: SharedSynchronizationService,
+        block_gen: Arc<BlockGenerator>,
+        tx_pool: SharedTransactionPool,
+        exit: Arc<(Mutex<bool>, Condvar)>,
+    ) -> Self {
         RpcImpl {
             storage_manager,
             consensus,
@@ -169,7 +171,9 @@ impl RpcImpl {
 }
 
 impl Rpc for RpcImpl {
-    fn say_hello(&self) -> RpcResult<String> { Ok("Hello, world".into()) }
+    fn say_hello(&self) -> RpcResult<String> {
+        Ok("Hello, world".into())
+    }
 
     fn get_balance(&self, addr: Address) -> RpcResult<U256> {
         info!("RPC Request: get_balance({:?})", addr);
@@ -240,7 +244,9 @@ impl Rpc for RpcImpl {
     }
 
     fn generate(
-        &self, num_blocks: usize, num_txs: usize,
+        &self,
+        num_blocks: usize,
+        num_txs: usize,
     ) -> RpcResult<Vec<H256>> {
         info!("RPC Request: generate({:?})", num_blocks);
         let mut hashes = Vec::new();
@@ -252,7 +258,10 @@ impl Rpc for RpcImpl {
     }
 
     fn generate_fixed_block(
-        &self, parent_hash: H256, referee: Vec<H256>, num_txs: usize,
+        &self,
+        parent_hash: H256,
+        referee: Vec<H256>,
+        num_txs: usize,
     ) -> RpcResult<H256> {
         info!(
             "RPC Request: generate_fixed_block({:?}, {:?}, {:?})",
@@ -319,7 +328,8 @@ impl Rpc for RpcImpl {
     /// The second element indicate the execution result (standin
     /// for receipt)
     fn get_transaction_receipt(
-        &self, tx_hash: H256,
+        &self,
+        tx_hash: H256,
     ) -> RpcResult<Option<RpcReceipt>> {
         let maybe_receipt = self
             .consensus
@@ -384,7 +394,8 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
 }
 
 pub fn new_tcp(
-    conf: TcpConfiguration, dependencies: &Dependencies,
+    conf: TcpConfiguration,
+    dependencies: &Dependencies,
 ) -> Result<Option<TcpServer>, String> {
     if !conf.enabled {
         return Ok(None);
@@ -405,7 +416,8 @@ pub fn new_tcp(
 }
 
 pub fn new_http(
-    conf: HttpConfiguration, dependencies: &Dependencies,
+    conf: HttpConfiguration,
+    dependencies: &Dependencies,
 ) -> Result<Option<HttpServer>, String> {
     if !conf.enabled {
         return Ok(None);

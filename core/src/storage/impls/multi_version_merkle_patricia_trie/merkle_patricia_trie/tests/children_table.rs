@@ -24,10 +24,12 @@ fn enumerate_and_test<
 fn do_enumerate<
     F: FnMut([bool; CHILDREN_COUNT], Vec<u8>, ChildrenTableDeltaMpt),
 >(
-    index: u8, mut existence: [bool; CHILDREN_COUNT], mut list: Vec<u8>,
-    children_table: ChildrenTableDeltaMpt, checker: &mut F,
-)
-{
+    index: u8,
+    mut existence: [bool; CHILDREN_COUNT],
+    mut list: Vec<u8>,
+    children_table: ChildrenTableDeltaMpt,
+    checker: &mut F,
+) {
     if index as usize == CHILDREN_COUNT {
         checker(existence, list, children_table)
     } else {

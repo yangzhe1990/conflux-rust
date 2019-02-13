@@ -38,7 +38,8 @@ impl<K: Ord, V: Clone, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
     }
 
     pub fn insert(
-        node: &mut Option<Box<Node<K, V, W>>>, new: Node<K, V, W>,
+        node: &mut Option<Box<Node<K, V, W>>>,
+        new: Node<K, V, W>,
     ) -> Option<V> {
         if node.is_none() {
             mem::replace(node, Some(Box::new(new)));
@@ -181,5 +182,7 @@ impl<K: Ord, V: Clone, W: Add<Output = W> + Sub<Output = W> + Ord + Clone>
         }
     }
 
-    pub fn sum_weight(&self) -> W { self.sum_weight.clone() }
+    pub fn sum_weight(&self) -> W {
+        self.sum_weight.clone()
+    }
 }

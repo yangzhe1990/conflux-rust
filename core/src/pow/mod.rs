@@ -48,7 +48,10 @@ impl ProofOfWorkConfig {
     }
 
     pub fn target_difficulty(
-        &self, block_count: u64, timespan: u64, cur_difficulty: &U256,
+        &self,
+        block_count: u64,
+        timespan: u64,
+        cur_difficulty: &U256,
     ) -> U256 {
         if timespan == 0 || block_count == 0 {
             return self.initial_difficulty.into();
@@ -98,7 +101,8 @@ pub fn compute(nonce: u64, block_hash: &H256) -> H256 {
 }
 
 pub fn validate(
-    problem: &ProofOfWorkProblem, solution: &ProofOfWorkSolution,
+    problem: &ProofOfWorkProblem,
+    solution: &ProofOfWorkSolution,
 ) -> bool {
     let nonce = solution.nonce;
     let hash = compute(nonce, &problem.block_hash);

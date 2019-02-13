@@ -61,7 +61,9 @@ pub struct Machine {
 
 impl Machine {
     pub fn builtin(
-        &self, address: &Address, cardinal_number: CardinalNumber,
+        &self,
+        address: &Address,
+        cardinal_number: CardinalNumber,
     ) -> Option<&Builtin> {
         self.builtins.get(address).and_then(|b| {
             if b.is_active(cardinal_number) {
@@ -78,7 +80,9 @@ impl Machine {
     }
 
     /// Get the general parameters of the chain.
-    pub fn params(&self) -> &CommonParams { &self.params }
+    pub fn params(&self) -> &CommonParams {
+        &self.params
+    }
 
     pub fn spec(&self, number: CardinalNumber) -> Spec {
         let mut spec = Spec::new_byzantium();
@@ -89,7 +93,9 @@ impl Machine {
     }
 
     /// Builtin-contracts for the chain..
-    pub fn builtins(&self) -> &BTreeMap<Address, Builtin> { &*self.builtins }
+    pub fn builtins(&self) -> &BTreeMap<Address, Builtin> {
+        &*self.builtins
+    }
 }
 
 pub fn new_byzantium_test_machine() -> Machine {

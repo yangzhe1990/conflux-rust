@@ -98,10 +98,11 @@ impl SynchronizationPeerState {
     }
 
     pub fn append_inflight_request(
-        &mut self, request_id: u64, message: Box<RequestMessage>,
+        &mut self,
+        request_id: u64,
+        message: Box<RequestMessage>,
         timed_req: Arc<TimedSyncRequests>,
-    )
-    {
+    ) {
         self.inflight_requests
             [(request_id % MAX_INFLIGHT_REQUEST_COUNT) as usize] =
             Some(SynchronizationPeerRequest { message, timed_req });
@@ -129,7 +130,8 @@ impl SynchronizationPeerState {
     }
 
     pub fn remove_inflight_request(
-        &mut self, request_id: u64,
+        &mut self,
+        request_id: u64,
     ) -> Option<SynchronizationPeerRequest> {
         if request_id < self.next_request_id
             && request_id >= self.lowest_request_id

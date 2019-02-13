@@ -11,7 +11,10 @@ pub struct VmFactory {
 
 impl VmFactory {
     pub fn create(
-        &self, params: ActionParams, spec: &Spec, depth: usize,
+        &self,
+        params: ActionParams,
+        spec: &Spec,
+        depth: usize,
     ) -> Box<dyn Exec> {
         self.evm.create(params, spec, depth)
     }
@@ -24,5 +27,7 @@ impl VmFactory {
 }
 
 impl From<EvmFactory> for VmFactory {
-    fn from(evm: EvmFactory) -> Self { VmFactory { evm } }
+    fn from(evm: EvmFactory) -> Self {
+        VmFactory { evm }
+    }
 }

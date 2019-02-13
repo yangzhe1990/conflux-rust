@@ -45,7 +45,9 @@ impl fmt::Display for FilterError {
 }
 
 impl error::Error for FilterError {
-    fn description(&self) -> &str { "Filter error" }
+    fn description(&self) -> &str {
+        "Filter error"
+    }
 }
 
 /// Log event Filter.

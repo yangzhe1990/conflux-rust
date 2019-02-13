@@ -51,7 +51,9 @@ impl SharedCache {
 
     /// Get jump destinations bitmap for a contract.
     pub fn jump_destinations(
-        &self, code_hash: &Option<H256>, code: &[u8],
+        &self,
+        code_hash: &Option<H256>,
+        code: &[u8],
     ) -> Arc<BitSet> {
         if let Some(ref code_hash) = code_hash {
             if code_hash == &KECCAK_EMPTY {
@@ -97,7 +99,9 @@ impl SharedCache {
 }
 
 impl Default for SharedCache {
-    fn default() -> Self { SharedCache::new(DEFAULT_CACHE_SIZE) }
+    fn default() -> Self {
+        SharedCache::new(DEFAULT_CACHE_SIZE)
+    }
 }
 
 #[test]

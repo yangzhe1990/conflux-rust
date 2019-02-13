@@ -31,10 +31,10 @@ pub struct SynchronizationService {
 impl SynchronizationService {
     pub fn new(
         config: SynchronizationConfiguration,
-        protocol_config: ProtocolConfiguration, pow_config: ProofOfWorkConfig,
+        protocol_config: ProtocolConfiguration,
+        pow_config: ProofOfWorkConfig,
         verification_config: VerificationConfig,
-    ) -> Self
-    {
+    ) -> Self {
         SynchronizationService {
             network: NetworkService::new(config.network),
             protocol_handler: Arc::new(SynchronizationProtocolHandler::new(
@@ -96,13 +96,16 @@ impl SynchronizationService {
     }
 
     pub fn sign_challenge(
-        &self, challenge: Vec<u8>,
+        &self,
+        challenge: Vec<u8>,
     ) -> Result<Vec<u8>, NetworkError> {
         self.network.sign_challenge(challenge)
     }
 
     pub fn add_latency(
-        &self, id: NodeId, latency_ms: f64,
+        &self,
+        id: NodeId,
+        latency_ms: f64,
     ) -> Result<(), NetworkError> {
         self.network.add_latency(id, latency_ms)
     }

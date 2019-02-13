@@ -113,7 +113,9 @@ impl PendingTransactionPool {
         }
     }
 
-    pub fn len(&self) -> usize { self.len }
+    pub fn len(&self) -> usize {
+        self.len
+    }
 
     pub fn insert(&mut self, tx: Arc<SignedTransaction>) -> bool {
         let entry = self
@@ -143,7 +145,9 @@ impl PendingTransactionPool {
     }
 
     pub fn remove(
-        &mut self, address: &Address, nonce: &U256,
+        &mut self,
+        address: &Address,
+        nonce: &U256,
     ) -> Option<Arc<SignedTransaction>> {
         let (res, clear_bucket) =
             if let Some(entry) = self.pool.get_mut(address) {
@@ -163,7 +167,9 @@ impl PendingTransactionPool {
     }
 
     pub fn get(
-        &self, address: &Address, nonce: &U256,
+        &self,
+        address: &Address,
+        nonce: &U256,
     ) -> Option<&Arc<SignedTransaction>> {
         self.pool
             .get(address)
@@ -202,10 +208,10 @@ pub type SharedTransactionPool = Arc<TransactionPool>;
 
 impl TransactionPool {
     pub fn with_capacity(
-        capacity: usize, storage_manager: Arc<StorageManager>,
+        capacity: usize,
+        storage_manager: Arc<StorageManager>,
         worker_pool: ThreadPool,
-    ) -> Self
-    {
+    ) -> Self {
         TransactionPool {
             capacity,
             inner: RwLock::new(TransactionPoolInner::new()),
@@ -216,13 +222,15 @@ impl TransactionPool {
         }
     }
 
-    pub fn len(&self) -> usize { self.inner.read().len() }
+    pub fn len(&self) -> usize {
+        self.inner.read().len()
+    }
 
     pub fn insert_new_transactions(
-        &self, latest_epoch: EpochId,
+        &self,
+        latest_epoch: EpochId,
         transactions: Vec<TransactionWithSignature>,
-    )
-    {
+    ) {
         // FIXME: do not unwrap.
         let mut signed_trans = Vec::new();
 
@@ -354,7 +362,9 @@ impl TransactionPool {
 
     // The second step verification for ready transactions
     pub fn verify_ready_transaction(
-        &self, account: &Account, transaction: &SignedTransaction,
+        &self,
+        account: &Account,
+        transaction: &SignedTransaction,
     ) -> bool {
         // check balance
         let cost = transaction.value + transaction.gas_price * transaction.gas;
@@ -372,10 +382,10 @@ impl TransactionPool {
     }
 
     pub fn add_with_readiness(
-        &self, account_cache: &mut AccountCache,
+        &self,
+        account_cache: &mut AccountCache,
         transaction: Arc<SignedTransaction>,
-    )
-    {
+    ) {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
 
@@ -424,10 +434,10 @@ impl TransactionPool {
     }
 
     pub fn add_ready_without_lock(
-        &self, inner: &mut TransactionPoolInner,
+        &self,
+        inner: &mut TransactionPoolInner,
         transaction: Arc<SignedTransaction>,
-    ) -> bool
-    {
+    ) -> bool {
         trace!(
             "Insert tx into ready hash={:?} sender={:?}",
             transaction.hash(),
@@ -450,7 +460,9 @@ impl TransactionPool {
     }
 
     pub fn recycle_future_transactions(
-        &self, transactions: Vec<Arc<SignedTransaction>>, state: Storage,
+        &self,
+        transactions: Vec<Arc<SignedTransaction>>,
+        state: Storage,
     ) {
         let mut account_cache = AccountCache::new(state);
         for tx in transactions {
@@ -459,10 +471,10 @@ impl TransactionPool {
     }
 
     pub fn add_pending_without_lock(
-        &self, inner: &mut TransactionPoolInner,
+        &self,
+        inner: &mut TransactionPoolInner,
         transaction: Arc<SignedTransaction>,
-    ) -> bool
-    {
+    ) -> bool {
         trace!(
             "Insert tx into pending hash={:?} sender={:?}",
             transaction.hash(),
@@ -482,10 +494,10 @@ impl TransactionPool {
     }
 
     pub fn remove_ready_without_lock(
-        &self, inner: &mut TransactionPoolInner,
+        &self,
+        inner: &mut TransactionPoolInner,
         transaction: Arc<SignedTransaction>,
-    ) -> Option<Arc<SignedTransaction>>
-    {
+    ) -> Option<Arc<SignedTransaction>> {
         let hash = transaction.hash();
         inner.ready_transactions.remove(&hash)
     }
@@ -504,10 +516,10 @@ impl TransactionPool {
     }
 
     pub fn remove_pending_without_lock(
-        &self, inner: &mut TransactionPoolInner,
+        &self,
+        inner: &mut TransactionPoolInner,
         transaction: &SignedTransaction,
-    ) -> Option<Arc<SignedTransaction>>
-    {
+    ) -> Option<Arc<SignedTransaction>> {
         inner
             .pending_transactions
             .remove(&transaction.sender, &transaction.nonce)
@@ -515,7 +527,9 @@ impl TransactionPool {
 
     /// pack at most num_txs transactions randomly
     pub fn pack_transactions<'a>(
-        &self, num_txs: usize, state: State<'a>,
+        &self,
+        num_txs: usize,
+        state: State<'a>,
     ) -> Vec<Arc<SignedTransaction>> {
         let mut inner = self.inner.write();
         let mut packed_transactions: Vec<Arc<SignedTransaction>> = Vec::new();

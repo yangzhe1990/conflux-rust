@@ -27,10 +27,11 @@ impl Service {
     }
 
     pub fn initialize(
-        &mut self, cap_mb: usize, min_throttle_mb: usize,
+        &mut self,
+        cap_mb: usize,
+        min_throttle_mb: usize,
         max_throttle_mb: usize,
-    )
-    {
+    ) {
         // 0 < min_throttle_mb < max_throttle_mb < cap_mb
         assert!(cap_mb > max_throttle_mb);
         assert!(max_throttle_mb > min_throttle_mb);
@@ -50,7 +51,8 @@ impl Service {
     }
 
     pub(crate) fn on_enqueue(
-        &mut self, data_size: usize,
+        &mut self,
+        data_size: usize,
     ) -> Result<usize, Error> {
         if data_size > self.queue_capacity {
             trace!(target: "throttling", "too large data enqueued, data size: {}, queue capacity: {}", data_size, self.queue_capacity);

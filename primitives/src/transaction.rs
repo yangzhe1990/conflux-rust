@@ -1,7 +1,7 @@
 use crate::{bytes::Bytes, hash::keccak};
 use ethereum_types::{Address, H160, H256, U256};
-use keylib::{self, public_to_address, recover, Public, Secret, Signature};
 use heapsize::HeapSizeOf;
+use keylib::{self, public_to_address, recover, Public, Secret, Signature};
 use lru::LruCache;
 use rlp::{self, Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::{error, fmt, mem, ops::Deref, sync::Arc};
@@ -115,7 +115,9 @@ impl fmt::Display for TransactionError {
 }
 
 impl error::Error for TransactionError {
-    fn description(&self) -> &str { "Transaction error" }
+    fn description(&self) -> &str {
+        "Transaction error"
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,7 +130,9 @@ pub enum Action {
 }
 
 impl Default for Action {
-    fn default() -> Action { Action::Create }
+    fn default() -> Action {
+        Action::Create
+    }
 }
 
 impl Decodable for Action {
@@ -240,7 +244,9 @@ pub struct TransactionWithSignature {
 impl Deref for TransactionWithSignature {
     type Target = Transaction;
 
-    fn deref(&self) -> &Self::Target { &self.unsigned }
+    fn deref(&self) -> &Self::Target {
+        &self.unsigned
+    }
 }
 
 impl Decodable for TransactionWithSignature {
@@ -292,7 +298,9 @@ impl TransactionWithSignature {
     }
 
     /// Checks whether signature is empty.
-    pub fn is_unsigned(&self) -> bool { self.r.is_zero() && self.s.is_zero() }
+    pub fn is_unsigned(&self) -> bool {
+        self.r.is_zero() && self.s.is_zero()
+    }
 
     /// Append object with a signature into RLP stream
     fn rlp_append_sealed_transaction(&self, s: &mut RlpStream) {
@@ -322,7 +330,9 @@ impl TransactionWithSignature {
         }
     }
 
-    pub fn hash(&self) -> H256 { self.hash }
+    pub fn hash(&self) -> H256 {
+        self.hash
+    }
 
     /// Recovers the public key of the sender.
     pub fn recover_public(&self) -> Result<Public, keylib::Error> {
@@ -359,11 +369,15 @@ impl Encodable for SignedTransaction {
 impl Deref for SignedTransaction {
     type Target = TransactionWithSignature;
 
-    fn deref(&self) -> &Self::Target { &self.transaction }
+    fn deref(&self) -> &Self::Target {
+        &self.transaction
+    }
 }
 
 impl From<SignedTransaction> for TransactionWithSignature {
-    fn from(tx: SignedTransaction) -> Self { tx.transaction }
+    fn from(tx: SignedTransaction) -> Self {
+        tx.transaction
+    }
 }
 
 impl SignedTransaction {
@@ -396,8 +410,7 @@ impl SignedTransaction {
     pub fn batch_recover_with_cache(
         transactions: &Vec<TransactionWithSignature>,
         tx_cache: &mut LruCache<H256, Arc<SignedTransaction>>,
-    ) -> Result<Vec<Arc<SignedTransaction>>, DecoderError>
-    {
+    ) -> Result<Vec<Arc<SignedTransaction>>, DecoderError> {
         let mut recovered_transactions = Vec::with_capacity(transactions.len());
         for transaction in transactions {
             match tx_cache.get(&transaction.hash()) {
@@ -429,18 +442,30 @@ impl SignedTransaction {
     }
 
     /// Returns transaction sender.
-    pub fn sender(&self) -> Address { self.sender }
+    pub fn sender(&self) -> Address {
+        self.sender
+    }
 
-    pub fn nonce(&self) -> U256 { self.transaction.nonce }
+    pub fn nonce(&self) -> U256 {
+        self.transaction.nonce
+    }
 
     /// Checks if signature is empty.
-    pub fn is_unsigned(&self) -> bool { self.transaction.is_unsigned() }
+    pub fn is_unsigned(&self) -> bool {
+        self.transaction.is_unsigned()
+    }
 
-    pub fn hash(&self) -> H256 { self.transaction.hash() }
+    pub fn hash(&self) -> H256 {
+        self.transaction.hash()
+    }
 
-    pub fn gas(&self) -> &U256 { &self.transaction.gas }
+    pub fn gas(&self) -> &U256 {
+        &self.transaction.gas
+    }
 
-    pub fn gas_price(&self) -> &U256 { &self.transaction.gas_price }
+    pub fn gas_price(&self) -> &U256 {
+        &self.transaction.gas_price
+    }
 
     pub fn size(&self) -> usize {
         // FIXME: We should revisit the size of transaction after we finished
@@ -448,9 +473,13 @@ impl SignedTransaction {
         0
     }
 
-    pub fn public(&self) -> &Option<Public> { &self.public }
+    pub fn public(&self) -> &Option<Public> {
+        &self.public
+    }
 }
 
 impl HeapSizeOf for SignedTransaction {
-    fn heap_size_of_children(&self) -> usize { mem::size_of::<Self>() }
+    fn heap_size_of_children(&self) -> usize {
+        mem::size_of::<Self>()
+    }
 }

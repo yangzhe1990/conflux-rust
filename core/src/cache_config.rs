@@ -23,12 +23,18 @@ impl Default for CacheConfig {
 
 impl CacheConfig {
     /// Creates new cache config with gitven details.
-    pub fn new(db: usize, ledger: usize) -> Self { CacheConfig { db, ledger } }
+    pub fn new(db: usize, ledger: usize) -> Self {
+        CacheConfig { db, ledger }
+    }
 
     /// Size of db cache.
     #[allow(dead_code)]
-    pub fn db_cache_size(&self) -> usize { max(MIN_DB_CACHE_MB, self.db) }
+    pub fn db_cache_size(&self) -> usize {
+        max(MIN_DB_CACHE_MB, self.db)
+    }
 
     /// Size of the ledger cache.
-    pub fn ledger_mb(&self) -> usize { max(self.ledger, MIN_LEDGER_CACHE_MB) }
+    pub fn ledger_mb(&self) -> usize {
+        max(self.ledger, MIN_LEDGER_CACHE_MB)
+    }
 }

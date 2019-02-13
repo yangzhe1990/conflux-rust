@@ -1,4 +1,6 @@
-use super::super::types::{Account, Block, Transaction, H160, H256, U256, U64};
+use super::super::types::{
+    Account, Block, EpochNumber, Transaction, H160, H256, U256, U64,
+};
 use jsonrpc_core::Result;
 use jsonrpc_macros::{build_rpc_trait, Trailing};
 
@@ -10,8 +12,8 @@ build_rpc_trait! {
 //        fn protocol_version(&self) -> Result<String>;
 //
         /// Returns the number of hashes per second that the node is mining with.
-        #[rpc(name = "cfx_hashrate")]
-        fn hashrate(&self) -> Result<U256>;
+//        #[rpc(name = "cfx_hashrate")]
+//        fn hashrate(&self) -> Result<U256>;
 
 //        /// Returns block author.
 //        #[rpc(name = "cfx_coinbase")]
@@ -53,9 +55,9 @@ build_rpc_trait! {
 //        #[rpc(name = "cfx_getPivotBlockByNumber")]
 //        fn pivot_block_by_number(&self, EpochNumber, bool) -> BoxFuture<Option<Block>>;
 
-//        /// Returns the number of transactions sent from given address at given time (block number).
-//        #[rpc(name = "cfx_getTransactionCount")]
-//        fn transaction_count(&self, H160, Trailing<BlockNumber>) -> BoxFuture<U256>;
+        /// Returns the number of transactions sent from given address at given time (epoch number).
+        #[rpc(name = "cfx_getTransactionCount")]
+        fn transaction_count(&self, H160, Trailing<EpochNumber>) -> Result<U256>;
 
 //        /// Returns the number of transactions in a block with given hash.
 //        #[rpc(name = "cfx_getBlockTransactionCountByHash")]

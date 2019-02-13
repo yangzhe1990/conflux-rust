@@ -31,7 +31,10 @@ impl Factory {
     /// Create fresh instance of VM
     /// Might choose implementation depending on supplied gas.
     pub fn create(
-        &self, params: ActionParams, spec: &Spec, depth: usize,
+        &self,
+        params: ActionParams,
+        spec: &Spec,
+        depth: usize,
     ) -> Box<Exec> {
         match self.evm {
             VMType::Interpreter => {

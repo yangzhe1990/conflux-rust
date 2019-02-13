@@ -27,9 +27,12 @@ macro_rules! impl_uint {
         impl Eq for $name {}
 
         impl<T> From<T> for $name
-        where $other: From<T>
+        where
+            $other: From<T>,
         {
-            fn from(o: T) -> Self { $name($other::from(o)) }
+            fn from(o: T) -> Self {
+                $name($other::from(o))
+            }
         }
 
         impl FromStr for $name {
@@ -47,7 +50,9 @@ macro_rules! impl_uint {
         //        }
 
         impl Into<$other> for $name {
-            fn into(self) -> $other { self.0 }
+            fn into(self) -> $other {
+                self.0
+            }
         }
 
         impl fmt::Display for $name {
@@ -81,14 +86,17 @@ macro_rules! impl_uint {
 
         impl<'a> serde::Deserialize<'a> for $name {
             fn deserialize<D>(deserializer: D) -> Result<$name, D::Error>
-            where D: serde::Deserializer<'a> {
+            where
+                D: serde::Deserializer<'a>,
+            {
                 struct UintVisitor;
 
                 impl<'b> serde::de::Visitor<'b> for UintVisitor {
                     type Value = $name;
 
                     fn expecting(
-                        &self, formatter: &mut fmt::Formatter,
+                        &self,
+                        formatter: &mut fmt::Formatter,
                     ) -> fmt::Result {
                         write!(
                             formatter,
@@ -97,10 +105,10 @@ macro_rules! impl_uint {
                         )
                     }
 
-                    fn visit_str<E>(
-                        self, value: &str,
-                    ) -> Result<Self::Value, E>
-                    where E: serde::de::Error {
+                    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                    where
+                        E: serde::de::Error,
+                    {
                         if value.len() < 2 || &value[0..2] != "0x" {
                             return Err(E::custom(
                                 "expected a hex-encoded numbers with 0x prefix",
@@ -121,9 +129,12 @@ macro_rules! impl_uint {
                     }
 
                     fn visit_string<E>(
-                        self, value: String,
+                        self,
+                        value: String,
                     ) -> Result<Self::Value, E>
-                    where E: serde::de::Error {
+                    where
+                        E: serde::de::Error,
+                    {
                         self.visit_str(&value)
                     }
                 }
@@ -140,21 +151,27 @@ impl_uint!(U64, EthU64, 1);
 
 impl serde::Serialize for U128 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&format!("{:#x}", self))
     }
 }
 
 impl serde::Serialize for U256 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&format!("{:#x}", self))
     }
 }
 
 impl serde::Serialize for U64 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&format!("{:#x}", self))
     }
 }

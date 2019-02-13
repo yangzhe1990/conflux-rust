@@ -79,7 +79,8 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
     }
 
     pub fn writable<Message: Sync + Send + Clone + 'static>(
-        &mut self, io: &IoContext<Message>,
+        &mut self,
+        io: &IoContext<Message>,
     ) -> Result<WriteStatus, Error> {
         {
             let buf = match self.send_queue.front_mut() {
@@ -119,7 +120,9 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
     }
 
     pub fn send<Message: Sync + Send + Clone + 'static>(
-        &mut self, io: &IoContext<Message>, data: &[u8],
+        &mut self,
+        io: &IoContext<Message>,
+        data: &[u8],
     ) -> Result<SendQueueStatus, Error> {
         if !data.is_empty() {
             trace!(target: "network", "Sending {} bytes token={:?}", data.len(), self.token);
@@ -137,7 +140,9 @@ impl<Socket: GenericSocket, Sizer: PacketSizer>
         })
     }
 
-    pub fn is_sending(&self) -> bool { self.interest.is_writable() }
+    pub fn is_sending(&self) -> bool {
+        self.interest.is_writable()
+    }
 }
 
 pub type Connection<Sizer> = GenericConnection<TcpStream, Sizer>;
@@ -156,7 +161,9 @@ impl<Sizer: PacketSizer> Connection<Sizer> {
     }
 
     pub fn register_socket<H: Handler>(
-        &self, reg: Token, event_loop: &mut EventLoop<H>,
+        &self,
+        reg: Token,
+        event_loop: &mut EventLoop<H>,
     ) -> io::Result<()> {
         if self.registered.load(AtomicOrdering::SeqCst) {
             return Ok(());
@@ -175,7 +182,9 @@ impl<Sizer: PacketSizer> Connection<Sizer> {
     }
 
     pub fn update_socket<H: Handler>(
-        &self, reg: Token, event_loop: &mut EventLoop<H>,
+        &self,
+        reg: Token,
+        event_loop: &mut EventLoop<H>,
     ) -> io::Result<()> {
         trace!(target: "network", "Connection reregister; token={:?} reg={:?}", self.token, reg);
         if !self.registered.load(AtomicOrdering::SeqCst) {
@@ -191,14 +200,17 @@ impl<Sizer: PacketSizer> Connection<Sizer> {
     }
 
     pub fn deregister_socket<H: Handler>(
-        &self, event_loop: &mut EventLoop<H>,
+        &self,
+        event_loop: &mut EventLoop<H>,
     ) -> io::Result<()> {
         trace!(target: "network", "Connection deregister; token={:?}", self.token);
         event_loop.deregister(&self.socket).ok();
         Ok(())
     }
 
-    pub fn token(&self) -> StreamToken { self.token }
+    pub fn token(&self) -> StreamToken {
+        self.token
+    }
 }
 
 #[cfg(test)]

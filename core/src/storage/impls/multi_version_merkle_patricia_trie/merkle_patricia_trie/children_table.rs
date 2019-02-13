@@ -34,7 +34,9 @@ impl<NodeRefT: NodeRefTrait> Default for CompactedChildrenTable<NodeRefT> {
 }
 
 impl<NodeRefT: NodeRefTrait> Clone for CompactedChildrenTable<NodeRefT> {
-    fn clone(&self) -> Self { self.to_ref().into() }
+    fn clone(&self) -> Self {
+        self.to_ref().into()
+    }
 }
 
 impl<NodeRefT: NodeRefTrait> Debug for CompactedChildrenTable<NodeRefT> {
@@ -44,7 +46,9 @@ impl<NodeRefT: NodeRefTrait> Debug for CompactedChildrenTable<NodeRefT> {
 }
 
 impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
-    pub fn get_children_count(&self) -> u8 { self.children_count }
+    pub fn get_children_count(&self) -> u8 {
+        self.children_count
+    }
 
     pub fn get_child(&self, index: u8) -> Option<NodeRefT> {
         if Self::has_index(self.bitmap, index) {
@@ -78,7 +82,9 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
     }
 
     pub unsafe fn insert_child_unchecked(
-        old_table: ChildrenTableRef<NodeRefT>, index: u8, value: NodeRefT,
+        old_table: ChildrenTableRef<NodeRefT>,
+        index: u8,
+        value: NodeRefT,
     ) -> Self {
         let insertion_pos = Self::lower_bound(old_table.bitmap, index);
         Self {
@@ -97,7 +103,8 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
     }
 
     pub unsafe fn delete_child_unchecked(
-        old_table: ChildrenTableRef<NodeRefT>, index: u8,
+        old_table: ChildrenTableRef<NodeRefT>,
+        index: u8,
     ) -> Self {
         let deletion_pos = Self::lower_bound(old_table.bitmap, index);
         Self {
@@ -207,15 +214,21 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
 }
 
 impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
-    fn bit(index: u16) -> u16 { 1 << index }
+    fn bit(index: u16) -> u16 {
+        1 << index
+    }
 
     fn has_index(bitmap: u16, index: u8) -> bool {
         Self::bit(index.into()) & bitmap != 0
     }
 
-    fn lower_bits(index: u16) -> u16 { (1 << index) - 1 }
+    fn lower_bits(index: u16) -> u16 {
+        (1 << index) - 1
+    }
 
-    fn all_bits() -> u16 { !0 }
+    fn all_bits() -> u16 {
+        !0
+    }
 
     fn count_bits(bitmap: u16) -> u16 {
         let mut count = (bitmap & 0b0101010101010101)
@@ -231,7 +244,9 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
         Self::count_bits(1 ^ bitmap ^ (bitmap - 1)) as u8
     }
 
-    fn remove_lowest_bit(bitmap: u16) -> u16 { bitmap & (bitmap - 1) }
+    fn remove_lowest_bit(bitmap: u16) -> u16 {
+        bitmap & (bitmap - 1)
+    }
 
     fn lower_bound(bitmap: u16, index: u8) -> usize {
         Self::count_bits(bitmap & Self::lower_bits(index.into())).into()
@@ -279,7 +294,9 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
 }
 
 impl<NodeRefT: NodeRefTrait> PartialEq for CompactedChildrenTable<NodeRefT> {
-    fn eq(&self, other: &Self) -> bool { self.to_ref() == other.to_ref() }
+    fn eq(&self, other: &Self) -> bool {
+        self.to_ref() == other.to_ref()
+    }
 }
 
 trait CompactedChildrenTableIteratorTrait {
@@ -363,7 +380,9 @@ impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorTrait
     type NodeRefT = NodeRefT;
     type RefType = &'a NodeRefT;
 
-    fn get_bitmap(&self) -> u16 { self.bitmap }
+    fn get_bitmap(&self) -> u16 {
+        self.bitmap
+    }
 
     fn set_bitmap(&mut self, bitmap: u16) {
         /// This method is unnecessary.
@@ -374,7 +393,9 @@ impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorTrait
         self.next_child_index = child_index;
     }
 
-    fn get_current_element(&self) -> &'a NodeRefT { unsafe { &*self.elements } }
+    fn get_current_element(&self) -> &'a NodeRefT {
+        unsafe { &*self.elements }
+    }
 
     fn advance_elements(&mut self) {
         unsafe {
@@ -414,7 +435,9 @@ impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorTrait
     type NodeRefT = NodeRefT;
     type RefType = &'a mut NodeRefT;
 
-    fn get_bitmap(&self) -> u16 { self.bitmap }
+    fn get_bitmap(&self) -> u16 {
+        self.bitmap
+    }
 
     fn set_bitmap(&mut self, bitmap: u16) {
         /// This method is unnecessary.
@@ -466,16 +489,22 @@ impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorTrait
     type NodeRefT = NodeRefT;
     type RefType = &'a NodeRefT;
 
-    fn get_bitmap(&self) -> u16 { self.bitmap }
+    fn get_bitmap(&self) -> u16 {
+        self.bitmap
+    }
 
-    fn set_bitmap(&mut self, bitmap: u16) { self.bitmap = bitmap }
+    fn set_bitmap(&mut self, bitmap: u16) {
+        self.bitmap = bitmap
+    }
 
     fn set_next_child_index(&mut self, child_index: u8) {
         /// This method is unnecessary.
         unimplemented!()
     }
 
-    fn get_current_element(&self) -> &'a NodeRefT { unsafe { &*self.elements } }
+    fn get_current_element(&self) -> &'a NodeRefT {
+        unsafe { &*self.elements }
+    }
 
     fn advance_elements(&mut self) {
         unsafe {
@@ -511,9 +540,13 @@ impl<'a, NodeRefT: NodeRefTrait> CompactedChildrenTableIteratorTrait
     type NodeRefT = NodeRefT;
     type RefType = &'a mut NodeRefT;
 
-    fn get_bitmap(&self) -> u16 { self.bitmap }
+    fn get_bitmap(&self) -> u16 {
+        self.bitmap
+    }
 
-    fn set_bitmap(&mut self, bitmap: u16) { self.bitmap = bitmap }
+    fn set_bitmap(&mut self, bitmap: u16) {
+        self.bitmap = bitmap
+    }
 
     fn set_next_child_index(&mut self, child_index: u8) {
         /// This method is unnecessary.
@@ -571,13 +604,17 @@ pub struct ChildrenTableRef<'a, NodeRefT: NodeRefTrait> {
 impl<'a, NodeRefT: NodeRefTrait> From<ChildrenTableRef<'a, NodeRefT>>
     for CompactedChildrenTable<NodeRefT>
 {
-    fn from(x: ChildrenTableRef<'a, NodeRefT>) -> Self { Self::from_ref(x) }
+    fn from(x: ChildrenTableRef<'a, NodeRefT>) -> Self {
+        Self::from_ref(x)
+    }
 }
 
 impl<NodeRefT: NodeRefTrait> From<ChildrenTable<NodeRefT>>
     for CompactedChildrenTable<NodeRefT>
 {
-    fn from(x: ChildrenTable<NodeRefT>) -> Self { Self::from_managed(x) }
+    fn from(x: ChildrenTable<NodeRefT>) -> Self {
+        Self::from_managed(x)
+    }
 }
 
 impl<'a, NodeRefT: NodeRefTrait> Encodable for ChildrenTableRef<'a, NodeRefT> {

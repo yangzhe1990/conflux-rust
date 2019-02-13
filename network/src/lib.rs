@@ -112,7 +112,9 @@ pub struct NetworkConfiguration {
 }
 
 impl Default for NetworkConfiguration {
-    fn default() -> Self { NetworkConfiguration::new() }
+    fn default() -> Self {
+        NetworkConfiguration::new()
+    }
 }
 
 impl NetworkConfiguration {
@@ -205,7 +207,9 @@ pub trait NetworkContext {
     /// Register a new IO timer. 'IoHandler::timeout' will be called with the
     /// token.
     fn register_timer(
-        &self, token: TimerToken, delay: Duration,
+        &self,
+        token: TimerToken,
+        delay: Duration,
     ) -> Result<(), Error>;
 }
 

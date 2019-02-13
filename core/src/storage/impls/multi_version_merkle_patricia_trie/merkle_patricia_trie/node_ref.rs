@@ -20,7 +20,9 @@ pub struct MaybeNodeRefDeltaMptCompact {
 }
 
 impl Default for MaybeNodeRefDeltaMptCompact {
-    fn default() -> Self { Self { value: Self::NULL } }
+    fn default() -> Self {
+        Self { value: Self::NULL }
+    }
 }
 
 impl NodeRefDeltaMptCompact {
@@ -29,7 +31,9 @@ impl NodeRefDeltaMptCompact {
     pub const DIRTY_SLOT_LIMIT: u32 = 0x7fffffff;
     const PERSISTENT_KEY_BIT: u32 = 0x80000000;
 
-    pub fn new(value: u32) -> Self { Self { value: value } }
+    pub fn new(value: u32) -> Self {
+        Self { value: value }
+    }
 }
 
 impl MaybeNodeRefDeltaMptCompact {
@@ -37,7 +41,9 @@ impl MaybeNodeRefDeltaMptCompact {
     pub const NULL_NODE: MaybeNodeRefDeltaMptCompact =
         MaybeNodeRefDeltaMptCompact { value: Self::NULL };
 
-    pub fn new(value: u32) -> Self { Self { value: value } }
+    pub fn new(value: u32) -> Self {
+        Self { value: value }
+    }
 }
 
 // Manages access to a TrieNode. Converted from MaybeNodeRef. NodeRef is not
@@ -105,5 +111,7 @@ impl Decodable for NodeRefDeltaMptCompact {
 }
 
 impl Encodable for NodeRefDeltaMptCompact {
-    fn rlp_append(&self, s: &mut RlpStream) { s.append_internal(&self.value); }
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.append_internal(&self.value);
+    }
 }

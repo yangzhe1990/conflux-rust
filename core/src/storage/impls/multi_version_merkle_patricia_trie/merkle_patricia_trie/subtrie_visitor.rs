@@ -10,10 +10,10 @@ pub struct SubTrieVisitor<'trie> {
 
 impl<'trie> SubTrieVisitor<'trie> {
     pub fn new(
-        trie_ref: &'trie MultiVersionMerklePatriciaTrie, root: NodeRefDeltaMpt,
+        trie_ref: &'trie MultiVersionMerklePatriciaTrie,
+        root: NodeRefDeltaMpt,
         owned_node_set: &'trie mut Option<OwnedNodeSet>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             trie_ref: trie_ref,
             root: CowNodeRef::new(root, owned_node_set.as_ref().unwrap()),
@@ -22,9 +22,12 @@ impl<'trie> SubTrieVisitor<'trie> {
     }
 
     fn new_visitor_for_subtree<'a>(
-        &'a mut self, child_node: NodeRefDeltaMpt,
+        &'a mut self,
+        child_node: NodeRefDeltaMpt,
     ) -> SubTrieVisitor<'a>
-    where 'trie: 'a {
+    where
+        'trie: 'a,
+    {
         let trie_ref = self.trie_ref;
         let cow_child_node =
             CowNodeRef::new(child_node, self.owned_node_set.get_ref());
@@ -52,7 +55,9 @@ impl<'trie> SubTrieVisitor<'trie> {
     }
 
     fn get_trie_node<'a>(
-        &self, key: KeyPart, allocator_ref: AllocatorRefRefDeltaMpt<'a>,
+        &self,
+        key: KeyPart,
+        allocator_ref: AllocatorRefRefDeltaMpt<'a>,
     ) -> Result<
         Option<
             GuardedValue<
@@ -61,7 +66,9 @@ impl<'trie> SubTrieVisitor<'trie> {
             >,
         >,
     >
-    where 'trie: 'a {
+    where
+        'trie: 'a,
+    {
         let node_memory_manager = self.node_memory_manager();
         let cache_manager = node_memory_manager.get_cache_manager();
         let mut node_ref = self.root.node_ref.clone();
@@ -103,7 +110,8 @@ impl<'trie> SubTrieVisitor<'trie> {
     }
 
     pub fn get_merkle_hash_wo_compressed_path(
-        &self, key: KeyPart,
+        &self,
+        key: KeyPart,
     ) -> Result<Option<MerkleHash>> {
         let allocator = self.node_memory_manager().get_allocator();
         let maybe_trie_node = self.get_trie_node(key, &allocator)?;
@@ -154,7 +162,8 @@ impl<'trie> SubTrieVisitor<'trie> {
     /// Returns (deleted value, is root node replaced, the current root node for
     /// the subtree).
     pub fn delete(
-        mut self, key: KeyPart,
+        mut self,
+        key: KeyPart,
     ) -> Result<(Option<Box<[u8]>>, bool, Option<NodeRefDeltaMptCompact>)> {
         let node_memory_manager = self.node_memory_manager();
         let allocator = node_memory_manager.get_allocator();
@@ -371,7 +380,9 @@ impl<'trie> SubTrieVisitor<'trie> {
     /// Returns (deleted value, is root node replaced, the current root node for
     /// the subtree).
     pub fn delete_all(
-        mut self, key: KeyPart, key_remaining: KeyPart,
+        mut self,
+        key: KeyPart,
+        key_remaining: KeyPart,
     ) -> Result<(
         Option<Vec<(Vec<u8>, Box<[u8]>)>>,
         bool,
@@ -549,7 +560,9 @@ impl<'trie> SubTrieVisitor<'trie> {
     /// Insert a valid value into MPT.
     /// The visitor can only be used once to modify.
     unsafe fn insert_checked_value<'key>(
-        mut self, key: KeyPart<'key>, value: &[u8],
+        mut self,
+        key: KeyPart<'key>,
+        value: &[u8],
     ) -> Result<(bool, NodeRefDeltaMptCompact)> {
         let node_memory_manager = self.node_memory_manager();
         let allocator = node_memory_manager.get_allocator();

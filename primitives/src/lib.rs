@@ -1,8 +1,8 @@
 extern crate ethcore_bytes as bytes;
 extern crate ethereum_types;
-extern crate keylib;
 extern crate heapsize;
 extern crate keccak_hash as hash;
+extern crate keylib;
 extern crate rlp;
 #[macro_use]
 extern crate rlp_derive;

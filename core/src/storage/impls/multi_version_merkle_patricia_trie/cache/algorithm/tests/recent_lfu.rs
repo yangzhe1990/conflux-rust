@@ -27,7 +27,8 @@ impl<'a> CacheStoreUtil for CacheUtil<'a> {
     }
 
     fn get_most_recently_accessed(
-        &self, element_index: i32,
+        &self,
+        element_index: i32,
     ) -> RecentLFUHandle<u32> {
         assert_eq!(Some(element_index), self.most_recent_key);
         self.cache_algo_data[element_index as usize]
@@ -48,7 +49,9 @@ impl<'a> CacheStoreUtil for CacheUtil<'a> {
     }
 
     fn set_most_recently_accessed(
-        &mut self, element_index: i32, algo_data: &RecentLFUHandle<u32>,
+        &mut self,
+        element_index: i32,
+        algo_data: &RecentLFUHandle<u32>,
     ) {
         // If access then check the most recently accessed key.
         // If delete the most_recent_key is none and there is nothing to check.
@@ -60,9 +63,13 @@ impl<'a> CacheStoreUtil for CacheUtil<'a> {
 }
 
 impl<'a> CacheUtil<'a> {
-    fn prepare(&mut self, key: i32) { self.most_recent_key = Some(key); }
+    fn prepare(&mut self, key: i32) {
+        self.most_recent_key = Some(key);
+    }
 
-    fn done(&mut self, key: i32) { self.most_recent_key.take(); }
+    fn done(&mut self, key: i32) {
+        self.most_recent_key.take();
+    }
 }
 
 #[derive(Debug)]

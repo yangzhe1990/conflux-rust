@@ -82,7 +82,8 @@ pub struct Client {}
 impl Client {
     // Start all key components of Conflux and pass out their handles
     pub fn start(
-        conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
+        conf: Configuration,
+        exit: Arc<(Mutex<bool>, Condvar)>,
     ) -> Result<ClientHandle, String> {
         info!("Working directory: {:?}", std::env::current_dir());
 
@@ -270,7 +271,8 @@ impl Client {
     }
 
     pub fn run_until_closed(
-        exit: Arc<(Mutex<bool>, Condvar)>, keep_alive: ClientHandle,
+        exit: Arc<(Mutex<bool>, Condvar)>,
+        keep_alive: ClientHandle,
     ) -> i32 {
         CtrlC::set_handler({
             let e = exit.clone();

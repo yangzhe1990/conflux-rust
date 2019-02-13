@@ -202,14 +202,21 @@ pub enum CleanDustMode {
 
 impl Spec {
     /// Spec for the Frontier-era of the Ethereum main net.
-    pub fn new_frontier() -> Spec { Self::new(false, false, 21000) }
+    pub fn new_frontier() -> Spec {
+        Self::new(false, false, 21000)
+    }
 
     /// Spec for the Homestead-era of the Ethereum main net.
-    pub fn new_homestead() -> Spec { Self::new(true, true, 53000) }
+    pub fn new_homestead() -> Spec {
+        Self::new(true, true, 53000)
+    }
 
     /// Spec for the post-EIP-150-era of the Ethereum main net.
     pub fn new_post_eip150(
-        max_code_size: usize, fix_exp: bool, no_empty: bool, kill_empty: bool,
+        max_code_size: usize,
+        fix_exp: bool,
+        no_empty: bool,
+        kill_empty: bool,
     ) -> Spec {
         Spec {
             exceptional_failed_code_deposit: true,
@@ -351,7 +358,9 @@ impl Spec {
 }
 
 impl Default for Spec {
-    fn default() -> Self { Spec::new_frontier() }
+    fn default() -> Self {
+        Spec::new_frontier()
+    }
 }
 
 #[test]

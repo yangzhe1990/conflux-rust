@@ -186,7 +186,9 @@ pub trait EntryTrait<T>: IntoOption<T> + FromInto<T> + Sized + Default {
 }
 
 impl<T> EntryTrait<T> for Entry<T> {
-    fn from_vacant_index(index: usize) -> Self { Entry::Vacant(index) }
+    fn from_vacant_index(index: usize) -> Self {
+        Entry::Vacant(index)
+    }
 
     fn get_next_vacant_index(&self) -> usize {
         match *self {
@@ -227,7 +229,9 @@ impl<T> IntoOption<T> for Entry<T> {
 }
 
 impl<T> FromInto<T> for Entry<T> {
-    fn from<U: Into<T>>(val: U) -> Self { Entry::Occupied(val.into()) }
+    fn from<U: Into<T>>(val: U) -> Self {
+        Entry::Occupied(val.into())
+    }
 }
 
 /// A handle to a vacant entry in a `Slab`.
@@ -263,7 +267,9 @@ pub struct VacantEntry<'a, T: 'a, E: 'a + EntryTrait<T>> {
 }
 
 impl<'a, T: 'a, E: 'a + EntryTrait<T>> Drop for VacantEntry<'a, T, E> {
-    fn drop(&mut self) { assert_eq!(self.inserted, true) }
+    fn drop(&mut self) {
+        assert_eq!(self.inserted, true)
+    }
 }
 
 /// An iterator over the values stored in the `Slab`
@@ -287,7 +293,9 @@ pub enum Entry<T> {
 }
 
 impl<T> Default for Entry<T> {
-    fn default() -> Self { Entry::Vacant(0) }
+    fn default() -> Self {
+        Entry::Vacant(0)
+    }
 }
 
 impl<T, E: EntryTrait<T>> Default for Slab<T, E> {
@@ -345,7 +353,9 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// let slab: Slab<i32> = Slab::with_capacity(10);
     /// assert_eq!(slab.capacity(), 10);
     /// ```
-    pub fn capacity(&self) -> usize { self.entries.capacity() }
+    pub fn capacity(&self) -> usize {
+        self.entries.capacity()
+    }
 
     /// Reserve capacity for at least `additional` more values to be stored
     /// without allocating.
@@ -510,7 +520,9 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// slab.clear();
     /// assert!(slab.is_empty());
     /// ```
-    pub fn clear(&mut self) { mem::replace(self, Self::default()); }
+    pub fn clear(&mut self) {
+        mem::replace(self, Self::default());
+    }
 
     /// Return the number of stored values.
     ///
@@ -527,7 +539,9 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     ///
     /// assert_eq!(3, slab.len());
     /// ```
-    pub fn len(&self) -> usize { self.alloc_fields.lock().used }
+    pub fn len(&self) -> usize {
+        self.alloc_fields.lock().used
+    }
 
     /// Return `true` if there are no values stored in the slab.
     ///
@@ -542,7 +556,9 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// slab.insert(1);
     /// assert!(!slab.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 
     /// Return an iterator over the slab.
     ///
@@ -849,7 +865,9 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     ///
     /// assert!(!slab.contains(hello));
     /// ```
-    pub fn contains(&self, key: usize) -> bool { self.get(key).is_some() }
+    pub fn contains(&self, key: usize) -> bool {
+        self.get(key).is_some()
+    }
 
     /// Retain only the elements specified by the predicate.
     ///
@@ -877,7 +895,9 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
     /// assert_eq!(2, slab.len());
     /// ```
     pub fn retain<F>(&mut self, mut f: F)
-    where F: FnMut(usize, &mut T) -> bool {
+    where
+        F: FnMut(usize, &mut T) -> bool,
+    {
         for i in 0..self.entries.len() {
             let keep = unsafe { self.get_mut(i).map_or(true, |v| f(i, v)) };
 
@@ -891,25 +911,32 @@ impl<T, E: EntryTrait<T>> Slab<T, E> {
 impl<T, E: EntryTrait<T>> ops::Index<usize> for Slab<T, E> {
     type Output = T;
 
-    fn index(&self, key: usize) -> &T { self.entries[key].get_occupied_ref() }
+    fn index(&self, key: usize) -> &T {
+        self.entries[key].get_occupied_ref()
+    }
 }
 
 impl<'a, T, E: EntryTrait<T>> IntoIterator for &'a Slab<T, E> {
     type IntoIter = Iter<'a, T, E>;
     type Item = (usize, &'a T);
 
-    fn into_iter(self) -> Iter<'a, T, E> { self.iter() }
+    fn into_iter(self) -> Iter<'a, T, E> {
+        self.iter()
+    }
 }
 
 impl<'a, T, E: EntryTrait<T>> IntoIterator for &'a mut Slab<T, E> {
     type IntoIter = IterMut<'a, T, E>;
     type Item = (usize, &'a mut T);
 
-    fn into_iter(self) -> IterMut<'a, T, E> { self.iter_mut() }
+    fn into_iter(self) -> IterMut<'a, T, E> {
+        self.iter_mut()
+    }
 }
 
 impl<T, E: EntryTrait<T>> fmt::Debug for Slab<T, E>
-where T: fmt::Debug
+where
+    T: fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -922,7 +949,8 @@ where T: fmt::Debug
 }
 
 impl<'a, T: 'a, E: EntryTrait<T>> fmt::Debug for Iter<'a, T, E>
-where T: fmt::Debug
+where
+    T: fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("Iter")
@@ -933,7 +961,8 @@ where T: fmt::Debug
 }
 
 impl<'a, T: 'a, E: EntryTrait<T>> fmt::Debug for IterMut<'a, T, E>
-where T: fmt::Debug
+where
+    T: fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("IterMut")
@@ -970,7 +999,9 @@ impl<'a, T, E: EntryTrait<T>> VacantEntry<'a, T, E> {
     /// assert_eq!("hello", slab[hello].1);
     /// ```
     pub fn insert<U>(mut self, val: U) -> &'a mut T
-    where T: From<U> {
+    where
+        T: From<U>,
+    {
         self.inserted = true;
         self.slab.insert_at(self.key, val);
         unsafe { self.slab.get_unchecked_mut(self.key) }
@@ -998,7 +1029,9 @@ impl<'a, T, E: EntryTrait<T>> VacantEntry<'a, T, E> {
     /// assert_eq!(hello, slab[hello].0);
     /// assert_eq!("hello", slab[hello].1);
     /// ```
-    pub fn key(&self) -> usize { self.key }
+    pub fn key(&self) -> usize {
+        self.key
+    }
 }
 
 // ===== Iter =====

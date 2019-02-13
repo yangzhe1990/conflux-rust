@@ -151,10 +151,12 @@ impl<
     > NodeMemoryManager<CacheAlgoDataT, CacheAlgorithmT>
 {
     pub fn new(
-        start_size: u32, cache_size: u32, idle_size: u32,
-        cache_algorithm: CacheAlgorithmT, kvdb: Arc<KeyValueDB>,
-    ) -> Self
-    {
+        start_size: u32,
+        cache_size: u32,
+        idle_size: u32,
+        cache_algorithm: CacheAlgorithmT,
+        kvdb: Arc<KeyValueDB>,
+    ) -> Self {
         let size_limit = cache_size + idle_size;
         Self {
             size_limit,
@@ -199,13 +201,15 @@ impl<
     }
 
     pub unsafe fn get_in_memory_node_mut<'a>(
-        allocator: AllocatorRefRef<'a, CacheAlgoDataT>, cache_slot: usize,
+        allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
+        cache_slot: usize,
     ) -> &'a mut TrieNode<CacheAlgoDataT> {
         allocator.get_unchecked_mut(cache_slot)
     }
 
     fn load_from_db<'c: 'a, 'a>(
-        &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
+        &self,
+        allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         cache_manager: &'c RwLock<
             CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
         >,
@@ -215,8 +219,7 @@ impl<
             RwLockWriteGuard<'c, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
             &'a TrieNode<CacheAlgoDataT>,
         >,
-    >
-    {
+    > {
         // We never save null node in db.
         let rlp_bytes = self
             .db
@@ -277,12 +280,12 @@ impl<
     /// This method is called when loading from db.
     /// unsafe because the key must be existing.
     pub unsafe fn delete_from_cache(
-        &self, cache_algorithm: &mut CacheAlgorithmT,
+        &self,
+        cache_algorithm: &mut CacheAlgorithmT,
         node_ref_map: &mut NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>,
         db_key: DeltaMptDbKey,
         cache_info: CacheableNodeRefDeltaMpt<CacheAlgoDataT>,
-    )
-    {
+    ) {
         cache_algorithm
             .delete(db_key, &mut NodeCacheUtil::new(self, node_ref_map));
 
@@ -295,10 +298,10 @@ impl<
     }
 
     unsafe fn delete_cache_evicted_unchecked(
-        &self, cache_mut: &mut CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
+        &self,
+        cache_mut: &mut CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
         evicted_db_key: DeltaMptDbKey,
-    )
-    {
+    ) {
         // Remove evicted content from cache.
         let cache_info = cache_mut.node_ref_map.delete(evicted_db_key).unwrap();
         match cache_info.get_cache_info() {
@@ -310,10 +313,10 @@ impl<
     }
 
     unsafe fn delete_cache_evicted_keep_cache_algo_data_unchecked(
-        &self, cache_mut: &mut CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
+        &self,
+        cache_mut: &mut CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
         evicted_db_key_keep_cache_algo_data: DeltaMptDbKey,
-    )
-    {
+    ) {
         // Remove evicted content from cache.
         // Safe to unwrap because it's guaranteed by cache algorithm that the
         // slot exists.
@@ -337,10 +340,10 @@ impl<
 
     // TODO(yz): special thread local batching logic for access_hit?
     pub fn call_cache_algorithm_access(
-        &self, cache_mut: &mut CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
+        &self,
+        cache_mut: &mut CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
         db_key: DeltaMptDbKey,
-    )
-    {
+    ) {
         let cache_access_result;
         {
             let mut cache_store_util =
@@ -379,10 +382,10 @@ impl<
     ///
     /// unsafe because it's unchecked that the node is dirty.
     pub unsafe fn dirty_node_as_mut_unchecked<'a>(
-        &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
+        &self,
+        allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: &mut NodeRefDeltaMpt,
-    ) -> &'a mut TrieNode<CacheAlgoDataT>
-    {
+    ) -> &'a mut TrieNode<CacheAlgoDataT> {
         match node {
             NodeRefDeltaMpt::Committed { ref db_key } => {
                 unreachable_unchecked();
@@ -399,7 +402,8 @@ impl<
 
     /// Unsafe because node is assumed to be committed.
     unsafe fn load_unowned_node_internal_unchecked<'c: 'a, 'a>(
-        &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
+        &self,
+        allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: NodeRefDeltaMpt,
         cache_manager: &'c RwLock<
             CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
@@ -414,8 +418,7 @@ impl<
             >,
             &'a TrieNode<CacheAlgoDataT>,
         >,
-    >
-    {
+    > {
         match node {
             NodeRefDeltaMpt::Committed { ref db_key } => {
                 let mut cache_manager_write;
@@ -479,10 +482,10 @@ impl<
 
     // FIXME: pass a cache manager / node_ref_map to prove ownership.
     unsafe fn get_cached_node_mut_unchecked<'a>(
-        &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
+        &self,
+        allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         slot: DeltaMptDbKey,
-    ) -> &'a mut TrieNode<CacheAlgoDataT>
-    {
+    ) -> &'a mut TrieNode<CacheAlgoDataT> {
         NodeMemoryManager::<CacheAlgoDataT, CacheAlgorithmT>::get_in_memory_node_mut(
             &allocator,
             slot as usize,
@@ -496,7 +499,8 @@ impl<
     /// cache_manager is assigned a different lifetime because the
     /// RwLockWriteGuard returned can be used independently.
     pub fn node_as_ref_with_cache_manager<'c: 'a, 'a>(
-        &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
+        &self,
+        allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: NodeRefDeltaMpt,
         cache_manager: &'c RwLock<
             CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
@@ -511,8 +515,7 @@ impl<
             >,
             &'a TrieNode<CacheAlgoDataT>,
         >,
-    >
-    {
+    > {
         match node {
             NodeRefDeltaMpt::Committed { ref db_key } => unsafe {
                 self.load_unowned_node_internal_unchecked(
@@ -593,8 +596,7 @@ impl<
             CacheAlgorithmT,
         >,
         node_map: &'a mut NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>,
-    ) -> Self
-    {
+    ) -> Self {
         NodeCacheUtil {
             node_memory_manager: node_memory_manager,
             node_ref_map: node_map,
@@ -661,13 +663,14 @@ impl<
     > CacheManager<CacheAlgoDataT, CacheAlgorithmT>
 {
     pub fn insert_to_node_ref_map_and_call_cache_access(
-        &mut self, db_key: DeltaMptDbKey, slot: ActualSlabIndex,
+        &mut self,
+        db_key: DeltaMptDbKey,
+        slot: ActualSlabIndex,
         node_memory_manager: &NodeMemoryManager<
             CacheAlgoDataT,
             CacheAlgorithmT,
         >,
-    )
-    {
+    ) {
         self.node_ref_map.insert(
             db_key,
             slot,

@@ -29,7 +29,8 @@ impl VerificationConfig {
     /// Check basic header parameters.
     /// This does not require header to be graph or parental tree ready.
     pub fn verify_header_params(
-        &self, header: &BlockHeader,
+        &self,
+        header: &BlockHeader,
     ) -> Result<(), Error> {
         // verify POW
         let boundary = pow::difficulty_to_boundary(header.difficulty());

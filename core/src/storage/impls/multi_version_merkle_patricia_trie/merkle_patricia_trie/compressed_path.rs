@@ -8,9 +8,13 @@ pub trait CompressedPathTrait {
 impl<'a> CompressedPathTrait for &'a [u8] {
     type SelfType = Self;
 
-    fn path_slice(&self) -> &[u8] { self }
+    fn path_slice(&self) -> &[u8] {
+        self
+    }
 
-    fn end_mask(&self) -> u8 { 0 }
+    fn end_mask(&self) -> u8 {
+        0
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -34,9 +38,13 @@ impl CompressedPathRaw {
 impl<'a> CompressedPathTrait for CompressedPathRef<'a> {
     type SelfType = Self;
 
-    fn path_slice(&self) -> &[u8] { self.path_slice }
+    fn path_slice(&self) -> &[u8] {
+        self.path_slice
+    }
 
-    fn end_mask(&self) -> u8 { self.end_mask }
+    fn end_mask(&self) -> u8 {
+        self.end_mask
+    }
 }
 
 impl CompressedPathTrait for CompressedPathRaw {
@@ -46,11 +54,15 @@ impl CompressedPathTrait for CompressedPathRaw {
         self.path.get_slice(self.path_size as usize)
     }
 
-    fn end_mask(&self) -> u8 { self.end_mask }
+    fn end_mask(&self) -> u8 {
+        self.end_mask
+    }
 }
 
 impl<'a> From<&'a [u8]> for CompressedPathRaw {
-    fn from(x: &'a [u8]) -> Self { CompressedPathRaw::new(x, 0) }
+    fn from(x: &'a [u8]) -> Self {
+        CompressedPathRaw::new(x, 0)
+    }
 }
 
 impl CompressedPathRaw {
@@ -83,9 +95,13 @@ impl CompressedPathRaw {
         }
     }
 
-    pub fn first_nibble(x: u8) -> u8 { x & Self::BITS_0_3_MASK }
+    pub fn first_nibble(x: u8) -> u8 {
+        x & Self::BITS_0_3_MASK
+    }
 
-    pub fn second_nibble(x: u8) -> u8 { (x & Self::BITS_4_7_MASK) >> 4 }
+    pub fn second_nibble(x: u8) -> u8 {
+        (x & Self::BITS_4_7_MASK) >> 4
+    }
 
     pub fn set_second_nibble(x: u8, second_nibble: u8) -> u8 {
         Self::first_nibble(x) | (second_nibble << 4)
@@ -118,7 +134,8 @@ impl Decodable for CompressedPathRaw {
 
 impl CompressedPathRaw {
     pub fn concat<X: CompressedPathTrait, Y: CompressedPathTrait>(
-        x: &X, y: &Y,
+        x: &X,
+        y: &Y,
     ) -> Self {
         let x_slice;
         if x.end_mask() != 0 {
