@@ -43,7 +43,7 @@ mod session;
 pub mod throttling;
 
 pub use crate::{
-    error::{DisconnectReason, Error, ErrorKind},
+    error::{DisconnectReason, Error, ErrorKind, ThrottlingReason},
     service::NetworkService,
 };
 pub use io::TimerToken;

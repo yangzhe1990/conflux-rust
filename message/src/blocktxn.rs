@@ -13,6 +13,8 @@ pub struct GetBlockTxnResponce {
 
 impl Message for GetBlockTxnResponce {
     fn msg_id(&self) -> MsgId { MsgId::GET_BLOCK_TXN_RESPONSE }
+
+    fn is_size_sensitive(&self) -> bool { self.block_txn.len() > 1 }
 }
 
 impl Deref for GetBlockTxnResponce {

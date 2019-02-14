@@ -9,6 +9,8 @@ pub struct Transactions {
 
 impl Message for Transactions {
     fn msg_id(&self) -> MsgId { MsgId::TRANSACTIONS }
+
+    fn is_size_sensitive(&self) -> bool { self.transactions.len() > 1 }
 }
 
 impl Encodable for Transactions {

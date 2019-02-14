@@ -15,7 +15,8 @@ use message::{
     NewBlock, NewBlockHashes, Status, Transactions,
 };
 use network::{
-    Error as NetworkError, NetworkContext, NetworkProtocolHandler, PeerId,
+    throttling::THROTTLING_SERVICE, Error as NetworkError, NetworkContext,
+    NetworkProtocolHandler, PeerId,
 };
 use parking_lot::{Mutex, RwLock};
 use primitives::{Block, SignedTransaction};
@@ -153,14 +154,28 @@ impl SynchronizationProtocolHandler {
     fn send_message(
         &self, io: &NetworkContext, peer: PeerId, msg: &Message,
     ) -> Result<(), NetworkError> {
+        self.send_message_with_throttling(io, peer, msg, false)
+    }
+
+    fn send_message_with_throttling(
+        &self, io: &NetworkContext, peer: PeerId, msg: &Message,
+        throttling_disabled: bool,
+    ) -> Result<(), NetworkError>
+    {
+        if !throttling_disabled && msg.is_size_sensitive() {
+            if let Err(e) = THROTTLING_SERVICE.read().check_throttling() {
+                debug!("Throttling failure: {:?}", e);
+                return Err(e);
+            }
+        }
+
         let mut raw = Bytes::new();
         raw.push(msg.msg_id().into());
         raw.extend(msg.rlp_bytes().iter());
         if let Err(e) = io.send(peer, raw) {
             debug!("Error sending message: {:?}", e);
             io.disconnect_peer(peer);
-            // FIXME return error after we implement error handling
-            return Ok(());
+            return Err(e);
         };
         debug!(
             "Send message({}) to {:?}",
@@ -1060,11 +1075,28 @@ impl SynchronizationProtocolHandler {
     fn broadcast_message(
         &self, io: &NetworkContext, skip_id: PeerId, msg: &Message,
     ) -> Result<(), NetworkError> {
-        for (id, _) in self.syn.read().peers.iter() {
-            if *id != skip_id {
-                self.send_message(io, *id, msg)?;
-            }
+        let locked_syn = self.syn.read();
+        let mut peer_ids: Vec<PeerId> = locked_syn
+            .peers
+            .keys()
+            .filter(|&id| *id != skip_id)
+            .map(|x| *x)
+            .collect();
+
+        let throttle_ratio = THROTTLING_SERVICE.read().get_throttling_ratio();
+        let num_total = peer_ids.len();
+        let num_allowed = (num_total as f64 * throttle_ratio) as usize;
+
+        if num_total > num_allowed {
+            debug!("apply throttling for broadcast_message, total: {}, allowed: {}", num_total, num_allowed);
+            random::new().shuffle(&mut peer_ids);
+            peer_ids.truncate(num_allowed);
         }
+
+        for id in peer_ids {
+            self.send_message(io, id, msg)?;
+        }
+
         Ok(())
     }
 
@@ -1291,7 +1323,7 @@ impl SynchronizationProtocolHandler {
                 block: (*block).clone().into(),
             });
             for (id, _) in syn.peers.iter() {
-                self.send_message(io, *id, msg.as_ref())
+                self.send_message_with_throttling(io, *id, msg.as_ref(), true)
                     .unwrap_or_else(|e| {
                         warn!("Error sending new blocks, err={:?}", e);
                     });
@@ -1325,10 +1357,13 @@ impl SynchronizationProtocolHandler {
         &self, syn: &mut SynchronizationState, filter: F,
     ) -> Vec<PeerId>
     where F: Fn(&PeerId) -> bool {
-        // sqrt(x)/x scaled to max u32
-        let fraction = ((syn.peers.len() as f64).powf(-0.5)
+        let num_peers = syn.peers.len();
+        let throttle_ratio = THROTTLING_SERVICE.read().get_throttling_ratio();
+
+        // min(sqrt(x)/x, throttle_ratio) scaled to max u32
+        let fraction = ((num_peers as f64).powf(-0.5).min(throttle_ratio)
             * (u32::max_value() as f64).round()) as u32;
-        let small = syn.peers.len() < MIN_PEERS_PROPAGATION;
+        let small = num_peers < MIN_PEERS_PROPAGATION;
 
         let mut random = random::new();
         syn.peers
@@ -1394,10 +1429,23 @@ impl SynchronizationProtocolHandler {
             let mut max_sent = 0;
             let lucky_peers_len = lucky_peers.len();
             for (peer_id, sent, msg) in lucky_peers {
-                self.send_message(io, peer_id, msg.as_ref())
-                    .expect("Error sending transactions!");
-                trace!("{:02} <- Transactions ({} entries)", peer_id, sent);
-                max_sent = cmp::max(max_sent, sent);
+                match self.send_message(io, peer_id, msg.as_ref()) {
+                    Ok(_) => {
+                        trace!(
+                            "{:02} <- Transactions ({} entries)",
+                            peer_id,
+                            sent
+                        );
+                        max_sent = cmp::max(max_sent, sent);
+                    }
+                    Err(e) => {
+                        trace!(
+                            "failed to propagate txs to peer, id: {}, err: {}",
+                            peer_id,
+                            e
+                        );
+                    }
+                }
             }
             debug!(
                 "Sent up to {} transactions to {} peers.",

@@ -11,6 +11,8 @@ pub struct GetBlockBodiesResponse {
 
 impl Message for GetBlockBodiesResponse {
     fn msg_id(&self) -> MsgId { MsgId::GET_BLOCK_BODIES_RESPONSE }
+
+    fn is_size_sensitive(&self) -> bool { self.bodies.len() > 0 }
 }
 
 impl Deref for GetBlockBodiesResponse {

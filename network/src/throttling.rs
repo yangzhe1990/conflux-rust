@@ -1,4 +1,4 @@
-use crate::{Error, ErrorKind};
+use crate::{Error, ErrorKind, ThrottlingReason};
 use byte_unit::n_mb_bytes;
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
@@ -54,12 +54,12 @@ impl Service {
     ) -> Result<usize, Error> {
         if data_size > self.queue_capacity {
             trace!(target: "throttling", "too large data enqueued, data size: {}, queue capacity: {}", data_size, self.queue_capacity);
-            bail!(ErrorKind::QueueFull);
+            bail!(ErrorKind::Throttling(ThrottlingReason::QueueFull));
         }
 
         if self.cur_queue_size > self.queue_capacity - data_size {
             trace!(target: "throttling", "queue size not enough, data size: {}, queue size: {}", data_size, self.cur_queue_size);
-            bail!(ErrorKind::QueueFull);
+            bail!(ErrorKind::Throttling(ThrottlingReason::QueueFull));
         }
 
         self.cur_queue_size += data_size;
@@ -78,14 +78,14 @@ impl Service {
         self.cur_queue_size
     }
 
-    // TODO remove dead_code attribute after integrate with sync service.
-    #[allow(dead_code)]
-    pub fn is_throttled(&self) -> bool {
-        self.cur_queue_size > self.max_throttle_queue_size
+    pub fn check_throttling(&self) -> Result<(), Error> {
+        if self.cur_queue_size > self.max_throttle_queue_size {
+            bail!(ErrorKind::Throttling(ThrottlingReason::Throttled));
+        }
+
+        Ok(())
     }
 
-    // TODO remove dead_code attribute after integrate with sync service.
-    #[allow(dead_code)]
     pub fn get_throttling_ratio(&self) -> f64 {
         if self.cur_queue_size <= self.min_throttle_queue_size {
             return 1.0;
@@ -139,20 +139,20 @@ mod tests {
     }
 
     #[test]
-    fn test_is_throttled() {
+    fn test_throttle() {
         let mut service = super::Service::new();
 
         // not throttled by default.
-        assert!(!service.is_throttled());
+        assert!(service.check_throttling().is_ok());
 
         // throttled once more than max_throttle_queue_size data queued.
         let max = service.max_throttle_queue_size;
         assert_eq!(service.on_enqueue(max + 1).unwrap(), max + 1);
-        assert!(service.is_throttled());
+        assert!(service.check_throttling().is_err());
 
         // not throttled after some data dequeued.
         assert_eq!(service.on_dequeue(1), max);
-        assert!(!service.is_throttled());
+        assert!(service.check_throttling().is_ok());
     }
 
     #[test]

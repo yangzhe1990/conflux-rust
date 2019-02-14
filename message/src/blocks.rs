@@ -11,6 +11,8 @@ pub struct GetBlocksResponse {
 
 impl Message for GetBlocksResponse {
     fn msg_id(&self) -> MsgId { MsgId::GET_BLOCKS_RESPONSE }
+
+    fn is_size_sensitive(&self) -> bool { self.blocks.len() > 0 }
 }
 
 impl Deref for GetBlocksResponse {

@@ -35,6 +35,23 @@ impl fmt::Display for DisconnectReason {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ThrottlingReason {
+    QueueFull,
+    Throttled,
+}
+
+impl fmt::Display for ThrottlingReason {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ThrottlingReason::QueueFull => {
+                f.write_str("egress queue capacity reached")
+            }
+            ThrottlingReason::Throttled => f.write_str("egress throttled"),
+        }
+    }
+}
+
 error_chain! {
     foreign_links {
         SocketIo(IoError);
@@ -100,9 +117,9 @@ error_chain! {
             display("Unexpected IO error: {}", err),
         }
 
-        QueueFull {
-            description("Sending queue full"),
-            display("Sending queue full"),
+        Throttling(reason: ThrottlingReason) {
+            description("throttling failure"),
+            display("throttling failure: {}", reason),
         }
     }
 }
