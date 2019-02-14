@@ -84,9 +84,7 @@ pub fn test_finalize(res: Result<GasLeft>) -> Result<U256> {
 impl MockContext {
     /// New mock context
     #[allow(dead_code)]
-    pub fn new() -> Self {
-        MockContext::default()
-    }
+    pub fn new() -> Self { MockContext::default() }
 
     /// New mock context with byzantium spec rules
     #[allow(dead_code)]
@@ -134,9 +132,7 @@ impl Context for MockContext {
         Ok(self.balances.get(address).map_or(false, |b| !b.is_zero()))
     }
 
-    fn origin_balance(&self) -> Result<U256> {
-        unimplemented!()
-    }
+    fn origin_balance(&self) -> Result<U256> { unimplemented!() }
 
     fn balance(&self, address: &Address) -> Result<U256> {
         Ok(self.balances[address])
@@ -147,13 +143,10 @@ impl Context for MockContext {
     }
 
     fn create(
-        &mut self,
-        gas: &U256,
-        value: &U256,
-        code: &[u8],
-        address: CreateContractAddress,
-        _trap: bool,
-    ) -> ::std::result::Result<ContractCreateResult, TrapKind> {
+        &mut self, gas: &U256, value: &U256, code: &[u8],
+        address: CreateContractAddress, _trap: bool,
+    ) -> ::std::result::Result<ContractCreateResult, TrapKind>
+    {
         self.calls.insert(MockCall {
             call_type: MockCallType::Create,
             create_scheme: Some(address),
@@ -169,16 +162,11 @@ impl Context for MockContext {
     }
 
     fn call(
-        &mut self,
-        gas: &U256,
-        sender_address: &Address,
-        receive_address: &Address,
-        value: Option<U256>,
-        data: &[u8],
-        code_address: &Address,
-        _call_type: CallType,
-        _trap: bool,
-    ) -> ::std::result::Result<MessageCallResult, TrapKind> {
+        &mut self, gas: &U256, sender_address: &Address,
+        receive_address: &Address, value: Option<U256>, data: &[u8],
+        code_address: &Address, _call_type: CallType, _trap: bool,
+    ) -> ::std::result::Result<MessageCallResult, TrapKind>
+    {
         self.calls.insert(MockCall {
             call_type: MockCallType::Call,
             create_scheme: None,
@@ -214,10 +202,7 @@ impl Context for MockContext {
     }
 
     fn ret(
-        self,
-        _gas: &U256,
-        _data: &ReturnData,
-        _apply_state: bool,
+        self, _gas: &U256, _data: &ReturnData, _apply_state: bool,
     ) -> Result<U256> {
         unimplemented!();
     }
@@ -227,21 +212,13 @@ impl Context for MockContext {
         Ok(())
     }
 
-    fn spec(&self) -> &Spec {
-        &self.spec
-    }
+    fn spec(&self) -> &Spec { &self.spec }
 
-    fn env_info(&self) -> &EnvInfo {
-        &self.info
-    }
+    fn env_info(&self) -> &EnvInfo { &self.info }
 
-    fn depth(&self) -> usize {
-        self.depth
-    }
+    fn depth(&self) -> usize { self.depth }
 
-    fn is_static(&self) -> bool {
-        self.is_static
-    }
+    fn is_static(&self) -> bool { self.is_static }
 
     fn add_sstore_refund(&mut self, value: usize) {
         self.sstore_clears += value as i128;
@@ -252,10 +229,7 @@ impl Context for MockContext {
     }
 
     fn trace_next_instruction(
-        &mut self,
-        _pc: usize,
-        _instruction: u8,
-        _gas: U256,
+        &mut self, _pc: usize, _instruction: u8, _gas: U256,
     ) -> bool {
         self.tracing
     }

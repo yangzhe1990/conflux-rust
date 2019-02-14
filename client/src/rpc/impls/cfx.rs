@@ -27,7 +27,8 @@ impl CfxHandler {
         consensus_graph: Arc<ConsensusGraph>,
         storage_manager: Arc<StorageManager>,
         sync: SharedSynchronizationService,
-    ) -> Self {
+    ) -> Self
+    {
         CfxHandler {
             consensus_graph,
             storage_manager,
@@ -36,8 +37,7 @@ impl CfxHandler {
     }
 
     fn get_primitive_epoch_number(
-        &self,
-        number: EpochNumber,
+        &self, number: EpochNumber,
     ) -> PrimitiveEpochNumber {
         match number {
             EpochNumber::Earliest => PrimitiveEpochNumber::Earliest,
@@ -72,9 +72,7 @@ impl Cfx for CfxHandler {
     }
 
     fn block_by_hash(
-        &self,
-        hash: RpcH256,
-        include_txs: bool,
+        &self, hash: RpcH256, include_txs: bool,
     ) -> Result<Option<RpcBlock>> {
         let hash: H256 = hash.into();
         info!("RPC Request: cfx_getBlockByHash({:?})", hash);
@@ -103,8 +101,7 @@ impl Cfx for CfxHandler {
     }
 
     fn transaction_by_hash(
-        &self,
-        hash: RpcH256,
+        &self, hash: RpcH256,
     ) -> Result<Option<RpcTransaction>> {
         let hash: H256 = hash.into();
         info!("RPC Request: cfx_getTransactionByHash({:?})", hash);
@@ -134,9 +131,7 @@ impl Cfx for CfxHandler {
     }
 
     fn balance(
-        &self,
-        address: RpcH160,
-        epoch_num: Trailing<RpcU64>,
+        &self, address: RpcH160, epoch_num: Trailing<RpcU64>,
     ) -> Result<RpcU256> {
         let address: H160 = address.into();
         let epoch_num: usize = epoch_num
@@ -155,10 +150,7 @@ impl Cfx for CfxHandler {
     }
 
     fn account(
-        &self,
-        address: RpcH160,
-        include_txs: bool,
-        num_txs: RpcU64,
+        &self, address: RpcH160, include_txs: bool, num_txs: RpcU64,
     ) -> Result<Account> {
         let address: H160 = address.into();
         let num_txs = num_txs.as_usize();
@@ -185,9 +177,7 @@ impl Cfx for CfxHandler {
     }
 
     fn transaction_count(
-        &self,
-        address: RpcH160,
-        num: Trailing<EpochNumber>,
+        &self, address: RpcH160, num: Trailing<EpochNumber>,
     ) -> Result<RpcU256> {
         let num = num.unwrap_or_default();
         info!(

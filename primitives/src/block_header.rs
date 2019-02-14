@@ -79,39 +79,25 @@ impl Default for BlockHeader {
 
 impl BlockHeader {
     /// Create a new, default-valued, header.
-    pub fn new() -> Self {
-        Self::default()
-    }
+    pub fn new() -> Self { Self::default() }
 
     /// Get the parent_hash field of the header.
-    pub fn parent_hash(&self) -> &H256 {
-        &self.parent_hash
-    }
+    pub fn parent_hash(&self) -> &H256 { &self.parent_hash }
 
     /// Get the block height
-    pub fn height(&self) -> u64 {
-        self.height
-    }
+    pub fn height(&self) -> u64 { self.height }
 
     /// Get the timestamp field of the header.
-    pub fn timestamp(&self) -> u64 {
-        self.timestamp
-    }
+    pub fn timestamp(&self) -> u64 { self.timestamp }
 
     /// Get the author field of the header.
-    pub fn author(&self) -> &Address {
-        &self.author
-    }
+    pub fn author(&self) -> &Address { &self.author }
 
     /// Get the transactions root field of the header.
-    pub fn transactions_root(&self) -> &H256 {
-        &self.transactions_root
-    }
+    pub fn transactions_root(&self) -> &H256 { &self.transactions_root }
 
     /// Get the deferred state root field of the header.
-    pub fn deferred_state_root(&self) -> &H256 {
-        &self.deferred_state_root
-    }
+    pub fn deferred_state_root(&self) -> &H256 { &self.deferred_state_root }
 
     /// Get the deferred block receipts root field of the header.
     pub fn deferred_receipts_root(&self) -> &H256 {
@@ -119,29 +105,19 @@ impl BlockHeader {
     }
 
     /// Get the difficulty field of the header.
-    pub fn difficulty(&self) -> &U256 {
-        &self.difficulty
-    }
+    pub fn difficulty(&self) -> &U256 { &self.difficulty }
 
     /// Get the gas limit field of the header.
-    pub fn gas_limit(&self) -> &U256 {
-        &self.gas_limit
-    }
+    pub fn gas_limit(&self) -> &U256 { &self.gas_limit }
 
     /// Get the referee hashes field of the header.
-    pub fn referee_hashes(&self) -> &Vec<H256> {
-        &self.referee_hashes
-    }
+    pub fn referee_hashes(&self) -> &Vec<H256> { &self.referee_hashes }
 
     /// Get the nonce field of the header.
-    pub fn nonce(&self) -> u64 {
-        self.nonce
-    }
+    pub fn nonce(&self) -> u64 { self.nonce }
 
     /// Set the nonce field of the header.
-    pub fn set_nonce(&mut self, nonce: u64) {
-        self.nonce = nonce;
-    }
+    pub fn set_nonce(&mut self, nonce: u64) { self.nonce = nonce; }
 
     /// Compute the hash of the block.
     pub fn compute_hash(&mut self) -> H256 {
@@ -156,14 +132,10 @@ impl BlockHeader {
     }
 
     /// Get the hash of PoW problem.
-    pub fn problem_hash(&self) -> H256 {
-        keccak(self.rlp_without_nonce())
-    }
+    pub fn problem_hash(&self) -> H256 { keccak(self.rlp_without_nonce()) }
 
     /// Get the hash of the block.
-    pub fn bare_hash(&self) -> H256 {
-        keccak(self.rlp_without_nonce())
-    }
+    pub fn bare_hash(&self) -> H256 { keccak(self.rlp_without_nonce()) }
 
     /// Get the RLP representation of this header(except nonce).
     pub fn rlp_without_nonce(&self) -> Bytes {
@@ -271,24 +243,21 @@ impl BlockHeaderBuilder {
     }
 
     pub fn with_transactions_root(
-        &mut self,
-        transactions_root: H256,
+        &mut self, transactions_root: H256,
     ) -> &mut Self {
         self.transactions_root = transactions_root;
         self
     }
 
     pub fn with_deferred_state_root(
-        &mut self,
-        deferred_state_root: H256,
+        &mut self, deferred_state_root: H256,
     ) -> &mut Self {
         self.deferred_state_root = deferred_state_root;
         self
     }
 
     pub fn with_deferred_receipts_root(
-        &mut self,
-        deferred_receipts_root: H256,
+        &mut self, deferred_receipts_root: H256,
     ) -> &mut Self {
         self.deferred_receipts_root = deferred_receipts_root;
         self
@@ -305,8 +274,7 @@ impl BlockHeaderBuilder {
     }
 
     pub fn with_referee_hashes(
-        &mut self,
-        referee_hashes: Vec<H256>,
+        &mut self, referee_hashes: Vec<H256>,
     ) -> &mut Self {
         self.referee_hashes = referee_hashes;
         self
@@ -347,9 +315,7 @@ impl BlockHeaderBuilder {
 }
 
 impl Encodable for BlockHeader {
-    fn rlp_append(&self, stream: &mut RlpStream) {
-        self.stream_rlp(stream);
-    }
+    fn rlp_append(&self, stream: &mut RlpStream) { self.stream_rlp(stream); }
 }
 
 impl Decodable for BlockHeader {

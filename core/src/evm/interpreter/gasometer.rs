@@ -72,10 +72,7 @@ impl<Gas: evm::CostType> Gasometer<Gas> {
     /// How much gas is provided to a CALL/CREATE, given that we need to deduct
     /// `needed` for this operation and that we `requested` some.
     pub fn gas_provided(
-        &self,
-        spec: &Spec,
-        needed: Gas,
-        requested: Option<U256>,
+        &self, spec: &Spec, needed: Gas, requested: Option<U256>,
     ) -> vm::Result<Gas> {
         // Try converting requested gas to `Gas` (`U256/u64`)
         // but in EIP150 even if we request more we should never fail from OOG
@@ -118,13 +115,10 @@ impl<Gas: evm::CostType> Gasometer<Gas> {
     /// that the current context
     /// provides to the child context.
     pub fn requirements(
-        &mut self,
-        context: &vm::Context,
-        instruction: Instruction,
-        info: &InstructionInfo,
-        stack: &Stack<U256>,
-        current_mem_size: usize,
-    ) -> vm::Result<InstructionRequirements<Gas>> {
+        &mut self, context: &vm::Context, instruction: Instruction,
+        info: &InstructionInfo, stack: &Stack<U256>, current_mem_size: usize,
+    ) -> vm::Result<InstructionRequirements<Gas>>
+    {
         let spec = context.spec();
         let tier = info.tier.idx();
         let default_gas = Gas::from(spec.tier_step_gas[tier]);
@@ -354,10 +348,7 @@ impl<Gas: evm::CostType> Gasometer<Gas> {
     }
 
     fn mem_gas_cost(
-        &self,
-        spec: &Spec,
-        current_mem_size: usize,
-        mem_size: &Gas,
+        &self, spec: &Spec, current_mem_size: usize, mem_size: &Gas,
     ) -> vm::Result<(Gas, Gas, usize)> {
         let gas_for_mem = |mem_size: Gas| {
             let s = mem_size >> 5;
@@ -387,16 +378,14 @@ impl<Gas: evm::CostType> Gasometer<Gas> {
 
 #[inline]
 fn mem_needed_const<Gas: evm::CostType>(
-    mem: &U256,
-    add: usize,
+    mem: &U256, add: usize,
 ) -> vm::Result<Gas> {
     Gas::from_u256(overflowing!(mem.overflowing_add(U256::from(add))))
 }
 
 #[inline]
 fn mem_needed<Gas: evm::CostType>(
-    offset: &U256,
-    size: &U256,
+    offset: &U256, size: &U256,
 ) -> vm::Result<Gas> {
     if size.is_zero() {
         return Ok(Gas::from(0));
@@ -422,10 +411,7 @@ fn to_word_size<Gas: evm::CostType>(value: Gas) -> (Gas, bool) {
 
 #[inline]
 fn calculate_eip1283_sstore_gas<Gas: evm::CostType>(
-    spec: &Spec,
-    original: &U256,
-    current: &U256,
-    new: &U256,
+    spec: &Spec, original: &U256, current: &U256, new: &U256,
 ) -> Gas {
     Gas::from(if current == new {
         // 1. If current value equals new value (this is a no-op), 200 gas is
@@ -472,10 +458,7 @@ fn calculate_eip1283_sstore_gas<Gas: evm::CostType>(
 }
 
 pub fn handle_eip1283_sstore_clears_refund(
-    context: &mut vm::Context,
-    original: &U256,
-    current: &U256,
-    new: &U256,
+    context: &mut vm::Context, original: &U256, current: &U256, new: &U256,
 ) {
     let sstore_clears_spec = context.spec().sstore_refund_gas;
 

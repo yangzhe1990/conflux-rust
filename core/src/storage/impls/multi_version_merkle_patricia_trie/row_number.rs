@@ -31,7 +31,5 @@ impl RowNumber {
 }
 
 impl ToString for RowNumber {
-    fn to_string(&self) -> String {
-        self.value.to_string()
-    }
+    fn to_string(&self) -> String { self.value.to_string() }
 }

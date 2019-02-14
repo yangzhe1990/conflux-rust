@@ -1,5 +1,7 @@
-use serde::de::{Error, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{
+    de::{Error, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use std::fmt;
 
 /// Represents rpc api epoch number param.
@@ -11,37 +13,32 @@ pub enum EpochNumber {
     Latest,
     /// Earliest epoch (genesis)
     Earliest,
-    //    Pending epoch (being mined)
-    //    Pending,
+    /*    Pending epoch (being mined)
+     *    Pending, */
 }
 
 impl Default for EpochNumber {
-    fn default() -> Self {
-        EpochNumber::Latest
-    }
+    fn default() -> Self { EpochNumber::Latest }
 }
 
 impl<'a> Deserialize<'a> for EpochNumber {
     fn deserialize<D>(deserializer: D) -> Result<EpochNumber, D::Error>
-    where
-        D: Deserializer<'a>,
-    {
+    where D: Deserializer<'a> {
         deserializer.deserialize_any(EpochNumberVisitor)
     }
 }
 
 impl Serialize for EpochNumber {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
+    where S: Serializer {
         match *self {
             EpochNumber::Num(ref x) => {
                 serializer.serialize_str(&format!("0x{:x}", x))
             }
             EpochNumber::Latest => serializer.serialize_str("latest"),
             EpochNumber::Earliest => serializer.serialize_str("earliest"),
-            //            EpochNumber::Pending => serializer.serialize_str("pending"),
+            /*            EpochNumber::Pending =>
+             * serializer.serialize_str("pending"), */
         }
     }
 }
@@ -59,9 +56,7 @@ impl<'a> Visitor<'a> for EpochNumberVisitor {
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: Error,
-    {
+    where E: Error {
         match value {
             "latest" => Ok(EpochNumber::Latest),
             "earliest" => Ok(EpochNumber::Earliest),
@@ -80,9 +75,7 @@ impl<'a> Visitor<'a> for EpochNumberVisitor {
     }
 
     fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-    where
-        E: Error,
-    {
+    where E: Error {
         self.visit_str(value.as_ref())
     }
 }

@@ -27,7 +27,5 @@ pub use self::{
 
 pub mod random {
     use rand;
-    pub fn new() -> rand::ThreadRng {
-        rand::thread_rng()
-    }
+    pub fn new() -> rand::ThreadRng { rand::thread_rng() }
 }

@@ -1348,12 +1348,10 @@ fn test_sar(factory: super::Factory) {
 }
 
 fn push_two_pop_one_constantinople_test(
-    factory: &super::Factory,
-    opcode: u8,
-    push1: &str,
-    push2: &str,
+    factory: &super::Factory, opcode: u8, push1: &str, push2: &str,
     result: &str,
-) {
+)
+{
     let mut push1 = push1.from_hex().unwrap();
     let mut push2 = push2.from_hex().unwrap();
     assert!(push1.len() <= 32 && push1.len() != 0);
@@ -1381,8 +1379,7 @@ fn push_two_pop_one_constantinople_test(
 }
 
 fn assert_set_contains<T: Debug + Eq + PartialEq + Hash>(
-    set: &HashSet<T>,
-    val: &T,
+    set: &HashSet<T>, val: &T,
 ) {
     let contains = set.contains(val);
     if !contains {

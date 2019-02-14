@@ -9,18 +9,12 @@ pub struct HeapHandle<PosT> {
 impl<PosT: PrimitiveNum> HeapHandle<PosT> {
     pub const NULL_POS: i32 = -1;
 
-    pub fn get_pos(&self) -> PosT {
-        self.pos
-    }
+    pub fn get_pos(&self) -> PosT { self.pos }
 
     // Update heap handle for value being moved in heap.
-    pub fn set_handle(&mut self, pos: PosT) {
-        self.pos = pos;
-    }
+    pub fn set_handle(&mut self, pos: PosT) { self.pos = pos; }
 
-    pub fn set_removed(&mut self) {
-        self.pos = PosT::from(Self::NULL_POS);
-    }
+    pub fn set_removed(&mut self) { self.pos = PosT::from(Self::NULL_POS); }
 }
 
 impl<PosT: PrimitiveNum> Default for HeapHandle<PosT> {
@@ -55,17 +49,13 @@ impl<ValueType, PosT: PrimitiveNum>
         self.get_handle_mut().set_handle(pos);
     }
 
-    pub fn set_removed(&mut self) {
-        self.get_handle_mut().set_removed();
-    }
+    pub fn set_removed(&mut self) { self.get_handle_mut().set_removed(); }
 }
 
 impl<ValueType, PosT: PrimitiveNum> AsRef<ValueType>
     for TrivialValueWithHeapHandle<ValueType, PosT>
 {
-    fn as_ref(&self) -> &ValueType {
-        &self.value
-    }
+    fn as_ref(&self) -> &ValueType { &self.value }
 }
 
 /// The value util should only be passed for each action. The problem of holding
@@ -96,8 +86,7 @@ pub trait HeapValueUtil<ValueType, PosT: PrimitiveNum> {
     fn set_removed(&mut self, value: &mut ValueType);
 
     fn get_key_for_comparison<'a>(
-        &'a self,
-        value: &'a ValueType,
+        &'a self, value: &'a ValueType,
     ) -> &Self::KeyType;
 }
 
@@ -130,31 +119,29 @@ impl<PosT: PrimitiveNum, ValueType: Ord + Clone>
     type KeyType = ValueType;
 
     fn set_handle(
-        &mut self,
-        value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
+        &mut self, value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
         pos: PosT,
-    ) {
+    )
+    {
         value.set_handle(pos);
     }
 
     fn set_handle_final(
-        &mut self,
-        value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
+        &mut self, value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
         pos: PosT,
-    ) {
+    )
+    {
         value.set_handle(pos);
     }
 
     fn set_removed(
-        &mut self,
-        value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
+        &mut self, value: &mut TrivialValueWithHeapHandle<ValueType, PosT>,
     ) {
         value.set_removed();
     }
 
     fn get_key_for_comparison<'a>(
-        &'a self,
-        value: &'a TrivialValueWithHeapHandle<ValueType, PosT>,
+        &'a self, value: &'a TrivialValueWithHeapHandle<ValueType, PosT>,
     ) -> &ValueType {
         value.as_ref()
     }
@@ -182,17 +169,13 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         }
     }
 
-    pub fn get_heap_size(&self) -> PosT {
-        self.heap_size
-    }
+    pub fn get_heap_size(&self) -> PosT { self.heap_size }
 
     pub unsafe fn set_heap_size_unchecked(&mut self, size: PosT) {
         self.heap_size = size;
     }
 
-    pub fn get_array_mut(&mut self) -> &mut Vec<ValueType> {
-        &mut self.array
-    }
+    pub fn get_array_mut(&mut self) -> &mut Vec<ValueType> { &mut self.array }
 
     pub unsafe fn get_unchecked(&self, pos: PosT) -> &ValueType {
         self.array.get_unchecked(MyInto::<usize>::into(pos))
@@ -209,11 +192,10 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     pub unsafe fn hole_push_back_and_swap_unchecked<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self,
-        pos: PosT,
-        hole: &mut Hole<ValueType>,
+        &mut self, pos: PosT, hole: &mut Hole<ValueType>,
         value_util: &mut ValueUtilT,
-    ) -> PosT {
+    ) -> PosT
+    {
         let array_pos = self.array.len();
 
         self.array.set_len(array_pos + 1);
@@ -243,11 +225,8 @@ trait OrderChecker<
     // correct, otherwise return an order checker object for further order
     // corrections.
     fn new_checked(
-        heap_base: *mut ValueType,
-        pos: PosT,
-        heap_size: PosT,
-        key_comparison: KeyType,
-        value_util: &mut ValueUtilT,
+        heap_base: *mut ValueType, pos: PosT, heap_size: PosT,
+        key_comparison: KeyType, value_util: &mut ValueUtilT,
     ) -> Option<(Self, *mut ValueType)>
     where
         Self: Sized,
@@ -267,16 +246,12 @@ trait OrderChecker<
     }
 
     fn new(
-        heap_base: *mut ValueType,
-        pos: PosT,
-        heap_size: PosT,
-        key_comparison: KeyType,
-        value_util: &mut ValueUtilT,
+        heap_base: *mut ValueType, pos: PosT, heap_size: PosT,
+        key_comparison: KeyType, value_util: &mut ValueUtilT,
     ) -> Self;
 
     fn calculate_next(
-        &mut self,
-        value_util: &ValueUtilT,
+        &mut self, value_util: &ValueUtilT,
     ) -> Option<*mut ValueType>;
 
     fn current_pos(&self) -> PosT;
@@ -306,12 +281,10 @@ impl<
     for UpOrderChecker<ValueType, KeyType, PosT, ValueUtilT>
 {
     fn new(
-        heap_base: *mut ValueType,
-        pos: PosT,
-        heap_size: PosT,
-        key_comparison: KeyType,
-        value_util: &mut ValueUtilT,
-    ) -> Self {
+        heap_base: *mut ValueType, pos: PosT, heap_size: PosT,
+        key_comparison: KeyType, value_util: &mut ValueUtilT,
+    ) -> Self
+    {
         let pointer_pos = unsafe { heap_base.offset(pos.into()) };
 
         Self {
@@ -324,8 +297,7 @@ impl<
     }
 
     fn calculate_next(
-        &mut self,
-        value_util: &ValueUtilT,
+        &mut self, value_util: &ValueUtilT,
     ) -> Option<*mut ValueType> {
         if self.pos == PosT::from(0) {
             None
@@ -349,13 +321,9 @@ impl<
         }
     }
 
-    fn current_pos(&self) -> PosT {
-        self.pos
-    }
+    fn current_pos(&self) -> PosT { self.pos }
 
-    fn pointer_pos(&self) -> *mut ValueType {
-        self.pointer_pos
-    }
+    fn pointer_pos(&self) -> *mut ValueType { self.pointer_pos }
 }
 
 struct DownOrderChecker<
@@ -382,12 +350,10 @@ impl<
     for DownOrderChecker<ValueType, KeyType, PosT, ValueUtilT>
 {
     fn new(
-        heap_base: *mut ValueType,
-        pos: PosT,
-        heap_size: PosT,
-        key_comparison: KeyType,
-        value_util: &mut ValueUtilT,
-    ) -> Self {
+        heap_base: *mut ValueType, pos: PosT, heap_size: PosT,
+        key_comparison: KeyType, value_util: &mut ValueUtilT,
+    ) -> Self
+    {
         let pointer_pos = unsafe { heap_base.offset(pos.into()) };
 
         Self {
@@ -402,8 +368,7 @@ impl<
     }
 
     fn calculate_next(
-        &mut self,
-        value_util: &ValueUtilT,
+        &mut self, value_util: &ValueUtilT,
     ) -> Option<*mut ValueType> {
         if self.pos >= self.pos_limit {
             return None;
@@ -444,13 +409,9 @@ impl<
         }
     }
 
-    fn current_pos(&self) -> PosT {
-        self.pos
-    }
+    fn current_pos(&self) -> PosT { self.pos }
 
-    fn pointer_pos(&self) -> *mut ValueType {
-        self.pointer_pos
-    }
+    fn pointer_pos(&self) -> *mut ValueType { self.pointer_pos }
 }
 
 pub struct Hole<ValueType> {
@@ -467,8 +428,7 @@ impl<ValueType> Hole<ValueType> {
     }
 
     pub fn new_from_value_ptr_read(
-        pointer_pos: *mut ValueType,
-        value: &ValueType,
+        pointer_pos: *mut ValueType, value: &ValueType,
     ) -> Self {
         Self {
             pointer_pos: pointer_pos,
@@ -480,9 +440,7 @@ impl<ValueType> Hole<ValueType> {
         PosT: PrimitiveNum,
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        mut self,
-        pos: PosT,
-        value_updater: &mut ValueUtilT,
+        mut self, pos: PosT, value_updater: &mut ValueUtilT,
     ) {
         unsafe {
             value_updater.set_handle_final(&mut self.value, pos);
@@ -494,11 +452,10 @@ impl<ValueType> Hole<ValueType> {
         PosT: PrimitiveNum,
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self,
-        pointer_new_pos: *mut ValueType,
-        pos: PosT,
+        &mut self, pointer_new_pos: *mut ValueType, pos: PosT,
         value_updater: &mut ValueUtilT,
-    ) {
+    )
+    {
         unsafe {
             value_updater.set_handle(&mut *pointer_new_pos, pos);
             ptr::copy_nonoverlapping(pointer_new_pos, self.pointer_pos, 1);
@@ -514,9 +471,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     pub unsafe fn insert_with_hole_unchecked<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self,
-        mut hole: Hole<ValueType>,
-        value_util: &mut ValueUtilT,
+        &mut self, mut hole: Hole<ValueType>, value_util: &mut ValueUtilT,
     ) -> PosT {
         let heap_size = self.heap_size;
         self.hole_push_back_and_swap_unchecked(
@@ -530,9 +485,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     }
 
     pub fn insert<ValueUtilT: HeapValueUtil<ValueType, PosT>>(
-        &mut self,
-        value: ValueType,
-        value_util: &mut ValueUtilT,
+        &mut self, value: ValueType, value_util: &mut ValueUtilT,
     ) -> Result<PosT> {
         if self.array.capacity() == self.array.len() {
             return Err(ErrorKind::OutOfCapacity.into());
@@ -552,11 +505,10 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     pub unsafe fn replace_head_unchecked_with_hole<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self,
-        hole: Hole<ValueType>,
-        replaced: &mut ValueType,
+        &mut self, hole: Hole<ValueType>, replaced: &mut ValueType,
         value_util: &mut ValueUtilT,
-    ) {
+    )
+    {
         ptr::copy_nonoverlapping(
             self.get_unchecked_mut(PosT::from(0)),
             replaced,
@@ -574,9 +526,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     pub unsafe fn replace_head_unchecked<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self,
-        value: &mut ValueType,
-        value_util: &mut ValueUtilT,
+        &mut self, value: &mut ValueType, value_util: &mut ValueUtilT,
     ) {
         let hole =
             Hole::new_from_value_ptr_read(self.array.as_mut_ptr(), value);
@@ -588,8 +538,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     }
 
     pub fn pop_head<ValueUtilT: HeapValueUtil<ValueType, PosT>>(
-        &mut self,
-        value_util: &mut ValueUtilT,
+        &mut self, value_util: &mut ValueUtilT,
     ) -> Option<ValueType> {
         if self.heap_size == PosT::from(0) {
             None
@@ -643,12 +592,10 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     pub unsafe fn replace_at_unchecked_with_hole<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self,
-        pos: PosT,
-        hole: Hole<ValueType>,
-        replaced: *mut ValueType,
+        &mut self, pos: PosT, hole: Hole<ValueType>, replaced: *mut ValueType,
         value_util: &mut ValueUtilT,
-    ) {
+    )
+    {
         ptr::copy_nonoverlapping(self.get_unchecked_mut(pos), replaced, 1);
 
         if value_util.get_key_for_comparison(self.get_unchecked_mut(pos))
@@ -664,11 +611,10 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     pub unsafe fn replace_at_unchecked<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self,
-        pos: PosT,
-        value: &mut ValueType,
+        &mut self, pos: PosT, value: &mut ValueType,
         value_util: &mut ValueUtilT,
-    ) {
+    )
+    {
         let hole = {
             let replaced = self.get_unchecked_mut(pos);
             let hole = Hole::new_from_value_ptr_read(replaced, value);
@@ -686,9 +632,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     pub unsafe fn move_out_from_heap_at_unchecked<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self,
-        pos: PosT,
-        value_util: &mut ValueUtilT,
+        &mut self, pos: PosT, value_util: &mut ValueUtilT,
     ) {
         self.heap_size -= PosT::from(1);
         let heap_last_pos = self.heap_size;
@@ -716,9 +660,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     pub unsafe fn remove_at_unchecked<
         ValueUtilT: HeapValueUtil<ValueType, PosT>,
     >(
-        &mut self,
-        pos: PosT,
-        value_util: &mut ValueUtilT,
+        &mut self, pos: PosT, value_util: &mut ValueUtilT,
     ) -> ValueType {
         let mut removed = mem::uninitialized();
         value_util.set_removed(self.get_unchecked_mut(pos));
@@ -759,11 +701,10 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     }
 
     pub fn sift_up_with_hole<ValueUtilT: HeapValueUtil<ValueType, PosT>>(
-        &mut self,
-        pos: PosT,
-        hole: Hole<ValueType>,
+        &mut self, pos: PosT, hole: Hole<ValueType>,
         value_util: &mut ValueUtilT,
-    ) {
+    )
+    {
         let up_order_checker = UpOrderChecker::new(
             self.array.as_mut_ptr(),
             pos,
@@ -775,11 +716,10 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
     }
 
     pub fn sift_down_with_hole<ValueUtilT: HeapValueUtil<ValueType, PosT>>(
-        &mut self,
-        pos: PosT,
-        hole: Hole<ValueType>,
+        &mut self, pos: PosT, hole: Hole<ValueType>,
         value_util: &mut ValueUtilT,
-    ) {
+    )
+    {
         let down_order_checker = DownOrderChecker::new(
             self.array.as_mut_ptr(),
             pos,
@@ -795,12 +735,10 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         OrderCheckerT: OrderChecker<ValueType, KeyType, PosT, ValueUtilT>,
         ValueUtilT: HeapValueUtil<ValueType, PosT, KeyType = KeyType>,
     >(
-        &mut self,
-        mut pos: PosT,
-        mut hole: Hole<ValueType>,
-        mut order_checker: OrderCheckerT,
-        value_util: &mut ValueUtilT,
-    ) {
+        &mut self, mut pos: PosT, mut hole: Hole<ValueType>,
+        mut order_checker: OrderCheckerT, value_util: &mut ValueUtilT,
+    )
+    {
         while let Some(pointer_new_pos) =
             order_checker.calculate_next(value_util)
         {
@@ -812,9 +750,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
 
     /// User may call this function when user increased value at pos.
     pub fn sift_down<ValueUtilT: HeapValueUtil<ValueType, PosT>>(
-        &mut self,
-        pos: PosT,
-        value_util: &mut ValueUtilT,
+        &mut self, pos: PosT, value_util: &mut ValueUtilT,
     ) -> bool {
         let maybe_order_checker = DownOrderChecker::new_checked(
             self.array.as_mut_ptr(),
@@ -832,9 +768,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
 
     /// User may call this function when user decreased value at pos.
     pub fn sift_up<ValueUtilT: HeapValueUtil<ValueType, PosT>>(
-        &mut self,
-        pos: PosT,
-        value_util: &mut ValueUtilT,
+        &mut self, pos: PosT, value_util: &mut ValueUtilT,
     ) -> bool {
         let maybe_order_checker = UpOrderChecker::new_checked(
             self.array.as_mut_ptr(),
@@ -855,11 +789,11 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
         OrderCheckerT: OrderChecker<ValueType, KeyType, PosT, ValueUtilT>,
         ValueUtilT: HeapValueUtil<ValueType, PosT, KeyType = KeyType>,
     >(
-        &mut self,
-        pos: PosT,
+        &mut self, pos: PosT,
         maybe_order_checker: Option<(OrderCheckerT, *mut ValueType)>,
         value_util: &mut ValueUtilT,
-    ) -> bool {
+    ) -> bool
+    {
         match maybe_order_checker {
             None => false,
             Some((order_checker, pointer_new_pos)) => {
@@ -882,9 +816,7 @@ impl<PosT: PrimitiveNum, ValueType> RemovableHeap<PosT, ValueType> {
 impl<ValueType: PartialEq, PosT: PrimitiveNum> PartialEq
     for TrivialValueWithHeapHandle<ValueType, PosT>
 {
-    fn eq(&self, other: &Self) -> bool {
-        self.value.eq(&other.value)
-    }
+    fn eq(&self, other: &Self) -> bool { self.value.eq(&other.value) }
 }
 
 impl<ValueType: Eq, PosT: PrimitiveNum> Eq
@@ -903,7 +835,5 @@ impl<ValueType: PartialOrd, PosT: PrimitiveNum> PartialOrd
 impl<ValueType: Ord, PosT: PrimitiveNum> Ord
     for TrivialValueWithHeapHandle<ValueType, PosT>
 {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.value.cmp(&other.value)
-    }
+    fn cmp(&self, other: &Self) -> Ordering { self.value.cmp(&other.value) }
 }

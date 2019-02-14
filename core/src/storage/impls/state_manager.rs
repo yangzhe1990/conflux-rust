@@ -29,8 +29,7 @@ impl StateManager {
     }
 
     fn load_state_root_node_ref_from_db(
-        &self,
-        epoch_id: EpochId,
+        &self, epoch_id: EpochId,
     ) -> Result<Option<NodeRefDeltaMpt>> {
         let db_key_result = Self::parse_row_number(
             self.db.key_value().get(
@@ -52,8 +51,7 @@ impl StateManager {
     }
 
     fn get_state_root_node_ref(
-        &self,
-        epoch_id: EpochId,
+        &self, epoch_id: EpochId,
     ) -> Result<Option<NodeRefDeltaMpt>> {
         let node_ref = self.delta_trie.get_root_at_epoch(epoch_id);
         if node_ref.is_none() {
@@ -69,9 +67,7 @@ impl StateManager {
     // root is already computed, which should eventually be optimized out.
     // TODO(ming): Use self.get_state_root_node_ref(epoch_id).
     pub(super) fn mpt_commit_state_root(
-        &self,
-        epoch_id: EpochId,
-        root_node: Option<NodeRefDeltaMpt>,
+        &self, epoch_id: EpochId, root_node: Option<NodeRefDeltaMpt>,
     ) {
         match root_node {
             None => {}
@@ -153,13 +149,9 @@ impl StateManager {
 }
 
 impl StateManagerTrait for StateManager {
-    fn from_snapshot(snapshot: &Snapshot) -> Self {
-        unimplemented!()
-    }
+    fn from_snapshot(snapshot: &Snapshot) -> Self { unimplemented!() }
 
-    fn make_snapshot(&self, epoch_id: EpochId) -> Snapshot {
-        unimplemented!()
-    }
+    fn make_snapshot(&self, epoch_id: EpochId) -> Snapshot { unimplemented!() }
 
     fn get_state_at(&self, epoch_id: EpochId) -> Result<State> {
         Ok(State::new(self, self.get_state_root_node_ref(epoch_id)?))
@@ -169,9 +161,7 @@ impl StateManagerTrait for StateManager {
         self.get_state_at(epoch_id).unwrap().does_exist()
     }
 
-    fn drop_state_outside(&self, epoch_id: EpochId) {
-        unimplemented!()
-    }
+    fn drop_state_outside(&self, epoch_id: EpochId) { unimplemented!() }
 }
 
 use super::{

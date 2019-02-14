@@ -80,8 +80,7 @@ pub struct SynchronizationGraphInner {
 
 impl SynchronizationGraphInner {
     pub fn with_genesis_block(
-        genesis_header: Arc<BlockHeader>,
-        pow_config: ProofOfWorkConfig,
+        genesis_header: Arc<BlockHeader>, pow_config: ProofOfWorkConfig,
     ) -> Self {
         let mut inner = SynchronizationGraphInner {
             arena: Slab::new(),
@@ -352,8 +351,7 @@ impl SynchronizationGraphInner {
     }
 
     fn verify_header_graph_ready_block(
-        &self,
-        index: usize,
+        &self, index: usize,
     ) -> Result<(), Error> {
         let epoch = self.arena[index].block_header.height();
         let parent = self.arena[index].parent;
@@ -488,10 +486,10 @@ pub type SharedSynchronizationGraph = Arc<SynchronizationGraph>;
 
 impl SynchronizationGraph {
     pub fn new(
-        consensus: SharedConsensusGraph,
-        pow_config: ProofOfWorkConfig,
+        consensus: SharedConsensusGraph, pow_config: ProofOfWorkConfig,
         verification_config: VerificationConfig,
-    ) -> Self {
+    ) -> Self
+    {
         let genesis_block_hash = consensus.genesis_block().hash();
         let genesis_block_header = consensus
             .block_headers
@@ -596,9 +594,7 @@ impl SynchronizationGraph {
         })
     }
 
-    pub fn genesis_hash(&self) -> &H256 {
-        &self.genesis_block_hash
-    }
+    pub fn genesis_hash(&self) -> &H256 { &self.genesis_block_hash }
 
     pub fn contains_block_header(&self, hash: &H256) -> bool {
         self.inner.read().indices.contains_key(hash)
@@ -624,11 +620,10 @@ impl SynchronizationGraph {
     }
 
     fn set_and_propagate_invalid(
-        inner: &mut SynchronizationGraphInner,
-        queue: &mut VecDeque<usize>,
-        invalid_set: &mut HashSet<usize>,
-        index: usize,
-    ) {
+        inner: &mut SynchronizationGraphInner, queue: &mut VecDeque<usize>,
+        invalid_set: &mut HashSet<usize>, index: usize,
+    )
+    {
         if !invalid_set.contains(&index) {
             invalid_set.insert(index);
             let children: Vec<usize> =
@@ -647,10 +642,10 @@ impl SynchronizationGraph {
     }
 
     fn process_invalid_blocks(
-        &self,
-        inner: &mut SynchronizationGraphInner,
+        &self, inner: &mut SynchronizationGraphInner,
         invalid_set: &HashSet<usize>,
-    ) {
+    )
+    {
         for index in invalid_set {
             let hash = inner.arena[*index].block_header.hash();
             self.consensus.invalidate_block(&hash);
@@ -710,9 +705,7 @@ impl SynchronizationGraph {
     }
 
     pub fn insert_block_header(
-        &self,
-        header: BlockHeader,
-        need_to_verify: bool,
+        &self, header: BlockHeader, need_to_verify: bool,
     ) -> (bool, Vec<H256>) {
         let mut inner = self.inner.write();
         let hash = header.hash();
@@ -844,10 +837,7 @@ impl SynchronizationGraph {
     }
 
     pub fn insert_block(
-        &self,
-        block: Block,
-        need_to_verify: bool,
-        persistent: bool,
+        &self, block: Block, need_to_verify: bool, persistent: bool,
     ) -> (bool, bool) {
         let mut insert_success = true;
         let mut need_to_relay = false;
@@ -1023,9 +1013,7 @@ impl SynchronizationGraph {
         });
     }
 
-    pub fn persist_terminals(&self) {
-        self.consensus.persist_terminals();
-    }
+    pub fn persist_terminals(&self) { self.consensus.persist_terminals(); }
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]

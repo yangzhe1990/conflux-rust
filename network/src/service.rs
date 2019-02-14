@@ -83,9 +83,7 @@ impl UdpChannel {
         }
     }
 
-    pub fn any_sends_queued(&self) -> bool {
-        !self.send_queue.is_empty()
-    }
+    pub fn any_sends_queued(&self) -> bool { !self.send_queue.is_empty() }
 
     pub fn dequeue_send(&mut self) -> Option<Datagram> {
         self.send_queue.pop_front()
@@ -104,10 +102,10 @@ pub struct UdpIoContext<'a> {
 
 impl<'a> UdpIoContext<'a> {
     pub fn new(
-        channel: &'a RwLock<UdpChannel>,
-        trusted_nodes: &'a RwLock<NodeTable>,
+        channel: &'a RwLock<UdpChannel>, trusted_nodes: &'a RwLock<NodeTable>,
         untrusted_nodes: &'a RwLock<NodeTable>,
-    ) -> UdpIoContext<'a> {
+    ) -> UdpIoContext<'a>
+    {
         UdpIoContext {
             channel,
             trusted_nodes,
@@ -207,11 +205,10 @@ impl NetworkService {
 
     /// Register a new protocol handler
     pub fn register_protocol(
-        &self,
-        handler: Arc<NetworkProtocolHandler + Sync>,
-        protocol: ProtocolId,
-        versions: &[u8],
-    ) -> Result<(), Error> {
+        &self, handler: Arc<NetworkProtocolHandler + Sync>,
+        protocol: ProtocolId, versions: &[u8],
+    ) -> Result<(), Error>
+    {
         self.io_service.as_ref().unwrap().send_message(
             NetworkIoMessage::AddHandler {
                 handler,
@@ -224,9 +221,7 @@ impl NetworkService {
 
     /// Executes action in the network context
     pub fn with_context<F>(&self, protocol: ProtocolId, action: F)
-    where
-        F: FnOnce(&NetworkContext),
-    {
+    where F: FnOnce(&NetworkContext) {
         let io = IoContext::new(self.io_service.as_ref().unwrap().channel(), 0);
         if let Some(ref inner) = self.inner {
             inner.with_context(protocol, &io, action);
@@ -265,9 +260,7 @@ impl NetworkService {
     }
 
     pub fn add_latency(
-        &self,
-        id: NodeId,
-        latency_ms: f64,
+        &self, id: NodeId, latency_ms: f64,
     ) -> Result<(), Error> {
         if let Some(ref inner) = self.inner {
             inner.add_latency(id, latency_ms)
@@ -292,9 +285,7 @@ pub struct HostMetadata {
 }
 
 impl HostMetadata {
-    pub(crate) fn id(&self) -> &NodeId {
-        self.keys.public()
-    }
+    pub(crate) fn id(&self) -> &NodeId { self.keys.public() }
 }
 
 #[derive(Copy, Clone)]
@@ -511,9 +502,7 @@ impl NetworkServiceInner {
     }
 
     pub fn add_latency(
-        &self,
-        peer: NodeId,
-        latency_ms: f64,
+        &self, peer: NodeId, latency_ms: f64,
     ) -> Result<(), Error> {
         match self.delayed_queue {
             Some(ref queue) => {
@@ -529,9 +518,7 @@ impl NetworkServiceInner {
         }
     }
 
-    pub fn get_ip_filter(&self) -> &IpFilter {
-        &self.config.ip_filter
-    }
+    pub fn get_ip_filter(&self) -> &IpFilter { &self.config.ip_filter }
 
     pub fn add_trusted_node(&self, id: &str) {
         match Node::from_str(id) {
@@ -575,8 +562,7 @@ impl NetworkServiceInner {
     }
 
     fn initialize_udp_protocols(
-        &self,
-        io: &IoContext<NetworkIoMessage>,
+        &self, io: &IoContext<NetworkIoMessage>,
     ) -> Result<(), Error> {
         // Initialize discovery
         if let Some(discovery) = self.discovery.lock().as_mut() {
@@ -881,12 +867,10 @@ impl NetworkServiceInner {
     // 1. proactively connect to a peer;
     // 2. passively connected by a peer;
     fn create_connection(
-        &self,
-        socket: TcpStream,
-        address: SocketAddr,
-        id: Option<&NodeId>,
+        &self, socket: TcpStream, address: SocketAddr, id: Option<&NodeId>,
         io: &IoContext<NetworkIoMessage>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    {
         let mut sessions = self.sessions.write();
 
         let token = sessions.insert_with_opt(|token| {
@@ -928,18 +912,14 @@ impl NetworkServiceInner {
     }
 
     fn connection_closed(
-        &self,
-        stream: StreamToken,
-        io: &IoContext<NetworkIoMessage>,
+        &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
         trace!(target: "network", "Connection closed: {}", stream);
         self.kill_connection(stream, io);
     }
 
     fn session_readable(
-        &self,
-        stream: StreamToken,
-        io: &IoContext<NetworkIoMessage>,
+        &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
         // We check dropped_nodes first to make sure we stop processing
         // communications from any dropped peers
@@ -1019,9 +999,7 @@ impl NetworkServiceInner {
     }
 
     fn session_writable(
-        &self,
-        stream: StreamToken,
-        io: &IoContext<NetworkIoMessage>,
+        &self, stream: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
         // We check dropped_nodes first to make sure we stop processing
         // communications from any dropped peers
@@ -1064,9 +1042,7 @@ impl NetworkServiceInner {
     }
 
     fn kill_connection(
-        &self,
-        token: StreamToken,
-        io: &IoContext<NetworkIoMessage>,
+        &self, token: StreamToken, io: &IoContext<NetworkIoMessage>,
     ) {
         let mut to_disconnect: Vec<ProtocolId> = Vec::new();
         let mut deregister = false;
@@ -1106,9 +1082,7 @@ impl NetworkServiceInner {
     }
 
     pub fn with_context<F>(
-        &self,
-        protocol: ProtocolId,
-        io: &IoContext<NetworkIoMessage>,
+        &self, protocol: ProtocolId, io: &IoContext<NetworkIoMessage>,
         action: F,
     ) where
         F: FnOnce(&NetworkContext),
@@ -1180,9 +1154,7 @@ impl NetworkServiceInner {
     }
 
     fn on_udp_packet(
-        &self,
-        packet: &[u8],
-        from: SocketAddr,
+        &self, packet: &[u8], from: SocketAddr,
     ) -> Result<(), Error> {
         let res = match packet[0] {
             UDP_PROTOCOL_DISCOVERY => {
@@ -1222,9 +1194,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn stream_hup(
-        &self,
-        io: &IoContext<NetworkIoMessage>,
-        stream: StreamToken,
+        &self, io: &IoContext<NetworkIoMessage>, stream: StreamToken,
     ) {
         trace!(target: "network", "Hup: {}", stream);
         match stream {
@@ -1234,9 +1204,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn stream_readable(
-        &self,
-        io: &IoContext<NetworkIoMessage>,
-        stream: StreamToken,
+        &self, io: &IoContext<NetworkIoMessage>, stream: StreamToken,
     ) {
         match stream {
             FIRST_SESSION...LAST_SESSION => self.session_readable(stream, io),
@@ -1247,9 +1215,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn stream_writable(
-        &self,
-        io: &IoContext<NetworkIoMessage>,
-        stream: StreamToken,
+        &self, io: &IoContext<NetworkIoMessage>, stream: StreamToken,
     ) {
         match stream {
             FIRST_SESSION...LAST_SESSION => self.session_writable(stream, io),
@@ -1326,9 +1292,7 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn message(
-        &self,
-        io: &IoContext<NetworkIoMessage>,
-        message: &NetworkIoMessage,
+        &self, io: &IoContext<NetworkIoMessage>, message: &NetworkIoMessage,
     ) {
         match *message {
             NetworkIoMessage::Start => self.start(io).unwrap_or_else(|e| {
@@ -1388,11 +1352,10 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn register_stream(
-        &self,
-        stream: StreamToken,
-        reg: Token,
+        &self, stream: StreamToken, reg: Token,
         event_loop: &mut EventLoop<IoManager<NetworkIoMessage>>,
-    ) {
+    )
+    {
         match stream {
             FIRST_SESSION...LAST_SESSION => {
                 let session = self.sessions.read().get(stream).cloned();
@@ -1428,10 +1391,10 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn deregister_stream(
-        &self,
-        stream: StreamToken,
+        &self, stream: StreamToken,
         event_loop: &mut EventLoop<IoManager<NetworkIoMessage>>,
-    ) {
+    )
+    {
         match stream {
             FIRST_SESSION...LAST_SESSION => {
                 let mut sessions = self.sessions.write();
@@ -1453,11 +1416,10 @@ impl IoHandler<NetworkIoMessage> for NetworkServiceInner {
     }
 
     fn update_stream(
-        &self,
-        stream: StreamToken,
-        reg: Token,
+        &self, stream: StreamToken, reg: Token,
         event_loop: &mut EventLoop<IoManager<NetworkIoMessage>>,
-    ) {
+    )
+    {
         match stream {
             FIRST_SESSION...LAST_SESSION => {
                 let session = self.sessions.read().get(stream).cloned();
@@ -1510,13 +1472,10 @@ struct DelayMessageContext {
 
 impl DelayMessageContext {
     pub fn new(
-        ts: Instant,
-        io: IoContext<NetworkIoMessage>,
-        protocol: ProtocolId,
-        session: SharedSession,
-        peer: PeerId,
-        msg: Vec<u8>,
-    ) -> Self {
+        ts: Instant, io: IoContext<NetworkIoMessage>, protocol: ProtocolId,
+        session: SharedSession, peer: PeerId, msg: Vec<u8>,
+    ) -> Self
+    {
         DelayMessageContext {
             ts,
             io,
@@ -1529,9 +1488,7 @@ impl DelayMessageContext {
 }
 
 impl Ord for DelayMessageContext {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other.ts.cmp(&self.ts)
-    }
+    fn cmp(&self, other: &Self) -> Ordering { other.ts.cmp(&self.ts) }
 }
 
 impl PartialOrd for DelayMessageContext {
@@ -1543,9 +1500,7 @@ impl PartialOrd for DelayMessageContext {
 impl Eq for DelayMessageContext {}
 
 impl PartialEq for DelayMessageContext {
-    fn eq(&self, other: &Self) -> bool {
-        self.ts == other.ts
-    }
+    fn eq(&self, other: &Self) -> bool { self.ts == other.ts }
 }
 
 pub struct NetworkContext<'a> {
@@ -1556,10 +1511,10 @@ pub struct NetworkContext<'a> {
 
 impl<'a> NetworkContext<'a> {
     fn new(
-        io: &'a IoContext<NetworkIoMessage>,
-        protocol: ProtocolId,
+        io: &'a IoContext<NetworkIoMessage>, protocol: ProtocolId,
         network_service: &'a NetworkServiceInner,
-    ) -> NetworkContext<'a> {
+    ) -> NetworkContext<'a>
+    {
         NetworkContext {
             io,
             protocol,
@@ -1629,9 +1584,7 @@ impl<'a> NetworkContextTrait for NetworkContext<'a> {
     }
 
     fn register_timer(
-        &self,
-        token: TimerToken,
-        delay: Duration,
+        &self, token: TimerToken, delay: Duration,
     ) -> Result<(), Error> {
         self.io
             .message(NetworkIoMessage::AddTimer {

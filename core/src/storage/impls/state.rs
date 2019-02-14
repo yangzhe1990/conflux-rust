@@ -10,8 +10,7 @@ pub struct State<'a> {
 
 impl<'a> State<'a> {
     pub fn new(
-        manager: &'a StateManager,
-        root_node: Option<NodeRefDeltaMpt>,
+        manager: &'a StateManager, root_node: Option<NodeRefDeltaMpt>,
     ) -> Self {
         Self {
             manager: manager,
@@ -32,9 +31,7 @@ impl<'a> Drop for State<'a> {
 }
 
 impl<'a> StateTrait for State<'a> {
-    fn does_exist(&self) -> bool {
-        self.get_root_node().is_some()
-    }
+    fn does_exist(&self) -> bool { self.get_root_node().is_some() }
 
     fn get_merkle_hash(&self, access_key: &[u8]) -> Result<Option<MerkleHash>> {
         // Get won't create any new nodes so it's fine to pass an empty
@@ -102,8 +99,7 @@ impl<'a> StateTrait for State<'a> {
     }
 
     fn delete_all(
-        &mut self,
-        access_key_prefix: &[u8],
+        &mut self, access_key_prefix: &[u8],
     ) -> Result<Option<Vec<(Vec<u8>, Box<[u8]>)>>> {
         self.pre_modification();
 

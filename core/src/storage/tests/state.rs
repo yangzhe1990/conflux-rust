@@ -23,9 +23,7 @@ fn generate_keys() -> Vec<[u8; 4]> {
     keys
 }
 
-fn get_rng_for_test() -> ChaChaRng {
-    ChaChaRng::from_seed([123; 32])
-}
+fn get_rng_for_test() -> ChaChaRng { ChaChaRng::from_seed([123; 32]) }
 
 #[test]
 fn test_set_get() {

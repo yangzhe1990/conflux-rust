@@ -63,17 +63,12 @@ pub struct Context<'a, 'b: 'a> {
 impl<'a, 'b: 'a> Context<'a, 'b> {
     /// Basic `Context` constructor.
     pub fn new(
-        state: &'a mut State<'b>,
-        env: &'a EnvInfo,
-        machine: &'a Machine,
-        spec: &'a Spec,
-        depth: usize,
-        stack_depth: usize,
-        origin: &'a OriginInfo,
-        substate: &'a mut Substate,
-        output: OutputPolicy,
-        static_flag: bool,
-    ) -> Self {
+        state: &'a mut State<'b>, env: &'a EnvInfo, machine: &'a Machine,
+        spec: &'a Spec, depth: usize, stack_depth: usize,
+        origin: &'a OriginInfo, substate: &'a mut Substate,
+        output: OutputPolicy, static_flag: bool,
+    ) -> Self
+    {
         Context {
             state,
             env,
@@ -113,9 +108,7 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
         }
     }
 
-    fn is_static(&self) -> bool {
-        return self.static_flag;
-    }
+    fn is_static(&self) -> bool { return self.static_flag; }
 
     fn exists(&self, address: &Address) -> vm::Result<bool> {
         self.state.exists(address).map_err(Into::into)
@@ -139,13 +132,10 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
     }
 
     fn create(
-        &mut self,
-        gas: &U256,
-        value: &U256,
-        code: &[u8],
-        address_scheme: CreateContractAddress,
-        trap: bool,
-    ) -> ::std::result::Result<ContractCreateResult, TrapKind> {
+        &mut self, gas: &U256, value: &U256, code: &[u8],
+        address_scheme: CreateContractAddress, trap: bool,
+    ) -> ::std::result::Result<ContractCreateResult, TrapKind>
+    {
         assert!(trap);
 
         // create new contract address
@@ -194,16 +184,11 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
     }
 
     fn call(
-        &mut self,
-        gas: &U256,
-        sender_address: &Address,
-        receive_address: &Address,
-        value: Option<U256>,
-        data: &[u8],
-        code_address: &Address,
-        call_type: CallType,
-        trap: bool,
-    ) -> ::std::result::Result<MessageCallResult, TrapKind> {
+        &mut self, gas: &U256, sender_address: &Address,
+        receive_address: &Address, value: Option<U256>, data: &[u8],
+        code_address: &Address, call_type: CallType, trap: bool,
+    ) -> ::std::result::Result<MessageCallResult, TrapKind>
+    {
         trace!(target: "context", "call");
 
         assert!(trap);
@@ -252,14 +237,9 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
     }
 
     fn ret(
-        self,
-        gas: &U256,
-        data: &ReturnData,
-        apply_state: bool,
+        self, gas: &U256, data: &ReturnData, apply_state: bool,
     ) -> vm::Result<U256>
-    where
-        Self: Sized,
-    {
+    where Self: Sized {
         match self.output {
             OutputPolicy::Return => Ok(*gas),
             OutputPolicy::InitContract if apply_state => {
@@ -325,17 +305,11 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
         Ok(())
     }
 
-    fn spec(&self) -> &Spec {
-        &self.spec
-    }
+    fn spec(&self) -> &Spec { &self.spec }
 
-    fn env_info(&self) -> &EnvInfo {
-        &self.env
-    }
+    fn env_info(&self) -> &EnvInfo { &self.env }
 
-    fn depth(&self) -> usize {
-        self.depth
-    }
+    fn depth(&self) -> usize { self.depth }
 
     fn add_sstore_refund(&mut self, value: usize) {
         self.substate.sstore_clears_refund += value as i128;
@@ -346,31 +320,23 @@ impl<'a, 'b: 'a> ContextTrait for Context<'a, 'b> {
     }
 
     fn trace_next_instruction(
-        &mut self,
-        _pc: usize,
-        _instruction: u8,
-        _current_gas: U256,
+        &mut self, _pc: usize, _instruction: u8, _current_gas: U256,
     ) -> bool {
         // TODO
         false
     }
 
     fn trace_prepare_execute(
-        &mut self,
-        _pc: usize,
-        _instruction: u8,
-        _gas_cost: U256,
+        &mut self, _pc: usize, _instruction: u8, _gas_cost: U256,
         _mem_written: Option<(usize, usize)>,
         _store_written: Option<(U256, U256)>,
-    ) {
+    )
+    {
         // TODO
     }
 
     fn trace_executed(
-        &mut self,
-        _gas_used: U256,
-        _stack_push: &[U256],
-        _mem: &[u8],
+        &mut self, _gas_used: U256, _stack_push: &[U256], _mem: &[u8],
     ) {
         // TODO
     }

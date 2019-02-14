@@ -67,8 +67,7 @@ impl StorageKey {
     }
 
     pub fn new_storage_key(
-        address: &Address,
-        storage_key: &H256,
+        address: &Address, storage_key: &H256,
     ) -> StorageKey {
         let mut key = Vec::with_capacity(
             Self::ACCOUNT_HASH_BYTES

@@ -34,15 +34,11 @@ use keylib::{recover as ec_recover, Signature};
 pub struct Error(pub &'static str);
 
 impl From<&'static str> for Error {
-    fn from(val: &'static str) -> Self {
-        Error(val)
-    }
+    fn from(val: &'static str) -> Self { Error(val) }
 }
 
 impl Into<crate::vm::Error> for Error {
-    fn into(self) -> crate::vm::Error {
-        crate::vm::Error::BuiltIn(self.0)
-    }
+    fn into(self) -> crate::vm::Error { crate::vm::Error::BuiltIn(self.0) }
 }
 
 /// Native implementation of a built-in contract.
@@ -186,23 +182,17 @@ pub struct Builtin {
 
 impl Builtin {
     /// Simple forwarder for cost.
-    pub fn cost(&self, input: &[u8]) -> U256 {
-        self.pricer.cost(input)
-    }
+    pub fn cost(&self, input: &[u8]) -> U256 { self.pricer.cost(input) }
 
     /// Simple forwarder for execute.
     pub fn execute(
-        &self,
-        input: &[u8],
-        output: &mut BytesRef,
+        &self, input: &[u8], output: &mut BytesRef,
     ) -> Result<(), Error> {
         self.native.execute(input, output)
     }
 
     /// Whether the builtin is activated at the given cardinal number.
-    pub fn is_active(&self, at: u64) -> bool {
-        at >= self.activate_at
-    }
+    pub fn is_active(&self, at: u64) -> bool { at >= self.activate_at }
 }
 
 //impl From<ethjson::spec::Builtin> for Builtin {
@@ -294,9 +284,7 @@ struct Bn128PairingImpl;
 
 impl Impl for Identity {
     fn execute(
-        &self,
-        input: &[u8],
-        output: &mut BytesRef,
+        &self, input: &[u8], output: &mut BytesRef,
     ) -> Result<(), Error> {
         output.write(0, input);
         Ok(())
@@ -337,9 +325,7 @@ impl Impl for EcRecover {
 
 impl Impl for Sha256 {
     fn execute(
-        &self,
-        input: &[u8],
-        output: &mut BytesRef,
+        &self, input: &[u8], output: &mut BytesRef,
     ) -> Result<(), Error> {
         let d = digest::sha256(input);
         output.write(0, &*d);
@@ -349,9 +335,7 @@ impl Impl for Sha256 {
 
 impl Impl for Ripemd160 {
     fn execute(
-        &self,
-        input: &[u8],
-        output: &mut BytesRef,
+        &self, input: &[u8], output: &mut BytesRef,
     ) -> Result<(), Error> {
         let hash = digest::ripemd160(input);
         output.write(0, &[0; 12][..]);
@@ -413,9 +397,7 @@ fn modexp(mut base: BigUint, exp: Vec<u8>, modulus: BigUint) -> BigUint {
 
 impl Impl for ModexpImpl {
     fn execute(
-        &self,
-        input: &[u8],
-        output: &mut BytesRef,
+        &self, input: &[u8], output: &mut BytesRef,
     ) -> Result<(), Error> {
         let mut reader = input.chain(io::repeat(0));
         let mut buf = [0; 32];
@@ -518,9 +500,7 @@ fn read_point(
 impl Impl for Bn128AddImpl {
     // Can fail if any of the 2 points does not belong the bn128 curve
     fn execute(
-        &self,
-        input: &[u8],
-        output: &mut BytesRef,
+        &self, input: &[u8], output: &mut BytesRef,
     ) -> Result<(), Error> {
         use bn::AffineG1;
 
@@ -548,9 +528,7 @@ impl Impl for Bn128MulImpl {
     // Can fail if first paramter (bn128 curve point) does not actually belong
     // to the curve
     fn execute(
-        &self,
-        input: &[u8],
-        output: &mut BytesRef,
+        &self, input: &[u8], output: &mut BytesRef,
     ) -> Result<(), Error> {
         use bn::AffineG1;
 
@@ -580,9 +558,7 @@ impl Impl for Bn128PairingImpl {
     ///     - any of even points does not belong to the twisted bn128 curve
     /// over the field F_p^2 = F_p[i] / (i^2 + 1)
     fn execute(
-        &self,
-        input: &[u8],
-        output: &mut BytesRef,
+        &self, input: &[u8], output: &mut BytesRef,
     ) -> Result<(), Error> {
         if input.len() % 192 != 0 {
             return Err(
@@ -601,9 +577,7 @@ impl Impl for Bn128PairingImpl {
 
 impl Bn128PairingImpl {
     fn execute_with_error(
-        &self,
-        input: &[u8],
-        output: &mut BytesRef,
+        &self, input: &[u8], output: &mut BytesRef,
     ) -> Result<(), Error> {
         use bn::{pairing, AffineG1, AffineG2, Fq, Fq2, Group, Gt, G1, G2};
 
@@ -1179,9 +1153,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn from_unknown_linear() {
-        let _ = ethereum_builtin("foo");
-    }
+    fn from_unknown_linear() { let _ = ethereum_builtin("foo"); }
 
     #[test]
     fn is_active() {

@@ -14,9 +14,7 @@ pub struct Account {
 
 impl Account {
     pub fn new_empty_with_balance(
-        address: &Address,
-        balance: &U256,
-        nonce: &U256,
+        address: &Address, balance: &U256, nonce: &U256,
     ) -> Account {
         Self {
             address: address.clone(),
@@ -32,9 +30,7 @@ impl Account {
     }
 
     pub fn new_from_rlp(
-        address: &Address,
-        rlp_bytes: &[u8],
-        storage_root: &H256,
+        address: &Address, rlp_bytes: &[u8], storage_root: &H256,
     ) -> Result<Account, DecoderError> {
         let mut account = rlp::decode::<Account>(rlp_bytes)?;
         account.set_original_storage_root(&storage_root);

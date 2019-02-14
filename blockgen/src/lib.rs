@@ -40,10 +40,10 @@ pub struct Worker {
 
 impl Worker {
     pub fn new(
-        bg: Arc<BlockGenerator>,
-        sender: mpsc::Sender<ProofOfWorkSolution>,
+        bg: Arc<BlockGenerator>, sender: mpsc::Sender<ProofOfWorkSolution>,
         receiver: mpsc::Receiver<ProofOfWorkProblem>,
-    ) -> Self {
+    ) -> Self
+    {
         let bg_handle = bg.clone();
 
         let thread = thread::Builder::new()
@@ -105,12 +105,11 @@ impl Worker {
 
 impl BlockGenerator {
     pub fn new(
-        graph: SharedSynchronizationGraph,
-        txpool: SharedTransactionPool,
-        sync: SharedSynchronizationService,
-        txgen: SharedTransactionGenerator,
+        graph: SharedSynchronizationGraph, txpool: SharedTransactionPool,
+        sync: SharedSynchronizationService, txgen: SharedTransactionGenerator,
         pow_config: ProofOfWorkConfig,
-    ) -> Self {
+    ) -> Self
+    {
         BlockGenerator {
             pow_config,
             graph,
@@ -138,13 +137,11 @@ impl BlockGenerator {
     }
 
     fn assemble_new_block_impl(
-        &self,
-        parent_hash: H256,
-        referee: Vec<H256>,
-        deferred_state_root: H256,
-        deferred_receipts_root: H256,
+        &self, parent_hash: H256, referee: Vec<H256>,
+        deferred_state_root: H256, deferred_receipts_root: H256,
         num_txs: usize,
-    ) -> Block {
+    ) -> Block
+    {
         let parent_height =
             self.graph.block_height_by_hash(&parent_hash).unwrap();
         let transactions = self
@@ -177,10 +174,7 @@ impl BlockGenerator {
     /// Assemble a new block with specified parent and referee, this is for test
     /// only
     pub fn assemble_new_fixed_block(
-        &self,
-        parent_hash: H256,
-        referee: Vec<H256>,
-        num_txs: usize,
+        &self, parent_hash: H256, referee: Vec<H256>, num_txs: usize,
     ) -> Block {
         let (state_root, receipts_root) =
             self.graph.consensus.compute_deferred_state_for_block(
@@ -250,10 +244,7 @@ impl BlockGenerator {
     }
 
     pub fn generate_fixed_block(
-        &self,
-        parent_hash: H256,
-        referee: Vec<H256>,
-        num_txs: usize,
+        &self, parent_hash: H256, referee: Vec<H256>, num_txs: usize,
     ) -> H256 {
         let block =
             self.assemble_new_fixed_block(parent_hash, referee, num_txs);
@@ -297,8 +288,7 @@ impl BlockGenerator {
 
     /// Start num_worker new workers
     pub fn start_new_worker(
-        num_worker: u32,
-        bg: Arc<BlockGenerator>,
+        num_worker: u32, bg: Arc<BlockGenerator>,
     ) -> mpsc::Receiver<ProofOfWorkSolution> {
         let (tx, rx) = mpsc::channel();
         let mut workers = bg.workers.lock().unwrap();

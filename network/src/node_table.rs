@@ -169,13 +169,9 @@ pub enum NodeContact {
 }
 
 impl NodeContact {
-    pub fn success() -> NodeContact {
-        NodeContact::Success(SystemTime::now())
-    }
+    pub fn success() -> NodeContact { NodeContact::Success(SystemTime::now()) }
 
-    pub fn failure() -> NodeContact {
-        NodeContact::Failure(SystemTime::now())
-    }
+    pub fn failure() -> NodeContact { NodeContact::Failure(SystemTime::now()) }
 
     fn time(&self) -> SystemTime {
         match *self {
@@ -288,17 +284,13 @@ impl FromStr for Node {
 }
 
 impl PartialEq for Node {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
+    fn eq(&self, other: &Self) -> bool { self.id == other.id }
 }
 impl Eq for Node {}
 
 impl Hash for Node {
     fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
+    where H: Hasher {
         self.id.hash(state)
     }
 }
@@ -317,9 +309,7 @@ enum NodeReputation {
 const NODE_REPUTATION_LEVEL_COUNT: usize = 3;
 
 impl Default for NodeReputation {
-    fn default() -> Self {
-        NodeReputation::Unknown
-    }
+    fn default() -> Self { NodeReputation::Unknown }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -405,9 +395,7 @@ impl NodeTable {
     }
 
     pub fn sample_nodes(
-        &self,
-        count: u32,
-        _filter: &IpFilter,
+        &self, count: u32, _filter: &IpFilter,
     ) -> Vec<NodeEntry> {
         let mut nodes: Vec<NodeEntry> = Vec::new();
         for _i in 0..count {
@@ -437,9 +425,7 @@ impl NodeTable {
 
     /// Return a random sample set of nodes inside the table
     pub fn sample_node_ids(
-        &self,
-        count: u32,
-        _filter: &IpFilter,
+        &self, count: u32, _filter: &IpFilter,
     ) -> Vec<NodeId> {
         let mut node_id_set: HashSet<NodeId> = HashSet::new();
         for _i in 0..count {
@@ -524,8 +510,7 @@ impl NodeTable {
     }
 
     fn remove_from_reputation_level(
-        &mut self,
-        index: &NodeReputationIndex,
+        &mut self, index: &NodeReputationIndex,
     ) -> Option<Node> {
         let node_rep_vec = &mut self.node_reputation_table[index.0];
 
@@ -557,9 +542,7 @@ impl NodeTable {
     }
 
     fn add_to_reputation_level(
-        &mut self,
-        node_rep: NodeReputation,
-        node: Node,
+        &mut self, node_rep: NodeReputation, node: Node,
     ) {
         let node_idx = self.node_reputation_table[node_rep].len();
         let node_table_idx = NodeReputationIndex(node_rep, node_idx);
@@ -730,10 +713,7 @@ impl NodeTable {
 
     /// Set last contact as success for a node
     pub fn note_success(
-        &mut self,
-        id: &NodeId,
-        by_connection: bool,
-        token: Option<StreamToken>,
+        &mut self, id: &NodeId, by_connection: bool, token: Option<StreamToken>,
     ) {
         let mut _index;
         if let Some(index) = self.node_index.get(id) {
@@ -775,9 +755,7 @@ impl NodeTable {
     }
 
     /// Attempt to connect to useless nodes again.
-    pub fn clear_useless(&mut self) {
-        self.useless_nodes.clear();
-    }
+    pub fn clear_useless(&mut self) { self.useless_nodes.clear(); }
 
     /// Save the (un)trusted_nodes.json file.
     pub fn save(&self) {
@@ -820,9 +798,7 @@ impl NodeTable {
 }
 
 impl Drop for NodeTable {
-    fn drop(&mut self) {
-        self.save();
-    }
+    fn drop(&mut self) { self.save(); }
 }
 
 /// Check if node url is valid

@@ -25,8 +25,7 @@ mod test_lru_algorithm_size_1 {
         }
 
         fn get_most_recently_accessed(
-            &self,
-            element_index: i32,
+            &self, element_index: i32,
         ) -> LRUHandle<u32> {
             assert_eq!(self.current_key.unwrap(), element_index);
             self.cache_algo_data_current_key
@@ -38,9 +37,7 @@ mod test_lru_algorithm_size_1 {
         }
 
         fn set_most_recently_accessed(
-            &mut self,
-            element_index: i32,
-            algo_data: &LRUHandle<u32>,
+            &mut self, element_index: i32, algo_data: &LRUHandle<u32>,
         ) {
             assert_eq!(self.current_key.unwrap(), element_index);
             self.cache_algo_data_current_key = *algo_data;
@@ -201,8 +198,7 @@ mod test_lru_algorithm {
         }
 
         fn get_most_recently_accessed(
-            &self,
-            element_index: i32,
+            &self, element_index: i32,
         ) -> LRUHandle<u32> {
             assert_eq!(Some(element_index), self.most_recent_key);
             self.cache_algo_data[element_index as usize]
@@ -223,9 +219,7 @@ mod test_lru_algorithm {
         }
 
         fn set_most_recently_accessed(
-            &mut self,
-            element_index: i32,
-            algo_data: &LRUHandle<u32>,
+            &mut self, element_index: i32, algo_data: &LRUHandle<u32>,
         ) {
             assert_eq!(self.most_recent_key, Some(element_index));
             self.cache_algo_data[element_index as usize] = *algo_data;
@@ -233,13 +227,9 @@ mod test_lru_algorithm {
     }
 
     impl<'a> CacheUtil<'a> {
-        fn prepare(&mut self, key: i32) {
-            self.most_recent_key = Some(key);
-        }
+        fn prepare(&mut self, key: i32) { self.most_recent_key = Some(key); }
 
-        fn done(&mut self, key: i32) {
-            self.most_recent_key.take();
-        }
+        fn done(&mut self, key: i32) { self.most_recent_key.take(); }
     }
 
     #[derive(Debug)]

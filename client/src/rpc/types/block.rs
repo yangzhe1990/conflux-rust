@@ -22,10 +22,10 @@ pub enum BlockTransactions {
 
 impl BlockTransactions {
     pub fn new(
-        transactions: &Vec<Arc<SignedTransaction>>,
-        include_txs: bool,
+        transactions: &Vec<Arc<SignedTransaction>>, include_txs: bool,
         consensus: Arc<ConsensusGraph>,
-    ) -> Self {
+    ) -> Self
+    {
         match include_txs {
             false => BlockTransactions::Hashes(
                 transactions.iter().map(|x| H256::from(x.hash())).collect(),
@@ -47,8 +47,7 @@ impl BlockTransactions {
 
 impl Serialize for BlockTransactions {
     fn serialize<S: Serializer>(
-        &self,
-        serializer: S,
+        &self, serializer: S,
     ) -> Result<S::Ok, S::Error> {
         match *self {
             BlockTransactions::Hashes(ref hashes) => {
@@ -61,9 +60,7 @@ impl Serialize for BlockTransactions {
 
 impl<'a> Deserialize<'a> for BlockTransactions {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'a>,
-    {
+    where D: Deserializer<'a> {
         let value = Value::deserialize(deserializer)?;
         if let Value::Array(vec) = value {
             if vec.is_empty() {
@@ -131,9 +128,7 @@ pub struct Block {
 
 impl Block {
     pub fn new(
-        b: &PrimitiveBlock,
-        consensus: Arc<ConsensusGraph>,
-        include_txs: bool,
+        b: &PrimitiveBlock, consensus: Arc<ConsensusGraph>, include_txs: bool,
     ) -> Self {
         Block {
             hash: H256::from(b.block_header.hash().clone()),

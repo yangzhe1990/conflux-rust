@@ -70,9 +70,7 @@ struct CodeReader {
 
 impl CodeReader {
     /// Create new code reader - starting at position 0.
-    fn new(code: Arc<Bytes>) -> Self {
-        CodeReader { code, position: 0 }
-    }
+    fn new(code: Arc<Bytes>) -> Self { CodeReader { code, position: 0 } }
 
     /// Get `no_of_bytes` from code and convert to U256. Move PC
     fn read(&mut self, no_of_bytes: usize) -> U256 {
@@ -82,9 +80,7 @@ impl CodeReader {
         U256::from(&self.code[pos..max])
     }
 
-    fn len(&self) -> usize {
-        self.code.len()
-    }
+    fn len(&self) -> usize { self.code.len() }
 }
 
 enum InstructionResult<Gas> {
@@ -192,8 +188,7 @@ pub struct Interpreter<Cost: CostType> {
 
 impl<Cost: 'static + CostType> vm::Exec for Interpreter<Cost> {
     fn exec(
-        mut self: Box<Self>,
-        context: &mut vm::Context,
+        mut self: Box<Self>, context: &mut vm::Context,
     ) -> vm::ExecTrapResult<GasLeft> {
         loop {
             let result = self.step(context);
@@ -218,8 +213,7 @@ impl<Cost: 'static + CostType> vm::Exec for Interpreter<Cost> {
 
 impl<Cost: 'static + CostType> vm::ResumeCall for Interpreter<Cost> {
     fn resume_call(
-        mut self: Box<Self>,
-        result: MessageCallResult,
+        mut self: Box<Self>, result: MessageCallResult,
     ) -> Box<vm::Exec> {
         {
             let this = &mut *self;
@@ -264,8 +258,7 @@ impl<Cost: 'static + CostType> vm::ResumeCall for Interpreter<Cost> {
 
 impl<Cost: 'static + CostType> vm::ResumeCreate for Interpreter<Cost> {
     fn resume_create(
-        mut self: Box<Self>,
-        result: ContractCreateResult,
+        mut self: Box<Self>, result: ContractCreateResult,
     ) -> Box<vm::Exec> {
         match result {
             ContractCreateResult::Created(address, gas_left) => {
@@ -295,11 +288,10 @@ impl<Cost: 'static + CostType> vm::ResumeCreate for Interpreter<Cost> {
 impl<Cost: CostType> Interpreter<Cost> {
     /// Create a new `Interpreter` instance with shared cache.
     pub fn new(
-        mut params: ActionParams,
-        cache: Arc<SharedCache>,
-        spec: &Spec,
+        mut params: ActionParams, cache: Arc<SharedCache>, spec: &Spec,
         depth: usize,
-    ) -> Interpreter<Cost> {
+    ) -> Interpreter<Cost>
+    {
         let reader = CodeReader::new(
             params.code.take().expect("VM always called with code; qed"),
         );
@@ -363,8 +355,7 @@ impl<Cost: CostType> Interpreter<Cost> {
     /// Inner helper function for step.
     #[inline(always)]
     fn step_inner(
-        &mut self,
-        context: &mut vm::Context,
+        &mut self, context: &mut vm::Context,
     ) -> Result<Never, InterpreterResult> {
         let result = match self.resume_result.take() {
             Some(result) => result,
@@ -544,11 +535,10 @@ impl<Cost: CostType> Interpreter<Cost> {
     }
 
     fn verify_instruction(
-        &self,
-        context: &vm::Context,
-        instruction: Instruction,
+        &self, context: &vm::Context, instruction: Instruction,
         info: &InstructionInfo,
-    ) -> vm::Result<()> {
+    ) -> vm::Result<()>
+    {
         let spec = context.spec();
 
         if (instruction == instructions::DELEGATECALL
@@ -590,8 +580,7 @@ impl<Cost: CostType> Interpreter<Cost> {
     }
 
     fn mem_written(
-        instruction: Instruction,
-        stack: &Stack<U256>,
+        instruction: Instruction, stack: &Stack<U256>,
     ) -> Option<(usize, usize)> {
         let read = |pos| stack.peek(pos).low_u64() as usize;
         let written = match instruction {
@@ -619,8 +608,7 @@ impl<Cost: CostType> Interpreter<Cost> {
     }
 
     fn store_written(
-        instruction: Instruction,
-        stack: &Stack<U256>,
+        instruction: Instruction, stack: &Stack<U256>,
     ) -> Option<(U256, U256)> {
         match instruction {
             instructions::SSTORE => {
@@ -631,12 +619,10 @@ impl<Cost: CostType> Interpreter<Cost> {
     }
 
     fn exec_instruction(
-        &mut self,
-        gas: Cost,
-        context: &mut vm::Context,
-        instruction: Instruction,
-        provided: Option<Cost>,
-    ) -> vm::Result<InstructionResult<Cost>> {
+        &mut self, gas: Cost, context: &mut vm::Context,
+        instruction: Instruction, provided: Option<Cost>,
+    ) -> vm::Result<InstructionResult<Cost>>
+    {
         match instruction {
             instructions::JUMP => {
                 let jump = self.stack.pop_back();
@@ -1445,9 +1431,7 @@ impl<Cost: CostType> Interpreter<Cost> {
     }
 
     fn copy_data_to_memory(
-        mem: &mut Vec<u8>,
-        stack: &mut Stack<U256>,
-        source: &[u8],
+        mem: &mut Vec<u8>, stack: &mut Stack<U256>, source: &[u8],
     ) {
         let dest_offset = stack.pop_back();
         let source_offset = stack.pop_back();
@@ -1482,9 +1466,7 @@ impl<Cost: CostType> Interpreter<Cost> {
     }
 
     fn verify_jump(
-        &self,
-        jump_u: U256,
-        valid_jump_destinations: &BitSet,
+        &self, jump_u: U256, valid_jump_destinations: &BitSet,
     ) -> vm::Result<usize> {
         let jump = jump_u.low_u64() as usize;
 
@@ -1520,14 +1502,10 @@ fn set_sign(value: U256, sign: bool) -> U256 {
 }
 
 #[inline]
-fn u256_to_address(value: &U256) -> Address {
-    Address::from(H256::from(value))
-}
+fn u256_to_address(value: &U256) -> Address { Address::from(H256::from(value)) }
 
 #[inline]
-fn address_to_u256(value: Address) -> U256 {
-    U256::from(&*H256::from(value))
-}
+fn address_to_u256(value: Address) -> U256 { U256::from(&*H256::from(value)) }
 
 #[cfg(test)]
 mod tests {

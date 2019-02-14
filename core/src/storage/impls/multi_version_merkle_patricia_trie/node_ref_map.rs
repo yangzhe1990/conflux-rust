@@ -132,8 +132,7 @@ impl<
     > NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
 {
     unsafe fn get_unchecked(
-        &self,
-        key: DeltaMptDbKey,
+        &self, key: DeltaMptDbKey,
     ) -> &Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
         self.map.get_unchecked(Self::key_to_subscription(key))
     }
@@ -143,14 +142,14 @@ impl<
     }
 
     fn reset(
-        &mut self,
-        key: DeltaMptDbKey,
+        &mut self, key: DeltaMptDbKey,
         node_memory_manager: &NodeMemoryManager<
             CacheAlgoDataT,
             CacheAlgorithmT,
         >,
         cache_algorithm: &mut CacheAlgorithmT,
-    ) {
+    )
+    {
         let maybe_cache_info = self.delete(key);
         if maybe_cache_info.is_none() {
             return;
@@ -169,15 +168,14 @@ impl<
     }
 
     pub fn insert(
-        &mut self,
-        key: DeltaMptDbKey,
-        slot: ActualSlabIndex,
+        &mut self, key: DeltaMptDbKey, slot: ActualSlabIndex,
         node_memory_manager: &NodeMemoryManager<
             CacheAlgoDataT,
             CacheAlgorithmT,
         >,
         cache_algorithm: &mut CacheAlgorithmT,
-    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
+    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>
+    {
         if key < self.base_row_number {
             return None;
         }
@@ -219,8 +217,7 @@ impl<
     /// Therefore we return the reference to the cache_info to represent the
     /// lifetime requirement.
     pub fn get(
-        &self,
-        key: DeltaMptDbKey,
+        &self, key: DeltaMptDbKey,
     ) -> Option<&CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
         if key >= self.base_row_number
             && key
@@ -234,10 +231,10 @@ impl<
     }
 
     pub fn set_cache_info(
-        &mut self,
-        key: DeltaMptDbKey,
+        &mut self, key: DeltaMptDbKey,
         cache_info: Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>,
-    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
+    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>
+    {
         let node_ref = unsafe {
             self.map.get_unchecked_mut(Self::key_to_subscription(key))
         };
@@ -248,8 +245,7 @@ impl<
     }
 
     pub fn delete(
-        &mut self,
-        key: DeltaMptDbKey,
+        &mut self, key: DeltaMptDbKey,
     ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
         self.set_cache_info(key, None)
     }

@@ -26,9 +26,7 @@ pub struct Substate {
 
 impl Substate {
     /// Creates new substate.
-    pub fn new() -> Self {
-        Substate::default()
-    }
+    pub fn new() -> Self { Substate::default() }
 
     /// Merge secondary substate `s` into self, accruing each element
     /// correspondingly.

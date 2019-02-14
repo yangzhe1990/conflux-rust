@@ -45,8 +45,7 @@ impl MultiVersionMerklePatriciaTrie {
     }
 
     pub fn get_root_at_epoch(
-        &self,
-        epoch_id: EpochId,
+        &self, epoch_id: EpochId,
     ) -> Option<NodeRefDeltaMpt> {
         self.root_by_version.read().get(&epoch_id).cloned()
     }
@@ -56,9 +55,7 @@ impl MultiVersionMerklePatriciaTrie {
     }
 
     pub fn loaded_root_at_epoch(
-        &self,
-        epoch_id: EpochId,
-        db_key: DeltaMptDbKey,
+        &self, epoch_id: EpochId, db_key: DeltaMptDbKey,
     ) -> NodeRefDeltaMpt {
         let root = NodeRefDeltaMpt::Committed { db_key: db_key };
         self.set_epoch_root(epoch_id, root.clone());
@@ -71,8 +68,7 @@ impl MultiVersionMerklePatriciaTrie {
     }
 
     pub fn get_merkle(
-        &self,
-        maybe_node: Option<NodeRefDeltaMpt>,
+        &self, maybe_node: Option<NodeRefDeltaMpt>,
     ) -> Result<Option<MerkleHash>> {
         match maybe_node {
             Some(node) => Ok(Some(

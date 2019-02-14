@@ -51,9 +51,7 @@ pub struct State<'a> {
 
 impl<'a> State<'a> {
     pub fn new(
-        db: StateDb<'a>,
-        account_start_nonce: U256,
-        vm: VmFactory,
+        db: StateDb<'a>, account_start_nonce: U256, vm: VmFactory,
     ) -> Self {
         State {
             db,
@@ -65,9 +63,7 @@ impl<'a> State<'a> {
     }
 
     /// Get a VM factory that can execute on this state.
-    pub fn vm_factory(&self) -> VmFactory {
-        self.vm.clone()
-    }
+    pub fn vm_factory(&self) -> VmFactory { self.vm.clone() }
 
     /// Create a recoverable checkpoint of this state. Return the checkpoint
     /// index.
@@ -148,10 +144,7 @@ impl<'a> State<'a> {
     }
 
     pub fn new_contract(
-        &mut self,
-        contract: &Address,
-        balance: U256,
-        nonce_offset: U256,
+        &mut self, contract: &Address, balance: U256, nonce_offset: U256,
     ) -> DbResult<()> {
         self.insert_cache(
             contract,
@@ -200,10 +193,7 @@ impl<'a> State<'a> {
     }
 
     pub fn sub_balance(
-        &mut self,
-        address: &Address,
-        by: &U256,
-        cleanup_mode: &mut CleanupMode,
+        &mut self, address: &Address, by: &U256, cleanup_mode: &mut CleanupMode,
     ) -> DbResult<()> {
         if !by.is_zero() || !self.exists(address)? {
             self.require(address, false)?.sub_balance(by);
@@ -215,10 +205,7 @@ impl<'a> State<'a> {
     }
 
     pub fn add_balance(
-        &mut self,
-        address: &Address,
-        by: &U256,
-        cleanup_mode: CleanupMode,
+        &mut self, address: &Address, by: &U256, cleanup_mode: CleanupMode,
     ) -> DbResult<()> {
         let is_value_transfer = !by.is_zero();
         if is_value_transfer
@@ -243,9 +230,7 @@ impl<'a> State<'a> {
     /// Load required account data from the databases. Returns whether the
     /// cache succeeds.
     fn update_account_cache(
-        require: RequireCache,
-        account: &mut OverlayAccount,
-        db: &StateDb<'a>,
+        require: RequireCache, account: &mut OverlayAccount, db: &StateDb<'a>,
     ) -> bool {
         if let RequireCache::None = require {
             return true;
@@ -290,9 +275,7 @@ impl<'a> State<'a> {
     }
 
     pub fn commit_and_notify(
-        &mut self,
-        epoch_id: EpochId,
-        txpool: &SharedTransactionPool,
+        &mut self, epoch_id: EpochId, txpool: &SharedTransactionPool,
     ) -> DbResult<()> {
         assert!(self.checkpoints.borrow().is_empty());
 
@@ -319,9 +302,7 @@ impl<'a> State<'a> {
     }
 
     pub fn init_code(
-        &mut self,
-        address: &Address,
-        code: Bytes,
+        &mut self, address: &Address, code: Bytes,
     ) -> DbResult<()> {
         self.require_or_from(
             address,
@@ -341,12 +322,10 @@ impl<'a> State<'a> {
     }
 
     pub fn transfer_balance(
-        &mut self,
-        from: &Address,
-        to: &Address,
-        by: &U256,
+        &mut self, from: &Address, to: &Address, by: &U256,
         mut cleanup_mode: CleanupMode,
-    ) -> DbResult<()> {
+    ) -> DbResult<()>
+    {
         self.sub_balance(from, by, &mut cleanup_mode)?;
         self.add_balance(to, by, cleanup_mode)?;
         Ok(())
@@ -369,8 +348,7 @@ impl<'a> State<'a> {
     }
 
     pub fn exists_and_has_code_or_nonce(
-        &self,
-        address: &Address,
+        &self, address: &Address,
     ) -> DbResult<bool> {
         self.ensure_cached(address, RequireCache::CodeSize, false, |acc| {
             acc.map_or(false, |acc| {
@@ -381,12 +359,10 @@ impl<'a> State<'a> {
     }
 
     pub fn kill_garbage(
-        &mut self,
-        touched: &HashSet<Address>,
-        remove_empty_touched: bool,
-        min_balance: &Option<U256>,
-        kill_contracts: bool,
-    ) -> DbResult<()> {
+        &mut self, touched: &HashSet<Address>, remove_empty_touched: bool,
+        min_balance: &Option<U256>, kill_contracts: bool,
+    ) -> DbResult<()>
+    {
         let to_kill: HashSet<_> = {
             self.cache
                 .borrow()
@@ -431,9 +407,7 @@ impl<'a> State<'a> {
     }
 
     pub fn original_storage_at(
-        &self,
-        address: &Address,
-        key: &H256,
+        &self, address: &Address, key: &H256,
     ) -> DbResult<H256> {
         self.ensure_cached(address, RequireCache::None, true, |acc| {
             acc.map_or(H256::zero(), |account| {
@@ -446,10 +420,7 @@ impl<'a> State<'a> {
 
     /// Get the value of storage at a specific checkpoint.
     pub fn checkpoint_storage_at(
-        &self,
-        start_checkpoint_index: usize,
-        address: &Address,
-        key: &H256,
+        &self, start_checkpoint_index: usize, address: &Address, key: &H256,
     ) -> DbResult<Option<H256>> {
         #[derive(Debug)]
         enum ReturnKind {
@@ -509,10 +480,7 @@ impl<'a> State<'a> {
     }
 
     pub fn set_storage(
-        &mut self,
-        address: &Address,
-        key: H256,
-        value: H256,
+        &mut self, address: &Address, key: H256, value: H256,
     ) -> DbResult<()> {
         if self.storage_at(address, &key)? != value {
             self.require(address, false)?.set_storage(key, value)
@@ -521,10 +489,7 @@ impl<'a> State<'a> {
     }
 
     fn ensure_cached<F, U>(
-        &self,
-        address: &Address,
-        require: RequireCache,
-        _check_null: bool,
+        &self, address: &Address, require: RequireCache, _check_null: bool,
         f: F,
     ) -> DbResult<U>
     where
@@ -564,9 +529,7 @@ impl<'a> State<'a> {
     }
 
     fn require<'x>(
-        &'x self,
-        address: &Address,
-        require_code: bool,
+        &'x self, address: &Address, require_code: bool,
     ) -> DbResult<RefMut<'x, OverlayAccount>> {
         self.require_or_from(
             address,
@@ -583,10 +546,7 @@ impl<'a> State<'a> {
     }
 
     fn require_or_from<'x, F, G>(
-        &'x self,
-        address: &Address,
-        require_code: bool,
-        default: F,
+        &'x self, address: &Address, require_code: bool, default: F,
         not_default: G,
     ) -> DbResult<RefMut<'x, OverlayAccount>>
     where

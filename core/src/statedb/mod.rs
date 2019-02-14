@@ -21,14 +21,10 @@ pub struct StateDb<'a> {
 }
 
 impl<'a> StateDb<'a> {
-    pub fn new(storage: Storage<'a>) -> Self {
-        StateDb { storage }
-    }
+    pub fn new(storage: Storage<'a>) -> Self { StateDb { storage } }
 
     pub fn get<T>(&self, key: &StorageKey) -> Result<Option<T>>
-    where
-        T: ::rlp::Decodable,
-    {
+    where T: ::rlp::Decodable {
         let raw = match self.storage.get(key.as_ref()) {
             Ok(maybe_value) => match maybe_value {
                 None => return Ok(None),
@@ -43,9 +39,7 @@ impl<'a> StateDb<'a> {
     }
 
     pub fn get_account(
-        &self,
-        address: &Address,
-        with_storage_root: bool,
+        &self, address: &Address, with_storage_root: bool,
     ) -> Result<Option<Account>> {
         let key = StorageKey::new_account_key(address);
         let raw = match self.storage.get(key.as_ref()) {
@@ -80,9 +74,7 @@ impl<'a> StateDb<'a> {
     }
 
     pub fn set<T>(&mut self, key: &StorageKey, value: &T) -> Result<()>
-    where
-        T: ::rlp::Encodable,
-    {
+    where T: ::rlp::Encodable {
         trace!(
             "set key={:?} value={:?}",
             key.as_ref(),
@@ -107,8 +99,7 @@ impl<'a> StateDb<'a> {
     }
 
     pub fn delete_all(
-        &mut self,
-        key_prefix: &StorageKey,
+        &mut self, key_prefix: &StorageKey,
     ) -> Result<Option<Vec<(Vec<u8>, Box<[u8]>)>>> {
         Ok(self.storage.delete_all(key_prefix.as_ref())?)
     }

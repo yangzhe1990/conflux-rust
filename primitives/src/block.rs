@@ -37,9 +37,7 @@ impl HeapSizeOf for Block {
 }
 
 impl Block {
-    pub fn hash(&self) -> H256 {
-        self.block_header.hash()
-    }
+    pub fn hash(&self) -> H256 { self.block_header.hash() }
 
     pub fn total_gas(&self) -> U256 {
         let mut sum = U256::from(0);
@@ -84,8 +82,7 @@ impl Block {
     }
 
     pub fn recover_public(
-        &mut self,
-        tx_cache: &mut LruCache<H256, Arc<SignedTransaction>>,
+        &mut self, tx_cache: &mut LruCache<H256, Arc<SignedTransaction>>,
     ) -> Result<(), DecoderError> {
         let mut recovered_transactions =
             Vec::with_capacity(self.transactions.len());
@@ -196,8 +193,7 @@ impl CompactBlock {
     /// transactions Now should only called once after CompactBlock is
     /// decoded
     pub fn build_partial(
-        &mut self,
-        tx_cache: &LruCache<H256, Arc<SignedTransaction>>,
+        &mut self, tx_cache: &LruCache<H256, Arc<SignedTransaction>>,
     ) -> Vec<usize> {
         self.reconstructed_txes
             .resize(self.tx_short_ids.len(), None);
@@ -230,9 +226,7 @@ impl CompactBlock {
         missing_encoded
     }
 
-    pub fn hash(&self) -> H256 {
-        self.block_header.hash()
-    }
+    pub fn hash(&self) -> H256 { self.block_header.hash() }
 }
 
 fn get_shortid_key(header: &BlockHeader, nonce: &u64) -> (u64, u64) {

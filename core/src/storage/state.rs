@@ -26,8 +26,7 @@ pub trait StateTrait {
     // Delete everything prefixed by access_key and return deleted key value
     // pairs.
     fn delete_all(
-        &mut self,
-        access_key_prefix: &[u8],
+        &mut self, access_key_prefix: &[u8],
     ) -> Result<Option<Vec<(Vec<u8>, Box<[u8]>)>>>;
 
     // Finalize

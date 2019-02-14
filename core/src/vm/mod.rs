@@ -38,7 +38,6 @@ pub trait ResumeCall: Send {
 pub trait ResumeCreate: Send {
     /// Resume an execution from create, returns back the Vm interface.
     fn resume_create(
-        self: Box<Self>,
-        result: ContractCreateResult,
+        self: Box<Self>, result: ContractCreateResult,
     ) -> Box<Exec>;
 }

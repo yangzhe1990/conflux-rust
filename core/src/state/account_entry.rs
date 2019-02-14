@@ -62,10 +62,7 @@ impl OverlayAccount {
     }
 
     pub fn new_contract(
-        address: &Address,
-        balance: U256,
-        nonce: U256,
-        reset_storage: bool,
+        address: &Address, balance: U256, nonce: U256, reset_storage: bool,
     ) -> Self {
         OverlayAccount {
             address: address.clone(),
@@ -90,25 +87,15 @@ impl OverlayAccount {
         }
     }
 
-    pub fn address(&self) -> &Address {
-        &self.address
-    }
+    pub fn address(&self) -> &Address { &self.address }
 
-    pub fn balance(&self) -> &U256 {
-        &self.balance
-    }
+    pub fn balance(&self) -> &U256 { &self.balance }
 
-    pub fn nonce(&self) -> &U256 {
-        &self.nonce
-    }
+    pub fn nonce(&self) -> &U256 { &self.nonce }
 
-    pub fn code_hash(&self) -> H256 {
-        self.code_hash.clone()
-    }
+    pub fn code_hash(&self) -> H256 { self.code_hash.clone() }
 
-    pub fn code_size(&self) -> Option<usize> {
-        self.code_size.clone()
-    }
+    pub fn code_size(&self) -> Option<usize> { self.code_size.clone() }
 
     pub fn code(&self) -> Option<Arc<Bytes>> {
         if self.code_hash != KECCAK_EMPTY && self.code_cache.is_empty() {
@@ -119,9 +106,7 @@ impl OverlayAccount {
     }
 
     #[allow(dead_code)]
-    pub fn reset_storage(&mut self) {
-        self.reset_storage = true;
-    }
+    pub fn reset_storage(&mut self) { self.reset_storage = true; }
 
     pub fn is_cached(&self) -> bool {
         !self.code_cache.is_empty()
@@ -134,13 +119,9 @@ impl OverlayAccount {
             && self.code_hash == KECCAK_EMPTY
     }
 
-    pub fn is_basic(&self) -> bool {
-        self.code_hash == KECCAK_EMPTY
-    }
+    pub fn is_basic(&self) -> bool { self.code_hash == KECCAK_EMPTY }
 
-    pub fn inc_nonce(&mut self) {
-        self.nonce = self.nonce + U256::from(1u8);
-    }
+    pub fn inc_nonce(&mut self) { self.nonce = self.nonce + U256::from(1u8); }
 
     pub fn add_balance(&mut self, by: &U256) {
         self.balance = self.balance + *by;
@@ -209,9 +190,7 @@ impl OverlayAccount {
     }
 
     pub fn storage_at<'a>(
-        &self,
-        db: &StateDb<'a>,
-        key: &H256,
+        &self, db: &StateDb<'a>, key: &H256,
     ) -> DbResult<H256> {
         if let Some(value) = self.cached_storage_at(key) {
             return Ok(value);
@@ -229,9 +208,7 @@ impl OverlayAccount {
     }
 
     pub fn original_storage_at<'a>(
-        &self,
-        db: &StateDb<'a>,
-        key: &H256,
+        &self, db: &StateDb<'a>, key: &H256,
     ) -> DbResult<H256> {
         if let Some(value) = self.storage_cache.borrow().get(key) {
             return Ok(value.clone());
@@ -245,11 +222,10 @@ impl OverlayAccount {
     }
 
     fn get_and_cache_storage<'a>(
-        storage_cache: &mut HashMap<H256, H256>,
-        db: &StateDb<'a>,
-        address: &Address,
-        key: &H256,
-    ) -> DbResult<H256> {
+        storage_cache: &mut HashMap<H256, H256>, db: &StateDb<'a>,
+        address: &Address, key: &H256,
+    ) -> DbResult<H256>
+    {
         let value = db
             .get::<H256>(&StorageKey::new_storage_key(address, key))
             .expect("get_and_cache_storage failed")
@@ -346,9 +322,7 @@ pub struct AccountEntry {
 }
 
 impl AccountEntry {
-    pub fn is_dirty(&self) -> bool {
-        self.state == AccountState::Dirty
-    }
+    pub fn is_dirty(&self) -> bool { self.state == AccountState::Dirty }
 
     pub fn overwrite_with(&mut self, other: AccountEntry) {
         self.state = other.state;

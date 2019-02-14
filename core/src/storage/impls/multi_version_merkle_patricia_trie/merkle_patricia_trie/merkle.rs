@@ -10,8 +10,7 @@ pub fn compute_merkle_for_rlp(rlp_stream: &RlpStream) -> MerkleHash {
 }
 
 pub fn compute_node_merkle(
-    children_merkles: MaybeMerkleTableRef,
-    maybe_value: Option<&[u8]>,
+    children_merkles: MaybeMerkleTableRef, maybe_value: Option<&[u8]>,
 ) -> MerkleHash {
     let mut rlp_stream = RlpStream::new();
     rlp_stream.begin_unbounded_list();
@@ -33,8 +32,7 @@ pub fn compute_node_merkle(
 }
 
 fn compute_path_merkle(
-    compressed_path: CompressedPathRef,
-    node_merkle: &MerkleHash,
+    compressed_path: CompressedPathRef, node_merkle: &MerkleHash,
 ) -> MerkleHash {
     if compressed_path.path_slice().len() != 0 {
         let mut rlp_stream = RlpStream::new_list(3);
@@ -48,10 +46,10 @@ fn compute_path_merkle(
 }
 
 pub fn compute_merkle(
-    compressed_path: CompressedPathRef,
-    children_merkles: MaybeMerkleTableRef,
+    compressed_path: CompressedPathRef, children_merkles: MaybeMerkleTableRef,
     maybe_value: Option<&[u8]>,
-) -> MerkleHash {
+) -> MerkleHash
+{
     let node_merkle = compute_node_merkle(children_merkles, maybe_value);
     let path_merkle = compute_path_merkle(compressed_path, &node_merkle);
 
