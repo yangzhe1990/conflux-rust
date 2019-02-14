@@ -197,7 +197,7 @@ impl ConsensusGraphInner {
             fork_total_difficulty: U256,
         }
 
-        let _me_in_sync = *sync_graph
+        let me_in_sync = *sync_graph
             .indices
             .get(&self.arena[me_in_consensus].hash)
             .unwrap();
@@ -207,28 +207,23 @@ impl ConsensusGraphInner {
         let mut min_fork_height = u64::max_value();
 
         let anticone = &self.arena[me_in_consensus].data.anticone;
-        let mut anticone_parents = HashSet::new();
-        for index in anticone {
-            let parent = self.arena[*index].parent;
-            debug_assert!(parent != NULL);
-            if !anticone_parents.contains(&parent) {
-                anticone_parents.insert(parent);
-            }
-        }
 
-        let terminal_anticone_parent = anticone_parents
-            .union(&self.parental_terminals)
-            .cloned()
-            .collect::<HashSet<_>>();
-        let fork_terminals = terminal_anticone_parent
-            .difference(anticone)
-            .cloned()
-            .collect::<HashSet<_>>();
-        debug!("Get {} fork terminals", fork_terminals.len());
+        // Avoid unnecessarily following pathes that result in the same fork
+        // points.
+        let mut visited_indices = HashSet::new();
 
-        for terminal in fork_terminals {
+        // Given that the parent of `me` is checked, we just need to check the
+        // fork points whose difficulty are affected by blocks in this
+        // new epoch.
+        'outer: for sync_index in
+            &sync_graph.arena[me_in_sync].blockset_in_own_view_of_epoch
+        {
+            let mut fork = *self
+                .indices
+                .get(&sync_graph.arena[*sync_index].block_header.hash())
+                .expect("In consensus graph");
+            visited_indices.insert(fork);
             let mut me = me_in_consensus;
-            let mut fork = terminal;
             while self.arena[me].height > self.arena[fork].height {
                 me = self.arena[me].parent;
             }
@@ -238,6 +233,9 @@ impl ConsensusGraphInner {
             }
             while self.arena[fork].height > self.arena[me].height {
                 fork = self.arena[fork].parent;
+                if visited_indices.contains(&fork) {
+                    continue 'outer;
+                }
             }
             debug_assert!(fork != me);
             let mut prev_fork = NULL;
@@ -248,6 +246,9 @@ impl ConsensusGraphInner {
                 debug_assert!(self.arena[fork].height == self.arena[me].height);
                 fork = self.arena[fork].parent;
                 me = self.arena[me].parent;
+                if visited_indices.contains(&fork) {
+                    continue 'outer;
+                }
             }
             fork_points.entry(prev_fork).or_insert(ForkPointInfo {
                 pivot_index: prev_me,

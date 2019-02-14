@@ -8,7 +8,6 @@ from test_framework.mininode import *
 from test_framework.util import *
 from web3 import Web3
 from easysolc import Solc
-solc = Solc()
 
 
 class P2PTest(ConfluxTestFramework):
@@ -42,6 +41,10 @@ class P2PTest(ConfluxTestFramework):
         sync_blocks(self.nodes)
 
     def run_test(self):
+        # Prevent easysolc from configuring the root logger to print to stderr
+        self.log.propagate = False
+
+        solc = Solc()
         erc20_contract = solc.get_contract_instance(source=os.path.dirname(os.path.realpath(__file__)) + "/erc20.sol", contract_name="FixedSupplyToken")
 
         for node in self.nodes:
@@ -50,6 +53,7 @@ class P2PTest(ConfluxTestFramework):
         for node in self.nodes:
             node.p2p.wait_for_status()
 
+        self.log.info("Initializing contract")
         genesis_key = default_config["GENESIS_PRI_KEY"]
         genesis_addr = privtoaddr(genesis_key)
         nonce = 0
@@ -59,11 +63,11 @@ class P2PTest(ConfluxTestFramework):
         block_gen_thread.start()
         self.tx_conf = {"from":Web3.toChecksumAddress(encode_hex_0x(genesis_addr)), "nonce":int_to_hex(nonce), "gas":int_to_hex(gas), "gasPrice":int_to_hex(gas_price)}
         raw_create = erc20_contract.constructor().buildTransaction(self.tx_conf)
-        print(raw_create["data"])
         tx_data = decode_hex(raw_create["data"])
         tx_create = create_transaction(pri_key=genesis_key, receiver=b'', nonce=nonce, gas_price=gas_price, data=tx_data, gas=gas, value=0)
         self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx_create]))
         self.wait_for_tx([tx_create])
+        self.log.info("Contract created, start transfering tokens")
 
         tx_n = 10
         self.tx_conf["to"] = Web3.toChecksumAddress(encode_hex_0x(sha3_256(rlp.encode([genesis_addr, nonce]))[-20:]))
@@ -83,7 +87,9 @@ class P2PTest(ConfluxTestFramework):
             nonce += 1
             balance_map[sender_key] -= value
             all_txs.append(tx)
+        self.log.info("Wait for transactions to be executed")
         self.wait_for_tx(all_txs)
+        self.log.info("Check final token balance")
         for sk in balance_map:
             addr = privtoaddr(sk)
             assert_equal(self.get_balance(erc20_contract, addr, nonce), balance_map[sk])
@@ -119,7 +125,7 @@ class P2PTest(ConfluxTestFramework):
         tx["r"] = "0x0"
         tx["s"] = "0x0"
         balance = bytes_to_int(bytes(self.nodes[0].cfx_call(tx)))
-        self.log.info("address=%s, balance=%s", encode_hex(token_address), balance)
+        self.log.debug("address=%s, balance=%s", encode_hex(token_address), balance)
         return balance
 
 
