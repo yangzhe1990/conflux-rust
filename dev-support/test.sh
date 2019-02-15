@@ -16,7 +16,7 @@ function check_build {
     pushd $ROOT_DIR > /dev/null
 
     local result
-    result=`cargo build -v`
+    result=`cargo build && cargo test --all --no-run && cargo bench --all --no-run`
     local exit_code=$?
 
     popd > /dev/null
@@ -32,14 +32,14 @@ function check_build {
 function check_unit_tests {
     local -n test_reuslt=$1
 
-    pushd $ROOT_DIR/$2 > /dev/null
+    pushd $ROOT_DIR > /dev/null
     local result
-    result=`cargo test`
+    result=`cargo test --all`
     local exit_code=$?
     popd > /dev/null
 
     if [[ $exit_code -ne 0 ]]; then
-        result="Unit test in $2 failed."$'\n'"$result"
+        result="Unit tests failed."$'\n'"$result"
     fi
     test_result=($exit_code "$result")
 }
@@ -80,9 +80,7 @@ mkdir -p $ROOT_DIR/build
 # Build
 declare -a test_result; check_build test_result; save_test_result test_result
 # Unit tests
-declare -a test_result; check_unit_tests test_result core; save_test_result test_result
-declare -a test_result; check_unit_tests test_result client; save_test_result test_result
-declare -a test_result; check_unit_tests test_result network; save_test_result test_result
+declare -a test_result; check_unit_tests test_result; save_test_result test_result
 # Integration test
 declare -a test_result; check_integration_tests test_result; save_test_result test_result
 
