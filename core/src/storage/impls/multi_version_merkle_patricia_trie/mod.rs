@@ -32,9 +32,10 @@ impl MultiVersionMerklePatriciaTrie {
         Self {
             root_by_version: Default::default(),
             node_memory_manager: NodeMemoryManagerDeltaMpt::new(
-                conf.start_size,
+                conf.cache_start_size,
                 conf.cache_size,
                 conf.idle_size,
+                conf.node_map_size,
                 RecentLFU::<u32, DeltaMptDbKey>::new(
                     conf.cache_size,
                     (conf.cache_size as f64 * conf.recent_lfu_factor) as u32,

@@ -27,8 +27,9 @@ pub trait StateManagerTrait {
 
 #[derive(Debug)]
 pub struct StorageConfiguration {
-    pub start_size: u32,
+    pub cache_start_size: u32,
     pub cache_size: u32,
     pub idle_size: u32,
+    pub node_map_size: u32,
     pub recent_lfu_factor: f64,
 }

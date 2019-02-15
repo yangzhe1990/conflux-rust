@@ -41,9 +41,10 @@ build_config! {
         (db_dir, (Option<String>), Some("./db".to_string()))
         (generate_tx, (bool), false)
         (generate_tx_period_ms, (Option<u64>), Some(100))
-        (storage_start_size, (u32), 1_000_000)
+        (storage_cache_start_size, (u32), 1_000_000)
         (storage_cache_size, (u32), 20_000_000)
         (storage_idle_size, (u32), 200_000)
+        (storage_node_map_size, (u32), 200_000_000)
         (storage_recent_lfu_factor, (f64), 4.0)
         (send_tx_period_ms, (u64), 1300)
         (check_request_period_ms, (u64), 5000)
@@ -174,9 +175,10 @@ impl Configuration {
 
     pub fn storage_config(&self) -> StorageConfiguration {
         StorageConfiguration {
-            start_size: self.raw_conf.storage_start_size,
+            cache_start_size: self.raw_conf.storage_cache_start_size,
             cache_size: self.raw_conf.storage_cache_size,
             idle_size: self.raw_conf.storage_idle_size,
+            node_map_size: self.raw_conf.storage_node_map_size,
             recent_lfu_factor: self.raw_conf.storage_recent_lfu_factor,
         }
     }

@@ -151,17 +151,20 @@ impl<
     > NodeMemoryManager<CacheAlgoDataT, CacheAlgorithmT>
 {
     pub fn new(
-        start_size: u32, cache_size: u32, idle_size: u32,
-        cache_algorithm: CacheAlgorithmT, kvdb: Arc<KeyValueDB>,
+        cache_start_size: u32, cache_size: u32, idle_size: u32,
+        node_map_size: u32, cache_algorithm: CacheAlgorithmT,
+        kvdb: Arc<KeyValueDB>,
     ) -> Self
     {
         let size_limit = cache_size + idle_size;
         Self {
             size_limit,
             idle_size,
-            allocator: RwLock::new(Slab::with_capacity(size_limit as usize)),
+            allocator: RwLock::new(Slab::with_capacity(
+                (cache_start_size + idle_size) as usize,
+            )),
             cache: RwLock::new(CacheManager {
-                node_ref_map: NodeRefMapDeltaMpt::new(start_size as usize),
+                node_ref_map: NodeRefMapDeltaMpt::new(node_map_size),
                 cache_algorithm: cache_algorithm,
             }),
             db: kvdb,
@@ -210,12 +213,13 @@ impl<
             CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
         >,
         db_key: DeltaMptDbKey,
-    ) -> Result<
+    ) -> Result<(
+        bool,
         GuardedValue<
             RwLockWriteGuard<'c, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
             &'a TrieNode<CacheAlgoDataT>,
         >,
-    >
+    )>
     {
         // We never save null node in db.
         let rlp_bytes = self
@@ -227,51 +231,56 @@ impl<
 
         let mut cache_manager_write = cache_manager.write();
         let trie_node_ref: &TrieNode<CacheAlgoDataT>;
-        {
-            let cache_mut = &mut *cache_manager_write;
 
-            // If cache_algo_data exists in node_ref_map, move to trie node.
-            match cache_mut.node_ref_map.get(db_key) {
-                None => {}
-                Some(cache_info) => match cache_info.get_cache_info() {
-                    TrieCacheSlotOrCacheAlgoData::TrieCacheSlot(cache_slot) => unsafe {
-                        // Normally this should not happen, however the node
-                        // might have been loaded
-                        // by another thread in the mean time. So we only need
-                        // to load the node.
-                        // TODO(yz): split the lock for cache_algorithm and
-                        // node_ref_map to make this branch
-                        // unreachable_unchecked().
-                        trie_node_ref = NodeMemoryManager::<
-                            CacheAlgoDataT,
-                            CacheAlgorithmT,
-                        >::get_in_memory_node_mut(
-                            &allocator,
-                            *cache_slot as usize,
-                        );
-                        return Ok(GuardedValue::new(
-                            cache_manager_write,
-                            trie_node_ref,
-                        ));
-                    },
-                    TrieCacheSlotOrCacheAlgoData::CacheAlgoData(
-                        cache_algo_data,
-                    ) => {
-                        trie_node.cache_algo_data = *cache_algo_data;
-                    }
+        let cache_mut = &mut *cache_manager_write;
+
+        // If cache_algo_data exists in node_ref_map, move to trie node.
+        match cache_mut.node_ref_map.get(db_key) {
+            None => {}
+            Some(cache_info) => match cache_info.get_cache_info() {
+                TrieCacheSlotOrCacheAlgoData::TrieCacheSlot(cache_slot) => unsafe {
+                    // Normally this should not happen, however the node
+                    // might have been loaded
+                    // by another thread in the mean time. So we only need
+                    // to load the node.
+                    // TODO(yz): split the lock for cache_algorithm and
+                    // node_ref_map to make this branch
+                    // unreachable_unchecked().
+                    trie_node_ref = NodeMemoryManager::<
+                        CacheAlgoDataT,
+                        CacheAlgorithmT,
+                    >::get_in_memory_node_mut(
+                        &allocator, *cache_slot as usize
+                    );
+                    return Ok((
+                        true,
+                        GuardedValue::new(cache_manager_write, trie_node_ref),
+                    ));
                 },
-            }
-            // Insert into slab as temporary, then insert into node_ref_map.
-            let slot = allocator.insert(trie_node)?;
-            trie_node_ref = unsafe { allocator.get_unchecked(slot) };
-            cache_mut.node_ref_map.insert(
+                TrieCacheSlotOrCacheAlgoData::CacheAlgoData(
+                    cache_algo_data,
+                ) => {
+                    trie_node.cache_algo_data = *cache_algo_data;
+                }
+            },
+        }
+        // Insert into slab as temporary, then insert into node_ref_map.
+        let slot = allocator.insert(trie_node)?;
+        trie_node_ref = unsafe { allocator.get_unchecked(slot) };
+        let inserted_into_cache = cache_mut
+            .node_ref_map
+            .insert(
                 db_key,
                 slot as ActualSlabIndex,
                 &self,
                 &mut cache_mut.cache_algorithm,
-            );
-        }
-        Ok(GuardedValue::new(cache_manager_write, trie_node_ref))
+            )
+            .is_ok();
+
+        Ok((
+            inserted_into_cache,
+            GuardedValue::new(cache_manager_write, trie_node_ref),
+        ))
     }
 
     /// This method is called when loading from db.
@@ -455,21 +464,27 @@ impl<
                         }
                     }
                 }
+                let call_cache_access;
                 if load_from_db {
-                    let guard_with_value = self
-                        .load_from_db(allocator, cache_manager, *db_key)?
-                        .into();
+                    let (inserted_into_cache, guarded_trie_node) =
+                        self.load_from_db(allocator, cache_manager, *db_key)?;
+                    call_cache_access = inserted_into_cache;
+                    let (guard, loaded_trie_node) = guarded_trie_node.into();
                     // We hacked compiler previously, now we should prevent
                     // destructor from running.
                     mem::forget(cache_manager_write);
                     mem::forget(trie_node);
-                    cache_manager_write = guard_with_value.0;
-                    trie_node = guard_with_value.1;
+                    cache_manager_write = guard;
+                    trie_node = loaded_trie_node;
+                } else {
+                    call_cache_access = true;
                 }
-                self.call_cache_algorithm_access(
-                    &mut cache_manager_write,
-                    *db_key,
-                );
+                if call_cache_access {
+                    self.call_cache_algorithm_access(
+                        &mut cache_manager_write,
+                        *db_key,
+                    );
+                }
 
                 Ok(GuardedValue::new(Some(cache_manager_write), trie_node))
             }
@@ -668,13 +683,18 @@ impl<
         >,
     )
     {
-        self.node_ref_map.insert(
-            db_key,
-            slot,
-            node_memory_manager,
-            &mut self.cache_algorithm,
-        );
-        node_memory_manager.call_cache_algorithm_access(self, db_key);
+        if self
+            .node_ref_map
+            .insert(
+                db_key,
+                slot,
+                node_memory_manager,
+                &mut self.cache_algorithm,
+            )
+            .is_ok()
+        {
+            node_memory_manager.call_cache_algorithm_access(self, db_key);
+        }
     }
 }
 

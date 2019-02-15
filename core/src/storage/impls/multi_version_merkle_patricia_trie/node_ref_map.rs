@@ -54,7 +54,6 @@ pub struct NodeRefMapDeltaMpt<
     CacheAlgoDataT: CacheAlgoDataTrait,
     CacheAlgorithmT: CacheAlgorithm<CacheAlgoData = CacheAlgoDataT, CacheIndex = DeltaMptDbKey>,
 > {
-    /// Only in unusual situation base_row_number could go higher than 0.
     base_row_number: DeltaMptDbKey,
     map: Vec<Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>>,
     __marker_algorithm: PhantomData<CacheAlgorithmT>,
@@ -72,18 +71,14 @@ impl<
     /// Assuming 2h lifetime for Delta MPT it's around 27k new node per second.
     const MAX_CAPACITY: DeltaMptDbKey = 200_000_000;
 
-    pub fn new(start_size: usize) -> Self {
-        let mut mpt = Self {
+    pub fn new(size: DeltaMptDbKey) -> Self {
+        Self {
             // Explicitly specify one item so that only the fields are default
             // initialized.
-            map: Default::default(),
+            map: vec![None; size as usize],
             base_row_number: Default::default(),
             __marker_algorithm: Default::default(),
-        };
-
-        mpt.map.reserve(start_size);
-
-        mpt
+        }
     }
 }
 
@@ -95,12 +90,7 @@ impl<
         >,
     > Default for NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
 {
-    fn default() -> Self {
-        Self::new(
-            NodeMemoryManager::<CacheAlgoDataT, CacheAlgorithmT>::START_CAPACITY
-                as usize,
-        )
-    }
+    fn default() -> Self { Self::new(Self::MAX_CAPACITY) }
 }
 
 // Type alias for clarity.
@@ -134,11 +124,18 @@ impl<
     unsafe fn get_unchecked(
         &self, key: DeltaMptDbKey,
     ) -> &Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
-        self.map.get_unchecked(Self::key_to_subscription(key))
+        self.map.get_unchecked(self.key_to_subscription(key))
     }
 
-    fn key_to_subscription(key: DeltaMptDbKey) -> usize {
-        (key % Self::MAX_CAPACITY) as usize
+    unsafe fn get_unchecked_mut(
+        &mut self, key: DeltaMptDbKey,
+    ) -> &mut Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
+        let offset = self.key_to_subscription(key);
+        self.map.get_unchecked_mut(offset)
+    }
+
+    fn key_to_subscription(&self, key: DeltaMptDbKey) -> usize {
+        (key as usize) % self.map.len()
     }
 
     fn reset(
@@ -150,11 +147,11 @@ impl<
         cache_algorithm: &mut CacheAlgorithmT,
     )
     {
-        let maybe_cache_info = self.delete(key);
+        let maybe_cache_info = self.get(key);
         if maybe_cache_info.is_none() {
             return;
         }
-        let cache_info = maybe_cache_info.unwrap();
+        let cache_info = maybe_cache_info.unwrap().clone();
 
         unsafe {
             node_memory_manager.delete_from_cache(
@@ -163,10 +160,13 @@ impl<
                 key,
                 cache_info,
             );
-            *self.map.get_unchecked_mut(Self::key_to_subscription(key)) = None;
+            *self.get_unchecked_mut(key) = None;
         }
     }
 
+    /// Insert may fail due to capacity issue. In this implementation we fail
+    /// the insertion for very small(old) db_key. The error is recoverable:
+    /// caller should skip calling cache access and ignore the error.
     pub fn insert(
         &mut self, key: DeltaMptDbKey, slot: ActualSlabIndex,
         node_memory_manager: &NodeMemoryManager<
@@ -174,14 +174,16 @@ impl<
             CacheAlgorithmT,
         >,
         cache_algorithm: &mut CacheAlgorithmT,
-    ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>
+    ) -> Result<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>
     {
         if key < self.base_row_number {
-            return None;
+            bail!(ErrorKind::TooOldToCache);
         }
         let size = self.map.len() as RowNumberUnderlyingType;
-        if key >= self.base_row_number + Self::MAX_CAPACITY {
-            let new_row_number = key + 1 - Self::MAX_CAPACITY;
+        if key >= self.base_row_number + size {
+            // The final state is that the key is the maximum in the data
+            // structure so that the number of deleted items are minimized.
+            let new_row_number = key + 1 - size;
             let mut base_row_number = self.base_row_number;
             loop {
                 self.reset(
@@ -195,22 +197,15 @@ impl<
                 }
             }
             self.base_row_number = base_row_number;
-        } else if size < Self::MAX_CAPACITY && key >= size {
-            let new_len = (if Self::MAX_CAPACITY / 2 > key {
-                (key + 1) * 2
-            } else {
-                Self::MAX_CAPACITY
-            }) as usize;
-            self.map.reserve_exact(new_len);
-            self.map.resize(new_len, None);
         }
+
         self.set_cache_info(
             key,
             Some(CacheableNodeRefDeltaMpt::new(
                 TrieCacheSlotOrCacheAlgoData::TrieCacheSlot(slot),
             )),
         );
-        unsafe { self.get_unchecked(key).clone() }
+        Ok(unsafe { self.get_unchecked(key) }.clone().unwrap())
     }
 
     /// The cache_info is only valid when the element still lives in cache.
@@ -235,9 +230,7 @@ impl<
         cache_info: Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>,
     ) -> Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>
     {
-        let node_ref = unsafe {
-            self.map.get_unchecked_mut(Self::key_to_subscription(key))
-        };
+        let node_ref = unsafe { self.get_unchecked_mut(key) };
         let old_slot = node_ref.clone();
         *node_ref = cache_info;
 
@@ -252,6 +245,7 @@ impl<
 }
 
 use super::{
+    super::errors::*,
     cache::algorithm::{CacheAlgoDataTrait, CacheAlgorithm},
     node_memory_manager::*,
     row_number::RowNumberUnderlyingType,

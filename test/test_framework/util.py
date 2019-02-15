@@ -258,8 +258,7 @@ def initialize_datadir(dirname, n, conf_parameters):
                         "test-mode": "true",
                         "log-level": "\"trace\"",
                         "storage-cache-size": "200000",
-                        "storage-start-size": "200000",
-                        "storage-idle-size": "200000",
+                        "storage-cache-start-size": "200000",
                       }
         for k in conf_parameters:
             local_conf[k] = conf_parameters[k]

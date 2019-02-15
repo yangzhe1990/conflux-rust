@@ -47,9 +47,10 @@ pub fn new_state_manager_for_testing() -> StateManager {
     StateManager::new(
         Arc::new(SystemDB::new(Arc::new(FakeDbForStateTest::default()))),
         StorageConfiguration {
-            start_size: 1_000_000,
+            cache_start_size: 1_000_000,
             cache_size: 20_000_000,
             idle_size: 200_000,
+            node_map_size: 20_000_000,
             recent_lfu_factor: 4.0,
         },
     )

@@ -370,16 +370,16 @@ impl CowNodeRef {
                                 (*node_ref_mut).into(),
                                 owned_node_set,
                             );
-                            let merkle = cow_child_node.get_or_compute_merkle(
+                            let result = cow_child_node.get_or_compute_merkle(
                                 trie,
                                 owned_node_set,
                                 allocator_ref,
-                            )?;
-                            // There is no change to the child_node so the
+                            );
+                            // There is no change to the child reference so the
                             // return value is dropped.
                             cow_child_node.into_child();
 
-                            merkles[i as usize] = merkle;
+                            merkles[i as usize] = result?;
                         }
                     }
                 }
