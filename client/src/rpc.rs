@@ -376,6 +376,7 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
             dependencies.consensus.clone(),
             dependencies.storage_manager.clone(),
             dependencies.sync.clone(),
+            dependencies.tx_pool.clone(),
         )
         .to_delegate(),
     );

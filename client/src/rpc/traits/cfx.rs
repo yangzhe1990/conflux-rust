@@ -1,5 +1,5 @@
 use super::super::types::{
-    Account, Block, EpochNumber, Transaction, H160, H256, U256, U64,
+    Account, Block, Bytes, EpochNumber, Transaction, H160, H256, U256, U64,
 };
 use jsonrpc_core::Result;
 use jsonrpc_macros::{build_rpc_trait, Trailing};
@@ -79,9 +79,9 @@ build_rpc_trait! {
 //        #[rpc(name = "cfx_getCode")]
 //        fn code_at(&self, H160, Trailing<BlockNumber>) -> BoxFuture<Bytes>;
 
-//        /// Sends signed transaction, returning its hash.
-//        #[rpc(name = "cfx_sendRawTransaction")]
-//        fn send_raw_transaction(&self, Bytes) -> Result<H256>;
+        /// Sends signed transaction, returning its hash.
+        #[rpc(name = "cfx_sendRawTransaction")]
+        fn send_raw_transaction(&self, Bytes) -> Result<H256>;
 
 //        /// @alias of `cfx_sendRawTransaction`.
 //        #[rpc(name = "cfx_submitTransaction")]

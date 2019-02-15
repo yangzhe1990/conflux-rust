@@ -21,7 +21,7 @@ from test_framework.util import *
 class ChainGenerator(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 8
+        self.num_nodes = 20
         self.conf_parameters = {"log-level":"\"debug\""}
 
     def setup_network(self):
@@ -99,7 +99,7 @@ class ChainGenerator(ConfluxTestFramework):
             wait_until(lambda: self.check_account(k, balance_map))
         self.log.info("Pass 1")
 
-        #self.register_test("general_1.json")
+        self.register_test("general_1.json")
 
         '''Test Random Transactions'''
         all_txs = []

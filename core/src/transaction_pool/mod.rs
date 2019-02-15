@@ -221,7 +221,7 @@ impl TransactionPool {
     pub fn insert_new_transactions(
         &self, latest_epoch: EpochId,
         transactions: Vec<TransactionWithSignature>,
-    )
+    ) -> Vec<H256>
     {
         // FIXME: do not unwrap.
         let mut signed_trans = Vec::new();
@@ -308,6 +308,7 @@ impl TransactionPool {
         let mut account_cache = AccountCache::new(
             self.storage_manager.get_state_at(latest_epoch).unwrap(),
         );
+        let mut passed_transaction = Vec::new();
         {
             let mut tx_cache = self.transaction_pubkey_cache.write();
             for txes in signed_trans {
@@ -317,10 +318,14 @@ impl TransactionPool {
                         warn!("Transaction discarded due to failure of passing verification {:?}", tx.hash());
                         continue;
                     }
-                    self.add_with_readiness(&mut account_cache, tx);
+                    let hash = tx.hash();
+                    if self.add_with_readiness(&mut account_cache, tx).is_ok() {
+                        passed_transaction.push(hash);
+                    }
                 }
             }
         }
+        passed_transaction
     }
 
     // verify transactions based on the rules that
@@ -374,14 +379,14 @@ impl TransactionPool {
     pub fn add_with_readiness(
         &self, account_cache: &mut AccountCache,
         transaction: Arc<SignedTransaction>,
-    )
+    ) -> Result<(), String>
     {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
 
         if self.capacity <= inner.len() {
             warn!("Transaction discarded due to insufficient txpool capacity: {:?}", transaction.hash());
-            return;
+            return Err(format!("Transaction discarded due to insufficient txpool capacity: {:?}", transaction.hash()));
         }
 
         match account_cache.is_ready(&transaction) {
@@ -394,25 +399,39 @@ impl TransactionPool {
                     {
                         if self.add_ready_without_lock(inner, transaction) {
                             account.nonce = account.nonce + 1;
+                            Ok(())
+                        } else {
+                            Err(format!("Already imported"))
                         }
                     } else {
-                        self.add_pending_without_lock(inner, transaction);
+                        if self.add_pending_without_lock(inner, transaction) {
+                            Ok(())
+                        } else {
+                            Err(format!("Failed imported to panding queue"))
+                        }
                     }
                 } else {
                     warn!("Ready transaction {} discarded due to sender not exist (should not happen!)", transaction.hash());
+                    Err(format!("Ready transaction {} discarded due to sender not exist (should not happen!)", transaction.hash()))
                 }
             }
             Readiness::Future => {
                 self.add_pending_without_lock(inner, transaction);
+                Ok(())
             }
             Readiness::TooDistantFuture => {
                 warn!("Transaction {:?} is discarded due to in too distant future", transaction.hash());
+                Err(format!("Transaction {:?} is discarded due to in too distant future", transaction.hash()))
             }
             Readiness::Stale => {
                 warn!(
                     "Transaction {:?} is discarded due to stale nonce",
                     transaction.hash()
                 );
+                Err(format!(
+                    "Transaction {:?} is discarded due to stale nonce",
+                    transaction.hash()
+                ))
             }
         }
     }
@@ -454,7 +473,7 @@ impl TransactionPool {
     ) {
         let mut account_cache = AccountCache::new(state);
         for tx in transactions {
-            self.add_with_readiness(&mut account_cache, tx);
+            self.add_with_readiness(&mut account_cache, tx).ok();
         }
     }
 

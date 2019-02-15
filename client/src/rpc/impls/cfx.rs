@@ -1,18 +1,20 @@
 use crate::rpc::{
     traits::cfx::Cfx,
     types::{
-        Account, Block as RpcBlock, BlockTransactions, EpochNumber,
+        Account, Block as RpcBlock, BlockTransactions, Bytes, EpochNumber,
         Transaction as RpcTransaction, H160 as RpcH160, H256 as RpcH256,
         U256 as RpcU256, U64 as RpcU64,
     },
 };
 use core::{
     storage::StorageManager, ConsensusGraph, SharedSynchronizationService,
+    TransactionPool,
 };
 use ethereum_types::{H160, H256};
 use jsonrpc_core::{Error as RpcError, Result};
 use jsonrpc_macros::Trailing;
 use primitives::EpochNumber as PrimitiveEpochNumber;
+use rlp::Rlp;
 use std::sync::Arc;
 
 pub struct CfxHandler {
@@ -20,19 +22,21 @@ pub struct CfxHandler {
     #[allow(dead_code)]
     storage_manager: Arc<StorageManager>,
     sync: SharedSynchronizationService,
+    txpool: Arc<TransactionPool>,
 }
 
 impl CfxHandler {
     pub fn new(
         consensus_graph: Arc<ConsensusGraph>,
         storage_manager: Arc<StorageManager>,
-        sync: SharedSynchronizationService,
+        sync: SharedSynchronizationService, txpool: Arc<TransactionPool>,
     ) -> Self
     {
         CfxHandler {
             consensus_graph,
             storage_manager,
             sync,
+            txpool,
         }
     }
 
@@ -191,5 +195,25 @@ impl Cfx for CfxHandler {
             )
             .map_err(|err| RpcError::invalid_params(err))
             .map(|x| x.into())
+    }
+
+    fn send_raw_transaction(&self, raw: Bytes) -> Result<RpcH256> {
+        info!("RPC Request: cfx_sendRawTransaction bytes={:?}", raw);
+        Rlp::new(&raw.into_vec())
+            .as_val()
+            .map_err(|err| {
+                RpcError::invalid_params(format!("Error: {:?}", err))
+            })
+            .and_then(|tx| {
+                let result = self.txpool.insert_new_transactions(
+                    self.consensus_graph.best_block_hash(),
+                    vec![tx],
+                );
+                if result.is_empty() {
+                    Ok(H256::new().into())
+                } else {
+                    Ok(result[0].into())
+                }
+            })
     }
 }
