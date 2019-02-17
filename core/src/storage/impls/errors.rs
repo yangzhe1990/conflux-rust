@@ -48,11 +48,6 @@ error_chain! {
             display("Too many nodes."),
         }
 
-        TooOldToCache {
-            description("Too old to cache"),
-            display("The db key to insert into cache is too old"),
-        }
-
         StateCommitWithoutMerkleHash {
             description("State commit called before computing Merkle hash."),
             display("State commit called before computing Merkle hash."),

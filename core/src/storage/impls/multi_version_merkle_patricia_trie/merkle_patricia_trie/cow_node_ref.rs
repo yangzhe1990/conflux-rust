@@ -283,17 +283,23 @@ impl CowNodeRef {
                         &mut cow_child_node.node_ref,
                     )
                 };
-                let was_owned = cow_child_node.commit_dirty_recursively(
+                let commit_result = cow_child_node.commit_dirty_recursively(
                     trie,
                     owned_node_set,
                     trie_node,
                     commit_transaction,
                     cache_manager,
                     allocator_ref,
-                )?;
+                );
 
-                // An owned child TrieNode now have a new NodeRef.
-                *node_ref_mut = cow_child_node.into_child().unwrap();
+                if commit_result.is_ok() {
+                    // An owned child TrieNode now have a new NodeRef.
+                    *node_ref_mut = cow_child_node.into_child().unwrap();
+                } else {
+                    cow_child_node.into_child();
+
+                    commit_result?;
+                }
             }
         }
         Ok(())
@@ -469,15 +475,23 @@ impl CowNodeRef {
                 NodeRefDeltaMpt::Dirty { index } => *index,
                 _ => unsafe { unreachable_unchecked() },
             };
-            owned_node_set.remove(&self.node_ref);
-            self.node_ref = NodeRefDeltaMpt::Committed { db_key: db_key };
-            owned_node_set.insert(self.node_ref.clone());
-
+            let committed_node_ref =
+                NodeRefDeltaMpt::Committed { db_key: db_key };
+            owned_node_set.insert(committed_node_ref.clone());
+            // We insert the new node_ref into owned_node_set first because in
+            // general inserting to a set may fail, even though it
+            // doesn't fail for the current implementation.
+            //
+            // When it fails to insert into cache, it's fine to have an extra
+            // entry in owned_node_set because there is no-op in reverting in
+            // this case.
             cache_manager.insert_to_node_ref_map_and_call_cache_access(
                 db_key,
                 slot,
                 trie.get_node_memory_manager(),
-            );
+            )?;
+            owned_node_set.remove(&self.node_ref);
+            self.node_ref = committed_node_ref;
 
             Ok(true)
         } else {

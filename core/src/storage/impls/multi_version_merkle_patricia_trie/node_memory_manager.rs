@@ -213,13 +213,12 @@ impl<
             CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
         >,
         db_key: DeltaMptDbKey,
-    ) -> Result<(
-        bool,
+    ) -> Result<
         GuardedValue<
             RwLockWriteGuard<'c, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
             &'a TrieNode<CacheAlgoDataT>,
         >,
-    )>
+    >
     {
         // We never save null node in db.
         let rlp_bytes = self
@@ -252,9 +251,9 @@ impl<
                     >::get_in_memory_node_mut(
                         &allocator, *cache_slot as usize
                     );
-                    return Ok((
-                        true,
-                        GuardedValue::new(cache_manager_write, trie_node_ref),
+                    return Ok(GuardedValue::new(
+                        cache_manager_write,
+                        trie_node_ref,
                     ));
                 },
                 TrieCacheSlotOrCacheAlgoData::CacheAlgoData(
@@ -267,24 +266,24 @@ impl<
         // Insert into slab as temporary, then insert into node_ref_map.
         let slot = allocator.insert(trie_node)?;
         trie_node_ref = unsafe { allocator.get_unchecked(slot) };
-        let inserted_into_cache = cache_mut
-            .node_ref_map
-            .insert(
-                db_key,
-                slot as ActualSlabIndex,
-                &self,
-                &mut cache_mut.cache_algorithm,
-            )
-            .is_ok();
+        let cache_insertion_result = cache_mut.node_ref_map.insert(
+            db_key,
+            slot as ActualSlabIndex,
+            &self,
+            &mut cache_mut.cache_algorithm,
+        );
+        if cache_insertion_result.is_err() {
+            allocator.remove(slot)?;
 
-        Ok((
-            inserted_into_cache,
-            GuardedValue::new(cache_manager_write, trie_node_ref),
-        ))
+            // Throw the insertion error.
+            cache_insertion_result?;
+        }
+
+        Ok(GuardedValue::new(cache_manager_write, trie_node_ref))
     }
 
-    /// This method is called when loading from db.
-    /// unsafe because the key must be existing.
+    /// This method is currently unused but kept for future use and for the sake
+    /// of completeness.
     pub unsafe fn delete_from_cache(
         &self, cache_algorithm: &mut CacheAlgorithmT,
         node_ref_map: &mut NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>,
@@ -464,27 +463,23 @@ impl<
                         }
                     }
                 }
-                let call_cache_access;
                 if load_from_db {
-                    let (inserted_into_cache, guarded_trie_node) =
-                        self.load_from_db(allocator, cache_manager, *db_key)?;
-                    call_cache_access = inserted_into_cache;
-                    let (guard, loaded_trie_node) = guarded_trie_node.into();
                     // We hacked compiler previously, now we should prevent
                     // destructor from running.
                     mem::forget(cache_manager_write);
                     mem::forget(trie_node);
+
+                    let (guard, loaded_trie_node) = self
+                        .load_from_db(allocator, cache_manager, *db_key)?
+                        .into();
+
                     cache_manager_write = guard;
                     trie_node = loaded_trie_node;
-                } else {
-                    call_cache_access = true;
                 }
-                if call_cache_access {
-                    self.call_cache_algorithm_access(
-                        &mut cache_manager_write,
-                        *db_key,
-                    );
-                }
+                self.call_cache_algorithm_access(
+                    &mut cache_manager_write,
+                    *db_key,
+                );
 
                 Ok(GuardedValue::new(Some(cache_manager_write), trie_node))
             }
@@ -681,20 +676,16 @@ impl<
             CacheAlgoDataT,
             CacheAlgorithmT,
         >,
-    )
+    ) -> Result<()>
     {
-        if self
-            .node_ref_map
-            .insert(
-                db_key,
-                slot,
-                node_memory_manager,
-                &mut self.cache_algorithm,
-            )
-            .is_ok()
-        {
-            node_memory_manager.call_cache_algorithm_access(self, db_key);
-        }
+        self.node_ref_map.insert(
+            db_key,
+            slot,
+            node_memory_manager,
+            &mut self.cache_algorithm,
+        )?;
+        node_memory_manager.call_cache_algorithm_access(self, db_key);
+        Ok(())
     }
 }
 
