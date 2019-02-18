@@ -147,7 +147,7 @@ impl<'a> StateTrait for State<'a> {
         for owned_node in owned_node_set {
             self.delta_trie
                 .get_node_memory_manager()
-                .free_node(&mut owned_node.clone());
+                .free_owned_node(&mut owned_node.clone());
         }
     }
 }
@@ -254,7 +254,7 @@ impl<'a> State<'a> {
                             .delta_trie
                             .get_node_memory_manager()
                             .get_cache_manager()
-                            .write(),
+                            .lock(),
                         &allocator,
                     );
                     self.root_node = cow_root.into_child().map(|r| r.into());

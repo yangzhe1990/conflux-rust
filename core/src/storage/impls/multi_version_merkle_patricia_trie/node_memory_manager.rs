@@ -98,10 +98,15 @@ pub struct NodeMemoryManager<
     /// Unless size limit reached, there should be at lease idle_size available
     /// after each resize.
     idle_size: u32,
-    /// Always get the read lock first because only resizing requires write
-    /// lock, which we don't want other lock wait for.
+    /// Always get the read lock for allocator first because resizing requires
+    /// write lock and it could be very slow, which we don't want to wait
+    /// for inside critical section.
     allocator: RwLock<Allocator<CacheAlgoDataT>>,
-    cache: RwLock<CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
+    cache: Mutex<CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
+    /// To prevent multiple db load to happen for the same key, and make sure
+    /// that the get is always successful when exiting the critical
+    /// section.
+    db_load_lock: Mutex<()>,
     // TODO(yz): use a more specific db because the row number need to be
     // managed.
     /// This db access is read only.
@@ -163,10 +168,11 @@ impl<
             allocator: RwLock::new(Slab::with_capacity(
                 (cache_start_size + idle_size) as usize,
             )),
-            cache: RwLock::new(CacheManager {
+            cache: Mutex::new(CacheManager {
                 node_ref_map: NodeRefMapDeltaMpt::new(node_map_size),
                 cache_algorithm: cache_algorithm,
             }),
+            db_load_lock: Default::default(),
             db: kvdb,
         }
     }
@@ -177,7 +183,7 @@ impl<
 
     pub fn get_cache_manager(
         &self,
-    ) -> &RwLock<CacheManager<CacheAlgoDataT, CacheAlgorithmT>> {
+    ) -> &Mutex<CacheManager<CacheAlgoDataT, CacheAlgorithmT>> {
         &self.cache
     }
 
@@ -209,13 +215,11 @@ impl<
 
     fn load_from_db<'c: 'a, 'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
-        cache_manager: &'c RwLock<
-            CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
-        >,
+        cache_manager: &'c Mutex<CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
         db_key: DeltaMptDbKey,
     ) -> Result<
         GuardedValue<
-            RwLockWriteGuard<'c, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
+            MutexGuard<'c, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
             &'a TrieNode<CacheAlgoDataT>,
         >,
     >
@@ -228,33 +232,18 @@ impl<
         let rlp = Rlp::new(rlp_bytes.as_ref());
         let mut trie_node = TrieNode::decode(&rlp)?;
 
-        let mut cache_manager_write = cache_manager.write();
+        let mut cache_manager_locked = cache_manager.lock();
         let trie_node_ref: &TrieNode<CacheAlgoDataT>;
 
-        let cache_mut = &mut *cache_manager_write;
+        let cache_mut = &mut *cache_manager_locked;
 
         // If cache_algo_data exists in node_ref_map, move to trie node.
         match cache_mut.node_ref_map.get(db_key) {
             None => {}
             Some(cache_info) => match cache_info.get_cache_info() {
                 TrieCacheSlotOrCacheAlgoData::TrieCacheSlot(cache_slot) => unsafe {
-                    // Normally this should not happen, however the node
-                    // might have been loaded
-                    // by another thread in the mean time. So we only need
-                    // to load the node.
-                    // TODO(yz): split the lock for cache_algorithm and
-                    // node_ref_map to make this branch
-                    // unreachable_unchecked().
-                    trie_node_ref = NodeMemoryManager::<
-                        CacheAlgoDataT,
-                        CacheAlgorithmT,
-                    >::get_in_memory_node_mut(
-                        &allocator, *cache_slot as usize
-                    );
-                    return Ok(GuardedValue::new(
-                        cache_manager_write,
-                        trie_node_ref,
-                    ));
+                    // This should not happen.
+                    unreachable_unchecked();
                 },
                 TrieCacheSlotOrCacheAlgoData::CacheAlgoData(
                     cache_algo_data,
@@ -279,7 +268,7 @@ impl<
             cache_insertion_result?;
         }
 
-        Ok(GuardedValue::new(cache_manager_write, trie_node_ref))
+        Ok(GuardedValue::new(cache_manager_locked, trie_node_ref))
     }
 
     /// This method is currently unused but kept for future use and for the sake
@@ -409,16 +398,11 @@ impl<
     unsafe fn load_unowned_node_internal_unchecked<'c: 'a, 'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: NodeRefDeltaMpt,
-        cache_manager: &'c RwLock<
-            CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
-        >,
+        cache_manager: &'c Mutex<CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
     ) -> Result<
         GuardedValue<
             Option<
-                RwLockWriteGuard<
-                    'c,
-                    CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
-                >,
+                MutexGuard<'c, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
             >,
             &'a TrieNode<CacheAlgoDataT>,
         >,
@@ -426,14 +410,55 @@ impl<
     {
         match node {
             NodeRefDeltaMpt::Committed { ref db_key } => {
-                let mut cache_manager_write;
+                let mut cache_manager_mut_wrapped = Some(cache_manager.lock());
+
                 // Use mut because compiler isn't smart enough to know that it's
                 // initialized once.
                 let mut trie_node: &TrieNode<CacheAlgoDataT>;
                 let mut load_from_db = false;
-                {
-                    let cache_manager_read = cache_manager.upgradable_read();
-                    let maybe_cache_slot = cache_manager_read
+
+                let maybe_cache_slot = cache_manager_mut_wrapped
+                    .as_mut()
+                    .unwrap()
+                    .node_ref_map
+                    .get(*db_key)
+                    .and_then(|x| x.get_slot());
+
+                match maybe_cache_slot {
+                    None => {
+                        // We would like to release the lock to
+                        // cache_manager during db IO.
+                        load_from_db = true;
+                        // Compiler isn't smart enough to know that
+                        // the variables are always initialized.
+                        trie_node = mem::uninitialized();
+                    }
+                    Some(cache_slot) => {
+                        // Fast path.
+                        trie_node = NodeMemoryManager::<
+                            CacheAlgoDataT,
+                            CacheAlgorithmT,
+                        >::get_in_memory_node_mut(
+                            &allocator,
+                            *cache_slot as usize,
+                        );
+                    }
+                }
+
+                // Slow path.
+                if load_from_db {
+                    // We hacked compiler previously, now we should prevent
+                    // destructor from running.
+                    mem::forget(trie_node);
+
+                    // Release the lock in fast path to prevent deadlock.
+                    cache_manager_mut_wrapped.take();
+
+                    let db_load_mutex = self.db_load_lock.lock();
+                    cache_manager_mut_wrapped = Some(cache_manager.lock());
+                    let maybe_cache_slot = cache_manager_mut_wrapped
+                        .as_mut()
+                        .unwrap()
                         .node_ref_map
                         .get(*db_key)
                         .and_then(|x| x.get_slot());
@@ -442,11 +467,19 @@ impl<
                         None => {
                             // We would like to release the lock to
                             // cache_manager during db IO.
-                            load_from_db = true;
-                            // Compiler isn't smart enough to know that
-                            // the variables are always initialized.
-                            trie_node = mem::uninitialized();
-                            cache_manager_write = mem::uninitialized();
+                            cache_manager_mut_wrapped.take();
+
+                            let (guard, loaded_trie_node) = self
+                                .load_from_db(
+                                    allocator,
+                                    cache_manager,
+                                    *db_key,
+                                )?
+                                .into();
+
+                            cache_manager_mut_wrapped = Some(guard);
+
+                            trie_node = loaded_trie_node;
                         }
                         Some(cache_slot) => {
                             trie_node = NodeMemoryManager::<
@@ -456,32 +489,16 @@ impl<
                                 &allocator,
                                 *cache_slot as usize,
                             );
-                            cache_manager_write =
-                                RwLockUpgradableReadGuard::upgrade(
-                                    cache_manager_read,
-                                );
                         }
                     }
                 }
-                if load_from_db {
-                    // We hacked compiler previously, now we should prevent
-                    // destructor from running.
-                    mem::forget(cache_manager_write);
-                    mem::forget(trie_node);
 
-                    let (guard, loaded_trie_node) = self
-                        .load_from_db(allocator, cache_manager, *db_key)?
-                        .into();
-
-                    cache_manager_write = guard;
-                    trie_node = loaded_trie_node;
-                }
                 self.call_cache_algorithm_access(
-                    &mut cache_manager_write,
+                    cache_manager_mut_wrapped.as_mut().unwrap(),
                     *db_key,
                 );
 
-                Ok(GuardedValue::new(Some(cache_manager_write), trie_node))
+                Ok(GuardedValue::new(cache_manager_mut_wrapped, trie_node))
             }
             NodeRefDeltaMpt::Dirty { ref index } => unreachable_unchecked(),
         }
@@ -499,25 +516,16 @@ impl<
         )
     }
 
-    // FIXME: is this method useful to share lock guard in some cases?
-    // FIXME: if lock guard can be shared, we must implement load_unowned_node
-    // FIXME: one more time with lock guard instead of lock itself.
-
     /// cache_manager is assigned a different lifetime because the
     /// RwLockWriteGuard returned can be used independently.
     pub fn node_as_ref_with_cache_manager<'c: 'a, 'a>(
         &self, allocator: AllocatorRefRef<'a, CacheAlgoDataT>,
         node: NodeRefDeltaMpt,
-        cache_manager: &'c RwLock<
-            CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
-        >,
+        cache_manager: &'c Mutex<CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
     ) -> Result<
         GuardedValue<
             Option<
-                RwLockWriteGuard<
-                    'c,
-                    CacheManager<CacheAlgoDataT, CacheAlgorithmT>,
-                >,
+                MutexGuard<'c, CacheManager<CacheAlgoDataT, CacheAlgorithmT>>,
             >,
             &'a TrieNode<CacheAlgoDataT>,
         >,
@@ -557,11 +565,11 @@ impl<
     /// Usually the node to free is dirty (i.e. not committed), however it's
     /// also possible that the state db commitment fails so that the succeeded
     /// nodes in the commitment should be removed from cache and deleted.
-    pub fn free_node(&self, node: &mut NodeRefDeltaMpt) {
+    pub fn free_owned_node(&self, node: &mut NodeRefDeltaMpt) {
         let slot = match node {
             NodeRefDeltaMpt::Committed { ref db_key } => {
                 let maybe_cache_info =
-                    self.cache.write().node_ref_map.delete(*db_key);
+                    self.cache.lock().node_ref_map.delete(*db_key);
                 let maybe_cache_slot = maybe_cache_info
                     .as_ref()
                     .and_then(|cache_info| cache_info.get_slot());
@@ -701,8 +709,6 @@ use super::{
     slab::Slab,
 };
 use kvdb::KeyValueDB;
-use parking_lot::{
-    RwLock, RwLockReadGuard, RwLockUpgradableReadGuard, RwLockWriteGuard,
-};
+use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard};
 use rlp::*;
 use std::{hint::unreachable_unchecked, mem, sync::Arc};

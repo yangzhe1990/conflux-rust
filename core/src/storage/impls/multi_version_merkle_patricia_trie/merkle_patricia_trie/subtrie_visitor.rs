@@ -56,7 +56,7 @@ impl<'trie> SubTrieVisitor<'trie> {
     ) -> Result<
         Option<
             GuardedValue<
-                Option<RwLockWriteGuard<'a, CacheManagerDeltaMpt>>,
+                Option<MutexGuard<'a, CacheManagerDeltaMpt>>,
                 &'a TrieNodeDeltaMpt,
             >,
         >,
@@ -673,5 +673,5 @@ use super::{
     trie_node::{access_mode::*, *},
     *,
 };
-use parking_lot::RwLockWriteGuard;
+use parking_lot::MutexGuard;
 use std::hint::unreachable_unchecked;

@@ -16,7 +16,7 @@ pub struct MaybeOwnedTrieNode<'a> {
 }
 
 type GuardedMaybeOwnedTrieNodeAsCowCallParam<'c> = GuardedValue<
-    Option<RwLockWriteGuard<'c, CacheManagerDeltaMpt>>,
+    Option<MutexGuard<'c, CacheManagerDeltaMpt>>,
     MaybeOwnedTrieNodeAsCowCallParam,
 >;
 
@@ -166,7 +166,7 @@ impl CowNodeRef {
         allocator: AllocatorRefRefDeltaMpt<'a>,
     ) -> Result<
         GuardedValue<
-            Option<RwLockWriteGuard<'c, CacheManagerDeltaMpt>>,
+            Option<MutexGuard<'c, CacheManagerDeltaMpt>>,
             MaybeOwnedTrieNode<'a>,
         >,
     >
@@ -190,7 +190,7 @@ impl CowNodeRef {
     )
     {
         if self.owned {
-            node_memory_manager.free_node(&mut self.node_ref);
+            node_memory_manager.free_owned_node(&mut self.node_ref);
             owned_node_set.remove(&self.node_ref);
             self.owned = false;
         }
@@ -251,7 +251,7 @@ impl CowNodeRef {
                 )?;
             }
 
-            node_memory_manager.free_node(&mut self.node_ref);
+            node_memory_manager.free_owned_node(&mut self.node_ref);
             self.owned = false;
             Ok(())
         } else {
@@ -723,6 +723,6 @@ use super::{
     mpt_value::MptValue,
     *,
 };
-use parking_lot::RwLockWriteGuard;
+use parking_lot::MutexGuard;
 use rlp::*;
 use std::{cell::Cell, hint::unreachable_unchecked, ops::Deref};
