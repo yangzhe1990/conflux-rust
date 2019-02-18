@@ -132,6 +132,7 @@ impl LinkCutTree {
         }
     }
 
+    #[allow(dead_code)]
     fn debug(&self, num: usize) {
         for v in 0..num {
             println!("tree[{}]", v);

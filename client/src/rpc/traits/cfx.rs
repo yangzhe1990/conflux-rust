@@ -37,7 +37,7 @@ build_rpc_trait! {
 
         /// Returns balance of the given account.
         #[rpc(name = "cfx_getBalance")]
-        fn balance(&self, H160, Trailing<U64>) -> Result<U256>;
+        fn balance(&self, H160, Trailing<EpochNumber>) -> Result<U256>;
 
 //        /// Returns content of the storage at given address.
 //        #[rpc(name = "cfx_getStorageAt")]

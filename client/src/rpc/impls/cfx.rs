@@ -87,7 +87,6 @@ impl Cfx for CfxHandler {
                 self.consensus_graph.clone(),
                 include_txs,
             ));
-            info!("Block is {:?}", result_block);
             Ok(result_block)
         } else {
             Ok(None)
@@ -135,20 +134,17 @@ impl Cfx for CfxHandler {
     }
 
     fn balance(
-        &self, address: RpcH160, epoch_num: Trailing<RpcU64>,
+        &self, address: RpcH160, num: Trailing<EpochNumber>,
     ) -> Result<RpcU256> {
+        let num = num.unwrap_or_default();
         let address: H160 = address.into();
-        let epoch_num: usize = epoch_num
-            .unwrap_or(RpcU64::from(std::usize::MAX))
-            .as_usize();
-
         info!(
             "RPC Request: cfx_getBalance address={:?} epoch_num={:?}",
-            address, epoch_num
+            address, num
         );
 
         self.consensus_graph
-            .get_balance(address, epoch_num)
+            .get_balance(address, self.get_primitive_epoch_number(num))
             .map(|x| x.into())
             .map_err(|err| RpcError::invalid_params(err))
     }
@@ -164,7 +160,7 @@ impl Cfx for CfxHandler {
         );
         let balance = self
             .consensus_graph
-            .get_balance(address, std::usize::MAX)
+            .get_balance(address, PrimitiveEpochNumber::Latest)
             .map_err(|err| RpcError::invalid_params(err))?;
         let transactions = self
             .consensus_graph

@@ -930,18 +930,10 @@ impl ConsensusGraph {
     }
 
     pub fn get_balance(
-        &self, address: H160, epoch_num: usize,
+        &self, address: H160, epoch_number: EpochNumber,
     ) -> Result<U256, String> {
         let r = self.inner.read();
-        let hash = if epoch_num == std::usize::MAX {
-            self.best_state_block_hash()
-        } else {
-            let best_epoch_number = self.best_state_epoch_number();
-            if epoch_num >= best_epoch_number {
-                return Err("Invalid params: expected a numbers with less than largest epoch number.".to_owned());
-            }
-            r.arena[r.pivot_chain[epoch_num]].hash
-        };
+        let hash = self.get_hash_from_epoch_number(epoch_number)?;
         let state_db =
             StateDb::new(r.storage_manager.get_state_at(hash).unwrap());
         Ok(
