@@ -484,7 +484,7 @@ def rpc_url(i, rpchost=None):
 
 
 def get_ip_address():
-    return socket.gethostbyname(socket.gethostname())
+    return [int(i) for i in socket.gethostbyname(socket.gethostname()).split('.')]
 
 
 def checktx(node, tx_hash):

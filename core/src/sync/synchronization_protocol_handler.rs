@@ -1563,8 +1563,7 @@ impl SynchronizationProtocolHandler {
                     Err(e) => {
                         warn!(
                             "failed to propagate txs to peer, id: {}, err: {}",
-                            peer_id,
-                            e
+                            peer_id, e
                         );
                     }
                 }
@@ -1687,6 +1686,9 @@ impl SynchronizationProtocolHandler {
         debug!("blocks_in_flight: {:?}", *self.blocks_in_flight.lock());
 
         // Send waiting requests that their backoff delay have passes
+        let syn = &mut *self.syn.write();
+        let mut headers_in_flight = self.headers_in_flight.lock();
+        let mut blocks_in_flight = self.blocks_in_flight.lock();
         let mut waiting_requests = self.waiting_requests.lock();
         loop {
             if waiting_requests.is_empty() {
@@ -1697,7 +1699,6 @@ impl SynchronizationProtocolHandler {
                 waiting_requests.push(req);
                 break;
             } else {
-                let syn = &mut *self.syn.write();
                 let chosen_peer = match syn.get_random_peer(&HashSet::new()) {
                     Some(p) => p,
                     None => {
@@ -1718,7 +1719,7 @@ impl SynchronizationProtocolHandler {
                             syn,
                         ) {
                             // TODO better handling
-                            self.headers_in_flight.lock().remove(&h);
+                            headers_in_flight.remove(&h);
                         }
                     }
                     WaitingRequest::Block(h) => {
@@ -1730,7 +1731,7 @@ impl SynchronizationProtocolHandler {
                             syn,
                         ) {
                             // TODO better handling
-                            self.blocks_in_flight.lock().remove(&h);
+                            blocks_in_flight.remove(&h);
                         }
                     }
                 }
