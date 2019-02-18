@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 ethereum-types = "0.4"
+fixed-hash = "0.2"
 keccak-hash = { git = "https://github.com/paritytech/parity-common" }
 keylib = { path = "../key_manager" }
 rlp = { git = "https://github.com/paritytech/parity-common" }
