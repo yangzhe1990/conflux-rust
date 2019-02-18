@@ -486,18 +486,24 @@ impl ConsensusGraphInner {
         self.arena[*self.pivot_chain.last().unwrap()].hash
     }
 
-    pub fn best_state_block_hash(&self) -> H256 {
+    pub fn best_state_epoch_number(&self) -> usize {
         let pivot_len = self.pivot_chain.len();
-        let index = if pivot_len < DEFERRED_STATE_EPOCH_COUNT as usize {
+        if pivot_len < DEFERRED_STATE_EPOCH_COUNT as usize {
             0
         } else {
             pivot_len - DEFERRED_STATE_EPOCH_COUNT as usize
-        };
-
-        self.arena[self.pivot_chain[index]].hash
+        }
     }
 
-    pub fn best_state_epoch_number(&self) -> usize { self.pivot_chain.len() }
+    pub fn best_state_index(&self) -> usize {
+        self.pivot_chain[self.best_state_epoch_number()]
+    }
+
+    pub fn best_state_block_hash(&self) -> H256 {
+        self.arena[self.best_state_index()].hash
+    }
+
+    pub fn best_epoch_number(&self) -> usize { self.pivot_chain.len() - 1 }
 
     pub fn deferred_state_root(&self, chain: &[usize]) -> Option<H256> {
         let chain_len = chain.len();
@@ -541,33 +547,74 @@ impl ConsensusGraphInner {
         self.deferred_receipts_root(&self.pivot_chain).unwrap()
     }
 
-    pub fn block_hashes_by_epoch(&self, epoch_number: usize) -> Vec<H256> {
-        let mut hashes = Vec::new();
+    pub fn get_height_from_epoch_number(
+        &self, epoch_number: EpochNumber,
+    ) -> Result<usize, String> {
+        Ok(match epoch_number {
+            EpochNumber::Earliest => 0,
+            EpochNumber::LatestMined => self.best_epoch_number(),
+            EpochNumber::LatestState => self.best_state_epoch_number(),
+            EpochNumber::Number(num) => {
+                let epoch_num: usize = num.as_usize();
+                if epoch_num > self.best_epoch_number() {
+                    return Err("Invalid params: expected a numbers with less than largest epoch number.".to_owned());
+                }
+                epoch_num
+            }
+        })
+    }
 
+    pub fn get_index_from_epoch_number(
+        &self, epoch_number: EpochNumber,
+    ) -> Result<usize, String> {
+        self.get_height_from_epoch_number(epoch_number)
+            .and_then(|height| Ok(self.pivot_chain[height]))
+    }
+
+    pub fn get_hash_from_epoch_number(
+        &self, epoch_number: EpochNumber,
+    ) -> Result<H256, String> {
+        self.get_index_from_epoch_number(epoch_number)
+            .and_then(|index| Ok(self.arena[index].hash))
+    }
+
+    pub fn block_hashes_by_epoch(
+        &self, epoch_number: EpochNumber,
+    ) -> Result<Vec<H256>, String> {
         debug!(
             "block_hashes_by_epoch epoch_number={:?} pivot_chain={:?}",
             epoch_number, self.pivot_chain
         );
-
-        if epoch_number < self.pivot_chain.len() {
-            if let Some(indices) =
-                self.indices_in_epochs.get(&self.pivot_chain[epoch_number])
-            {
-                for index in indices {
-                    hashes.push(self.arena[*index].hash);
-                }
-            } else {
-                debug!("no indices");
-            }
-        }
-
-        hashes
+        self.get_index_from_epoch_number(epoch_number)
+            .and_then(|index| {
+                Ok(self
+                    .indices_in_epochs
+                    .get(&index)
+                    .unwrap()
+                    .into_iter()
+                    .map(|index| self.arena[*index].hash)
+                    .collect())
+            })
     }
 
     pub fn epoch_hash(&self, epoch_number: usize) -> H256 {
         assert!(epoch_number < self.pivot_chain.len());
-
         self.arena[self.pivot_chain[epoch_number]].hash
+    }
+
+    pub fn get_balance(
+        &self, address: H160, epoch_number: EpochNumber,
+    ) -> Result<U256, String> {
+        let hash = self.get_hash_from_epoch_number(epoch_number)?;
+        let state_db =
+            StateDb::new(self.storage_manager.get_state_at(hash).unwrap());
+        Ok(
+            if let Ok(maybe_acc) = state_db.get_account(&address, false) {
+                maybe_acc.map_or(U256::zero(), |acc| acc.balance).into()
+            } else {
+                0.into()
+            },
+        )
     }
 }
 
@@ -630,6 +677,10 @@ impl ConsensusGraph {
         consensus_graph.insert_block_to_kv(genesis, true);
 
         consensus_graph
+    }
+
+    pub fn best_epoch_number(&self) -> usize {
+        self.inner.read().best_epoch_number()
     }
 
     pub fn block_receipts_by_hash_from_db(
@@ -790,7 +841,9 @@ impl ConsensusGraph {
             .collect()
     }
 
-    pub fn block_hashes_by_epoch(&self, epoch_number: usize) -> Vec<H256> {
+    pub fn block_hashes_by_epoch(
+        &self, epoch_number: EpochNumber,
+    ) -> Result<Vec<H256>, String> {
         self.inner.read().block_hashes_by_epoch(epoch_number)
     }
 
@@ -898,14 +951,18 @@ impl ConsensusGraph {
 
     pub fn gas_price(&self) -> Option<U256> {
         let _ = self.inner.read();
-        let mut last_epoch_number = self.best_state_epoch_number();
+        let mut last_epoch_number = self.best_epoch_number();
         let mut number_of_blocks_to_sample = GAS_PRICE_SAMPLE_SIZE;
         let mut prices = Vec::new();
         loop {
             if number_of_blocks_to_sample == 0 || last_epoch_number == 0 {
                 break;
             }
-            let mut hashes = self.block_hashes_by_epoch(last_epoch_number);
+            let mut hashes = self
+                .block_hashes_by_epoch(EpochNumber::Number(
+                    last_epoch_number.into(),
+                ))
+                .unwrap();
             hashes.reverse();
             last_epoch_number -= 1;
 
@@ -932,72 +989,82 @@ impl ConsensusGraph {
     pub fn get_balance(
         &self, address: H160, epoch_number: EpochNumber,
     ) -> Result<U256, String> {
-        let r = self.inner.read();
-        let hash = self.get_hash_from_epoch_number(epoch_number)?;
-        let state_db =
-            StateDb::new(r.storage_manager.get_state_at(hash).unwrap());
-        Ok(
-            if let Ok(maybe_acc) = state_db.get_account(&address, false) {
-                maybe_acc.map_or(U256::zero(), |acc| acc.balance).into()
-            } else {
-                0.into()
+        self.inner.read().get_balance(address, epoch_number)
+    }
+
+    pub fn get_related_transactions(
+        &self, address: H160, num_txs: usize, epoch_number: EpochNumber,
+    ) -> Result<Vec<Arc<SignedTransaction>>, String> {
+        let inner = self.inner.read();
+        inner.get_height_from_epoch_number(epoch_number).and_then(
+            |best_epoch_number| {
+                let mut transactions = Vec::new();
+                if num_txs == 0 {
+                    return Ok(transactions);
+                }
+                let earlist_epoch_number = if best_epoch_number
+                    < EPOCH_LIMIT_OF_RELATED_TRANSACTIONS
+                {
+                    0
+                } else {
+                    best_epoch_number - EPOCH_LIMIT_OF_RELATED_TRANSACTIONS + 1
+                };
+                let mut current_epoch_number = best_epoch_number;
+                let mut include_hashes = HashSet::new();
+
+                loop {
+                    let hashes = self
+                        .block_hashes_by_epoch(EpochNumber::Number(
+                            current_epoch_number.into(),
+                        ))
+                        .unwrap();
+                    for hash in hashes {
+                        let block = self
+                            .block_by_hash(&hash)
+                            .expect("Error: Cannot get block by hash.");
+                        for tx in block.transactions.iter() {
+                            if include_hashes.contains(&tx.hash()) {
+                                continue;
+                            }
+                            let mut is_valid = false;
+                            if tx.sender() == address {
+                                is_valid = true;
+                            } else if let Action::Call(receiver_address) =
+                                tx.action
+                            {
+                                if receiver_address == address {
+                                    is_valid = true;
+                                }
+                            }
+                            if is_valid {
+                                transactions.push(tx.clone());
+                                include_hashes.insert(tx.hash());
+                                if transactions.len() == num_txs {
+                                    return Ok(transactions);
+                                }
+                            }
+                        }
+                    }
+                    if current_epoch_number == earlist_epoch_number {
+                        break;
+                    }
+                    current_epoch_number -= 1;
+                }
+
+                Ok(transactions)
             },
         )
     }
 
-    pub fn get_related_transactions(
-        &self, address: H160, num_txs: usize,
-    ) -> Vec<Arc<SignedTransaction>> {
-        let mut transactions = Vec::new();
-        if num_txs == 0 {
-            return transactions;
-        }
+    pub fn get_account(
+        &self, address: H160, num_txs: usize, epoch_number: EpochNumber,
+    ) -> Result<(U256, Vec<Arc<SignedTransaction>>), String> {
         let _ = self.inner.read();
-
-        let best_epoch_number = self.best_state_epoch_number();
-        let earlist_epoch_number =
-            if best_epoch_number < EPOCH_LIMIT_OF_RELATED_TRANSACTIONS {
-                0
-            } else {
-                best_epoch_number - EPOCH_LIMIT_OF_RELATED_TRANSACTIONS + 1
-            };
-        let mut current_epoch_number = best_epoch_number;
-        let mut include_hashes = HashSet::new();
-
-        loop {
-            let hashes = self.block_hashes_by_epoch(current_epoch_number);
-            for hash in hashes {
-                let block = self
-                    .block_by_hash(&hash)
-                    .expect("Error: Cannot get block by hash.");
-                for tx in block.transactions.iter() {
-                    if include_hashes.contains(&tx.hash()) {
-                        continue;
-                    }
-                    let mut is_valid = false;
-                    if tx.sender() == address {
-                        is_valid = true;
-                    } else if let Action::Call(receiver_address) = tx.action {
-                        if receiver_address == address {
-                            is_valid = true;
-                        }
-                    }
-                    if is_valid {
-                        transactions.push(tx.clone());
-                        include_hashes.insert(tx.hash());
-                        if transactions.len() == num_txs {
-                            return transactions;
-                        }
-                    }
-                }
-            }
-            if current_epoch_number == earlist_epoch_number {
-                break;
-            }
-            current_epoch_number -= 1;
-        }
-
-        transactions
+        self.get_balance(address, epoch_number.clone())
+            .and_then(|balance| {
+                self.get_related_transactions(address, num_txs, epoch_number)
+                    .and_then(|transactions| Ok((balance, transactions)))
+            })
     }
 
     fn process_epoch_transactions(
@@ -1904,19 +1971,7 @@ impl ConsensusGraph {
     pub fn get_hash_from_epoch_number(
         &self, epoch_number: EpochNumber,
     ) -> Result<H256, String> {
-        Ok(match epoch_number {
-            EpochNumber::Earliest => self.genesis_block.hash(),
-            EpochNumber::Latest => self.best_state_block_hash(),
-            EpochNumber::Number(num) => {
-                let epoch_num: usize = num.as_usize();
-                let best_epoch_number = self.best_state_epoch_number();
-                if epoch_num >= best_epoch_number {
-                    return Err("Invalid params: expected a numbers with less than largest epoch number.".to_owned());
-                }
-                let r = self.inner.read();
-                r.arena[r.pivot_chain[epoch_num]].hash
-            }
-        })
+        self.inner.read().get_hash_from_epoch_number(epoch_number)
     }
 
     pub fn transaction_count(

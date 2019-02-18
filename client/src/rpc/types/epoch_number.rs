@@ -9,17 +9,17 @@ use std::fmt;
 pub enum EpochNumber {
     /// Number
     Num(u64),
-    /// Latest epoch
-    Latest,
+    /// Latest mined block.
+    LatestMined,
+    /// Latest block with state.
+    LatestState,
     /// Earliest epoch (genesis)
     Earliest,
-    /*    Pending epoch (being mined)
-     *    Pending, */
 }
 
-impl Default for EpochNumber {
-    fn default() -> Self { EpochNumber::Latest }
-}
+//impl Default for EpochNumber {
+//    fn default() -> Self { EpochNumber::Latest }
+//}
 
 impl<'a> Deserialize<'a> for EpochNumber {
     fn deserialize<D>(deserializer: D) -> Result<EpochNumber, D::Error>
@@ -35,7 +35,12 @@ impl Serialize for EpochNumber {
             EpochNumber::Num(ref x) => {
                 serializer.serialize_str(&format!("0x{:x}", x))
             }
-            EpochNumber::Latest => serializer.serialize_str("latest"),
+            EpochNumber::LatestMined => {
+                serializer.serialize_str("latest_mined")
+            }
+            EpochNumber::LatestState => {
+                serializer.serialize_str("latest_state")
+            }
             EpochNumber::Earliest => serializer.serialize_str("earliest"),
             /*            EpochNumber::Pending =>
              * serializer.serialize_str("pending"), */
@@ -58,9 +63,9 @@ impl<'a> Visitor<'a> for EpochNumberVisitor {
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
     where E: Error {
         match value {
-            "latest" => Ok(EpochNumber::Latest),
+            "latest_mined" => Ok(EpochNumber::LatestMined),
+            "latest_state" => Ok(EpochNumber::LatestState),
             "earliest" => Ok(EpochNumber::Earliest),
-            //            "pending" => Ok(EpochNumber::Pending),
             _ if value.starts_with("0x") => {
                 u64::from_str_radix(&value[2..], 16)
                     .map(EpochNumber::Num)

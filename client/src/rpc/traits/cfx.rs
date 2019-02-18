@@ -104,10 +104,10 @@ build_rpc_trait! {
         fn chain(&self) -> Result<Vec<Block>>;
 
         #[rpc(name = "cfx_getBlocksByEpoch")]
-        fn blocks_by_epoch(&self, U64) -> Result<Vec<H256>>;
+        fn blocks_by_epoch(&self, EpochNumber) -> Result<Vec<H256>>;
 
         #[rpc(name = "cfx_getAccount")]
-        fn account(&self, H160, bool, U64) -> Result<Account>;
+        fn account(&self, H160, bool, U64, Trailing<EpochNumber>) -> Result<Account>;
 
 //        /// Returns transaction at given block hash and index.
 //        #[rpc(name = "cfx_getTransactionByBlockHashAndIndex")]

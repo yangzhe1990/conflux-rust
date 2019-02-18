@@ -45,7 +45,8 @@ impl CfxHandler {
     ) -> PrimitiveEpochNumber {
         match number {
             EpochNumber::Earliest => PrimitiveEpochNumber::Earliest,
-            EpochNumber::Latest => PrimitiveEpochNumber::Latest,
+            EpochNumber::LatestMined => PrimitiveEpochNumber::LatestMined,
+            EpochNumber::LatestState => PrimitiveEpochNumber::LatestState,
             EpochNumber::Num(num) => PrimitiveEpochNumber::Number(num.into()),
         }
     }
@@ -60,19 +61,13 @@ impl Cfx for CfxHandler {
     }
 
     fn gas_price(&self) -> Result<RpcU256> {
+        info!("RPC Request: cfx_gasPrice()");
         Ok(self.consensus_graph.gas_price().unwrap_or(0.into()).into())
     }
 
     fn epoch_number(&self) -> Result<RpcU256> {
         info!("RPC Request: cfx_epochNumber()");
-        let best_hash = self.consensus_graph.best_block_hash();
-        if let Some(epoch_number) =
-            self.consensus_graph.get_block_epoch_number(&best_hash)
-        {
-            Ok(epoch_number.into())
-        } else {
-            Err(RpcError::internal_error())
-        }
+        Ok(self.consensus_graph.best_epoch_number().into())
     }
 
     fn block_by_hash(
@@ -121,22 +116,19 @@ impl Cfx for CfxHandler {
         }
     }
 
-    fn blocks_by_epoch(&self, epoch_number: RpcU64) -> Result<Vec<RpcH256>> {
-        let epoch_number: usize = epoch_number.as_usize();
-        info!("RPC Request: cfx_getBlocks epoch_number={:?}", epoch_number);
+    fn blocks_by_epoch(&self, num: EpochNumber) -> Result<Vec<RpcH256>> {
+        info!("RPC Request: cfx_getBlocks epoch_number={:?}", num);
 
-        Ok(self
-            .consensus_graph
-            .block_hashes_by_epoch(epoch_number)
-            .into_iter()
-            .map(|x| x.into())
-            .collect())
+        self.consensus_graph
+            .block_hashes_by_epoch(self.get_primitive_epoch_number(num))
+            .map_err(|err| RpcError::invalid_params(err))
+            .and_then(|vec| Ok(vec.into_iter().map(|x| x.into()).collect()))
     }
 
     fn balance(
         &self, address: RpcH160, num: Trailing<EpochNumber>,
     ) -> Result<RpcU256> {
-        let num = num.unwrap_or_default();
+        let num = num.unwrap_or(EpochNumber::LatestState);
         let address: H160 = address.into();
         info!(
             "RPC Request: cfx_getBalance address={:?} epoch_num={:?}",
@@ -151,35 +143,39 @@ impl Cfx for CfxHandler {
 
     fn account(
         &self, address: RpcH160, include_txs: bool, num_txs: RpcU64,
-    ) -> Result<Account> {
+        epoch_num: Trailing<EpochNumber>,
+    ) -> Result<Account>
+    {
         let address: H160 = address.into();
         let num_txs = num_txs.as_usize();
+        let epoch_num = epoch_num.unwrap_or(EpochNumber::LatestState);
         info!(
             "RPC Request: cfx_getAccount address={:?} include_txs={:?} num_txs={:?}",
             address, include_txs, num_txs
         );
-        let balance = self
-            .consensus_graph
-            .get_balance(address, PrimitiveEpochNumber::Latest)
-            .map_err(|err| RpcError::invalid_params(err))?;
-        let transactions = self
-            .consensus_graph
-            .get_related_transactions(address, num_txs);
-
-        Ok(Account {
-            balance: balance.into(),
-            transactions: BlockTransactions::new(
-                &transactions,
-                include_txs,
-                self.consensus_graph.clone(),
-            ),
-        })
+        self.consensus_graph
+            .get_account(
+                address,
+                num_txs,
+                self.get_primitive_epoch_number(epoch_num),
+            )
+            .and_then(|(balance, transactions)| {
+                Ok(Account {
+                    balance: balance.into(),
+                    transactions: BlockTransactions::new(
+                        &transactions,
+                        include_txs,
+                        self.consensus_graph.clone(),
+                    ),
+                })
+            })
+            .map_err(|err| RpcError::invalid_params(err))
     }
 
     fn transaction_count(
         &self, address: RpcH160, num: Trailing<EpochNumber>,
     ) -> Result<RpcU256> {
-        let num = num.unwrap_or_default();
+        let num = num.unwrap_or(EpochNumber::LatestState);
         info!(
             "RPC Request: cfx_getTransactionCount address={:?} epoch_num={:?}",
             address, num
