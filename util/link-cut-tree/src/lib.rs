@@ -1,3 +1,5 @@
+use ethereum_types::U256;
+
 const NULL: usize = !0;
 
 #[derive(Clone)]
@@ -6,6 +8,8 @@ struct Node {
     right_child: usize,
     parent: usize,
     path_parent: usize,
+    sum: U256,
+    delta: U256,
 }
 
 impl Default for Node {
@@ -15,6 +19,8 @@ impl Default for Node {
             right_child: NULL,
             parent: NULL,
             path_parent: NULL,
+            sum: U256::zero(),
+            delta: U256::zero(),
         }
     }
 }
@@ -43,20 +49,43 @@ impl LinkCutTree {
         let parent = self.tree[v].parent;
         let grandparent = self.tree[parent].parent;
 
+        let sum =
+            self.tree[v].sum + self.tree[v].delta + self.tree[parent].delta;
+        self.tree[v].sum = sum;
         if self.tree[parent].left_child == v {
             let u = self.tree[v].right_child;
+            let w = self.tree[v].left_child;
             self.tree[parent].left_child = u;
             if u != NULL {
                 self.tree[u].parent = parent;
+                let delta = self.tree[u].delta + self.tree[v].delta;
+                self.tree[u].delta = delta;
             }
+            if w != NULL {
+                let delta = self.tree[w].delta
+                    + self.tree[v].delta
+                    + self.tree[parent].delta;
+                self.tree[w].delta = delta;
+            }
+            self.tree[v].delta = U256::zero();
             self.tree[v].right_child = parent;
             self.tree[parent].parent = v;
         } else {
             let u = self.tree[v].left_child;
+            let w = self.tree[v].right_child;
             self.tree[parent].right_child = u;
             if u != NULL {
                 self.tree[u].parent = parent;
+                let delta = self.tree[u].delta + self.tree[v].delta;
+                self.tree[u].delta = delta;
             }
+            if w != NULL {
+                let delta = self.tree[w].delta
+                    + self.tree[v].delta
+                    + self.tree[parent].delta;
+                self.tree[w].delta = delta;
+            }
+            self.tree[v].delta = U256::zero();
             self.tree[v].left_child = parent;
             self.tree[parent].parent = v;
         }
@@ -181,11 +210,26 @@ impl LinkCutTree {
 
         x
     }
+
+    pub fn update_weight(&mut self, v: usize, weight: &U256) {
+        self.access(v);
+
+        self.tree[v].sum += *weight;
+        let u = self.tree[v].left_child;
+        if u != NULL {
+            self.tree[u].delta += *weight;
+        }
+    }
+
+    pub fn aggregate_subtree_weight(&mut self, v: usize) -> U256 {
+        self.access(v);
+        self.tree[v].sum.clone()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::LinkCutTree;
+    use super::{LinkCutTree, U256};
 
     #[test]
     fn test_lca() {
@@ -210,5 +254,30 @@ mod tests {
         assert_eq!(tree.lca(2, 3), 1);
         assert_eq!(tree.lca(1, 4), 0);
         assert_eq!(tree.lca(1, 4), 0);
+    }
+
+    #[test]
+    fn test_subtree_sum() {
+        let mut tree = LinkCutTree::new();
+        tree.make_tree(0);
+        tree.make_tree(1);
+        tree.make_tree(2);
+        tree.make_tree(3);
+        tree.make_tree(4);
+        tree.link(0, 1);
+        tree.link(1, 2);
+        tree.link(1, 3);
+        tree.link(0, 4);
+        tree.update_weight(0, &U256::from(1u64));
+        tree.update_weight(1, &U256::from(2u64));
+        tree.update_weight(2, &U256::from(3u64));
+        tree.update_weight(3, &U256::from(4u64));
+        tree.update_weight(4, &U256::from(5u64));
+
+        assert_eq!(tree.aggregate_subtree_weight(0), U256::from(15u64));
+        assert_eq!(tree.aggregate_subtree_weight(1), U256::from(9u64));
+        assert_eq!(tree.aggregate_subtree_weight(2), U256::from(3u64));
+        assert_eq!(tree.aggregate_subtree_weight(3), U256::from(4u64));
+        assert_eq!(tree.aggregate_subtree_weight(4), U256::from(5u64));
     }
 }

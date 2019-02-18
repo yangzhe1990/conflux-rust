@@ -5,3 +5,4 @@ authors = ["Dong Zhou <dong.zhou.08@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+ethereum-types = "0.4"
