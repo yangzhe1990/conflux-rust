@@ -1062,12 +1062,12 @@ impl NetworkServiceInner {
                     sess.set_expired();
                 }
                 deregister = sess.done();
-                trace!("deregister stream {}? {}", token, deregister);
+                debug!("deregister stream {}? {}", token, deregister);
             }
         }
         for p in to_disconnect {
             if let Some(h) = self.handlers.read().get(&p).clone() {
-                println!("{}: peer {} disconnected", self.local_addr(), token);
+                debug!("{}: peer {} disconnected", self.local_addr(), token);
                 h.on_peer_disconnected(
                     &NetworkContext::new(io, p, self),
                     token,
@@ -1106,7 +1106,7 @@ impl NetworkServiceInner {
 			}),
 			Ok(_) => {},
 			Err(e) => {
-				debug!(target: "network", "Error reading UPD socket: {:?}", e);
+				debug!(target: "network", "Error reading UDP socket: {:?}", e);
 			},
 		};
 

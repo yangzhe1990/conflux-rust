@@ -29,7 +29,7 @@ use crate::{
 };
 use std::{
     cmp::{self, Ordering},
-    collections::{BinaryHeap, HashSet, VecDeque},
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
     iter::FromIterator,
     sync::{
         atomic::{AtomicBool, Ordering as AtomicOrdering},
@@ -45,18 +45,29 @@ pub const MAX_BLOCKS_TO_SEND: u64 = 256;
 const MIN_PEERS_PROPAGATION: usize = 4;
 const MAX_PEERS_PROPAGATION: usize = 128;
 const DEFAULT_GET_HEADERS_NUM: u64 = 1;
+const REQUEST_START_WAITING_TIME_SECONDS: u64 = 1;
+const REQUEST_WAITING_TIME_BACKOFF: u32 = 2;
 
 const TX_TIMER: TimerToken = 0;
 const CHECK_REQUEST_TIMER: TimerToken = 1;
 const BLOCK_CACHE_GC_TIMER: TimerToken = 2;
 const PERSIST_TERMINAL_TIMER: TimerToken = 3;
 
+#[derive(Eq, PartialEq, PartialOrd, Ord)]
+enum WaitingRequest {
+    Header(H256),
+    Block(H256),
+}
+
 pub struct SynchronizationProtocolHandler {
     protocol_config: ProtocolConfiguration,
     graph: SharedSynchronizationGraph,
     syn: RwLock<SynchronizationState>,
     headers_in_flight: Mutex<HashSet<H256>>,
+    header_request_waittime: Mutex<HashMap<H256, Duration>>,
     blocks_in_flight: Mutex<HashSet<H256>>,
+    block_request_waittime: Mutex<HashMap<H256, Duration>>,
+    waiting_requests: Mutex<BinaryHeap<(Instant, WaitingRequest)>>,
     requests_queue: Mutex<BinaryHeap<Arc<TimedSyncRequests>>>,
 }
 
@@ -137,9 +148,12 @@ impl SynchronizationProtocolHandler {
                 verification_config,
             )),
             syn: RwLock::new(SynchronizationState::new()),
-            headers_in_flight: Mutex::new(HashSet::new()),
-            blocks_in_flight: Mutex::new(HashSet::new()),
-            requests_queue: Mutex::new(BinaryHeap::new()),
+            headers_in_flight: Default::default(),
+            header_request_waittime: Default::default(),
+            blocks_in_flight: Default::default(),
+            block_request_waittime: Default::default(),
+            waiting_requests: Default::default(),
+            requests_queue: Default::default(),
         }
     }
 
@@ -487,6 +501,8 @@ impl SynchronizationProtocolHandler {
                                     }
                                 }
                             }
+                            // FIXME Should check if hash matches
+                            self.block_request_waittime.lock().remove(&hash);
 
                             let (success, to_relay) = self.graph.insert_block(
                                 Block {
@@ -554,7 +570,7 @@ impl SynchronizationProtocolHandler {
             .write()
             .peers
             .get_mut(&peer)
-            .unwrap()
+            .ok_or(ErrorKind::UnknownPeer)?
             .last_sent_transactions
             .extend(transactions.iter().map(|tx| tx.hash()));
 
@@ -773,13 +789,13 @@ impl SynchronizationProtocolHandler {
         debug!("on_block_headers_response, msg=:{:?}", block_headers);
         self.match_request(io, peer, block_headers.request_id())?;
 
+        // FIXME Should request again, and should check if hash matches
         if block_headers.headers.is_empty() {
             trace!("Received empty GetBlockHeadersResponse message");
             return Ok(());
         }
 
         let mut parent_hash = H256::default();
-
         let mut hashes = Vec::default();
         let mut dependent_hashes = Vec::new();
         let mut need_to_relay = Vec::new();
@@ -805,9 +821,12 @@ impl SynchronizationProtocolHandler {
 
         {
             let mut headers_in_flight = self.headers_in_flight.lock();
+            let mut header_request_waittime =
+                self.header_request_waittime.lock();
             for header in &block_headers.headers {
                 let hash = header.hash();
-                headers_in_flight.remove(&header.hash());
+                headers_in_flight.remove(&hash);
+                header_request_waittime.remove(&hash);
                 if parent_hash != H256::default() && parent_hash != hash {
                     return Err(ErrorKind::Invalid.into());
                 }
@@ -896,6 +915,8 @@ impl SynchronizationProtocolHandler {
                 warn!("Response has not requested block {:?}", hash);
                 continue;
             }
+            // FIXME Should check if hash matches
+            self.block_request_waittime.lock().remove(&hash);
             block.recover_public(
                 &mut *self
                     .get_transaction_pool()
@@ -1117,6 +1138,48 @@ impl SynchronizationProtocolHandler {
         self.send_message(io, peer, msg.as_ref())
     }
 
+    /// Remove in-flight blocks.
+    /// Delay blocks requested before.
+    fn preprocess_block_request(
+        &self, hashes: &mut Vec<H256>, blocks_in_flight: &mut HashSet<H256>,
+    ) {
+        let mut block_request_waittime = self.block_request_waittime.lock();
+        hashes.retain(|hash| {
+            if blocks_in_flight.contains(hash) {
+                false
+            } else {
+                blocks_in_flight.insert(*hash);
+                match block_request_waittime.get_mut(hash) {
+                    None => {
+                        block_request_waittime.insert(
+                            *hash,
+                            Duration::new(
+                                REQUEST_START_WAITING_TIME_SECONDS,
+                                0,
+                            ),
+                        );
+                        true
+                    }
+                    Some(t) => {
+                        // It is requested before. To prevent possible attacks,
+                        // we wait for more time to start
+                        // the next request.
+                        debug!(
+                            "Block {:?} is requested again, delay for {:?}",
+                            hash, t
+                        );
+                        self.waiting_requests.lock().push((
+                            Instant::now() + *t,
+                            WaitingRequest::Block(*hash),
+                        ));
+                        *t *= REQUEST_WAITING_TIME_BACKOFF;
+                        false
+                    }
+                }
+            }
+        });
+    }
+
     fn request_block_headers(
         &self, io: &NetworkContext, peer_id: PeerId, hash: &H256,
         max_blocks: u64,
@@ -1124,10 +1187,45 @@ impl SynchronizationProtocolHandler {
     {
         let syn = &mut *self.syn.write();
         let mut headers_in_flight = self.headers_in_flight.lock();
+        let mut header_request_waittime = self.header_request_waittime.lock();
         if headers_in_flight.contains(hash) {
             return;
+        } else {
+            headers_in_flight.insert(hash.clone());
         }
 
+        match header_request_waittime.get_mut(hash) {
+            None => header_request_waittime.insert(
+                *hash,
+                Duration::new(REQUEST_START_WAITING_TIME_SECONDS, 0),
+            ),
+            Some(t) => {
+                // It is requested before. To prevent possible attacks, we wait
+                // for more time to start the next request.
+                debug!(
+                    "Header {:?} is requested again, delay for {:?}",
+                    hash, t
+                );
+                self.waiting_requests
+                    .lock()
+                    .push((Instant::now() + *t, WaitingRequest::Header(*hash)));
+                *t *= REQUEST_WAITING_TIME_BACKOFF;
+                return;
+            }
+        };
+        if !self
+            .request_block_headers_unchecked(io, peer_id, hash, max_blocks, syn)
+        {
+            // TODO Should handle failure better
+            headers_in_flight.remove(hash);
+        }
+    }
+
+    fn request_block_headers_unchecked(
+        &self, io: &NetworkContext, peer_id: PeerId, hash: &H256,
+        max_blocks: u64, syn: &mut SynchronizationState,
+    ) -> bool
+    {
         if let Some(timed_req) = self.send_request(
             io,
             peer_id,
@@ -1145,8 +1243,11 @@ impl SynchronizationProtocolHandler {
                 peer_id,
                 timed_req.request_id
             );
-            headers_in_flight.insert(hash.clone());
             self.requests_queue.lock().push(timed_req);
+            true
+        } else {
+            warn!("Fail to request header {:?}", hash);
+            false
         }
     }
 
@@ -1155,7 +1256,10 @@ impl SynchronizationProtocolHandler {
     ) {
         let syn = &mut *self.syn.write();
         let mut blocks_in_flight = self.blocks_in_flight.lock();
-        hashes.retain(|hash| !blocks_in_flight.contains(hash));
+        self.preprocess_block_request(&mut hashes, &mut *blocks_in_flight);
+        if hashes.is_empty() {
+            return;
+        }
 
         if let Some(timed_req) = self.send_request(
             io,
@@ -1170,10 +1274,12 @@ impl SynchronizationProtocolHandler {
                 "Requesting blocks {:?} from {:?} request_id={}",
                 hashes, peer_id, timed_req.request_id
             );
-            for hash in hashes {
-                blocks_in_flight.insert(hash);
-            }
             self.requests_queue.lock().push(timed_req);
+        } else {
+            warn!("Fail to request blocks {:?}", hashes);
+            for h in hashes {
+                blocks_in_flight.remove(&h);
+            }
         }
     }
 
@@ -1182,8 +1288,23 @@ impl SynchronizationProtocolHandler {
     ) {
         let syn = &mut *self.syn.write();
         let mut blocks_in_flight = self.blocks_in_flight.lock();
-        hashes.retain(|hash| !blocks_in_flight.contains(hash));
+        self.preprocess_block_request(&mut hashes, &mut *blocks_in_flight);
+        if hashes.is_empty() {
+            return;
+        }
+        if !self.request_compact_block_unchecked(io, peer_id, &hashes, syn) {
+            // TODO Should handle failure better
+            for h in hashes {
+                blocks_in_flight.remove(&h);
+            }
+        }
+    }
 
+    fn request_compact_block_unchecked(
+        &self, io: &NetworkContext, peer_id: PeerId, hashes: &Vec<H256>,
+        syn: &mut SynchronizationState,
+    ) -> bool
+    {
         if let Some(timed_req) = self.send_request(
             io,
             peer_id,
@@ -1197,10 +1318,11 @@ impl SynchronizationProtocolHandler {
                 "Requesting compact blocks {:?} from {:?} request_id={}",
                 hashes, peer_id, timed_req.request_id
             );
-            for hash in hashes {
-                blocks_in_flight.insert(hash);
-            }
             self.requests_queue.lock().push(timed_req);
+            true
+        } else {
+            warn!("Fail to request compact blocks {:?}", hashes);
+            false
         }
     }
 
@@ -1439,7 +1561,7 @@ impl SynchronizationProtocolHandler {
                         max_sent = cmp::max(max_sent, sent);
                     }
                     Err(e) => {
-                        trace!(
+                        warn!(
                             "failed to propagate txs to peer, id: {}, err: {}",
                             peer_id,
                             e
@@ -1476,7 +1598,7 @@ impl SynchronizationProtocolHandler {
     }
 
     pub fn remove_expired_flying_request(&self, io: &NetworkContext) {
-        // FIXME should get expired requests from other peers
+        // Check if in-flight requests timeout
         let now = Instant::now();
         let mut timeout_requests = Vec::new();
         {
@@ -1506,14 +1628,17 @@ impl SynchronizationProtocolHandler {
                 Ok(request) => {
                     // TODO may have better choice than random peer
                     debug!("Timeout request: {:?}", request);
-                    let chosen_peer = {
-                        let syn = self.syn.read();
-                        let peers_vec: Vec<&PeerId> =
-                            syn.peers.keys().collect();
-                        let p = peers_vec
-                            .get(random::new().gen_range(0, peers_vec.len()))
-                            .unwrap();
-                        **p
+                    let chosen_peer = match self
+                        .syn
+                        .read()
+                        .get_random_peer(&HashSet::new())
+                    {
+                        Some(p) => p,
+                        None => {
+                            // FIXME There is no peer to request, should store
+                            // the requests and ask for them later
+                            break;
+                        }
                     };
                     match request {
                         RequestMessage::Headers(get_headers) => {
@@ -1560,6 +1685,57 @@ impl SynchronizationProtocolHandler {
         }
         debug!("headers_in_flight: {:?}", *self.headers_in_flight.lock());
         debug!("blocks_in_flight: {:?}", *self.blocks_in_flight.lock());
+
+        // Send waiting requests that their backoff delay have passes
+        let mut waiting_requests = self.waiting_requests.lock();
+        loop {
+            if waiting_requests.is_empty() {
+                break;
+            }
+            let req = waiting_requests.pop().expect("queue not empty");
+            if req.0 >= now {
+                waiting_requests.push(req);
+                break;
+            } else {
+                let syn = &mut *self.syn.write();
+                let chosen_peer = match syn.get_random_peer(&HashSet::new()) {
+                    Some(p) => p,
+                    None => {
+                        // FIXME There is no peer to request, should store the
+                        // requests and ask for them later
+                        break;
+                    }
+                };
+                // Waiting requests are already in-flight, so send them without
+                // checking
+                match req.1 {
+                    WaitingRequest::Header(h) => {
+                        if !self.request_block_headers_unchecked(
+                            io,
+                            chosen_peer,
+                            &h,
+                            1,
+                            syn,
+                        ) {
+                            // TODO better handling
+                            self.headers_in_flight.lock().remove(&h);
+                        }
+                    }
+                    WaitingRequest::Block(h) => {
+                        let blocks = vec![h];
+                        if !self.request_compact_block_unchecked(
+                            io,
+                            chosen_peer,
+                            &blocks,
+                            syn,
+                        ) {
+                            // TODO better handling
+                            self.blocks_in_flight.lock().remove(&h);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn remove_request(

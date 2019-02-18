@@ -19,7 +19,6 @@ use std::{
 pub const MAX_INFLIGHT_REQUEST_COUNT: u64 = 64;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum RequestMessage {
     Headers(GetBlockHeaders),
     Blocks(GetBlocks),

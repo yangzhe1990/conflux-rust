@@ -12,8 +12,6 @@ import re
 from subprocess import CalledProcessError
 import time
 import socket
-import fcntl
-import struct
 
 from . import coverage
 from .authproxy import AuthServiceProxy, JSONRPCException
@@ -259,6 +257,7 @@ def initialize_datadir(dirname, n, conf_parameters):
                         "log-level": "\"trace\"",
                         "storage-cache-size": "200000",
                         "storage-cache-start-size": "200000",
+                        "storage-node-map-size": "200000",
                       }
         for k in conf_parameters:
             local_conf[k] = conf_parameters[k]
@@ -484,13 +483,8 @@ def rpc_url(i, rpchost=None):
     return "http://%s:%d" % (rpchost, int(port))
 
 
-def get_ip_address(ifname):
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return fcntl.ioctl(
-        s.fileno(),
-        0x8915,  # SIOCGIFADDR
-        struct.pack('256s', bytes(ifname[:15], 'utf-8'))
-    )[20:24]
+def get_ip_address():
+    return socket.gethostbyname(socket.gethostname())
 
 
 def checktx(node, tx_hash):

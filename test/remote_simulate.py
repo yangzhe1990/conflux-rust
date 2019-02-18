@@ -22,7 +22,9 @@ class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 15
-        self.conf_parameters = {"generate-tx": "true", "generate-tx-period-ms": "7", "log-level": "\"debug\""}
+        self.conf_parameters = {"generate-tx": "true", "generate-tx-period-ms": "7", "log-level": "\"debug\"",
+                                "storage-cache-size": "20_000_000",
+                                "storage-cache-start-size": "20_000_000",}
 
     def setup_network(self):
         node_per_host = 1

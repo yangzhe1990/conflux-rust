@@ -171,16 +171,16 @@ class GetBlockHeaders(rlp.Serializable):
 
 class BlockHeader(rlp.Serializable):
     fields = [
-        ("parent_hash", hash32),
+        ("parent_hash", binary),
         ("height", big_endian_int),
         ("timestamp", big_endian_int),
-        ("author", hash20),
-        ("transactions_root", hash32),
-        ("deferred_state_root", hash32),
-        ("deferred_receipts_root", hash32),
+        ("author", binary),
+        ("transactions_root", binary),
+        ("deferred_state_root", binary),
+        ("deferred_receipts_root", binary),
         ("difficulty", big_endian_int),
         ("gas_limit", big_endian_int),
-        ("referee_hashes", CountableList(hash32)),
+        ("referee_hashes", CountableList(binary)),
         ("nonce", big_endian_int),
     ]
 
@@ -266,6 +266,9 @@ class Block(rlp.Serializable):
     @property
     def hash(self):
         return self.block_header.hash
+
+    def hash_hex(self):
+        return eth_utils.encode_hex(self.hash)
 
 
 class BlockBodies(rlp.Serializable):

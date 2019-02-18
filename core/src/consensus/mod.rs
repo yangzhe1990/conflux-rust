@@ -273,6 +273,9 @@ impl ConsensusGraphInner {
 
         // Remove difficulty contribution of anticone for fork points
         for index in anticone {
+            if self.arena[*index].data.partial_invalid {
+                continue;
+            }
             let difficulty = self.arena[*index].difficulty;
             let mut upper = self.arena[*index].parent;
             debug_assert!(upper != NULL);
@@ -1123,8 +1126,8 @@ impl ConsensusGraph {
                     block_receipts.clone(),
                     true,
                 );
-                block_fees.insert(*index, accumulated_fee);
             }
+            block_fees.insert(*index, accumulated_fee);
             epoch_receipts.push(block_receipts);
             debug!(
                 "n_invalid_nonce={}, n_ok={}, n_other={}",
@@ -1367,12 +1370,11 @@ impl ConsensusGraph {
                 }
                 let penalty_upper_anticone =
                     &inner.arena[pivot_block_upper].data.anticone;
-                let mut pivot_index = inner.pivot_chain[epoch_num];
-                let mut in_branch = false;
-                if epoch_num > fork_height {
-                    pivot_index = chain[epoch_num - fork_height];
-                    in_branch = true;
-                }
+                let (pivot_index, in_branch) = if epoch_num > fork_height {
+                    (chain[epoch_num - fork_height], true)
+                } else {
+                    (inner.pivot_chain[epoch_num], false)
+                };
                 debug_assert!(
                     epoch_num == inner.arena[pivot_index].height as usize
                 );

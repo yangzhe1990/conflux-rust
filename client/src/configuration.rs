@@ -109,7 +109,7 @@ impl Configuration {
             {
                 Ok(sock_addr) => sock_addr,
                 Err(_e) => {
-                    debug!(target: "network", "public_address in config is invalid");
+                    warn!(target: "network", "public_address in config is invalid");
                     None
                 }
             };

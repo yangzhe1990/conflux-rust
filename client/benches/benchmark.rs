@@ -7,7 +7,7 @@ extern crate ethcore_bytes;
 use client::{Client, Configuration};
 use core::{
     executive::Executive,
-    machine::{new_byzantium_test_machine},
+    machine::new_byzantium_test_machine,
     state::State,
     statedb::StateDb,
     storage::state_manager::StateManagerTrait,
@@ -16,7 +16,7 @@ use core::{
 };
 use criterion::Criterion;
 use ethcore_bytes::Bytes;
-use ethereum_types::{U256};
+use ethereum_types::U256;
 use keylib::{Generator, KeyPair, Random};
 use parking_lot::{Condvar, Mutex};
 use primitives::{Action, Transaction};
