@@ -1156,6 +1156,10 @@ impl NetworkServiceInner {
     fn on_udp_packet(
         &self, packet: &[u8], from: SocketAddr,
     ) -> Result<(), Error> {
+        if packet.len() == 0 {
+            return Ok(())
+        }
+
         let res = match packet[0] {
             UDP_PROTOCOL_DISCOVERY => {
                 if let Some(discovery) = self.discovery.lock().as_mut() {

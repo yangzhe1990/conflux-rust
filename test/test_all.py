@@ -45,7 +45,12 @@ for script in TEST_SCRIPTS:
     color = BLUE
     glyph = TICK
     try:
-        subprocess.check_output(args = ["python3", script, "--randomseed=1"], stdin = None, cwd = test_dir)
+        py = "python3"
+
+        if hasattr(sys, "getwindowsversion"):
+            py = "python"
+
+        subprocess.check_output(args = [py, script, "--randomseed=1"], stdin = None, cwd = test_dir)
     except subprocess.CalledProcessError as err:
         color = RED
         glyph = CROSS
