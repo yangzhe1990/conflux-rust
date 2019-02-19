@@ -21,6 +21,7 @@ pub struct CfxHandler {
     pub consensus_graph: Arc<ConsensusGraph>,
     #[allow(dead_code)]
     storage_manager: Arc<StorageManager>,
+    #[allow(dead_code)]
     sync: SharedSynchronizationService,
     txpool: Arc<TransactionPool>,
 }
@@ -65,18 +66,49 @@ impl Cfx for CfxHandler {
         Ok(self.consensus_graph.gas_price().unwrap_or(0.into()).into())
     }
 
-    fn epoch_number(&self) -> Result<RpcU256> {
-        info!("RPC Request: cfx_epochNumber()");
-        Ok(self.consensus_graph.best_epoch_number().into())
+    fn epoch_number(
+        &self, epoch_num: Trailing<EpochNumber>,
+    ) -> Result<RpcU256> {
+        let epoch_num = epoch_num.unwrap_or(EpochNumber::LatestMined);
+        info!("RPC Request: cfx_epochNumber({:?})", epoch_num);
+        if let EpochNumber::Num(_) = epoch_num {
+            return Err(RpcError::invalid_params("A number is not expected"));
+        }
+        Ok(self
+            .consensus_graph
+            .get_height_from_epoch_number(
+                self.get_primitive_epoch_number(epoch_num),
+            )
+            .unwrap()
+            .into())
+    }
+
+    fn block_by_epoch_number(
+        &self, epoch_num: EpochNumber, include_txs: bool,
+    ) -> Result<RpcBlock> {
+        info!("RPC Request: cfx_getBlockByEpochNumber epoch_number={:?} include_txs={:?}", epoch_num, include_txs);
+        self.consensus_graph
+            .get_hash_from_epoch_number(
+                self.get_primitive_epoch_number(epoch_num),
+            )
+            .map_err(|err| RpcError::invalid_params(err))
+            .and_then(|hash| {
+                let block = self.consensus_graph.block_by_hash(&hash).unwrap();
+                Ok(RpcBlock::new(
+                    &*block,
+                    self.consensus_graph.clone(),
+                    include_txs,
+                ))
+            })
     }
 
     fn block_by_hash(
         &self, hash: RpcH256, include_txs: bool,
     ) -> Result<Option<RpcBlock>> {
         let hash: H256 = hash.into();
-        info!("RPC Request: cfx_getBlockByHash({:?})", hash);
+        info!("RPC Request: cfx_getBlockByHash hash={:?} include_txs={:?}", hash, include_txs);
 
-        if let Some(block) = self.sync.block_by_hash(&hash) {
+        if let Some(block) = self.consensus_graph.block_by_hash(&hash) {
             let result_block = Some(RpcBlock::new(
                 &*block,
                 self.consensus_graph.clone(),
@@ -150,8 +182,8 @@ impl Cfx for CfxHandler {
         let num_txs = num_txs.as_usize();
         let epoch_num = epoch_num.unwrap_or(EpochNumber::LatestState);
         info!(
-            "RPC Request: cfx_getAccount address={:?} include_txs={:?} num_txs={:?}",
-            address, include_txs, num_txs
+            "RPC Request: cfx_getAccount address={:?} include_txs={:?} num_txs={:?} epoch_num={:?}",
+            address, include_txs, num_txs, epoch_num
         );
         self.consensus_graph
             .get_account(

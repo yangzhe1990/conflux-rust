@@ -679,6 +679,12 @@ impl ConsensusGraph {
         consensus_graph
     }
 
+    pub fn get_height_from_epoch_number(
+        &self, epoch_number: EpochNumber,
+    ) -> Result<usize, String> {
+        self.inner.read().get_height_from_epoch_number(epoch_number)
+    }
+
     pub fn best_epoch_number(&self) -> usize {
         self.inner.read().best_epoch_number()
     }

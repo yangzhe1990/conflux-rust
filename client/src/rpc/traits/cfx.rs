@@ -33,7 +33,7 @@ build_rpc_trait! {
 
         /// Returns highest epoch number.
         #[rpc(name = "cfx_epochNumber")]
-        fn epoch_number(&self) -> Result<U256>;
+        fn epoch_number(&self, Trailing<EpochNumber>) -> Result<U256>;
 
         /// Returns balance of the given account.
         #[rpc(name = "cfx_getBalance")]
@@ -47,13 +47,13 @@ build_rpc_trait! {
         #[rpc(name = "cfx_getBlockByHash")]
         fn block_by_hash(&self, H256, bool) -> Result<Option<Block>>;
 
+        /// Returns block with given epoch number.
+        #[rpc(name = "cfx_getBlockByEpochNumber")]
+        fn block_by_epoch_number(&self, EpochNumber, bool) -> Result<Block>;
+
         /// Returns best block hash.
         #[rpc(name = "cfx_getBestBlockHash")]
         fn best_block_hash(&self) -> Result<H256>;
-
-//        /// Returns pivot block with given number.
-//        #[rpc(name = "cfx_getPivotBlockByNumber")]
-//        fn pivot_block_by_number(&self, EpochNumber, bool) -> BoxFuture<Option<Block>>;
 
         /// Returns the number of transactions sent from given address at given time (epoch number).
         #[rpc(name = "cfx_getTransactionCount")]
