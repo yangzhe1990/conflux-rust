@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import datetime
 import time
-
-import eth_utils
+import os
+import types
 
 from conflux.config import default_config
 from conflux.messages import GetBlockHeaders, GET_BLOCK_HEADERS_RESPONSE, Transactions
@@ -11,7 +11,6 @@ from test_framework.blocktools import make_genesis, create_transaction
 from test_framework.mininode import network_thread_start, P2PInterface
 from test_framework.test_framework import ConfluxTestFramework
 from test_framework.util import assert_equal, connect_nodes, get_peer_addr, wait_until, WaitHandler, checktx
-
 
 class RpcTest(ConfluxTestFramework):
     def set_test_params(self):
@@ -26,9 +25,12 @@ class RpcTest(ConfluxTestFramework):
         blocks = self.nodes[0].generate(self.block_number, 0)
         self.best_block_hash = blocks[-1] #make_genesis().block_header.hash
 
-        self._test_getblockcount()
         self._test_sayhello()
-        self._test_getbalance()
+        
+        # Test all cases under subfolder
+        self._test_subfolder("rpc")
+
+        self._test_getblockcount()
         self._test_getbestblockhash()
         self._test_getblock()
         self._test_getpeerinfo()
@@ -38,6 +40,31 @@ class RpcTest(ConfluxTestFramework):
 
         # Test stop at last
         self._test_stop()
+
+    def _test_subfolder(self, name):
+        cur_dir = os.path.dirname(os.path.abspath(__file__))
+        sub_dir = os.path.join(cur_dir, name)
+        for file in os.listdir(sub_dir):
+            if file.startswith("test_") and file.endswith(".py"):
+                module_name = file[0:-3]
+                module = __import__(name + "." + module_name, fromlist=True)
+                self._test_module(module)
+
+    def _test_module(self, module):
+        for name in dir(module):
+            obj = getattr(module, name)
+            if isinstance(obj, type):
+                self._test_class(name, obj)
+
+    def _test_class(self, class_name, class_type):
+        obj = class_type()
+        setattr(obj, 'ctx', self)
+        
+        for name in dir(obj):
+            m = getattr(obj, name)
+            if type(m) is types.MethodType and name.startswith("test_"):
+                self.log.info("Test " + class_name + "." + name)
+                m()
 
     def _test_sayhello(self):
         self.log.info("Test sayhello")
@@ -49,13 +76,6 @@ class RpcTest(ConfluxTestFramework):
         self.log.info("Test getblockcount")
         res = self.nodes[0].getblockcount()
         assert_equal(self.block_number + 1, res)
-
-    def _test_getbalance(self):
-        self.log.info("Test getbalance")
-        addr = eth_utils.encode_hex(privtoaddr(eth_utils.decode_hex("46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f")))
-        res = self.nodes[0].getbalance(addr)
-        balance = int(res, 0)
-        assert_equal(default_config["TOTAL_COIN"], balance)
 
     def _test_getbestblockhash(self):
         self.log.info("Test getbestblockhash")
