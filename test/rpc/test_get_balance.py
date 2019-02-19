@@ -6,7 +6,7 @@ sys.path.append("..")
 from conflux.utils import privtoaddr
 from conflux.config import default_config
 from test_framework.blocktools import create_transaction
-from test_framework.util import assert_equal, assert_raises_rpc_error, wait_until, checktx
+from test_framework.util import assert_equal, assert_raises_rpc_error, wait_until, checktx, assert_greater_than
 
 def _genesis_addr() -> str:
     genesis_key = default_config["GENESIS_PRI_KEY"]
@@ -38,7 +38,7 @@ class TestGetBalance:
     def test_genesis_account_balance(self):
         addr = _genesis_addr()
         balance = self._get_balance(addr)
-        assert_equal(default_config["TOTAL_COIN"], balance)
+        assert_greater_than(balance, 0)
 
     def test_address_not_exists(self):
         addr = _rand_addr()
@@ -73,9 +73,7 @@ class TestGetBalance:
         balance = self._get_balance(addr)
         assert_equal(0, balance)
 
-    #FIXME remove the prefix '_' to enable this test case
-    # Currently, the sent tx in txpool is always pending.
-    def _test_balance_after_tx(self):
+    def test_balance_after_tx(self):
         addr = _genesis_addr()
         original_balance = self._get_balance(addr)
         original_nonce = self._get_nonce(addr)

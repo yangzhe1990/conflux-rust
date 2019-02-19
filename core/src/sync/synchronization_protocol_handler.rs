@@ -502,7 +502,6 @@ impl SynchronizationProtocolHandler {
                                 }
                             }
                             // FIXME Should check if hash matches
-                            self.block_request_waittime.lock().remove(&hash);
 
                             let (success, to_relay) = self.graph.insert_block(
                                 Block {
@@ -515,8 +514,13 @@ impl SynchronizationProtocolHandler {
 
                             let mut blocks = Vec::new();
                             blocks.push(hash);
-                            // May fail due to transactions hash collision
-                            if !success {
+                            if success {
+                                self.block_request_waittime
+                                    .lock()
+                                    .remove(&hash);
+                            } else {
+                                // If the peer is honest, may still fail due to
+                                // tx hash collision
                                 self.request_blocks(io, peer, blocks.clone());
                             }
                             if to_relay {
@@ -787,7 +791,16 @@ impl SynchronizationProtocolHandler {
 
         let block_headers = rlp.as_val::<GetBlockHeadersResponse>()?;
         debug!("on_block_headers_response, msg=:{:?}", block_headers);
-        self.match_request(io, peer, block_headers.request_id())?;
+        let req = self.match_request(io, peer, block_headers.request_id())?;
+        let (req_hash, max_blocks) = match req {
+            RequestMessage::Headers(header_req) => {
+                (header_req.hash, header_req.max_blocks)
+            }
+            _ => {
+                warn!("Get response not matching the request! req={:?}, resp={:?}", req, block_headers);
+                return Err(ErrorKind::UnexpectedResponse.into());
+            }
+        };
 
         // FIXME Should request again, and should check if hash matches
         if block_headers.headers.is_empty() {
@@ -800,8 +813,12 @@ impl SynchronizationProtocolHandler {
         let mut dependent_hashes = Vec::new();
         let mut need_to_relay = Vec::new();
 
+        let mut responsed = false;
         for header in &block_headers.headers {
             let hash = header.hash();
+            if hash == req_hash {
+                responsed = true;
+            }
 
             let res = self.graph.insert_block_header(header.clone(), true);
 
@@ -835,7 +852,12 @@ impl SynchronizationProtocolHandler {
         }
         dependent_hashes.push(parent_hash);
 
-        // FIXME: Should we make this code executable only in debug mode?
+        if !responsed {
+            warn!("Header response from peer={} does not match the requested {:?}", peer, req_hash);
+            let chosen_peer = self.choose_peer_after_failure(peer);
+            self.request_block_headers(io, chosen_peer, &req_hash, max_blocks);
+        }
+
         let header_hashes: Vec<H256> = block_headers
             .headers
             .iter()
@@ -911,12 +933,10 @@ impl SynchronizationProtocolHandler {
         let mut need_to_relay = Vec::new();
         for mut block in blocks.blocks {
             let hash = block.hash();
-            if !requested_blocks.remove(&hash) {
+            if !requested_blocks.contains(&hash) {
                 warn!("Response has not requested block {:?}", hash);
                 continue;
             }
-            // FIXME Should check if hash matches
-            self.block_request_waittime.lock().remove(&hash);
             block.recover_public(
                 &mut *self
                     .get_transaction_pool()
@@ -933,7 +953,13 @@ impl SynchronizationProtocolHandler {
                 continue;
             }
 
-            let (_, to_relay) = self.graph.insert_block(block, true, true);
+            let (success, to_relay) =
+                self.graph.insert_block(block, true, true);
+            if success {
+                // The requested block is correctly received
+                self.block_request_waittime.lock().remove(&hash);
+                requested_blocks.remove(&hash);
+            }
             if to_relay {
                 need_to_relay.push(hash);
             }
@@ -1260,7 +1286,18 @@ impl SynchronizationProtocolHandler {
         if hashes.is_empty() {
             return;
         }
+        if !self.request_blocks_unchecked(io, peer_id, &hashes, syn) {
+            for h in hashes {
+                blocks_in_flight.remove(&h);
+            }
+        }
+    }
 
+    fn request_blocks_unchecked(
+        &self, io: &NetworkContext, peer_id: PeerId, hashes: &Vec<H256>,
+        syn: &mut SynchronizationState,
+    ) -> bool
+    {
         if let Some(timed_req) = self.send_request(
             io,
             peer_id,
@@ -1275,11 +1312,10 @@ impl SynchronizationProtocolHandler {
                 hashes, peer_id, timed_req.request_id
             );
             self.requests_queue.lock().push(timed_req);
+            true
         } else {
             warn!("Fail to request blocks {:?}", hashes);
-            for h in hashes {
-                blocks_in_flight.remove(&h);
-            }
+            false
         }
     }
 
@@ -1724,7 +1760,7 @@ impl SynchronizationProtocolHandler {
                     }
                     WaitingRequest::Block(h) => {
                         let blocks = vec![h];
-                        if !self.request_compact_block_unchecked(
+                        if !self.request_blocks_unchecked(
                             io,
                             chosen_peer,
                             &blocks,

@@ -252,7 +252,7 @@ def initialize_datadir(dirname, n, conf_parameters):
             os.path.join(datadir, "conflux.conf"), 'w', encoding='utf8') as f:
         local_conf = {"port": str(p2p_port(n)),
                         "jsonrpc-http-port": str(rpc_port(n)),
-                        "log-file": "\"{}\"".format(os.path.join(datadir, "conflux.log")),
+                        "log-file": "\'{}\'".format(os.path.join(datadir, "conflux.log")),
                         "test-mode": "true",
                         "log-level": "\"trace\"",
                         "storage-cache-size": "200000",

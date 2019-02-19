@@ -2,7 +2,7 @@ use crate::{
     cache_manager::CacheManager,
     consensus::SharedConsensusGraph,
     db::COL_MISC,
-    error::{BlockError, Error},
+    error::{BlockError, Error, ErrorKind},
     hash::{KECCAK_EMPTY_LIST_RLP, KECCAK_NULL_RLP},
     machine::new_byzantium_test_machine,
     pow::ProofOfWorkConfig,
@@ -872,10 +872,24 @@ impl SynchronizationGraph {
 
         if need_to_verify {
             let r = self.verification_config.verify_block_basic(&block);
-            if r.is_err() {
-                warn!("Invalid block! inserted_block={:?} err={:?}", block, r);
-                inner.arena[me].graph_status = BLOCK_INVALID;
-            }
+            match r {
+                Err(Error(
+                    ErrorKind::Block(BlockError::InvalidTransactionsRoot(e)),
+                    _,
+                )) => {
+                    warn ! ("BlockTransactionRoot not match! inserted_block={:?} err={:?}", block, e);
+                    insert_success = false;
+                    return (insert_success, need_to_relay);
+                }
+                Err(e) => {
+                    warn!(
+                        "Invalid block! inserted_block={:?} err={:?}",
+                        block, e
+                    );
+                    inner.arena[me].graph_status = BLOCK_INVALID;
+                }
+                _ => {}
+            };
         }
 
         let mut invalid_set: HashSet<usize> = HashSet::new();

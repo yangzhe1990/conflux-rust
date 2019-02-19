@@ -106,7 +106,10 @@ impl Cfx for CfxHandler {
         &self, hash: RpcH256, include_txs: bool,
     ) -> Result<Option<RpcBlock>> {
         let hash: H256 = hash.into();
-        info!("RPC Request: cfx_getBlockByHash hash={:?} include_txs={:?}", hash, include_txs);
+        info!(
+            "RPC Request: cfx_getBlockByHash hash={:?} include_txs={:?}",
+            hash, include_txs
+        );
 
         if let Some(block) = self.consensus_graph.block_by_hash(&hash) {
             let result_block = Some(RpcBlock::new(
@@ -230,7 +233,7 @@ impl Cfx for CfxHandler {
             })
             .and_then(|tx| {
                 let result = self.txpool.insert_new_transactions(
-                    self.consensus_graph.best_block_hash(),
+                    self.consensus_graph.best_state_block_hash(),
                     vec![tx],
                 );
                 if result.is_empty() {
