@@ -57,6 +57,9 @@ pub struct NodeRefMapDeltaMpt<CacheAlgoDataT: CacheAlgoDataTrait> {
         BTreeMap<DeltaMptDbKey, CacheableNodeRefDeltaMpt<CacheAlgoDataT>>,
 }
 
+pub const DEFAULT_NODE_MAP_SIZE: DeltaMptDbKey =
+    NodeRefMapDeltaMpt::<CacheAlgoDataDeltaMpt>::MAX_CAPACITY;
+
 impl<CacheAlgoDataT: CacheAlgoDataTrait> NodeRefMapDeltaMpt<CacheAlgoDataT> {
     /// We allow at most 200M (most recent) nodes for cache of delta trie.
     /// Assuming 2h lifetime for Delta MPT it's around 27k new node per second.
@@ -213,7 +216,9 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> NodeRefMapDeltaMpt<CacheAlgoDataT> {
 }
 
 use super::{
-    super::errors::*, cache::algorithm::CacheAlgoDataTrait,
-    node_memory_manager::ActualSlabIndex, row_number::RowNumberUnderlyingType,
+    super::errors::*,
+    cache::algorithm::CacheAlgoDataTrait,
+    node_memory_manager::{ActualSlabIndex, CacheAlgoDataDeltaMpt},
+    row_number::RowNumberUnderlyingType,
 };
 use std::{collections::BTreeMap, vec::Vec};

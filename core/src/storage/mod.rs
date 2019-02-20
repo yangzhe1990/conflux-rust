@@ -11,6 +11,7 @@ mod impls;
 
 pub use self::{
     impls::{
+        defaults,
         errors::{Error, ErrorKind, Result},
         multi_version_merkle_patricia_trie::merkle_patricia_trie::MerkleHash,
     },

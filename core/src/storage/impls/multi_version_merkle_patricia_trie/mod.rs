@@ -1,14 +1,10 @@
 pub mod cache;
-mod guarded_value;
 pub(in super::super) mod merkle_patricia_trie;
 pub(in super::super) mod node_memory_manager;
-pub(self) mod node_ref_map;
 pub(super) mod return_after_use;
 pub(super) mod row_number;
 
-/// Fork of upstream slab in order to compact data and to provide internal
-/// mutability.
-mod slab;
+pub use self::node_ref_map::DEFAULT_NODE_MAP_SIZE;
 
 pub struct MultiVersionMerklePatriciaTrie {
     /// We don't distinguish an epoch which doesn't exists from an epoch which
@@ -88,9 +84,15 @@ impl MultiVersionMerklePatriciaTrie {
     pub fn log_usage(&self) { self.node_memory_manager.log_usage(); }
 }
 
+mod guarded_value;
+pub(self) mod node_ref_map;
+/// Fork of upstream slab in order to compact data and to provide internal
+/// mutability.
+mod slab;
+
 use self::{
     cache::algorithm::recent_lfu::RecentLFU, merkle_patricia_trie::*,
-    node_memory_manager::*, node_ref_map::*,
+    node_memory_manager::*, node_ref_map::DeltaMptDbKey,
 };
 use super::errors::*;
 use crate::storage::state_manager::StorageConfiguration;

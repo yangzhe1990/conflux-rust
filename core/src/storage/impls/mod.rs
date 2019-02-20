@@ -2,3 +2,17 @@ pub(super) mod errors;
 pub(super) mod multi_version_merkle_patricia_trie;
 pub(super) mod state;
 pub(super) mod state_manager;
+
+pub mod defaults {
+    pub use super::multi_version_merkle_patricia_trie::DEFAULT_NODE_MAP_SIZE;
+    pub const DEFAULT_CACHE_SIZE: u32 =
+        NodeMemoryManagerDeltaMpt::MAX_CACHED_TRIE_NODES_DISK_HYBRID;
+    pub const DEFAULT_CACHE_START_SIZE: u32 =
+        NodeMemoryManagerDeltaMpt::START_CAPACITY;
+    pub const DEFAULT_RECENT_LFU_FACTOR: f64 =
+        NodeMemoryManagerDeltaMpt::R_LFU_FACTOR;
+    pub const DEFAULT_IDLE_SIZE: u32 =
+        NodeMemoryManagerDeltaMpt::MAX_DIRTY_AND_TEMPORARY_TRIE_NODES;
+
+    use super::multi_version_merkle_patricia_trie::node_memory_manager::NodeMemoryManagerDeltaMpt;
+}

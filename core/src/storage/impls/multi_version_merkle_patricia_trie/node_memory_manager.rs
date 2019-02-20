@@ -136,7 +136,7 @@ impl<
     // many.
     pub const MAX_DIRTY_AND_TEMPORARY_TRIE_NODES: u32 = 200_000;
     /// If we do not swap out any node onto disk, the maximum tolerable nodes is
-    /// about 27.6M, where there is about 4.6M leaf node. The total memory
+    /// about 27.6M, where there is about 4.6M leaf nodes. The total memory
     /// consumption is about (27.6 * 192 - 4.6 * 64) MB ~= 5GB. It can hold new
     /// items for about 38 min assuming 2k updates per second.
     /// The reason of having much more nodes than leaf nodes is that this is a

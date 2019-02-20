@@ -1,6 +1,7 @@
 use blockgen::BlockGeneratorConfig;
 use cfxcore::{
-    storage::state_manager::StorageConfiguration, sync::ProtocolConfiguration,
+    storage::{self, state_manager::StorageConfiguration},
+    sync::ProtocolConfiguration,
 };
 use txgen::TransactionGeneratorConfig;
 /// usage:
@@ -41,11 +42,11 @@ build_config! {
         (db_dir, (Option<String>), Some("./db".to_string()))
         (generate_tx, (bool), false)
         (generate_tx_period_ms, (Option<u64>), Some(100))
-        (storage_cache_start_size, (u32), 1_000_000)
-        (storage_cache_size, (u32), 20_000_000)
-        (storage_idle_size, (u32), 200_000)
-        (storage_node_map_size, (u32), 200_000_000)
-        (storage_recent_lfu_factor, (f64), 4.0)
+        (storage_cache_start_size, (u32), storage::defaults::DEFAULT_CACHE_START_SIZE)
+        (storage_cache_size, (u32), storage::defaults::DEFAULT_CACHE_SIZE)
+        (storage_recent_lfu_factor, (f64), storage::defaults::DEFAULT_RECENT_LFU_FACTOR)
+        (storage_idle_size, (u32), storage::defaults::DEFAULT_IDLE_SIZE)
+        (storage_node_map_size, (u32), storage::defaults::DEFAULT_NODE_MAP_SIZE)
         (send_tx_period_ms, (u64), 1300)
         (check_request_period_ms, (u64), 5000)
         (block_cache_gc_period_ms, (u64), 5000)
