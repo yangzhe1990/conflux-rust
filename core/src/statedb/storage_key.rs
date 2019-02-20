@@ -2,6 +2,7 @@ use ethereum_types::{Address, H256};
 use hash::keccak;
 use std::{convert::AsRef, vec::Vec};
 
+// TODO: from storage_key, recover the db_key for snapshot.
 pub enum StorageKey {
     AccountKey(Vec<u8>),
     StorageKey(Vec<u8>),
@@ -24,7 +25,9 @@ impl StorageKey {
         buffer
     }
 
-    fn compute_address_hash(address: &Address) -> H256 {
+    fn compute_address_hash(
+        address: &Address,
+    ) -> [u8; Self::ACCOUNT_HASH_BYTES] {
         // TODO(yz): change hash padding per snapshot.
         let padding = [0u8; Self::ACCOUNT_PADDING_BYTES];
 
@@ -36,7 +39,13 @@ impl StorageKey {
             ..Self::ACCOUNT_BYTES + Self::ACCOUNT_PADDING_BYTES]
             .copy_from_slice(address.as_ref());
 
-        keccak(padded)
+        let mut address_hash = [0u8; Self::ACCOUNT_HASH_BYTES];
+        address_hash[0..Self::ACCOUNT_PADDING_BYTES]
+            .copy_from_slice(&keccak(padded)[0..Self::ACCOUNT_PADDING_BYTES]);
+        address_hash[Self::ACCOUNT_PADDING_BYTES..Self::ACCOUNT_HASH_BYTES]
+            .copy_from_slice(address.as_ref());
+
+        address_hash
     }
 
     fn extend_address(key: &mut Vec<u8>, address: &Address) {

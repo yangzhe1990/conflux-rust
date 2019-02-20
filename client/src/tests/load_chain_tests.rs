@@ -36,7 +36,7 @@ fn test_load_chain() {
     let handle = Client::start(conf, exit.clone()).unwrap();
 
     let expected =
-        "0x0eaf52d21ea983fdc68c70a001b436899118a24a3297e1b7fbfa2b5d7bb65ce9";
+        "0xb77b02b3dc8e2d1ac39d1a7c81eff98ef267466a5d7e85273adec3b088a8bbb6";
     let best_block_hash: H256 =
         serde_json::from_str(&format!("{:?}", expected)).unwrap();
     assert_eq!(best_block_hash, handle.consensus.best_block_hash());
