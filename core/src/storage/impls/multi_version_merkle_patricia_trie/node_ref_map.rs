@@ -50,25 +50,14 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait>
 /// need to persist, therefore we could use "row number" as db key.
 pub type DeltaMptDbKey = RowNumberUnderlyingType;
 
-pub struct NodeRefMapDeltaMpt<
-    CacheAlgoDataT: CacheAlgoDataTrait,
-    CacheAlgorithmT: CacheAlgorithm<CacheAlgoData = CacheAlgoDataT, CacheIndex = DeltaMptDbKey>,
-> {
+pub struct NodeRefMapDeltaMpt<CacheAlgoDataT: CacheAlgoDataTrait> {
     base_row_number: DeltaMptDbKey,
     map: Vec<Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>>>,
     old_nodes_map:
         BTreeMap<DeltaMptDbKey, CacheableNodeRefDeltaMpt<CacheAlgoDataT>>,
-    __marker_algorithm: PhantomData<CacheAlgorithmT>,
 }
 
-impl<
-        CacheAlgoDataT: CacheAlgoDataTrait,
-        CacheAlgorithmT: CacheAlgorithm<
-            CacheAlgoData = CacheAlgoDataT,
-            CacheIndex = DeltaMptDbKey,
-        >,
-    > NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
-{
+impl<CacheAlgoDataT: CacheAlgoDataTrait> NodeRefMapDeltaMpt<CacheAlgoDataT> {
     /// We allow at most 200M (most recent) nodes for cache of delta trie.
     /// Assuming 2h lifetime for Delta MPT it's around 27k new node per second.
     ///
@@ -83,18 +72,12 @@ impl<
             map: vec![None; size as usize],
             old_nodes_map: Default::default(),
             base_row_number: Default::default(),
-            __marker_algorithm: Default::default(),
         }
     }
 }
 
-impl<
-        CacheAlgoDataT: CacheAlgoDataTrait,
-        CacheAlgorithmT: CacheAlgorithm<
-            CacheAlgoData = CacheAlgoDataT,
-            CacheIndex = DeltaMptDbKey,
-        >,
-    > Default for NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
+impl<CacheAlgoDataT: CacheAlgoDataTrait> Default
+    for NodeRefMapDeltaMpt<CacheAlgoDataT>
 {
     fn default() -> Self { Self::new(Self::MAX_CAPACITY) }
 }
@@ -106,27 +89,15 @@ pub trait NodeRefMapTrait {
     type MaybeCacheSlotIndex;
 }
 
-impl<
-        CacheAlgoDataT: CacheAlgoDataTrait,
-        CacheAlgorithmT: CacheAlgorithm<
-            CacheAlgoData = CacheAlgoDataT,
-            CacheIndex = DeltaMptDbKey,
-        >,
-    > NodeRefMapTrait for NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
+impl<CacheAlgoDataT: CacheAlgoDataTrait> NodeRefMapTrait
+    for NodeRefMapDeltaMpt<CacheAlgoDataT>
 {
     type MaybeCacheSlotIndex = ActualSlabIndex;
     type NodeRef = CacheableNodeRefDeltaMpt<CacheAlgoDataT>;
     type StorageAccessKey = DeltaMptDbKey;
 }
 
-impl<
-        CacheAlgoDataT: CacheAlgoDataTrait,
-        CacheAlgorithmT: CacheAlgorithm<
-            CacheAlgoData = CacheAlgoDataT,
-            CacheIndex = DeltaMptDbKey,
-        >,
-    > NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>
-{
+impl<CacheAlgoDataT: CacheAlgoDataTrait> NodeRefMapDeltaMpt<CacheAlgoDataT> {
     unsafe fn get_unchecked(
         &self, key: DeltaMptDbKey,
     ) -> &Option<CacheableNodeRefDeltaMpt<CacheAlgoDataT>> {
@@ -144,15 +115,7 @@ impl<
         (key as usize) % self.map.len()
     }
 
-    fn reset(
-        &mut self, key: DeltaMptDbKey,
-        node_memory_manager: &NodeMemoryManager<
-            CacheAlgoDataT,
-            CacheAlgorithmT,
-        >,
-        cache_algorithm: &mut CacheAlgorithmT,
-    )
-    {
+    fn reset(&mut self, key: DeltaMptDbKey) {
         let maybe_cache_info = self.get(key);
         if maybe_cache_info.is_none() {
             return;
@@ -169,13 +132,7 @@ impl<
     /// implementation.
     pub fn insert(
         &mut self, key: DeltaMptDbKey, slot: ActualSlabIndex,
-        node_memory_manager: &NodeMemoryManager<
-            CacheAlgoDataT,
-            CacheAlgorithmT,
-        >,
-        cache_algorithm: &mut CacheAlgorithmT,
-    ) -> Result<()>
-    {
+    ) -> Result<()> {
         let size = self.map.len() as RowNumberUnderlyingType;
         if key >= self.base_row_number + size {
             // The final state is that the key is the maximum in the data
@@ -183,11 +140,7 @@ impl<
             let new_row_number = key + 1 - size;
             let mut base_row_number = self.base_row_number;
             loop {
-                self.reset(
-                    base_row_number,
-                    node_memory_manager,
-                    cache_algorithm,
-                );
+                self.reset(base_row_number);
                 base_row_number += 1;
                 if base_row_number == new_row_number {
                     break;
@@ -253,9 +206,7 @@ impl<
 }
 
 use super::{
-    super::errors::*,
-    cache::algorithm::{CacheAlgoDataTrait, CacheAlgorithm},
-    node_memory_manager::*,
-    row_number::RowNumberUnderlyingType,
+    super::errors::*, cache::algorithm::CacheAlgoDataTrait,
+    node_memory_manager::ActualSlabIndex, row_number::RowNumberUnderlyingType,
 };
-use std::{collections::BTreeMap, marker::PhantomData, vec::Vec};
+use std::{collections::BTreeMap, vec::Vec};

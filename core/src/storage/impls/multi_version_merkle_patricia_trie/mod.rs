@@ -36,7 +36,7 @@ impl MultiVersionMerklePatriciaTrie {
                 conf.cache_size,
                 conf.idle_size,
                 conf.node_map_size,
-                RecentLFU::<u32, DeltaMptDbKey>::new(
+                RecentLFU::<RLFUPosT, DeltaMptDbKey>::new(
                     conf.cache_size,
                     (conf.cache_size as f64 * conf.recent_lfu_factor) as u32,
                 ),

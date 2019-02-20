@@ -16,8 +16,8 @@ pub type AllocatorRef<'a, CacheAlgoDataT> =
 pub type AllocatorRefRef<'a, CacheAlgoDataT> =
     &'a AllocatorRef<'a, CacheAlgoDataT>;
 
-pub type GLFUPosT = u32;
-pub type CacheAlgorithmDeltaMpt = RecentLFU<GLFUPosT, DeltaMptDbKey>;
+pub type RLFUPosT = u32;
+pub type CacheAlgorithmDeltaMpt = RecentLFU<RLFUPosT, DeltaMptDbKey>;
 pub type CacheAlgoDataDeltaMpt =
     <CacheAlgorithmDeltaMpt as CacheAlgorithm>::CacheAlgoData;
 
@@ -85,7 +85,7 @@ pub struct CacheManager<
     /// Note that there are also dirty nodes, which always live in memory.
     /// The NodeRef / MaybeNodeRef also covers dirty nodes, but NodeRefMap
     /// covers only commited nodes.
-    node_ref_map: NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>,
+    node_ref_map: NodeRefMapDeltaMpt<CacheAlgoDataT>,
     cache_algorithm: CacheAlgorithmT,
 }
 
@@ -255,12 +255,9 @@ impl<
         // Insert into slab as temporary, then insert into node_ref_map.
         let slot = allocator.insert(trie_node)?;
         trie_node_ref = unsafe { allocator.get_unchecked(slot) };
-        let cache_insertion_result = cache_mut.node_ref_map.insert(
-            db_key,
-            slot as ActualSlabIndex,
-            &self,
-            &mut cache_mut.cache_algorithm,
-        );
+        let cache_insertion_result = cache_mut
+            .node_ref_map
+            .insert(db_key, slot as ActualSlabIndex);
         if cache_insertion_result.is_err() {
             allocator.remove(slot)?;
 
@@ -275,7 +272,7 @@ impl<
     /// of completeness.
     pub unsafe fn delete_from_cache(
         &self, cache_algorithm: &mut CacheAlgorithmT,
-        node_ref_map: &mut NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>,
+        node_ref_map: &mut NodeRefMapDeltaMpt<CacheAlgoDataT>,
         db_key: DeltaMptDbKey,
         cache_info: CacheableNodeRefDeltaMpt<CacheAlgoDataT>,
     )
@@ -593,7 +590,7 @@ struct NodeCacheUtil<
     CacheAlgorithmT: CacheAlgorithm<CacheAlgoData = CacheAlgoDataT, CacheIndex = DeltaMptDbKey>,
 > {
     node_memory_manager: &'a NodeMemoryManager<CacheAlgoDataT, CacheAlgorithmT>,
-    node_ref_map: &'a mut NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>,
+    node_ref_map: &'a mut NodeRefMapDeltaMpt<CacheAlgoDataT>,
 }
 
 impl<
@@ -610,7 +607,7 @@ impl<
             CacheAlgoDataT,
             CacheAlgorithmT,
         >,
-        node_map: &'a mut NodeRefMapDeltaMpt<CacheAlgoDataT, CacheAlgorithmT>,
+        node_map: &'a mut NodeRefMapDeltaMpt<CacheAlgoDataT>,
     ) -> Self
     {
         NodeCacheUtil {
@@ -686,12 +683,7 @@ impl<
         >,
     ) -> Result<()>
     {
-        self.node_ref_map.insert(
-            db_key,
-            slot,
-            node_memory_manager,
-            &mut self.cache_algorithm,
-        )?;
+        self.node_ref_map.insert(db_key, slot)?;
         node_memory_manager.call_cache_algorithm_access(self, db_key);
         Ok(())
     }
