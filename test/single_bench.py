@@ -100,7 +100,7 @@ class MessageTest(ConfluxTestFramework):
     def check_account(self, k, balance_map):
         addr = eth_utils.encode_hex(privtoaddr(k))
         try:
-            balance = parse_as_int(self.node.getbalance(addr))
+            balance = parse_as_int(self.node.cfx_getBalance(addr))
         except Exception as e:
             self.log.info("Fail to get balance, error=%s", str(e))
             time.sleep(0.1)

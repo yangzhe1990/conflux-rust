@@ -107,7 +107,7 @@ class P2PTest(ConfluxTestFramework):
     def check_account(self, k, balance_map, node):
         addr = eth_utils.encode_hex(privtoaddr(k))
         try:
-            balance = parse_as_int(node.getbalance(addr))
+            balance = parse_as_int(node.cfx_getBalance(addr))
         except Exception as e:
             self.log.debug("Fail to get balance, error=%s", str(e))
             return False

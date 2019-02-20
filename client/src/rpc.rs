@@ -4,13 +4,10 @@ use crate::{
 };
 use blockgen::BlockGenerator;
 use core::{
-    state::State,
-    statedb::StateDb,
-    storage::{state_manager::StateManagerTrait, StorageManager},
-    PeerInfo, SharedConsensusGraph, SharedSynchronizationService,
-    SharedTransactionPool,
+    storage::StorageManager, PeerInfo, SharedConsensusGraph,
+    SharedSynchronizationService, SharedTransactionPool,
 };
-use ethereum_types::{Address, H256, U256};
+use ethereum_types::H256;
 use jsonrpc_core::{Error as RpcError, IoHandler, Result as RpcResult};
 use jsonrpc_macros::build_rpc_trait;
 use network::node_table::{NodeEndpoint, NodeEntry, NodeId};
@@ -91,17 +88,11 @@ build_rpc_trait! {
         #[rpc(name = "sayhello")]
         fn say_hello(&self) -> RpcResult<String>;
 
-        #[rpc(name = "getbalance")]
-        fn get_balance(&self, Address) -> RpcResult<U256>;
-
         #[rpc(name = "getbestblockhash")]
         fn get_best_block_hash(&self) -> RpcResult<H256>;
 
         #[rpc(name = "getblockcount")]
         fn get_block_count(&self) -> RpcResult<usize>;
-
-        #[rpc(name = "getblock")]
-        fn get_block(&self, H256) -> RpcResult<RpcBlock>;
 
         #[rpc(name = "generate")]
         fn generate(&self, usize, usize) -> RpcResult<Vec<H256>>;
@@ -142,7 +133,6 @@ build_rpc_trait! {
 }
 
 struct RpcImpl {
-    storage_manager: Arc<StorageManager>,
     consensus: SharedConsensusGraph,
     sync: SharedSynchronizationService,
     block_gen: Arc<BlockGenerator>,
@@ -152,13 +142,12 @@ struct RpcImpl {
 
 impl RpcImpl {
     fn new(
-        storage_manager: Arc<StorageManager>, consensus: SharedConsensusGraph,
-        sync: SharedSynchronizationService, block_gen: Arc<BlockGenerator>,
-        tx_pool: SharedTransactionPool, exit: Arc<(Mutex<bool>, Condvar)>,
+        consensus: SharedConsensusGraph, sync: SharedSynchronizationService,
+        block_gen: Arc<BlockGenerator>, tx_pool: SharedTransactionPool,
+        exit: Arc<(Mutex<bool>, Condvar)>,
     ) -> Self
     {
         RpcImpl {
-            storage_manager,
             consensus,
             sync,
             block_gen,
@@ -171,24 +160,6 @@ impl RpcImpl {
 impl Rpc for RpcImpl {
     fn say_hello(&self) -> RpcResult<String> { Ok("Hello, world".into()) }
 
-    fn get_balance(&self, addr: Address) -> RpcResult<U256> {
-        info!("RPC Request: get_balance({:?})", addr);
-        let state = State::new(
-            StateDb::new(
-                self.storage_manager
-                    .get_state_at(self.consensus.best_state_block_hash())
-                    .unwrap(),
-            ),
-            0.into(),
-            Default::default(),
-        );
-
-        match state.balance(&addr) {
-            Ok(balance) => Ok(balance),
-            Err(_) => Err(RpcError::internal_error()),
-        }
-    }
-
     fn get_best_block_hash(&self) -> RpcResult<H256> {
         info!("RPC Request: get_best_block_hash()");
         Ok(self.consensus.best_block_hash())
@@ -197,16 +168,6 @@ impl Rpc for RpcImpl {
     fn get_block_count(&self) -> RpcResult<usize> {
         info!("RPC Request: get_block_count()");
         Ok(self.consensus.block_count())
-    }
-
-    fn get_block(&self, block_hash: H256) -> RpcResult<RpcBlock> {
-        info!("RPC Request: get_block({:?})", block_hash);
-
-        if let Some(block) = self.sync.block_by_hash(&block_hash) {
-            Ok(RpcBlock::new(&*block, self.consensus.clone(), false))
-        } else {
-            Err(RpcError::invalid_params("Invalid block hash"))
-        }
     }
 
     fn add_peer(&self, node_id: NodeId, address: SocketAddr) -> RpcResult<()> {
@@ -361,7 +322,6 @@ fn setup_apis(dependencies: &Dependencies) -> IoHandler {
     // extend_with maps each method in RpcImpl object into a RPC handler
     handler.extend_with(
         RpcImpl::new(
-            dependencies.storage_manager.clone(),
             dependencies.consensus.clone(),
             dependencies.sync.clone(),
             dependencies.block_gen.clone(),

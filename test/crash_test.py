@@ -80,13 +80,13 @@ class P2PTest(ConfluxTestFramework):
         receiver_addr = eth_utils.encode_hex(privtoaddr(receiver_sk))
         sender_balance = default_config["TOTAL_COIN"] - value - gas_price * 21000
         self.nodes[0].generate(5, 0)
-        assert_equal(parse_as_int(self.nodes[0].getbalance(sender_addr)), sender_balance)
-        assert_equal(parse_as_int(self.nodes[0].getbalance(receiver_addr)), value)
+        assert_equal(parse_as_int(self.nodes[0].cfx_getBalance(sender_addr)), sender_balance)
+        assert_equal(parse_as_int(self.nodes[0].cfx_getBalance(receiver_addr)), value)
         time.sleep(1)
         self.stop_node(0)
         self.start_node(0)
-        wait_until(lambda: parse_as_int(self.nodes[0].getbalance(sender_addr)) == sender_balance)
-        wait_until(lambda: parse_as_int(self.nodes[0].getbalance(receiver_addr)) == value)
+        wait_until(lambda: parse_as_int(self.nodes[0].cfx_getBalance(sender_addr)) == sender_balance)
+        wait_until(lambda: parse_as_int(self.nodes[0].cfx_getBalance(receiver_addr)) == value)
         self.log.info("Pass 2")
         
 
