@@ -146,6 +146,8 @@ impl StateManager {
         secret_store.insert(kp);
         genesis
     }
+
+    pub fn log_usage(&self) { self.delta_trie.log_usage(); }
 }
 
 impl StateManagerTrait for StateManager {

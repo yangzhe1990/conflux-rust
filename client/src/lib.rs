@@ -106,6 +106,27 @@ impl Client {
             ledger_db.clone(),
             conf.storage_config(),
         ));
+        {
+            let storage_manager_log_weak_ptr = Arc::downgrade(&storage_manager);
+            let exit_clone = exit.clone();
+            thread::spawn(move || loop {
+                let mut exit_lock = exit_clone.0.lock();
+                if exit_clone
+                    .1
+                    .wait_for(&mut exit_lock, Duration::from_millis(5000))
+                    .timed_out()
+                {
+                    let manager = storage_manager_log_weak_ptr.upgrade();
+                    match manager {
+                        None => return,
+                        Some(manager) => manager.log_usage(),
+                    };
+                } else {
+                    return;
+                }
+            });
+        }
+
         let genesis_block = storage_manager.initialize(
             secret_store.as_ref(),
             DEFAULT_MAX_BLOCK_GAS_LIMIT.into(),

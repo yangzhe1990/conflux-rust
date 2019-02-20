@@ -203,6 +203,13 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> NodeRefMapDeltaMpt<CacheAlgoDataT> {
             self.set_cache_info(key, None)
         }
     }
+
+    pub fn log_usage(&self) {
+        info!(
+            "node_ref_map.old_nodes_map: #elements: {}",
+            self.old_nodes_map.len(),
+        );
+    }
 }
 
 use super::{

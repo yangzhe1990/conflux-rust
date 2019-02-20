@@ -84,6 +84,8 @@ impl MultiVersionMerklePatriciaTrie {
             None => Ok(None),
         }
     }
+
+    pub fn log_usage(&self) { self.node_memory_manager.log_usage(); }
 }
 
 use self::{

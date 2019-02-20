@@ -522,6 +522,17 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
             heap.remove_at_unchecked(r_lfu_handle.get_handle(), &mut heap_util);
         }
     }
+
+    fn log_usage(&self, prefix: &String) {
+        self.frequency_lru
+            .log_usage(&"{} recent_lfu#frequency ".into());
+        info!(
+            "{}recent_lfu: capacity {}, size {}",
+            prefix,
+            self.capacity,
+            self.frequency_heap.get_heap_size()
+        );
+    }
 }
 
 impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait>

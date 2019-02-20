@@ -318,6 +318,13 @@ impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> CacheAlgorithm
             }
         }
     }
+
+    fn log_usage(&self, prefix: &String) {
+        info!(
+            "{}lru: capacity {}, size {}",
+            prefix, self.capacity, self.size
+        );
+    }
 }
 
 impl<PosT: PrimitiveNum, CacheIndexT: CacheIndexTrait> LRU<PosT, CacheIndexT> {

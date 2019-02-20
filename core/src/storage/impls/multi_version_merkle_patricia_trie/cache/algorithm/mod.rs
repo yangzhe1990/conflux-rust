@@ -1,12 +1,3 @@
-use std::{
-    fmt::Debug,
-    marker::PhantomData,
-    mem,
-    ops::{
-        Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, Sub, SubAssign,
-    },
-};
-
 pub(in super::super) mod lru;
 pub(in super::super) mod recent_lfu;
 pub mod removable_heap;
@@ -20,9 +11,9 @@ mod tests;
 /// element.
 ///
 /// User may use a 32bit data type to reduce memory usage.
-pub trait CacheIndexTrait: Copy {}
+pub trait CacheIndexTrait: Copy + Send {}
 
-pub trait CacheAlgoDataTrait: Copy + Default {}
+pub trait CacheAlgoDataTrait: Copy + Default + Send {}
 
 /// The cache storage interface that user should implement for cache algorithm
 /// to update reference from cached object to its internal data structure.
@@ -139,7 +130,7 @@ pub enum CacheAccessResult<CacheIndexT> {
     },
 }
 
-pub trait CacheAlgorithm {
+pub trait CacheAlgorithm: Send {
     type CacheIndex: CacheIndexTrait;
     type CacheAlgoData: CacheAlgoDataTrait;
 
@@ -175,12 +166,15 @@ pub trait CacheAlgorithm {
         &mut self, cache_index: Self::CacheIndex,
         cache_store_util: &mut CacheStoreUtilT,
     );
+
+    fn log_usage(&self, prefix: &String);
 }
 
 // TODO(yz): maybe replace it with a library.
 pub trait PrimitiveNum:
     Copy
     + Debug
+    + Display
     + Add<Output = Self>
     + AddAssign
     + Sub<Output = Self>
@@ -194,6 +188,7 @@ pub trait PrimitiveNum:
     + MyInto<isize>
     + MyFrom<i32>
     + MyFrom<usize>
+    + Send
 {
 }
 
@@ -337,3 +332,12 @@ where CacheStoreUtilT::CacheAlgoData: CacheAlgoDataTrait
 {
     fn deref_mut(&mut self) -> &mut Self::Target { &mut self.algo_data }
 }
+
+use std::{
+    fmt::{Debug, Display},
+    marker::PhantomData,
+    mem,
+    ops::{
+        Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, Sub, SubAssign,
+    },
+};

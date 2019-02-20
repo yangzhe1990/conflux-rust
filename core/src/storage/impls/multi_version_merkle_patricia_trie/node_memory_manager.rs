@@ -582,6 +582,16 @@ impl<
         // This unwrap is fine because we return early if slot doesn't exist.
         self.get_allocator().remove(slot as usize).unwrap();
     }
+
+    pub fn log_usage(&self) {
+        let cache_manager = self.cache.lock();
+        cache_manager.node_ref_map.log_usage();
+        cache_manager
+            .cache_algorithm
+            .log_usage(&"trie node cache ".into());
+        let allocator_ref = self.get_allocator();
+        info!("trie node allocator: max allowed size: {}, configured idle_size: {}, size: {}, allocated: {}", self.size_limit, self.idle_size, allocator_ref.capacity(), allocator_ref.len());
+    }
 }
 
 struct NodeCacheUtil<
