@@ -67,11 +67,13 @@ function save_test_result {
     local -n test_reuslt=$1
     local exit_code=${test_result[0]}
     local result=${test_result[1]}
+    
+    printf "%s\n" "$result"
+    
     if [[ $exit_code -ne 0 ]]; then
         printf "%s\n" "$result" >> $ROOT_DIR/.phabricator-comment
         exit 1
     fi
-    printf "%s\n" "$result"
 }
 
 echo -n "" > $ROOT_DIR/.phabricator-comment

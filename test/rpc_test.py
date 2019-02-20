@@ -22,9 +22,6 @@ class RpcTest(ConfluxTestFramework):
 
     def run_test(self):
         self._test_sayhello()
-        
-        # Test all cases under subfolder
-        self._test_subfolder("rpc")
 
         blocks = self.nodes[0].generate(1, 0)
         self.best_block_hash = blocks[-1] #make_genesis().block_header.hash
@@ -34,7 +31,10 @@ class RpcTest(ConfluxTestFramework):
         self._test_getpeerinfo()
         self._test_addlatency()
         self._test_getstatus()
-        self._test_gettransactionreceipt()
+        # self._test_gettransactionreceipt()
+
+        # Test all cases under subfolder
+        self._test_subfolder("rpc")
 
         # Test stop at last
         self._test_stop()
@@ -131,17 +131,17 @@ class RpcTest(ConfluxTestFramework):
         except Exception:
             pass
 
-    def _test_gettransactionreceipt(self):
-        self.log.info("Test checktx")
-        sk = default_config["GENESIS_PRI_KEY"]
-        tx = create_transaction(pri_key=sk, value=1000, nonce=1)
-        assert_equal(checktx(self.nodes[0], tx.hash_hex()), False)
-        self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
+    # def _test_gettransactionreceipt(self):
+    #     self.log.info("Test checktx")
+    #     sk = default_config["GENESIS_PRI_KEY"]
+    #     tx = create_transaction(pri_key=sk, value=1000, nonce=1)
+    #     assert_equal(checktx(self.nodes[0], tx.hash_hex()), False)
+    #     self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
 
-        def check_tx():
-            self.nodes[0].generateoneblock(1)
-            return checktx(self.nodes[0], tx.hash_hex())
-        wait_until(check_tx)
+    #     def check_tx():
+    #         self.nodes[0].generateoneblock(1)
+    #         return checktx(self.nodes[0], tx.hash_hex())
+    #     wait_until(check_tx)
 
 
 if __name__ == "__main__":
