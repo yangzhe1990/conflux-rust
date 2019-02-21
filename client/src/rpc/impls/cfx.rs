@@ -6,7 +6,7 @@ use crate::rpc::{
         U256 as RpcU256, U64 as RpcU64,
     },
 };
-use core::{
+use cfxcore::{
     storage::StorageManager, ConsensusGraph, SharedSynchronizationService,
     TransactionPool,
 };

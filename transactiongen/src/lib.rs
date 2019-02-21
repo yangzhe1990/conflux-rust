@@ -11,7 +11,7 @@ extern crate secret_store;
 extern crate log;
 
 use crate::bytes::Bytes;
-use core::{
+use cfxcore::{
     state::State,
     statedb::StateDb,
     storage::{StorageManager, StorageManagerTrait},

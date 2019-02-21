@@ -1,5 +1,5 @@
 use blockgen::BlockGeneratorConfig;
-use core::{
+use cfxcore::{
     storage::state_manager::StorageConfiguration, sync::ProtocolConfiguration,
 };
 use txgen::TransactionGeneratorConfig;

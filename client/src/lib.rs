@@ -18,7 +18,7 @@ mod tests;
 use self::{http::Server as HttpServer, tcp::Server as TcpServer};
 pub use crate::configuration::Configuration;
 use blockgen::BlockGenerator;
-use core::{
+use cfxcore::{
     pow::WORKER_COMPUTATION_PARALLELISM, storage::StorageManager,
     transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT, vm_factory::VmFactory,
     ConsensusGraph, SynchronizationService, TransactionPool,
@@ -128,14 +128,14 @@ impl Client {
             cache_config,
         ));
 
-        let sync_config = core::SynchronizationConfiguration {
+        let sync_config = cfxcore::SynchronizationConfiguration {
             network: network_config,
             consensus: consensus.clone(),
         };
         let pow_config = conf.pow_config();
         let verification_config = conf.verification_config();
         let protocol_config = conf.protocol_config();
-        let mut sync = core::SynchronizationService::new(
+        let mut sync = cfxcore::SynchronizationService::new(
             sync_config,
             protocol_config,
             pow_config.clone(),

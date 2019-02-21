@@ -4,8 +4,7 @@ extern crate parking_lot;
 extern crate criterion;
 extern crate ethcore_bytes;
 
-use client::{Client, Configuration};
-use core::{
+use cfxcore::{
     executive::Executive,
     machine::new_byzantium_test_machine,
     state::State,
@@ -14,6 +13,7 @@ use core::{
     vm::{EnvInfo, Spec},
     vm_factory::VmFactory,
 };
+use client::{Client, Configuration};
 use criterion::Criterion;
 use ethcore_bytes::Bytes;
 use ethereum_types::U256;

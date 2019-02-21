@@ -29,7 +29,7 @@ error-chain = { version = "0.12" }
 log = "0.4"
 ethereum-types = "0.4"
 slab = "0.2"
-core = { path = "../core" }
+cfxcore = { path = "../core" }
 network = { path = "../network" }
 db = { path = "../db" }
 blockgen = { path = "../blockgen" }

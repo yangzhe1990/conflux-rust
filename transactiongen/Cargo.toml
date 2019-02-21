@@ -9,7 +9,7 @@ edition = "2018"
 
 [dependencies]
 clap = "2"
-core = { path = "../core" }
+cfxcore = { path = "../core" }
 ethereum-types = "0.4"
 keccak-hash = { git = "https://github.com/paritytech/parity-common" }
 primitives = { path = "../primitives" }

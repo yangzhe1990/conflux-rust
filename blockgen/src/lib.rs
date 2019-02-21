@@ -1,4 +1,4 @@
-use core::{
+use cfxcore::{
     consensus::DEFERRED_STATE_EPOCH_COUNT, pow::*,
     transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT, SharedSynchronizationGraph,
     SharedSynchronizationService, SharedTransactionPool,

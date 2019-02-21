@@ -23,11 +23,11 @@ macro_rules! build_config{
             $(($c_name:ident, ($($c_type:tt)+), $c_default:expr, $converter:expr))*
         }
     ) => {
-        use core::pow::ProofOfWorkConfig;
-        use core::verification::VerificationConfig;
-        use core::cache_config::CacheConfig;
+        use cfxcore::pow::ProofOfWorkConfig;
+        use cfxcore::verification::VerificationConfig;
+        use cfxcore::cache_config::CacheConfig;
         use clap;
-        use core::db::NUM_COLUMNS;
+        use cfxcore::db::NUM_COLUMNS;
         use db;
         use kvdb_rocksdb::DatabaseConfig;
         use log::LevelFilter;

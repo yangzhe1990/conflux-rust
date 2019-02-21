@@ -1,5 +1,5 @@
 use crate::rpc::types::{Transaction, H160, H256, U256};
-use core::consensus::ConsensusGraph;
+use cfxcore::consensus::ConsensusGraph;
 use jsonrpc_core::Error as RpcError;
 use primitives::{
     Block as PrimitiveBlock, BlockHeaderBuilder, SignedTransaction,

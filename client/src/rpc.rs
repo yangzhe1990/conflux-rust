@@ -3,7 +3,7 @@ use crate::{
     tcp::{Server as TcpServer, ServerBuilder as TcpServerBuilder},
 };
 use blockgen::BlockGenerator;
-use core::{
+use cfxcore::{
     storage::StorageManager, PeerInfo, SharedConsensusGraph,
     SharedSynchronizationService, SharedTransactionPool,
 };

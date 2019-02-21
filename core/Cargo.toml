@@ -2,7 +2,7 @@
 description = "Conflux core library"
 homepage = "http://www.conflux-chain.org"
 license = "GPL-3.0"
-name = "core"
+name = "cfxcore"
 version = "0.1.0"
 authors = ["ming wu <ming@conflux-chain.org>"]
 edition = "2018"
