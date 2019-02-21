@@ -30,6 +30,8 @@ def rand_hash(seed: bytes = None) -> str:
     
     return eth_utils.encode_hex(sha3_256(seed))
 
+ZERO_HASH = eth_utils.encode_hex(b'\x00' * 32)
+
 class RpcClient:
     def get_node(self, idx: int) -> TestNode:
         return self.ctx.nodes[idx]
@@ -69,25 +71,29 @@ class RpcClient:
     def gas_price(self) -> int:
         return int(self.node().cfx_gasPrice(), 0)
 
-    def epoch_number(self, epoch = None) -> int:
+    def epoch_number(self, epoch: str = None) -> int:
         if epoch is None:
             return int(self.node().cfx_epochNumber(), 0)
-        
-        if not isinstance(epoch, str):
-            raise AssertionError("Expected a string for epoch, got type %r" % type(epoch))
-
-        return int(self.node().cfx_epochNumber(epoch), 0)
+        else:
+            return int(self.node().cfx_epochNumber(epoch), 0)
 
     def get_balance(self, addr: str) -> int:
         return int(self.node().cfx_getBalance(addr), 0)
 
-    def get_nonce(self, addr: str) -> int:
-        return int(self.node().cfx_getTransactionCount(addr), 0)
+    def get_nonce(self, addr: str, epoch: str = None) -> int:
+        if epoch is None:
+            return int(self.node().cfx_getTransactionCount(addr), 0)
+        else:
+            return int(self.node().cfx_getTransactionCount(addr, epoch), 0)
+
+    def send_raw_tx(self, raw_tx: str) -> str:
+        tx_hash = self.node().cfx_sendRawTransaction(raw_tx)
+        assert_is_hash_string(tx_hash)
+        return tx_hash
 
     def send_tx(self, tx: Transaction, wait_for_receipt=False) -> str:
         encoded = eth_utils.encode_hex(rlp.encode(tx))
-        tx_hash = self.node().cfx_sendRawTransaction(encoded)
-        assert_is_hash_string(tx_hash)
+        tx_hash = self.send_raw_tx(encoded)
         
         if wait_for_receipt:
             self.wait_for_receipt(tx_hash)

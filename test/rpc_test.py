@@ -50,9 +50,10 @@ class RpcTest(ConfluxTestFramework):
 
     def _test_module(self, module):
         for name in dir(module):
-            obj = getattr(module, name)
-            if isinstance(obj, type):
-                self._test_class(name, obj)
+            if name.startswith("Test"):
+                obj = getattr(module, name)
+                if isinstance(obj, type):
+                    self._test_class(name, obj)
 
     def _test_class(self, class_name, class_type):
         obj = class_type()
