@@ -42,7 +42,8 @@ const REWARD_EPOCH_COUNT: u64 = 100;
 const ANTICONE_PENALTY_UPPER_EPOCH_COUNT: u64 = 10;
 const ANTICONE_PENALTY_RATIO: u64 = 100;
 const BASE_MINING_REWARD: u64 = 1000000;
-const GAS_PRICE_SAMPLE_SIZE: usize = 100;
+const GAS_PRICE_BLOCK_SAMPLE_SIZE: usize = 100;
+const GAS_PRICE_TRANSACTION_SAMPLE_SIZE: usize = 10000;
 
 const NULL: usize = !0;
 const EPOCH_LIMIT_OF_RELATED_TRANSACTIONS: usize = 100;
@@ -958,10 +959,15 @@ impl ConsensusGraph {
     pub fn gas_price(&self) -> Option<U256> {
         let _ = self.inner.read();
         let mut last_epoch_number = self.best_epoch_number();
-        let mut number_of_blocks_to_sample = GAS_PRICE_SAMPLE_SIZE;
+        let mut number_of_blocks_to_sample = GAS_PRICE_BLOCK_SAMPLE_SIZE;
+        let mut tx_hashes = HashSet::new();
         let mut prices = Vec::new();
+
         loop {
             if number_of_blocks_to_sample == 0 || last_epoch_number == 0 {
+                break;
+            }
+            if prices.len() == GAS_PRICE_TRANSACTION_SAMPLE_SIZE {
                 break;
             }
             let mut hashes = self
@@ -975,7 +981,12 @@ impl ConsensusGraph {
             for hash in hashes {
                 let block = self.block_by_hash(&hash).unwrap();
                 for tx in block.transactions.iter() {
-                    prices.push(tx.gas_price().clone());
+                    if tx_hashes.insert(tx.hash()) {
+                        prices.push(tx.gas_price().clone());
+                        if prices.len() == GAS_PRICE_TRANSACTION_SAMPLE_SIZE {
+                            break;
+                        }
+                    }
                 }
                 number_of_blocks_to_sample -= 1;
                 if number_of_blocks_to_sample == 0 {

@@ -1157,7 +1157,7 @@ impl NetworkServiceInner {
         &self, packet: &[u8], from: SocketAddr,
     ) -> Result<(), Error> {
         if packet.len() == 0 {
-            return Ok(())
+            return Ok(());
         }
 
         let res = match packet[0] {
