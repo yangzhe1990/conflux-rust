@@ -26,6 +26,9 @@ class TestGasPrice(RpcClient):
         txs = []
         nonce = self.get_nonce(sender)
 
+        # generate 100 blocks to make sure the gas price is only decided by below txs.
+        self.generate_blocks(100, 1)
+
         # sent txs
         for p in prices:
             tx = create_transaction(nonce, gas_price=p, value=100)
@@ -33,8 +36,6 @@ class TestGasPrice(RpcClient):
             txs.append(tx_hash)
             nonce += 1
 
-        assert_greater_than(len(txs), 0)
-        
         # generate 5 blocks to pack the sent txs
         self.generate_blocks(5, len(txs))
 
