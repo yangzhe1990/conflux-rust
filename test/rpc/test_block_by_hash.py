@@ -1,9 +1,8 @@
-from .client import RpcClient, rand_hash, genesis_addr
+from .client import RpcClient
 
 import sys
 sys.path.append("..")
 
-from test_framework.blocktools import create_transaction
 from test_framework.util import assert_equal, assert_raises_rpc_error
 
 class TestGetBlockByHash(RpcClient):
@@ -14,19 +13,19 @@ class TestGetBlockByHash(RpcClient):
         
         # invalid hash
         assert_raises_rpc_error(None, None, self.block_by_hash, "0x123", False) # too short
-        assert_raises_rpc_error(None, None, self.block_by_hash, rand_hash() + "123", True) # too long
-        assert_raises_rpc_error(None, None, self.block_by_hash, rand_hash()[0:-1] + "G", False) # invalid char
-        assert_raises_rpc_error(None, None, self.block_by_hash, rand_hash()[2:], True) # without 0x prefix
+        assert_raises_rpc_error(None, None, self.block_by_hash, self.rand_hash() + "123", True) # too long
+        assert_raises_rpc_error(None, None, self.block_by_hash, self.rand_hash()[0:-1] + "G", False) # invalid char
+        assert_raises_rpc_error(None, None, self.block_by_hash, self.rand_hash()[2:], True) # without 0x prefix
 
     def test_block_not_found(self):
-        dummy_hash = rand_hash()
-        block = self.block_by_hash(dummy_hash, False)
+        dummy_hash = self.rand_hash()
+        block = self.block_by_hash(dummy_hash)
         assert_equal(block, None)
 
     def test_valid_block(self):
-        block_hash = self.generate_block(1)
+        block_hash = self.generate_block()
         
-        block1 = self.block_by_hash(block_hash, False)
+        block1 = self.block_by_hash(block_hash)
         assert_equal(block1["hash"], block_hash)
 
         block2 = self.block_by_hash(block_hash, True)
@@ -34,9 +33,7 @@ class TestGetBlockByHash(RpcClient):
 
     def test_block_with_txs(self):
         # send tx
-        sender = genesis_addr()
-        nonce = self.get_nonce(sender)
-        tx = create_transaction(nonce, value=100)
+        tx = self.new_tx()
         tx_hash = self.send_tx(tx)
 
         # generate a block to pack the sent tx,
@@ -45,7 +42,7 @@ class TestGetBlockByHash(RpcClient):
         self.wait_for_receipt(tx_hash)
 
         # check the mined block with tx hash
-        block = self.block_by_hash(mined_block, False)
+        block = self.block_by_hash(mined_block)
         txs = block["transactions"]
         assert_equal(len(txs), 1)
         assert_equal(txs[0], tx_hash)
