@@ -5,7 +5,7 @@ use crate::{
     executive::{ExecutionError, Executive},
     ext_db::SystemDB,
     hash::KECCAK_EMPTY_LIST_RLP,
-    machine::new_byzantium_test_machine,
+    machine::new_machine,
     state::{CleanupMode, State},
     statedb::StateDb,
     storage::{state::StateTrait, StorageManager, StorageManagerTrait},
@@ -459,7 +459,7 @@ impl ConsensusGraphInner {
         &self, tx: &SignedTransaction,
     ) -> Result<Vec<u8>, ExecutionError> {
         let spec = Spec::new_byzantium();
-        let machine = new_byzantium_test_machine();
+        let machine = new_machine();
         let mut state = State::new(
             StateDb::new(
                 self.storage_manager
@@ -1092,7 +1092,7 @@ impl ConsensusGraph {
     )
     {
         let spec = Spec::new_byzantium();
-        let machine = new_byzantium_test_machine();
+        let machine = new_machine();
         let mut epoch_receipts = Vec::with_capacity(epoch_blocks.len());
         for index in epoch_blocks.iter() {
             let mut receipts = Vec::new();

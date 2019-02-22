@@ -1217,7 +1217,7 @@ mod tests {
     use std::str::FromStr;
 
     fn make_byzantium_machine(max_depth: usize) -> Machine {
-        let mut machine = crate::machine::new_byzantium_test_machine();
+        let mut machine = crate::machine::new_machine();
         machine.set_spec_creation_rules(Box::new(move |s, _| {
             s.max_depth = max_depth
         }));
@@ -1484,7 +1484,7 @@ mod tests {
         params.code = Some(Arc::new(code));
         params.value = ActionValue::Transfer(U256::zero());
         let mut info = EnvInfo::default();
-        let machine = crate::machine::new_byzantium_test_machine();
+        let machine = crate::machine::new_machine();
         let spec = machine.spec(info.number);
         let mut substate = Substate::new();
 

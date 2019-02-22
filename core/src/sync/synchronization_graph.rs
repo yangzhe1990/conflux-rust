@@ -4,7 +4,7 @@ use crate::{
     db::COL_MISC,
     error::{BlockError, Error, ErrorKind},
     hash::{KECCAK_EMPTY_LIST_RLP, KECCAK_NULL_RLP},
-    machine::new_byzantium_test_machine,
+    machine::new_machine,
     pow::ProofOfWorkConfig,
     verification::*,
 };
@@ -367,7 +367,7 @@ impl SynchronizationGraphInner {
             })));
         }
 
-        let machine = new_byzantium_test_machine();
+        let machine = new_machine();
         let gas_limit_divisor = machine.params().gas_limit_bound_divisor;
         let min_gas_limit = machine.params().min_gas_limit;
         let parent_gas_limit = *self.arena[parent].block_header.gas_limit();

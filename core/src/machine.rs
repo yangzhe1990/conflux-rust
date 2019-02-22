@@ -92,7 +92,7 @@ impl Machine {
     pub fn builtins(&self) -> &BTreeMap<Address, Builtin> { &*self.builtins }
 }
 
-pub fn new_byzantium_test_machine() -> Machine {
+pub fn new_machine() -> Machine {
     Machine {
         params: CommonParams::byzantium_test_params(),
         builtins: Arc::new(BTreeMap::new()),

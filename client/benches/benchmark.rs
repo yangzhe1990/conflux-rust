@@ -6,7 +6,7 @@ extern crate ethcore_bytes;
 
 use cfxcore::{
     executive::Executive,
-    machine::new_byzantium_test_machine,
+    machine::new_machine,
     state::State,
     statedb::StateDb,
     storage::state_manager::StateManagerTrait,
@@ -56,7 +56,7 @@ fn txexe_benchmark(c: &mut Criterion) {
         data: Bytes::new(),
     };
     let tx = tx.sign(kp.secret());
-    let machine = new_byzantium_test_machine();
+    let machine = new_machine();
     let mut env = EnvInfo {
         number: 0, // TODO: replace 0 with correct cardinal number
         author: Default::default(),
