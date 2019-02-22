@@ -30,10 +30,10 @@ pub struct ProofOfWorkConfig {
 }
 
 impl ProofOfWorkConfig {
-    pub fn new(test_mode: bool) -> Self {
+    pub fn new(test_mode: bool, initial_difficulty: Option<u64>) -> Self {
         if test_mode {
             ProofOfWorkConfig {
-                initial_difficulty: 4,
+                initial_difficulty: initial_difficulty.unwrap_or(4),
                 block_generation_period: 1000000,
                 difficulty_adjustment_epoch_period: 20,
             }

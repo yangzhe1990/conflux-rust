@@ -34,7 +34,8 @@ class ErrorMatch(Enum):
 
 
 class TestNode:
-    def __init__(self, index, datadir, rpchost, confluxd, rpc_timeout=None, remote=False, ip=None, user=None):
+    def __init__(self, index, datadir, rpchost, confluxd, rpc_timeout=None, remote=False, ip=None, user=None,
+                 rpcport=None):
         self.index = index
         self.datadir = datadir
         self.stdout_dir = os.path.join(self.datadir, "stdout")
@@ -45,8 +46,10 @@ class TestNode:
         if remote:
             self.ip = ip
             self.user = user
+            self.rpcport = rpcport if rpcport is not None else 12537
         else:
             self.ip = "127.0.0.1"
+            self.rpcport = rpc_port(self.index)
         self.port = str(p2p_port(index))
         if self.rpchost is None:
             self.rpchost = ip  # + ":" + str(rpc_port(index))
@@ -101,12 +104,12 @@ class TestNode:
         if stderr is None:
             stderr = tempfile.NamedTemporaryFile(
                 dir=self.stderr_dir,
-                suffix="_" + str(self.index),
+                suffix="_" + str(self.index) + "_" + self.ip,
                 delete=False)
         if stdout is None:
             stdout = tempfile.NamedTemporaryFile(
                 dir=self.stdout_dir,
-                suffix="_" + str(self.index),
+                suffix="_" + str(self.index) + "_" + self.ip,
                 delete=False)
         self.stderr = stderr
         self.stdout = stdout
@@ -127,7 +130,7 @@ class TestNode:
                 ssh_args, self.user, self.ip, self.datadir)
             cli_conf = "scp {3} -r {0}/. {1}@{2}:{0};".format(
                 self.datadir, self.user, self.ip, ssh_args)
-            self.args[0] = "heaptrack ~/conflux"
+            self.args[0] = "~/conflux"
             cli_exe = "ssh {} {}@{} \"{} > /dev/null\"".format(
                 ssh_args, self.user, self.ip, "cd {} && export RUST_BACKTRACE=full && ".format(self.datadir) + " ".join(self.args))
             print(cli_mkdir + cli_conf + cli_exe)
@@ -152,7 +155,7 @@ class TestNode:
                         format(self.process.returncode)))
             try:
                 self.rpc = get_rpc_proxy(
-                    rpc_url(self.index, self.rpchost),
+                    rpc_url(self.index, self.rpchost, self.rpcport),
                     self.index,
                     timeout=self.rpc_timeout)
                 self.rpc.getbestblockhash()

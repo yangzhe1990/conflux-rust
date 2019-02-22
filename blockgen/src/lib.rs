@@ -122,7 +122,7 @@ impl BlockGenerator {
     }
 
     /// Stop mining
-    pub fn stop(bg: Arc<BlockGenerator>) {
+    pub fn stop(bg: &BlockGenerator) {
         let mut write = bg.state.write();
         *write = MiningState::Stop;
     }

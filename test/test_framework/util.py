@@ -478,13 +478,14 @@ def rpc_port(n):
         PORT_RANGE - 1 - MAX_NODES)
 
 
-def rpc_url(i, rpchost=None):
+def rpc_url(i, rpchost=None, rpcport=None):
     if rpchost is None:
         # Do not use localhost because our test environment doesn't support
         # IPv6 however the python http library assumes that.
         rpchost = "127.0.0.1"
-    port = rpc_port(i)
-    return "http://%s:%d" % (rpchost, int(port))
+    if rpcport is None:
+        rpcport = rpc_port(i)
+    return "http://%s:%d" % (rpchost, int(rpcport))
 
 
 def get_ip_address():

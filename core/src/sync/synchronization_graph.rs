@@ -718,20 +718,20 @@ impl SynchronizationGraph {
             return (true, Vec::new());
         }
 
-        let header = Arc::new(header);
+        let header_arc = Arc::new(header);
         let me = if need_to_verify {
-            if self.parent_or_referees_invalid(&*header)
+            if self.parent_or_referees_invalid(&*header_arc)
                 || self
                     .verification_config
-                    .verify_header_params(&*header)
+                    .verify_header_params(&*header_arc)
                     .is_err()
             {
-                inner.insert_invalid(header.clone())
+                inner.insert_invalid(header_arc.clone())
             } else {
-                inner.insert(header.clone())
+                inner.insert(header_arc.clone())
             }
         } else {
-            inner.insert(header.clone())
+            inner.insert(header_arc.clone())
         };
 
         // Start to pass influence to descendants
@@ -758,8 +758,8 @@ impl SynchronizationGraph {
                 let r = inner.verify_header_graph_ready_block(index);
                 if need_to_verify && r.is_err() {
                     warn!(
-                        "Invalid header! inserted_header={:?} err={:?}",
-                        header, r
+                        "Invalid header_arc! inserted_header={:?} err={:?}",
+                        header_arc, r
                     );
                     if me == index {
                         me_invalid = true;
@@ -774,7 +774,7 @@ impl SynchronizationGraph {
                     continue;
                 }
 
-                // Passed verification on header.
+                // Passed verification on header_arc.
                 if inner.arena[index].block_ready {
                     need_to_relay.push(inner.arena[index].block_header.hash());
                 }
@@ -815,7 +815,7 @@ impl SynchronizationGraph {
             return (false, need_to_relay);
         }
 
-        self.block_headers.write().insert(header.hash(), header);
+        self.block_headers.write().insert(header_arc.hash(), header_arc);
         (true, need_to_relay)
     }
 
@@ -982,7 +982,7 @@ impl SynchronizationGraph {
                 .consensus
                 .transaction_addresses
                 .read()
-                .heap_size_of_children(),
+                .heap_size_of_children() + self.consensus.txpool.unexecuted_transaction_addresses.lock().heap_size_of_children(),
             compact_blocks: self.compact_blocks.read().heap_size_of_children(),
         }
     }
@@ -994,6 +994,8 @@ impl SynchronizationGraph {
         let mut block_receipts = self.consensus.block_receipts.write();
         let mut transaction_addresses =
             self.consensus.transaction_addresses.write();
+        let mut unexecuted_transaction_addresses =
+            self.consensus.txpool.unexecuted_transaction_addresses.lock();
         let mut compact_blocks = self.compact_blocks.write();
 
         let mut cache_man = self.cache_man.lock();
@@ -1009,6 +1011,9 @@ impl SynchronizationGraph {
                     CacheId::TransactionAddress(ref h) => {
                         transaction_addresses.remove(h);
                     }
+                    CacheId::UnexecutedTransactionAddress(ref h) => {
+                        unexecuted_transaction_addresses.remove(h);
+                    }
                     CacheId::CompactBlock(ref h) => {
                         compact_blocks.remove(h);
                     }
@@ -1018,11 +1023,13 @@ impl SynchronizationGraph {
             blocks.shrink_to_fit();
             block_receipts.shrink_to_fit();
             transaction_addresses.shrink_to_fit();
+            unexecuted_transaction_addresses.shrink_to_fit();
             compact_blocks.shrink_to_fit();
 
             blocks.heap_size_of_children()
                 + block_receipts.heap_size_of_children()
                 + transaction_addresses.heap_size_of_children()
+                + unexecuted_transaction_addresses.heap_size_of_children()
                 + compact_blocks.heap_size_of_children()
         });
     }
@@ -1035,6 +1042,7 @@ pub enum CacheId {
     Block(H256),
     BlockReceipts(H256),
     TransactionAddress(H256),
+    UnexecutedTransactionAddress(H256),
     CompactBlock(H256),
 }
 

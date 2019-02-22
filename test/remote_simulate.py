@@ -22,11 +22,15 @@ class P2PTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 15
-        self.conf_parameters = {"generate-tx": "true", "generate-tx-period-ms": "7", "log-level": "\"debug\"",
-                                "storage-cache-size": "10_000_000",
-                                "storage-cache-start-size": "10_000_000",
+        self.conf_parameters = {"generate-tx": "true", "generate-tx-period-ms": "5", "log-level": "\"debug\"",
+                                "storage-cache-size": "20_000_000",
+                                "storage-cache-start-size": "20_000_000",
+                                "storage-node-map-size": "20_000_000",
+                                "tx-pool-size": "500000",
                                 "jsonrpc-tcp-port": "12536",
                                 "jsonrpc-http-port": "12537",
+                                # "start-mining": "true",
+                                # "initial-difficulty": "600000",
                                 }
 
     def setup_network(self):
@@ -74,9 +78,21 @@ class P2PTest(ConfluxTestFramework):
             init_tx = create_transaction(value=int(default_config["TOTAL_COIN"]/self.num_nodes), receiver=addr, nonce=i)
             self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[init_tx]))
         self.nodes[0].disconnect_p2ps()
+        # for i in range(1, 100000):
+        #     count = i * 1000
+        #     while True:
+        #         if self.nodes[0].getblockcount() > count:
+        #             for index in range(self.num_nodes):
+        #                 self.log.info("Node %d has %d blocks", index, self.nodes[index].getblockcount())
+        #                 self.log.info("Node %d has best block %s", index, self.nodes[index].cfx_getBestBlockHash())
+        #             self.log.info("%d blocks synced", count)
+        #             break
+        #         else:
+        #             time.sleep(60)
+        #             continue
         block_number = 10000000
         threads = {}
-        generate_period = 2
+        generate_period = 1
         tx_n = 100000
         for i in range(1, block_number):
             wait_sec = random.expovariate(1 / generate_period)

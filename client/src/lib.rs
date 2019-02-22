@@ -58,9 +58,12 @@ pub struct ClientHandle {
 }
 
 impl ClientHandle {
-    pub fn into_be_dropped(self) -> (Weak<SystemDB>, Box<Any>) {
+    pub fn into_be_dropped(
+        self,
+    ) -> (Weak<SystemDB>, Arc<BlockGenerator>, Box<Any>) {
         (
             self.ledger_db,
+            self.blockgen,
             Box::new((
                 self.event_loop,
                 self.rpc_tcp_server,
@@ -69,7 +72,6 @@ impl ClientHandle {
                 self.txpool,
                 self.sync,
                 self.txgen,
-                self.blockgen,
                 self.secret_store,
                 self.txgen_join_handle,
             )),
@@ -134,7 +136,7 @@ impl Client {
         debug!("Initialize genesis_block={:?}", genesis_block);
 
         let txpool = Arc::new(TransactionPool::with_capacity(
-            100000,
+            conf.raw_conf.tx_pool_size,
             storage_manager.clone(),
             worker_thread_pool.clone(),
         ));
@@ -205,6 +207,16 @@ impl Client {
             txgen.clone(),
             pow_config.clone(),
         ));
+        if conf.raw_conf.start_mining {
+            let bg = blockgen.clone();
+            info!("Start mining with pow config: {:?}", pow_config);
+            thread::Builder::new()
+                .name("mining".into())
+                .spawn(move || {
+                    BlockGenerator::start_mining(bg, 0);
+                })
+                .expect("Mining thread spawn error");
+        }
 
         let tx_conf = conf.tx_gen_config();
         let txgen_handle = if tx_conf.generate_tx {
@@ -281,7 +293,9 @@ impl Client {
     }
 
     pub fn close(handle: ClientHandle) -> i32 {
-        let (ledger_db, to_drop) = handle.into_be_dropped();
+        let (ledger_db, blockgen, to_drop) = handle.into_be_dropped();
+        BlockGenerator::stop(&blockgen);
+        drop(blockgen);
         drop(to_drop);
 
         // Make sure ledger_db is properly dropped, so rocksdb can be closed

@@ -54,6 +54,9 @@ build_config! {
         (headers_request_timeout_ms, (u64), 30_000)
         (blocks_request_timeout_ms, (u64), 120_000)
         (load_test_chain, (Option<String>), None)
+        (start_mining, (bool), false)
+        (initial_difficulty, (Option<u64>), None)
+        (tx_pool_size, (usize), 100_000)
     }
     {
         (
@@ -160,7 +163,10 @@ impl Configuration {
     }
 
     pub fn pow_config(&self) -> ProofOfWorkConfig {
-        ProofOfWorkConfig::new(self.raw_conf.test_mode)
+        ProofOfWorkConfig::new(
+            self.raw_conf.test_mode,
+            self.raw_conf.initial_difficulty,
+        )
     }
 
     pub fn verification_config(&self) -> VerificationConfig {

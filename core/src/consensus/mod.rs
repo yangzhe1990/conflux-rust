@@ -1120,6 +1120,8 @@ impl ConsensusGraph {
             {
                 let mut transaction_addresses =
                     self.transaction_addresses.write();
+                let mut unexecuted_transaction_addresses =
+                    self.txpool.unexecuted_transaction_addresses.lock();
                 for (idx, transaction) in block.transactions.iter().enumerate()
                 {
                     let mut need_to_record_transaction_address = true;
@@ -1175,12 +1177,12 @@ impl ConsensusGraph {
                     receipts.push(receipt);
 
                     if on_latest {
+                        let hash = transaction.hash();
+                        let tx_addr = TransactionAddress {
+                            block_hash: block.hash(),
+                            index: idx,
+                        };
                         if need_to_record_transaction_address {
-                            let hash = transaction.hash();
-                            let tx_addr = TransactionAddress {
-                                block_hash: block.hash(),
-                                index: idx,
-                            };
                             self.insert_transaction_address_to_kv(
                                 &hash, &tx_addr,
                             );
@@ -1189,6 +1191,23 @@ impl ConsensusGraph {
                                 self.cache_man.lock().note_used(
                                     CacheId::TransactionAddress(hash),
                                 );
+                            }
+                            unexecuted_transaction_addresses.remove(&hash);
+                        } else {
+                            let mut remove = false;
+                            if let Some(addr_set) =
+                                unexecuted_transaction_addresses.get_mut(&hash)
+                            {
+                                addr_set.remove(&tx_addr);
+                                if addr_set.is_empty() {
+                                    remove = true;
+                                }
+                            }
+                            if remove {
+                                // If a tx is not executed in all blocks, we
+                                // will pack it again
+                                // and it has already been in to_pending now.
+                                unexecuted_transaction_addresses.remove(&hash);
                             }
                         }
                     }
@@ -1706,9 +1725,40 @@ impl ConsensusGraph {
             block.transactions.len(),
         );
 
-        for tx in block.transactions.iter() {
-            self.txpool.remove_pending(tx.as_ref());
-            self.txpool.remove_ready(tx.clone());
+        {
+            // When a tx is executed successfully, it will be removed from
+            // `unexecuted_transaction_addresses` If a tx is
+            // executed with failure(InvalidNonce), or the block packing it is
+            // never refered and executed, the tx address will only
+            // be removed by LruCache. After a tx is removed from
+            // `unexecuted_transaction_addresses` because of
+            // successful execution, its new nonce will available in state and
+            // it will not be inserted to tx pool again.
+            let mut unexecuted_transaction_addresses =
+                self.txpool.unexecuted_transaction_addresses.lock();
+            let mut cache_man = self.cache_man.lock();
+            for (idx, tx) in block.transactions.iter().enumerate() {
+                self.txpool.remove_pending(tx.as_ref());
+                self.txpool.remove_ready(tx.clone());
+                // If an executed tx
+                let tx_hash = tx.hash();
+                if let Some(addr_set) =
+                    unexecuted_transaction_addresses.get_mut(&tx_hash)
+                {
+                    addr_set.insert(TransactionAddress {
+                        block_hash: hash.clone(),
+                        index: idx,
+                    });
+                } else {
+                    let mut addr_set = HashSet::new();
+                    addr_set.insert(TransactionAddress {
+                        block_hash: hash.clone(),
+                        index: idx,
+                    });
+                    unexecuted_transaction_addresses.insert(tx_hash, addr_set);
+                    cache_man.note_used(CacheId::UnexecutedTransactionAddress(tx_hash));
+                }
+            }
         }
         info!("Transaction pool size={}", self.txpool.len());
 

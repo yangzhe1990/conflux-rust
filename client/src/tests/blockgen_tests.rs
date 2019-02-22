@@ -31,7 +31,7 @@ fn test_mining_10_epochs_inner(handle: &ClientHandle) {
             .unwrap();
         info!("{}", end_height - start_height);
         if end_height - start_height >= 10 {
-            BlockGenerator::stop(handle.blockgen.clone());
+            BlockGenerator::stop(&handle.blockgen);
             return;
         }
         thread::sleep(sleep_duration);
@@ -40,7 +40,7 @@ fn test_mining_10_epochs_inner(handle: &ClientHandle) {
     let end_height = sync_graph
         .block_height_by_hash(&new_best_block_hash)
         .unwrap();
-    BlockGenerator::stop(handle.blockgen.clone());
+    BlockGenerator::stop(&handle.blockgen);
     panic!(
         "Mined too few blocks, delta height is only {}.",
         end_height - start_height

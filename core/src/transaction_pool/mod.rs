@@ -18,11 +18,12 @@ use ethereum_types::{Address, H256, H512, U256, U512};
 use lru::LruCache;
 use parking_lot::{Mutex, RwLock};
 use primitives::{
-    Account, EpochId, SignedTransaction, TransactionWithSignature,
+    Account, EpochId, SignedTransaction, TransactionAddress,
+    TransactionWithSignature,
 };
 use std::{
     cmp::{min, Ordering},
-    collections::hash_map::HashMap,
+    collections::{hash_map::HashMap, HashSet},
     ops::DerefMut,
     sync::{mpsc::channel, Arc},
 };
@@ -195,6 +196,8 @@ pub struct TransactionPool {
     storage_manager: Arc<StorageManager>,
     pub transaction_pubkey_cache:
         RwLock<LruCache<H256, Arc<SignedTransaction>>>,
+    pub unexecuted_transaction_addresses:
+        Mutex<HashMap<H256, HashSet<TransactionAddress>>>,
     worker_pool: Mutex<ThreadPool>,
 }
 
@@ -212,6 +215,8 @@ impl TransactionPool {
             storage_manager,
             // TODO Cache capacity should be set seperately
             transaction_pubkey_cache: RwLock::new(LruCache::new(capacity)),
+            unexecuted_transaction_addresses: Mutex::new(HashMap::new(
+            )),
             worker_pool: Mutex::new(worker_pool),
         }
     }
@@ -229,9 +234,15 @@ impl TransactionPool {
         let uncached_trans: Vec<TransactionWithSignature>;
         {
             let mut tx_cache = self.transaction_pubkey_cache.write();
+            let unexecuted_transaction_addresses =
+                self.unexecuted_transaction_addresses.lock();
             uncached_trans = transactions
                 .into_iter()
-                .filter(|tx| tx_cache.get(&tx.hash()).is_none())
+                .filter(|tx| {
+                    let tx_hash = tx.hash();
+                    tx_cache.get(&tx_hash).is_none()
+                        && !unexecuted_transaction_addresses.contains_key(&tx_hash)
+                })
                 .collect();
         }
         if uncached_trans.len() < WORKER_COMPUTATION_PARALLELISM * 8 {
@@ -372,7 +383,6 @@ impl TransactionPool {
             );
             return false;
         }
-
         true
     }
 

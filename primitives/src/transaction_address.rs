@@ -3,7 +3,9 @@ use heapsize::HeapSizeOf;
 use rlp_derive::{RlpDecodable, RlpEncodable};
 
 /// Represents address of certain transaction within block
-#[derive(Debug, PartialEq, Clone, RlpEncodable, RlpDecodable)]
+#[derive(
+    Debug, PartialEq, Eq, Hash, Clone, RlpEncodable, RlpDecodable, Default,
+)]
 pub struct TransactionAddress {
     /// Block hash
     pub block_hash: H256,

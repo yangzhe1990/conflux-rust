@@ -128,7 +128,9 @@ impl BlockHeader {
 
     /// Get the hash of the block.
     pub fn hash(&self) -> H256 {
-        self.hash.unwrap_or_else(|| keccak(self.rlp()))
+        self.hash.unwrap_or_else(|| {
+            keccak(self.rlp())
+        })
     }
 
     /// Get the hash of PoW problem.
