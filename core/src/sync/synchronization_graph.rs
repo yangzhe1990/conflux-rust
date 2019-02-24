@@ -815,7 +815,9 @@ impl SynchronizationGraph {
             return (false, need_to_relay);
         }
 
-        self.block_headers.write().insert(header_arc.hash(), header_arc);
+        self.block_headers
+            .write()
+            .insert(header_arc.hash(), header_arc);
         (true, need_to_relay)
     }
 
@@ -982,7 +984,13 @@ impl SynchronizationGraph {
                 .consensus
                 .transaction_addresses
                 .read()
-                .heap_size_of_children() + self.consensus.txpool.unexecuted_transaction_addresses.lock().heap_size_of_children(),
+                .heap_size_of_children()
+                + self
+                    .consensus
+                    .txpool
+                    .unexecuted_transaction_addresses
+                    .lock()
+                    .heap_size_of_children(),
             compact_blocks: self.compact_blocks.read().heap_size_of_children(),
         }
     }
@@ -994,8 +1002,11 @@ impl SynchronizationGraph {
         let mut block_receipts = self.consensus.block_receipts.write();
         let mut transaction_addresses =
             self.consensus.transaction_addresses.write();
-        let mut unexecuted_transaction_addresses =
-            self.consensus.txpool.unexecuted_transaction_addresses.lock();
+        let mut unexecuted_transaction_addresses = self
+            .consensus
+            .txpool
+            .unexecuted_transaction_addresses
+            .lock();
         let mut compact_blocks = self.compact_blocks.write();
 
         let mut cache_man = self.cache_man.lock();

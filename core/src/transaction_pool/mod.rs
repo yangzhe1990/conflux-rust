@@ -215,8 +215,7 @@ impl TransactionPool {
             storage_manager,
             // TODO Cache capacity should be set seperately
             transaction_pubkey_cache: RwLock::new(LruCache::new(capacity)),
-            unexecuted_transaction_addresses: Mutex::new(HashMap::new(
-            )),
+            unexecuted_transaction_addresses: Mutex::new(HashMap::new()),
             worker_pool: Mutex::new(worker_pool),
         }
     }
@@ -241,7 +240,8 @@ impl TransactionPool {
                 .filter(|tx| {
                     let tx_hash = tx.hash();
                     tx_cache.get(&tx_hash).is_none()
-                        && !unexecuted_transaction_addresses.contains_key(&tx_hash)
+                        && !unexecuted_transaction_addresses
+                            .contains_key(&tx_hash)
                 })
                 .collect();
         }

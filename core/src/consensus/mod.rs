@@ -1665,15 +1665,23 @@ impl ConsensusGraph {
                 };
 
             if reward > 0.into() {
-                let anticone_size = inner.arena[*index]
+                let anticone_set = inner.arena[*index]
                     .data
                     .anticone
                     .difference(penalty_upper_anticone)
                     .cloned()
-                    .collect::<HashSet<_>>()
-                    .len();
-                let penalty = (reward * U512::from(anticone_size))
-                    / U512::from(ANTICONE_PENALTY_RATIO);
+                    .collect::<HashSet<_>>();
+
+                let mut anticone_difficulty: U512 = 0.into();
+                for a_index in anticone_set {
+                    anticone_difficulty +=
+                        U512::from(inner.arena[a_index].difficulty);
+                }
+
+                let penalty = (reward * anticone_difficulty)
+                    / (U512::from(ANTICONE_PENALTY_RATIO)
+                        * U512::from(inner.arena[*index].difficulty));
+
                 if penalty > reward {
                     reward = 0.into();
                 } else {
@@ -1756,7 +1764,9 @@ impl ConsensusGraph {
                         index: idx,
                     });
                     unexecuted_transaction_addresses.insert(tx_hash, addr_set);
-                    cache_man.note_used(CacheId::UnexecutedTransactionAddress(tx_hash));
+                    cache_man.note_used(CacheId::UnexecutedTransactionAddress(
+                        tx_hash,
+                    ));
                 }
             }
         }
