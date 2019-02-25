@@ -71,16 +71,12 @@ impl Cfx for CfxHandler {
     ) -> Result<RpcU256> {
         let epoch_num = epoch_num.unwrap_or(EpochNumber::LatestMined);
         info!("RPC Request: cfx_epochNumber({:?})", epoch_num);
-        if let EpochNumber::Num(_) = epoch_num {
-            return Err(RpcError::invalid_params("A number is not expected"));
+        match self.consensus_graph.get_height_from_epoch_number(
+            self.get_primitive_epoch_number(epoch_num),
+        ) {
+            Ok(height) => Ok(height.into()),
+            Err(e) => Err(RpcError::invalid_params(e)),
         }
-        Ok(self
-            .consensus_graph
-            .get_height_from_epoch_number(
-                self.get_primitive_epoch_number(epoch_num),
-            )
-            .unwrap()
-            .into())
     }
 
     fn block_by_epoch_number(
@@ -215,6 +211,7 @@ impl Cfx for CfxHandler {
             "RPC Request: cfx_getTransactionCount address={:?} epoch_num={:?}",
             address, num
         );
+
         self.consensus_graph
             .transaction_count(
                 address.into(),

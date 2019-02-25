@@ -20,10 +20,12 @@ class TestEpochNumber(RpcClient):
         assert_equal(epoch2 + 3, epoch3)
 
     def test_num_valid(self):
-        self.epoch_number(self.EPOCH_LATEST_MINED)
+        num = self.epoch_number(self.EPOCH_LATEST_MINED)
         self.epoch_number(self.EPOCH_LATEST_STATE)
-        
+
         assert_equal(self.epoch_number(self.EPOCH_EARLIEST), 0)
+        assert_equal(self.epoch_number(self.EPOCH_NUM(num)), num)
+        assert_equal(self.epoch_number(self.EPOCH_NUM(num // 2)), num // 2)
 
     def test_num_invalid(self):
         assert_raises_rpc_error(None, None, self.epoch_number, "")
@@ -34,9 +36,8 @@ class TestEpochNumber(RpcClient):
         assert_raises_rpc_error(None, None, self.epoch_number, "0X5")
         assert_raises_rpc_error(None, None, self.epoch_number, "0xg")
 
-        # EpochNumber::Num(hex) is not supported
-        self.generate_blocks(3)
-        assert_raises_rpc_error(None, None, self.epoch_number, "0x3")
+        num = self.epoch_number(self.EPOCH_LATEST_MINED)
+        assert_raises_rpc_error(None, None, self.epoch_number, self.EPOCH_NUM(num + 1))
 
     def test_pivot_chain_changed(self):
         root = self.generate_block()

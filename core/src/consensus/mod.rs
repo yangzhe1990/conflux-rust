@@ -2055,6 +2055,20 @@ impl ConsensusGraph {
         &self, address: H160, epoch_number: EpochNumber,
     ) -> Result<U256, String> {
         let r = self.inner.read();
+
+        match epoch_number {
+            EpochNumber::LatestMined => {
+                return Err("Latest mined epoch is not executed".into());
+            }
+            EpochNumber::Number(num) => {
+                let latest_state_epoch = self.best_state_epoch_number();
+                if num.as_usize() > latest_state_epoch {
+                    return Err(format!("Specified epoch {} is not executed, the latest state epoch is {}", num, latest_state_epoch));
+                }
+            }
+            _ => {}
+        }
+
         let hash = self.get_hash_from_epoch_number(epoch_number)?;
         let state_db =
             StateDb::new(r.storage_manager.get_state_at(hash).unwrap());
