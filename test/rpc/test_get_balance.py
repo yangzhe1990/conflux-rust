@@ -59,4 +59,28 @@ class TestGetBalance(RpcClient):
         cost = 789 + DEFAULT_TX_FEE
         new_balance = self.get_balance(addr)
         assert_equal(original_balance - cost, new_balance)
+    
+    def test_pivot_chain_changed(self):
+        root = self.generate_block()
+        original_epoch = self.epoch_number()
+        original_balance = self.get_balance(self.GENESIS_ADDR)
 
+        # generate a tx to change the balance
+        tx = self.new_tx()
+        self.send_tx(tx, True)
+        num_blocks = self.epoch_number() - original_epoch
+        changed_balance = self.get_balance(self.GENESIS_ADDR)
+        assert_greater_than(original_balance, changed_balance)
+
+        # pivot changed without above tx
+        parent = root
+        for _ in range(0, num_blocks + 1):
+            parent = self.generate_block_with_parent(parent, [])
+        assert_equal(self.best_block_hash(), parent)
+        assert_equal(self.get_balance(self.GENESIS_ADDR), original_balance)
+        
+        # generate a block on new pivot chain and refer the previous block
+        # that contains the above tx
+        self.wait_for_receipt(tx.hash_hex())
+        assert_equal(self.get_balance(self.GENESIS_ADDR), changed_balance)
+        

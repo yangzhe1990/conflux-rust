@@ -30,3 +30,28 @@ class TestGetBlockByEpoch(RpcClient):
 
         large_epoch = int(epoch_num, 0) + 1
         assert_raises_rpc_error(None, None, self.block_by_epoch, self.EPOCH_NUM(large_epoch), False)
+
+    def test_pivot_chain_changed(self):
+        root = self.generate_block()
+
+        blocks = self.generate_blocks_to_state()
+        assert_equal(self.block_by_epoch(self.EPOCH_LATEST_MINED)["hash"], blocks[-1])
+        assert_equal(self.block_by_epoch(self.EPOCH_LATEST_STATE)["hash"], blocks[-5])
+        assert_equal(self.block_by_epoch(self.EPOCH_EARLIEST)["epochNumber"], hex(0))
+
+        parents = [root]
+        for _ in blocks[0:-1]:
+            parents.append(self.generate_block_with_parent(parents[-1], []))
+            # pivot chain not changed
+            assert_equal(self.block_by_epoch(self.EPOCH_LATEST_MINED)["hash"], blocks[-1])
+            assert_equal(self.block_by_epoch(self.EPOCH_LATEST_STATE)["hash"], blocks[0])
+            assert_equal(self.block_by_epoch(self.EPOCH_EARLIEST)["epochNumber"], hex(0))
+
+        # pivot chain may changed (depend on block hash)
+        parents.append(self.generate_block_with_parent(parents[-1], []))
+
+        # pivot chain changed
+        parents.append(self.generate_block_with_parent(parents[-1], []))
+        assert_equal(self.block_by_epoch(self.EPOCH_LATEST_MINED)["hash"], parents[-1])
+        assert_equal(self.block_by_epoch(self.EPOCH_LATEST_STATE)["hash"], parents[-5])
+        assert_equal(self.block_by_epoch(self.EPOCH_EARLIEST)["epochNumber"], hex(0))

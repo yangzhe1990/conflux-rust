@@ -60,3 +60,28 @@ class TestGetTxByHash(RpcClient):
 
         block = self.block_by_hash(tx2["blockHash"])
         assert_equal(block["transactions"][0], tx_hash)
+
+    def test_pivot_chain_changed(self):
+        root = self.generate_block()
+        root_epoch = self.epoch_number()
+
+        # create a tx in current pivot chain
+        tx = self.new_tx()
+        tx_hash = self.send_tx(tx)
+        b1 = self.generate_block(1)
+        self.wait_for_receipt(tx_hash)
+        assert_equal(self.get_tx(tx_hash)["blockHash"], b1)
+        epoch_delta = self.epoch_number() - root_epoch
+
+        # new pivot chain
+        fork1 = self.generate_block_with_parent(root, [])
+        for _ in range(0, epoch_delta*2):
+            fork1 = self.generate_block_with_parent(fork1, [])
+        assert_equal(self.best_block_hash(), fork1)
+        # tx not found in new pivot chain without reference block
+        # FIXME currently, the tx/receipt will not be removed in old chain
+        # assert_equal(self.get_tx(tx_hash), None)
+
+        # tx found in referenced block
+        self.wait_for_receipt(tx_hash)
+        assert_equal(self.get_tx(tx_hash)["blockHash"], b1)

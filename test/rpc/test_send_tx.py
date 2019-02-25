@@ -30,10 +30,6 @@ class TestSendTx(RpcClient):
         # assert_raises_rpc_error(None, "None", self.send_tx, tx)
         assert_equal(self.send_tx(tx.copy(r = 0, s = 0, v = 0)), self.ZERO_HASH)
 
-    def test_signature_invalid(self):
-        tx = self.new_tx()
-        assert_equal(self.send_tx(tx.copy(r = tx.s, s = tx.r)), self.ZERO_HASH)
-
      # FIXME remove the prefix "_" to enable this test case.
      # Did not verify the signature when add a tx into pool.
     def _test_signature_data_changed(self):

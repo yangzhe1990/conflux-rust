@@ -37,3 +37,17 @@ class TestEpochNumber(RpcClient):
         # EpochNumber::Num(hex) is not supported
         self.generate_blocks(3)
         assert_raises_rpc_error(None, None, self.epoch_number, "0x3")
+
+    def test_pivot_chain_changed(self):
+        root = self.generate_block()
+
+        self.generate_blocks(3)
+        epoch = self.epoch_number(self.EPOCH_LATEST_MINED)
+
+        f1 = self.generate_block_with_parent(root, [])
+        # add 3 children for f1 so that f1 become the pivot chain
+        for _ in range(0, 3):
+            self.generate_block_with_parent(f1, [])
+
+        new_epoch = self.epoch_number(self.EPOCH_LATEST_MINED)
+        assert_equal(new_epoch, epoch - 1)

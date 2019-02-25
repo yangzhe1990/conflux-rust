@@ -52,3 +52,15 @@ class TestGetBlockByHash(RpcClient):
         txs = block["transactions"]
         assert_equal(len(txs), 1)
         assert_equal(txs[0]["hash"], tx_hash)
+
+    def test_pivot_chain_changed(self):
+        root = self.generate_block()
+        block_hash = self.generate_block()
+
+        # pivot chain changed
+        f1 = self.generate_block_with_parent(root, [])
+        f2 = self.generate_block_with_parent(f1, [])
+        assert_equal(self.best_block_hash(), f2)
+
+        # get block by hash from non-pivot chain
+        assert_equal(self.block_by_hash(block_hash)["hash"], block_hash)

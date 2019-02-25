@@ -7,7 +7,8 @@ from test_framework.util import assert_equal, assert_raises_rpc_error
 
 class TestGetBlocksByEpoch(RpcClient):
     def test_single_chain(self):
-        self.generate_blocks(6)
+        self.generate_block()
+        self.generate_blocks_to_state()
         
         # earliest, stated, mined
         self.assert_blocks_in_epoch(self.EPOCH_EARLIEST, 1)
@@ -50,6 +51,7 @@ class TestGetBlocksByEpoch(RpcClient):
         b = self.generate_block()
 
         epoch = self.epoch_number(self.EPOCH_LATEST_MINED)
+        self.assert_blocks_in_epoch(self.EPOCH_LATEST_MINED, 2, [b, f_ref])
         self.assert_blocks_in_epoch(self.EPOCH_NUM(epoch), 2, [b, f_ref])
         self.assert_blocks_in_epoch(self.EPOCH_NUM(epoch - 1), 1, [f_pivot])
         
