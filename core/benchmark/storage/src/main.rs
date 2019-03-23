@@ -36,9 +36,9 @@ heapsize::known_heap_size!(
 );
 
 #[derive(Clone)]
-struct ArcMutexEthTxExtractor(Arc<Mutex<EthTxExtractor>>);
+struct ArcEthTxExtractor(Arc<EthTxExtractor>);
 
-heapsize::known_heap_size!(0, ArcMutexEthTxExtractor);
+heapsize::known_heap_size!(0, ArcEthTxExtractor);
 
 #[derive(Clone)]
 enum EthTxType {
@@ -88,7 +88,7 @@ pub struct EthTxVerifierRequest {
     sender: Address,
 
     /// To issue transaction verification call afterwards.
-    tx_extractor: Arc<Mutex<EthTxExtractor>>,
+    tx_extractor: Arc<EthTxExtractor>,
 }
 
 pub struct EthTxVerifierWorkerThread {
@@ -474,8 +474,7 @@ impl EthTxOutStreamer {
 pub struct EthTxBasicVerifierResult {
     /// For transaction insertion.
     basic_verification_index: usize,
-    results:
-        VecDeque<Option<Result<EthTxVerifierRequest, ArcMutexEthTxExtractor>>>,
+    results: VecDeque<Option<Result<EthTxVerifierRequest, ArcEthTxExtractor>>>,
 }
 
 impl Drop for EthTxBasicVerifierResult {
@@ -491,7 +490,7 @@ impl Drop for EthTxBasicVerifierResult {
 impl EthTxBasicVerifierResult {
     fn save_result(
         &mut self, basic_verification_index: usize,
-        result: Result<EthTxVerifierRequest, ArcMutexEthTxExtractor>,
+        result: Result<EthTxVerifierRequest, ArcEthTxExtractor>,
     )
     {
         let waiting_for_result = None;
@@ -515,11 +514,10 @@ impl EthTxBasicVerifierResult {
                     request
                         .tx_extractor
                         .clone()
-                        .lock()
                         .verify_tx_then_stream_out(request);
                 }
                 Err(tx_extractor) => {
-                    tx_extractor.0.lock().n_tx_verification_error += 1;
+                    tx_extractor.0.counters.lock().n_tx_verification_error += 1;
                 }
             }
         }
@@ -527,14 +525,14 @@ impl EthTxBasicVerifierResult {
 }
 
 pub struct EthTxBasicVerifier {
-    task_sender: mpsc::Sender<
+    task_sender: mpsc::SyncSender<
         Option<
             Box<
                 dyn FnMut(
                         
                     ) -> (
                         usize,
-                        Result<EthTxVerifierRequest, ArcMutexEthTxExtractor>,
+                        Result<EthTxVerifierRequest, ArcEthTxExtractor>,
                     ) + Send,
             >,
         >,
@@ -546,7 +544,6 @@ impl Drop for EthTxBasicVerifier {
     fn drop(&mut self) {
         self.task_sender.send(None).ok();
         println!("stopping basic verifier thread.");
-        // FIXME: why it's not stopping and the memory is increasing?
 
         self.thread_handle.take().unwrap().join().ok();
         println!("basic verifier thread exits.");
@@ -557,7 +554,7 @@ impl EthTxBasicVerifier {
     pub fn new_arc(
         basic_verifier_result: Arc<Mutex<EthTxBasicVerifierResult>>,
     ) -> Arc<Mutex<EthTxBasicVerifier>> {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::sync_channel(10_000);
         let verifier = Arc::new(Mutex::new(EthTxBasicVerifier {
             task_sender: sender,
             thread_handle: None,
@@ -590,54 +587,65 @@ impl EthTxBasicVerifier {
     }
 }
 
+#[derive(Default)]
+pub struct EthTxExtractorCounters {
+    n_blocks: u64,
+    base_transaction_number: u64,
+    n_tx_seen: usize,
+
+    n_tx_verification_error: u64,
+}
+
 pub struct EthTxExtractor {
     tx_basic_verifiers: Vec<Arc<Mutex<EthTxBasicVerifier>>>,
     ethash_params: EthashParams,
     params: EthCommonParams,
     dao_hardfork_info: Option<Arc<DaoHardforkInfo>>,
-    n_blocks: u64,
-    n_tx_seen: usize,
-    n_tx_verification_error: u64,
+
     /// Not verifying balance at the moment.
     //current_balance_map: HashMap<H160, U256>,
-    base_transaction_number: u64,
-
     nonce_verifier: EthTxVerifier,
+    counters: Arc<Mutex<EthTxExtractorCounters>>,
 
-    shared_self: Option<Arc<Mutex<EthTxExtractor>>>,
+    shared_self: Option<Arc<EthTxExtractor>>,
 }
 
-pub struct EthTxExtractorStopper(Arc<Mutex<EthTxExtractor>>);
+pub struct EthTxExtractorStopper(Arc<EthTxExtractor>);
 
 impl Drop for EthTxExtractorStopper {
     fn drop(&mut self) {
         println!("stopping eth tx extractor.");
 
-        let mut tx_basic_verifiers = vec![];
-        {
-            let mut extractor_mut = self.0.lock();
-            extractor_mut.shared_self.take();
-            mem::swap(
-                &mut tx_basic_verifiers,
-                &mut extractor_mut.tx_basic_verifiers,
-            );
-        }
+        let mut tx_basic_verifiers = self.0.stop_from_ref();
         tx_basic_verifiers.drain(..);
 
-        let tx_extractor_locked = self.0.lock();
+        let tx_extractor = &self.0;
         println!("loaded {} blocks {} txs {} nonce error {} contract creation {} accounts",
-                 tx_extractor_locked.n_blocks(), tx_extractor_locked.n_txs(),
-                 tx_extractor_locked.n_nonce_error(), tx_extractor_locked.n_contract_creation(),
-                 tx_extractor_locked.n_accounts());
+                 tx_extractor.n_blocks(), tx_extractor.n_txs(),
+                 tx_extractor.n_nonce_error(), tx_extractor.n_contract_creation(),
+                 tx_extractor.n_accounts());
     }
 }
 
 impl EthTxExtractor {
     const N_TX_BASIC_VERIFIERS: usize = 8;
 
+    pub fn stop_from_ref(&self) -> Vec<Arc<Mutex<EthTxBasicVerifier>>> {
+        unsafe {
+            EthTxExtractor::stop(
+                &mut *(self as *const EthTxExtractor as *mut EthTxExtractor),
+            )
+        }
+    }
+
+    pub fn stop(&mut self) -> Vec<Arc<Mutex<EthTxBasicVerifier>>> {
+        self.shared_self.take();
+        mem::replace(&mut self.tx_basic_verifiers, vec![])
+    }
+
     pub fn new_from_spec(
         path: &str, path_to_tx_file: &str,
-    ) -> errors::Result<Arc<Mutex<EthTxExtractor>>> {
+    ) -> errors::Result<Arc<EthTxExtractor>> {
         let ethash: ethjson::spec::Ethash;
         match EthSpec::load(File::open(path)?)?.engine {
             ethjson::spec::engine::Engine::Ethash(ethash_engine) => {
@@ -674,23 +682,24 @@ impl EthTxExtractor {
             ));
         }
 
-        let mut result = Ok(Arc::new(Mutex::new(EthTxExtractor {
+        let mut result = Ok(Arc::new(EthTxExtractor {
             tx_basic_verifiers: tx_basic_verifiers,
             ethash_params: ethash.params.into(),
             params: EthSpec::load(File::open(path)?)?.params.into(),
             dao_hardfork_info: dao_hardfork_info,
-            n_blocks: 0,
-            n_tx_seen: 0,
-            n_tx_verification_error: 0,
-            base_transaction_number: 0,
+            counters: Default::default(),
             nonce_verifier: EthTxVerifier::new(path_to_tx_file)?,
             shared_self: None,
-        })));
+        }));
 
         {
-            let extractor_arc = result.as_mut().unwrap().clone();
-            let mut extractor_mut = extractor_arc.lock();
-            extractor_mut.shared_self = Some(extractor_arc.clone());
+            let extractor_arc = result.as_ref().unwrap().clone();
+            // FIXME: remove unsafes.
+            unsafe {
+                (&mut *(extractor_arc.as_ref() as *const EthTxExtractor
+                    as *mut EthTxExtractor))
+            }
+            .shared_self = Some(extractor_arc.clone());
 
             let spec = EthSpec::load(File::open(path)?)?;
 
@@ -698,7 +707,7 @@ impl EthTxExtractor {
             // WTF, the spec is consumed and there is no way around.
             let mut genesis_account_counts = 0;
             for (address, account) in spec.accounts {
-                extractor_mut
+                extractor_arc
                     .get_out_streamer()
                     .lock()
                     .stream_genesis_accounts(&RealizedEthTx {
@@ -712,8 +721,9 @@ impl EthTxExtractor {
             }
 
             // Set base transaction number at all places.
-            extractor_mut.base_transaction_number = genesis_account_counts;
-            extractor_mut.get_out_streamer().lock().transaction_number =
+            extractor_arc.counters.lock().base_transaction_number =
+                genesis_account_counts;
+            extractor_arc.get_out_streamer().lock().transaction_number =
                 genesis_account_counts;
         }
 
@@ -725,7 +735,7 @@ impl EthTxExtractor {
     }
 
     fn verify_tx_then_stream_out(
-        &mut self, tx_verify_request: EthTxVerifierRequest,
+        &self, tx_verify_request: EthTxVerifierRequest,
     ) {
         let thread = (tx_verify_request.sender.low_u64() & 7) as usize;
 
@@ -737,11 +747,13 @@ impl EthTxExtractor {
     pub fn get_balance(&self, _address: &H160) -> Option<&U256> { None }
 
     pub fn add_tx_from_system(
-        &mut self, tx: RealizedEthTx, tx_number_in_block: u32,
-    ) {
+        &self, tx: RealizedEthTx, block_number: u64,
+        base_transaction_number: u64, tx_number_in_block: u32,
+    )
+    {
         self.get_out_streamer().lock().set_transaction(
-            self.n_blocks,
-            self.base_transaction_number,
+            block_number,
+            base_transaction_number,
             tx_number_in_block.into(),
             Some(tx),
             false,
@@ -756,9 +768,9 @@ impl EthTxExtractor {
         *reward
     }
 
-    pub fn n_blocks(&self) -> u64 { self.n_blocks }
+    pub fn n_blocks(&self) -> u64 { self.counters.lock().n_blocks }
 
-    pub fn n_tx_seen(&self) -> usize { self.n_tx_seen }
+    pub fn n_tx_seen(&self) -> usize { self.counters.lock().n_tx_seen }
 
     pub fn n_txs(&self) -> u64 { self.get_out_streamer().lock().n_txs }
 
@@ -771,7 +783,7 @@ impl EthTxExtractor {
     }
 
     pub fn n_tx_verification_error(&self) -> u64 {
-        self.n_tx_verification_error
+        self.counters.lock().n_tx_verification_error
     }
 
     pub fn n_nonce_error(&self) -> u64 {
@@ -795,7 +807,7 @@ impl EthTxExtractor {
     }
 
     pub fn tx_verify(
-        &mut self, check_low_s: bool, chain_id: Option<u64>,
+        &self, check_low_s: bool, chain_id: Option<u64>,
         allow_empty_signature: bool, block: Arc<EthBlock>, base_tx_number: u64,
         transaction_index: usize, worker: usize,
         basic_verification_index: usize,
@@ -829,20 +841,17 @@ impl EthTxExtractor {
                     ),
                     None => (
                         basic_verification_index,
-                        Err(ArcMutexEthTxExtractor(tx_extractor.clone())),
+                        Err(ArcEthTxExtractor(tx_extractor.clone())),
                     ),
                 }
             })))
             .unwrap();
-        // FIXME: remove debug code.
-        info!(
-            "run basic verifier for basic_verification_index = {}, worker = {}",
-            basic_verification_index, worker
-        );
     }
 
-    pub fn add_block(&mut self, block: Arc<EthBlock>) {
+    pub fn add_block(&self, block: Arc<EthBlock>) {
         let block_number = block.header.number();
+        let base_transaction_number =
+            self.counters.lock().base_transaction_number;
         let dao_hardfork = self.dao_hardfork_info.is_some()
             && block_number
                 == self
@@ -867,7 +876,7 @@ impl EthTxExtractor {
                 ad_hoc_tx_numbers,
                 block.transactions.len() as u32,
                 1 + block.uncles.len() as u32,
-                self.base_transaction_number,
+                base_transaction_number,
             );
 
         // Dao
@@ -895,6 +904,8 @@ impl EthTxExtractor {
                         amount_wei: balance,
                         types: EthTxType::Dao,
                     },
+                    block_number,
+                    base_transaction_number,
                     ad_hoc_tx_index,
                 );
 
@@ -935,6 +946,8 @@ impl EthTxExtractor {
                 amount_wei: block_reward,
                 types: EthTxType::BlockRewardAndTxFee,
             },
+            block_number,
+            base_transaction_number,
             block_reward_tx_offset + block_reward_txs,
         );
         block_reward_txs += 1;
@@ -951,14 +964,15 @@ impl EthTxExtractor {
                     amount_wei: uncle_reward,
                     types: EthTxType::UncleReward,
                 },
+                block_number,
+                base_transaction_number,
                 block_reward_tx_offset + block_reward_txs,
             );
             block_reward_txs += 1;
         }
 
-        let mut thread = self.n_tx_seen % Self::N_TX_BASIC_VERIFIERS;
-        let mut basic_verification_index = self.n_tx_seen;
-        self.n_tx_seen += block.transactions.len();
+        let mut basic_verification_index = self.counters.lock().n_tx_seen;
+        let mut thread = basic_verification_index % Self::N_TX_BASIC_VERIFIERS;
         for i in 0..block.transactions.len() {
             unsafe {
                 let tx = block.transactions.get_unchecked(i);
@@ -971,7 +985,7 @@ impl EthTxExtractor {
                     },
                     false,
                     block.clone(),
-                    self.base_transaction_number,
+                    base_transaction_number,
                     i,
                     thread,
                     basic_verification_index,
@@ -981,18 +995,22 @@ impl EthTxExtractor {
             basic_verification_index += 1;
         }
 
-        self.n_blocks += 1;
-        self.base_transaction_number = new_base_transaction_number;
+        {
+            let mut counters_mut = self.counters.lock();
+            counters_mut.n_blocks += 1;
+            counters_mut.n_tx_seen += block.transactions.len();
+            counters_mut.base_transaction_number = new_base_transaction_number;
+        }
 
         // Some progress log.
-        if self.n_blocks % 5000 == 0 {
+        if block_number % 5000 == 0 {
             println!(
                 "Block {}, block number = {}, #tx seen {}, #accounts {}, #contract creation {}, \
                 #valid txs + awards {}, #total tx rlp len {}, \
                 #nonce error {}, #basic verification error {}",
-                self.n_blocks,
+                self.n_blocks(),
                 block.header.number(),
-                self.n_tx_seen,
+                self.n_tx_seen(),
                 self.n_accounts(),
                 self.n_contract_creation(),
                 self.n_txs(),
@@ -1103,12 +1121,7 @@ fn main() -> errors::Result<()> {
                     );
                     to_parse = &to_parse[rlp_len..];
 
-                    // FIXME: debug code.
-                    let mut tx_extractor_locked = tx_extractor.lock();
-                    if tx_extractor_locked.n_blocks() >= 2_000_000 {
-                        break 'read;
-                    }
-                    tx_extractor_locked.add_block(block);
+                    tx_extractor.add_block(block);
                 }
             }
             Err(err) => {
