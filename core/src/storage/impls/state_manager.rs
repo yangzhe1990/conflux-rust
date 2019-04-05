@@ -1,5 +1,10 @@
 pub use super::super::super::db::COL_DELTA_TRIE;
 
+// FIXME: This becomes a free row number set later.
+// FIXME: With snapshots, the database should keep a list of delta MPT and their
+// row number range. FIXME: when removing a snapshot, remove corresponding rows.
+// FIXME: The best solution seems to use different database (or column in
+// rocksdb) for different FIXME: delta MPT.
 #[derive(Default)]
 pub struct AtomicCommit {
     pub row_number: RowNumber,
@@ -14,6 +19,7 @@ pub struct StateManager {
     delta_trie: MultiVersionMerklePatriciaTrie,
     pub db: Arc<SystemDB>,
     commit_lock: Mutex<AtomicCommit>,
+    pub number_commited_nodes: AtomicUsize,
 }
 
 impl StateManager {
@@ -108,6 +114,7 @@ impl StateManager {
             commit_lock: Mutex::new(AtomicCommit {
                 row_number: RowNumber { value: row_number },
             }),
+            number_commited_nodes: Default::default(),
         }
     }
 
@@ -147,7 +154,13 @@ impl StateManager {
         genesis
     }
 
-    pub fn log_usage(&self) { self.delta_trie.log_usage(); }
+    pub fn log_usage(&self) {
+        self.delta_trie.log_usage();
+        info!(
+            "number of nodes committed to db {}",
+            self.number_commited_nodes.load(Ordering::Relaxed),
+        );
+    }
 }
 
 impl StateManagerTrait for StateManager {
@@ -184,5 +197,8 @@ use rlp::encode;
 use secret_store::SecretStore;
 use std::{
     io, str,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex, MutexGuard,
+    },
 };

@@ -211,6 +211,7 @@ impl<'a> State<'a> {
     }
 
     fn do_db_commit(&mut self, epoch_id: EpochId) -> Result<()> {
+        // FIXME: accumulate to db write counter.
         self.dirty = false;
 
         let maybe_root_node = self.root_node.clone();
@@ -226,6 +227,7 @@ impl<'a> State<'a> {
                 // threads may not be able to do anything else when they compete
                 // with each other on slow db writing.
                 let mut commit_transaction = self.manager.start_commit();
+                let start_row_number = commit_transaction.info.row_number.value;
 
                 let mut cow_root = CowNodeRef::new(
                     root_node,
@@ -298,6 +300,12 @@ impl<'a> State<'a> {
                     .key_value()
                     .write(commit_transaction.transaction)?;
 
+                self.manager.number_commited_nodes.fetch_add(
+                    (commit_transaction.info.row_number.value
+                        - start_row_number) as usize,
+                    Ordering::Relaxed,
+                );
+
                 self.manager
                     .mpt_commit_state_root(epoch_id, self.root_node.clone());
             }
@@ -332,4 +340,6 @@ use super::{
     },
 };
 use primitives::EpochId;
-use std::{collections::BTreeSet, hint::unreachable_unchecked};
+use std::{
+    collections::BTreeSet, hint::unreachable_unchecked, sync::atomic::Ordering,
+};
