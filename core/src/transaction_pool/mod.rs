@@ -579,7 +579,8 @@ impl TransactionPool {
         // check balance
         let cost = transaction.value + transaction.gas_price * transaction.gas;
         if account.balance < cost {
-            trace!(
+            // FIXME: chagne back to trace
+            debug!(
                 "Transaction {} not ready due to not enough balance: {} < {}",
                 transaction.hash(),
                 account.balance,
@@ -917,7 +918,8 @@ impl TransactionPool {
                 );
                 if self.verify_ready_transaction(account, tx.as_ref()) {
                     success = true;
-                    trace!(
+                    // FIXME: change back to trace
+                    debug!(
                         "Successfully verified tx with hash {:?}",
                         tx.hash()
                     );
@@ -929,7 +931,8 @@ impl TransactionPool {
                     inner.pending_transactions.remove(address, &nonce)
                 {
                     if !self.add_ready_without_lock(inner, tx) {
-                        trace!(
+                        // FIXME: change back to trace
+                        debug!(
                             "Check passed but fail to insert ready transaction"
                         );
                     }

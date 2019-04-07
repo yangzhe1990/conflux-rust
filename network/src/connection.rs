@@ -24,7 +24,7 @@ pub enum WriteStatus {
     Complete,
 }
 
-pub const MAX_PAYLOAD_SIZE: usize = (1 << 24) - 1;
+pub const MAX_PAYLOAD_SIZE: usize = (1 << 28) - 1;
 
 pub trait GenericSocket: Read + Write {}
 

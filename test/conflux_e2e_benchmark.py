@@ -46,7 +46,7 @@ class RlpIter:
 
 
 class ConfluxEthReplayTest(ConfluxTestFramework):
-    EXPECTED_TPS = 10000
+    EXPECTED_TPS = 800
 
     def set_test_params(self):
         self.setup_clean_chain = True
@@ -79,6 +79,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         f = open(TX_FILE_PATH, "rb")
 
         start_time = datetime.datetime.now()
+        last_log_elapsed_time = 0
         tx_count = 0
         for encoded in RlpIter(f):
             #if tx_count == 10:
@@ -90,9 +91,12 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
                 TRANSACTIONS) + txs_rlp)
             elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
 
-            if 1.0 * tx_count / ConfluxEthReplayTest.EXPECTED_TPS - elapsed_time >= 1:
+            speed_diff = 1.0 * tx_count / ConfluxEthReplayTest.EXPECTED_TPS - elapsed_time
+            if int(elapsed_time - last_log_elapsed_time) >= 1:
+                last_log_elapsed_time = elapsed_time
                 self.log.info("elapsed time %s, tx_count %s", elapsed_time, tx_count)
-                time.sleep(1.0 * tx_count / ConfluxEthReplayTest.EXPECTED_TPS - elapsed_time )
+            if speed_diff >= 1:
+                time.sleep(speed_diff)
 
             tx_count += 1
         f.close()
@@ -112,7 +116,7 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
-    BLOCK_SIZE_LIMIT=50000
+    BLOCK_SIZE_LIMIT=100000
     def __init__(self, node, log, seed):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
@@ -122,10 +126,14 @@ class BlockGenThread(threading.Thread):
         self.stopped = False
 
     def run(self):
+        for i in range(0, 20):
+            h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
+            self.log.info("%s generate block %s", 0, h)
+            time.sleep(1)
         while not self.stopped:
             try:
                 h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
-                time.sleep(1)
+                time.sleep(3)
                 self.log.info("%s generate block %s", 0, h)
             except Exception as e:
                 self.log.info("Fails to generate blocks")
