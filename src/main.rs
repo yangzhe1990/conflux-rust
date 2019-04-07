@@ -219,6 +219,7 @@ fn main() {
             for crate_name in [
                 "blockgen",
                 "core",
+                "cfxcore",
                 "conflux",
                 "db",
                 "eth_key",

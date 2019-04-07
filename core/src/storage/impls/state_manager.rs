@@ -131,7 +131,7 @@ impl StateManager {
         let addr = kp.address();
         let account = Account::new_empty_with_balance(
             &addr,
-            &U256::from_dec_str("1000000000000000000").expect("Not overflow"),
+            &U256::from_dec_str("10000000000000000000000000000").expect("Not overflow"),
             &0.into(),
         );
         state

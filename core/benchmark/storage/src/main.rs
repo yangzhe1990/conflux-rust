@@ -869,8 +869,8 @@ impl TxMaker for EthTxMaker {
                     .fetch_add(1, Ordering::Relaxed)
                     .into(),
             ),
-            gas_price: ethjson::uint::Uint(0.into()),
-            gas_limit: ethjson::uint::Uint(0.into()),
+            gas_price: ethjson::uint::Uint(1.into()),
+            gas_limit: ethjson::uint::Uint(21000.into()),
             to: ethjson::maybe::MaybeEmpty::Some(ethjson::hash::Address(
                 receiver.clone(),
             )),
