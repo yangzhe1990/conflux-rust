@@ -28,6 +28,7 @@ use rlp::{Decodable, *};
 use std::{
     cell::Cell,
     collections::{vec_deque::VecDeque, BTreeMap},
+    fmt::Debug,
     fs::File,
     io::{self, Read, Write},
     marker::{Send, Sync},
@@ -70,7 +71,7 @@ impl<EthTxType: EthTxTypeTrait> HeapSizeOf
 }
 
 #[repr(u32)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum EthTxType {
     BlockRewardAndTxFee,
     UncleReward,
@@ -88,7 +89,7 @@ lazy_static! {
     };
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RealizedEthTx {
     // Sender spends fee + amount.
     // Receiver receives amount.
@@ -583,6 +584,19 @@ impl<EthTxType: EthTxTypeTrait> EthTxOutStreamer<EthTxType> {
             let wip_block_info_ref = wip_block_info.as_ref().unwrap();
             self.next_block_number += 1;
 
+            // Log some block reward.
+            if self.next_block_number % 1000 == 0 {
+                let block_reward_tx_dequeue_index =
+                    wip_block_info_ref.total_transactions_before_block_reward;
+
+                warn!(
+                    "block reward of {}: {:?}",
+                    self.next_block_number,
+                    self.transactions_to_write
+                        [block_reward_tx_dequeue_index as usize]
+                );
+            }
+
             // loop through transactions.
             let n_txs = wip_block_info_ref.total_transactions;
             for _i in 0..n_txs {
@@ -800,10 +814,11 @@ pub trait TxMaker {
 }
 
 pub trait EthTxTypeTrait:
-    Encodable + Send + Sync + Clone + HeapSizeOf + 'static
+    Encodable + Send + Sync + Clone + Debug + HeapSizeOf + 'static
 {
 }
 
+#[derive(Debug)]
 enum TxMakerTx {
     Raw(UnverifiedTransaction),
     Generated(EthJsonTransaction),
