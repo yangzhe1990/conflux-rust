@@ -39,7 +39,7 @@ pub const DEFAULT_MIN_TRANSACTION_GAS_PRICE: u64 = 1;
 pub const DEFAULT_MAX_TRANSACTION_GAS_LIMIT: u64 = 100_000_000;
 pub const DEFAULT_MAX_BLOCK_GAS_LIMIT: u64 = 30_000 * 100_000;
 
-pub const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 2000;
+pub const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 300000;
 
 pub struct AccountCache<'storage> {
     pub accounts: HashMap<Address, Account>,
