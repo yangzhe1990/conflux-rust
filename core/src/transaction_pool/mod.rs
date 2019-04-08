@@ -579,10 +579,11 @@ impl TransactionPool {
         // check balance
         let cost = transaction.value + transaction.gas_price * transaction.gas;
         if account.balance < cost {
-            // FIXME: chagne back to trace
+            // FIXME: change back to trace,
             debug!(
-                "Transaction {} not ready due to not enough balance: {} < {}",
-                transaction.hash(),
+                "Transaction {:?} not ready due to not enough balance: {} < {}",
+                transaction,
+                //transaction.hash(),
                 account.balance,
                 cost
             );
@@ -599,10 +600,13 @@ impl TransactionPool {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
 
+        // FIXME: remove the cap check in experiment.
+        /*
         if self.capacity <= inner.len() {
             warn!("Transaction discarded due to insufficient txpool capacity: {:?}", transaction.hash());
             return Err(format!("Transaction discarded due to insufficient txpool capacity: {:?}", transaction.hash()));
         }
+        */
 
         match account_cache.is_ready(&transaction) {
             Readiness::Ready => {
@@ -854,9 +858,17 @@ impl TransactionPool {
                         }
                     }
                 }
+            } else {
+                debug!(
+                    "Ready tx nonce below state nonce, drop transaction {:?} \
+                    from ready_transactions",
+                    tx.clone(),
+                )
             }
         }
 
+        // FIXME: packed transaction inserted back into ready_transaction
+        // FIXME: in case of invalid tx due to consensus.
         for tx in packed_transactions.iter() {
             inner.ready_transactions.insert(tx.clone());
         }
