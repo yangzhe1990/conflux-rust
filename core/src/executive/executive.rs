@@ -1118,10 +1118,15 @@ impl<'a, 'b> Executive<'a, 'b> {
             cmp::min(refunds_bound, (tx.gas - gas_left_prerefund) >> 1);
         let gas_left = gas_left_prerefund + refunded;
 
+        // FIXME: preserve the refunded value.
         let gas_used = tx.gas - gas_left;
-        self.env.gas_used += tx.gas;
-        let refund_value = U256::zero();
-        let fees_value = tx.gas * tx.gas_price;
+        self.env.gas_used = gas_used;
+        // FIXME: do not charge tx fee in eth replay test.
+        let refund_value = tx.gas * tx.gas_price;
+        let fees_value = gas_used * tx.gas_price;
+        // self.env.gas_used += tx.gas;
+        // let refund_value = U256::zero();
+        // let fees_value = tx.gas * tx.gas_price;
 
         trace!("exec::finalize: tx.gas={}, sstore_refunds={}, suicide_refunds={}, refunds_bound={}, gas_left_prerefund={}, refunded={}, gas_left={}, gas_used={}, refund_value={}, fees_value={}\n",
                tx.gas, sstore_refunds, suicide_refunds, refunds_bound, gas_left_prerefund, refunded, gas_left, gas_used, refund_value, fees_value);
