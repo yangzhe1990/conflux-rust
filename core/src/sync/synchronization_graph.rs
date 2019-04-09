@@ -502,7 +502,7 @@ pub struct SynchronizationGraph {
     pub statistics: RwLock<SyncGraphStatistics>,
 
     /// Channel used to send work to `ConsensusGraph`
-    consensus_sender: Mutex<Sender<H256>>,
+    consensus_sender: Arc<Mutex<Sender<H256>>>,
 }
 
 pub type SharedSynchronizationGraph = Arc<SynchronizationGraph>;
@@ -539,7 +539,7 @@ impl SynchronizationGraph {
             cache_man: consensus.cache_man.clone(),
             consensus: consensus.clone(),
             statistics: RwLock::new(SyncGraphStatistics::new()),
-            consensus_sender: Mutex::new(consensus_sender),
+            consensus_sender: Arc::new(Mutex::new(consensus_sender)),
         };
 
         // It receives `BLOCK_GRAPH_READY` blocks in order and handles them in
@@ -551,6 +551,7 @@ impl SynchronizationGraph {
                     Ok(hash) => consensus.on_new_block(&hash, inner.as_ref()),
                     Err(_) => break,
                 }
+                warn!("Consensus receiver exited.");
             })
             .expect("Cannot fail");
 
@@ -1084,7 +1085,8 @@ impl SynchronizationGraph {
                 inner.arena[index].graph_status = BLOCK_GRAPH_READY;
 
                 let h = inner.arena[index].block_header.hash();
-                debug!("Block {:?} is graph ready", h);
+                debug!("Block {:?} is graph ready, need_to_verify = {}, persistent = {}, \
+                sync_graph_only = {}", h, need_to_verify, persistent, sync_graph_only);
                 if !sync_graph_only {
                     // Make Consensus Worker handle the block in order
                     // asynchronously

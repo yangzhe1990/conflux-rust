@@ -1120,7 +1120,7 @@ impl<'a, 'b> Executive<'a, 'b> {
 
         // FIXME: preserve the refunded value.
         let gas_used = tx.gas - gas_left;
-        self.env.gas_used = gas_used;
+        self.env.gas_used += gas_used;
         // FIXME: do not charge tx fee in eth replay test.
         let refund_value = tx.gas * tx.gas_price;
         let fees_value = gas_used * tx.gas_price;
