@@ -46,7 +46,7 @@ class RlpIter:
 
 
 class ConfluxEthReplayTest(ConfluxTestFramework):
-    EXPECTED_TPS = 800
+    EXPECTED_TPS = 3000
 
     def set_test_params(self):
         self.setup_clean_chain = True
@@ -116,7 +116,7 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
-    BLOCK_SIZE_LIMIT=100000
+    BLOCK_SIZE_LIMIT=60000
     def __init__(self, node, log, seed):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
