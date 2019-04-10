@@ -8,6 +8,7 @@ from test_framework.test_framework import ConfluxTestFramework
 from test_framework.mininode import *
 from test_framework.util import *
 import rlp
+import numpy
 
 class RlpIter:
     BUFFER_SIZE = 1000000
@@ -50,30 +51,34 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
 
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 1
+        self.num_nodes = 4
+        #self.num_nodes = 1
         self.conf_parameters = {"log_level": "\"debug\"",
                                 "storage_cache_start_size": "1000000",
                                 "storage_cache_size": "20000000",
                                 "storage_node_map_size": "200000000",
-                                "ledger_cache_size": "16"}
+                                "ledger_cache_size": "16",
+                                "egress_queue_capacity": "1024",}
 
     def setup_network(self):
         self.setup_nodes(binary=[os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             #"../target/debug/conflux")])
-            "../target/release/conflux")])
+            "../target/release/conflux")]*self.num_nodes)
         # self.setup_nodes()
+
+        connect_sample_nodes(self.nodes, self.log, 2, 0, 300)
 
     def run_test(self):
         # Start mininode connection
         default_node = DefaultNode()
-        self.node = self.nodes[0]
-        self.node.add_p2p_connection(default_node)
-        network_thread_start()
-        default_node.wait_for_status()
+        for node in self.nodes:
+            node.add_p2p_connection(default_node)
+            network_thread_start()
+            default_node.wait_for_status()
 
-        block_gen_thread = BlockGenThread(self.node, self.log, random.random())
-        block_gen_thread.start()
+            block_gen_thread = BlockGenThread(node, self.log, random.random(), 1.0/self.num_nodes)
+            block_gen_thread.start()
 
         TX_FILE_PATH = "/run/media/yangzhe/HDDDATA/conflux_e2e_benchmark/convert_eth_from_0_to_4141811_unknown_txs.rlp"
         f = open(TX_FILE_PATH, "rb")
@@ -87,7 +92,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
 
             txs_rlp = rlp.codec.length_prefix(len(encoded), 192) + encoded
 
-            self.node.p2p.send_protocol_packet(int_to_bytes(
+            self.nodes[tx_count % self.num_nodes].p2p.send_protocol_packet(int_to_bytes(
                 TRANSACTIONS) + txs_rlp)
             elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
 
@@ -116,14 +121,15 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
-    BLOCK_SIZE_LIMIT=60000
-    def __init__(self, node, log, seed):
+    BLOCK_SIZE_LIMIT=40000
+    def __init__(self, node, log, seed, hashpower):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
         self.log = log
         self.local_random = random.Random()
         self.local_random.seed(seed)
         self.stopped = False
+        self.hashpower_percent = hashpower
 
     def run(self):
         for i in range(0, 20):
@@ -133,7 +139,7 @@ class BlockGenThread(threading.Thread):
         while not self.stopped:
             try:
                 h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
-                time.sleep(3)
+                time.sleep(numpy.random.exponential() / self.hashpower_percent)
                 self.log.info("%s generate block %s", 0, h)
             except Exception as e:
                 self.log.info("Fails to generate blocks")
