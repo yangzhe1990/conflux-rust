@@ -186,6 +186,9 @@ build_rpc_trait! {
         #[rpc(name = "generateoneblock")]
         fn generate_one_block(&self, usize) -> RpcResult<H256>;
 
+        #[rpc(name = "generateoneblocknonblock")]
+        fn generate_one_block_nonblock(&self, usize) -> RpcResult<()>;
+
         #[rpc(name = "test_generatecustomblock")]
         fn generate_custom_block(&self, H256, Vec<H256>, Bytes) -> RpcResult<H256>;
 

@@ -58,27 +58,53 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
                                 "storage_cache_size": "20000000",
                                 "storage_node_map_size": "200000000",
                                 "ledger_cache_size": "16",
-                                "egress_queue_capacity": "1024",}
+                                "egress_queue_capacity": "1024",
+                                "egress_min_throttle": "100",
+                                "egress_max_throttle": "1000",}
 
     def setup_network(self):
+        self.remote = True
+        ips = [
+            "13.93.127.52",
+            "40.68.152.173",
+            "13.69.11.133",
+            "52.233.188.156",
+            "40.68.157.246",
+        ]
+        self.num_nodes = len(ips)
+        binary = ["/home/ubuntu/conflux"]
+
+        for ip in ips:
+            self.add_remote_nodes(1, user="ubuntu", ip=ip, binary=binary)
+        for i in range(len(self.nodes)):
+            self.log.info("Node "+str(i) + " bind to "+self.nodes[i].ip+":"+self.nodes[i].port)
+        self.start_nodes()
+        self.log.info("All nodes started, waiting to be connected")
+
+        """ local nodes
         self.setup_nodes(binary=[os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             #"../target/debug/conflux")])
             "../target/release/conflux")]*self.num_nodes)
-        # self.setup_nodes()
+            """
 
         connect_sample_nodes(self.nodes, self.log, 2, 0, 300)
 
     def run_test(self):
         # Start mininode connection
-        default_node = DefaultNode()
+        p2p = start_p2p_connection(self.nodes, self.remote)
+
+        #time.sleep(10000)
+
+        """
         for node in self.nodes:
             node.add_p2p_connection(default_node)
-            network_thread_start()
-            default_node.wait_for_status()
+        """
 
+        for node in self.nodes:
             block_gen_thread = BlockGenThread(node, self.log, random.random(), 1.0/self.num_nodes)
             block_gen_thread.start()
+
 
         TX_FILE_PATH = "/run/media/yangzhe/HDDDATA/conflux_e2e_benchmark/convert_eth_from_0_to_4141811_unknown_txs.rlp"
         f = open(TX_FILE_PATH, "rb")
@@ -86,13 +112,14 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         start_time = datetime.datetime.now()
         last_log_elapsed_time = 0
         tx_count = 0
+        peer_to_send = 0
         for encoded in RlpIter(f):
-            #if tx_count == 10:
-            #    break
+            #if tx_count % 10000 == 0:
+            peer_to_send = (peer_to_send + 1) % self.num_nodes
 
             txs_rlp = rlp.codec.length_prefix(len(encoded), 192) + encoded
 
-            self.nodes[tx_count % self.num_nodes].p2p.send_protocol_packet(int_to_bytes(
+            self.nodes[peer_to_send].p2p.send_protocol_packet(int_to_bytes(
                 TRANSACTIONS) + txs_rlp)
             elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
 
@@ -133,14 +160,15 @@ class BlockGenThread(threading.Thread):
 
     def run(self):
         for i in range(0, 20):
-            h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
-            self.log.info("%s generate block %s", 0, h)
+            h = self.node.generateoneblocknonblock(BlockGenThread.BLOCK_SIZE_LIMIT)
+            self.log.info("%s generate block at test start %s", 0, h)
             time.sleep(1)
         while not self.stopped:
             try:
-                h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
-                time.sleep(numpy.random.exponential() / self.hashpower_percent)
-                self.log.info("%s generate block %s", 0, h)
+                h = self.node.generateoneblocknonblock(BlockGenThread.BLOCK_SIZE_LIMIT)
+                mining = 0.8 * numpy.random.exponential() / self.hashpower_percent
+                self.log.info("%s generate block %s and sleep %s sec", 0, h, mining)
+                time.sleep(mining)
             except Exception as e:
                 self.log.info("Fails to generate blocks")
                 self.log.info(e)

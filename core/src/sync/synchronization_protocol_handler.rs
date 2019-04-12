@@ -1752,6 +1752,7 @@ impl SynchronizationProtocolHandler {
         peers: Vec<PeerId>, transactions: Vec<Arc<SignedTransaction>>,
     )
     {
+        const MAX_TXS_BYTES_TO_PROPOGATE: usize = 1_000_000;
         let all_transactions_hashes = transactions
             .iter()
             .map(|tx| tx.hash())
@@ -1766,8 +1767,15 @@ impl SynchronizationProtocolHandler {
                     // Send all transactions
                     if peer_info.last_sent_transactions.is_empty() {
                         let mut tx_msg = Box::new(Transactions { transactions: Vec::new() });
+                        let mut total_tx_bytes = 0;
                         for tx in &transactions {
+                            total_tx_bytes += 256 + tx.data.len();
+                            if total_tx_bytes >= MAX_TXS_BYTES_TO_PROPOGATE {
+                                break
+                            }
+
                             tx_msg.transactions.push(tx.transaction.clone());
+                            peer_info.last_sent_transactions.insert(tx.hash());
                         }
                         peer_info.last_sent_transactions = all_transactions_hashes.clone();
                         return Some((peer_id, transactions.len(), tx_msg));
@@ -1781,17 +1789,21 @@ impl SynchronizationProtocolHandler {
                         return None;
                     }
 
+                    peer_info.last_sent_transactions = all_transactions_hashes
+                        .intersection(&peer_info.last_sent_transactions).cloned().collect();
                     let mut tx_msg = Box::new(Transactions { transactions: Vec::new() });
+                    let mut total_tx_bytes = 0;
                     for tx in &transactions {
                         if to_send.contains(&tx.hash()) {
+                            total_tx_bytes += 256 + tx.data.len();
+                            if total_tx_bytes >= MAX_TXS_BYTES_TO_PROPOGATE {
+                                break
+                            }
+
                             tx_msg.transactions.push(tx.transaction.clone());
+                            peer_info.last_sent_transactions.insert(tx.hash());
                         }
                     }
-                    peer_info.last_sent_transactions = all_transactions_hashes
-                        .intersection(&peer_info.last_sent_transactions)
-                        .chain(&to_send)
-                        .cloned()
-                        .collect();
                     Some((peer_id, tx_msg.transactions.len(), tx_msg))
                 })
                 .collect::<Vec<_>>()
