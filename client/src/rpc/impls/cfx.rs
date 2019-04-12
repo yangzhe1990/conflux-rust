@@ -25,7 +25,7 @@ use primitives::{
     Transaction, TransactionWithSignature,
 };
 use rlp::Rlp;
-use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
+use std::{collections::BTreeMap, net::SocketAddr, sync::Arc, thread};
 
 pub struct RpcImpl {
     pub consensus: SharedConsensusGraph,
@@ -366,6 +366,15 @@ impl RpcImpl {
         // TODO Choose proper num_txs
         let hash = self.block_gen.generate_block(num_txs);
         Ok(hash)
+    }
+
+    fn generate_one_block_nonblock(&self, num_txs: usize) -> RpcResult<()> {
+        info!("RPC Request: generate_one_block_nonblock()");
+
+        let block_gen = self.block_gen.clone();
+        thread::spawn(move || {block_gen.generate_block(num_txs);});
+
+        Ok(())
     }
 
     fn generate_custom_block(
@@ -730,6 +739,10 @@ impl TestRpc for TestRpcImpl {
 
     fn generate_one_block(&self, num_txs: usize) -> RpcResult<H256> {
         self.rpc_impl.generate_one_block(num_txs)
+    }
+
+    fn generate_one_block_nonblock(&self, num_txs: usize) -> RpcResult<()> {
+        self.rpc_impl.generate_one_block_nonblock(num_txs)
     }
 
     fn generate_custom_block(
