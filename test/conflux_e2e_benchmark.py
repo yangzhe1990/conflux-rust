@@ -165,18 +165,19 @@ class BlockGenThread(threading.Thread):
 
     def run(self):
         for i in range(0, 20):
-            h = self.node.generateoneblocknonblock(BlockGenThread.BLOCK_SIZE_LIMIT)
+            h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
             self.log.info("%s generate block at test start %s", 0, h)
             time.sleep(1)
         while not self.stopped:
             try:
-                h = self.node.generateoneblocknonblock(BlockGenThread.BLOCK_SIZE_LIMIT)
+                h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
                 mining = 0.8 * numpy.random.exponential() / self.hashpower_percent
                 self.log.info("%s generate block %s and sleep %s sec", 0, h, mining)
                 time.sleep(mining)
             except Exception as e:
                 self.log.info("Fails to generate blocks")
                 self.log.info(e)
+                time.sleep(5)
 
     def stop(self):
         self.stopped = True
