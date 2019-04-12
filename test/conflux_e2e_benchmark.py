@@ -13,11 +13,12 @@ import numpy
 class RlpIter:
     BUFFER_SIZE = 1000000
 
-    def __init__(self, f):
+    def __init__(self, f, batch_size):
         self.f = f
         self.bytes = bytearray()
         self.eof = False
         self.offset = 0
+        self.batch_size = batch_size
 
     def __iter__(self):
         return self
@@ -30,18 +31,23 @@ class RlpIter:
             self.bytes += to_append
             length = len(self.bytes)
         if length > 0:
-            try:
-                (prefix, type, length, end) = rlp.codec.consume_length_prefix(self.bytes, self.offset)
-                old_offset = self.offset
-                self.offset += len(prefix) + length
-                rlpbytes = self.bytes[old_offset:self.offset]
-                if self.offset >= RlpIter.BUFFER_SIZE:
-                    self.bytes = self.bytes[RlpIter.BUFFER_SIZE:]
-                    self.offset -= RlpIter.BUFFER_SIZE
-                return rlpbytes
-            except Exception as e:
-                print("error parsing rlp.")
-                raise StopIteration()
+            old_offset = self.offset
+            txs = 0
+            for i in range(0, self.batch_size):
+                try:
+                    (prefix, type, length, end) = rlp.codec.consume_length_prefix(self.bytes, self.offset)
+                    self.offset += len(prefix) + length
+                    txs += 1
+                except Exception as e:
+                    print("error parsing rlp: %s.", e)
+                    if self.offset == old_offset:
+                        # We assume that a single transaction won't be larger than BUFFER_SIZE
+                        raise e
+            rlpbytes = self.bytes[old_offset:self.offset]
+            if self.offset >= RlpIter.BUFFER_SIZE:
+                self.bytes = self.bytes[RlpIter.BUFFER_SIZE:]
+                self.offset -= RlpIter.BUFFER_SIZE
+            return (rlpbytes, txs)
         else:
             raise StopIteration()
 
@@ -63,7 +69,9 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
                                 "egress_max_throttle": "1000",}
 
     def setup_network(self):
-        self.remote = True
+        self.remote = False
+
+        """ remote nodes
         ips = [
             "13.93.127.52",
             "40.68.152.173",
@@ -80,13 +88,14 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
             self.log.info("Node "+str(i) + " bind to "+self.nodes[i].ip+":"+self.nodes[i].port)
         self.start_nodes()
         self.log.info("All nodes started, waiting to be connected")
+        """
 
-        """ local nodes
+        #""" local nodes
         self.setup_nodes(binary=[os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             #"../target/debug/conflux")])
             "../target/release/conflux")]*self.num_nodes)
-            """
+        #"""
 
         connect_sample_nodes(self.nodes, self.log, 2, 0, 300)
 
@@ -95,11 +104,6 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         p2p = start_p2p_connection(self.nodes, self.remote)
 
         #time.sleep(10000)
-
-        """
-        for node in self.nodes:
-            node.add_p2p_connection(default_node)
-        """
 
         for node in self.nodes:
             block_gen_thread = BlockGenThread(node, self.log, random.random(), 1.0/self.num_nodes)
@@ -113,11 +117,12 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         last_log_elapsed_time = 0
         tx_count = 0
         peer_to_send = 0
-        for encoded in RlpIter(f):
+        tx_batch_size = 10
+        for txs, count in RlpIter(f, tx_batch_size):
             #if tx_count % 10000 == 0:
             peer_to_send = (peer_to_send + 1) % self.num_nodes
 
-            txs_rlp = rlp.codec.length_prefix(len(encoded), 192) + encoded
+            txs_rlp = rlp.codec.length_prefix(len(txs), 192) + txs
 
             self.nodes[peer_to_send].p2p.send_protocol_packet(int_to_bytes(
                 TRANSACTIONS) + txs_rlp)
@@ -130,7 +135,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
             if speed_diff >= 1:
                 time.sleep(speed_diff)
 
-            tx_count += 1
+            tx_count += count
         f.close()
 
         end_time = datetime.datetime.now()
