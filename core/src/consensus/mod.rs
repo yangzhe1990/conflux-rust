@@ -2537,6 +2537,7 @@ impl ConsensusGraph {
         );
 
         {
+            // FIXME: the comments below is now BS.
             // When a tx is executed successfully, it will be removed from
             // `unexecuted_transaction_addresses` If a tx is
             // executed with failure(InvalidNonce), or the block packing it is
@@ -2549,8 +2550,6 @@ impl ConsensusGraph {
                 self.txpool.unexecuted_transaction_addresses.lock();
             let mut cache_man = self.cache_man.lock();
             for (idx, tx) in block.transactions.iter().enumerate() {
-                self.txpool.remove_pending(tx.as_ref());
-                self.txpool.remove_ready(tx.clone());
                 // If an executed tx
                 let tx_hash = tx.hash();
                 if let Some(addr_set) =
@@ -2761,13 +2760,25 @@ impl ConsensusGraph {
             state_at += 1;
         }
 
+        state_at -= 1;
         if state_at > 1 {
-            state_at -= 1;
             let state = inner
                 .storage_manager
                 .get_state_at(inner.arena[new_pivot_chain[state_at]].hash)
                 .unwrap();
             self.txpool.recycle_future_transactions(to_pending, state);
+        }
+
+        // Mark packed transaction in txpool.
+        {
+            let state = StateDb::new(inner
+                .storage_manager
+                .get_state_at(inner.arena[new_pivot_chain[state_at]].hash)
+                .unwrap());
+
+            for tx in &block.transactions {
+                self.txpool.set_tx_stale_for_ready(tx.clone(), &state);
+            }
         }
 
         inner.adjust_difficulty(

@@ -283,6 +283,8 @@ impl<'a> State<'a> {
     ) -> DbResult<()> {
         assert!(self.checkpoints.borrow().is_empty());
 
+        txpool.notify_state_start();
+
         let mut accounts = self.cache.borrow_mut();
         debug!("Notify for epoch {}", epoch_id);
         for (address, ref mut entry) in accounts

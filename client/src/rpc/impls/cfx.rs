@@ -372,7 +372,11 @@ impl RpcImpl {
         info!("RPC Request: generate_one_block_nonblock()");
 
         let block_gen = self.block_gen.clone();
-        thread::spawn(move || {block_gen.generate_block(num_txs);});
+
+        thread::Builder::new()
+            .name("generate_one_block_nonblock".into())
+            .spawn(move || {block_gen.generate_block(num_txs);})
+            .expect("failed to start transaction packing thread");
 
         Ok(())
     }
