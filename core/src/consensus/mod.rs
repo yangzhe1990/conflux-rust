@@ -2543,6 +2543,8 @@ impl ConsensusGraph {
                 self.txpool.unexecuted_transaction_addresses.lock();
             let mut cache_man = self.cache_man.lock();
             for (idx, tx) in block.transactions.iter().enumerate() {
+                self.txpool.set_tx_stale_for_ready(tx.clone());
+
                 // If an executed tx
                 let tx_hash = tx.hash();
                 if let Some(addr_set) =
@@ -2760,18 +2762,6 @@ impl ConsensusGraph {
                 .get_state_at(inner.arena[new_pivot_chain[state_at]].hash)
                 .unwrap();
             self.txpool.recycle_future_transactions(to_pending, state);
-        }
-
-        // Mark packed transaction in txpool.
-        {
-            let state = StateDb::new(inner
-                .storage_manager
-                .get_state_at(inner.arena[new_pivot_chain[state_at]].hash)
-                .unwrap());
-
-            for tx in &block.transactions {
-                self.txpool.set_tx_stale_for_ready(tx.clone(), &state);
-            }
         }
 
         inner.adjust_difficulty(

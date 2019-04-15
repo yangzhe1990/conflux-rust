@@ -996,7 +996,7 @@ impl SynchronizationGraph {
                     ErrorKind::Block(BlockError::InvalidTransactionsRoot(e)),
                     _,
                 )) => {
-                    warn ! ("BlockTransactionRoot not match! inserted_block={:?} err={:?}", block, e);
+                    warn!("BlockTransactionRoot not match! inserted_block={:?} err={:?}", block, e);
                     insert_success = false;
                     return (insert_success, need_to_relay);
                 }
