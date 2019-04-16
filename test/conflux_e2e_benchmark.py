@@ -116,7 +116,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         start_time = datetime.datetime.now()
         last_log_elapsed_time = 0
         tx_count = 0
-        tx_batch_size = 200
+        tx_batch_size = 1000
         for txs, count in RlpIter(f, tx_batch_size):
             if tx_count > 5000000:
                 time.sleep(5000)
@@ -155,7 +155,7 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
-    BLOCK_SIZE_LIMIT=40000
+    BLOCK_SIZE_LIMIT=7000
     def __init__(self, node, log, seed, hashpower):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
