@@ -437,6 +437,14 @@ impl ReadyTransactionPool {
         result
     }
 
+    fn remove_below(&mut self, address: &Address, nonce: &U256) {
+        let (tx_hashes, empty_after_removal) =
+            self.nonce_pool.remove_below(address, nonce);
+        for hash in tx_hashes {
+            self.treap.remove(&hash);
+        }
+    }
+
     fn remove_by_hash(
         &mut self, tx_hash: &H256,
     ) -> Option<Arc<SignedTransaction>> {
@@ -992,6 +1000,7 @@ impl TransactionPool {
     pub fn recycle_future_transactions(
         &self, transactions: Vec<Arc<SignedTransaction>>, state: Storage,
     ) {
+        debug!("recycle future transactions. This method should not trigger when replaying blocks.");
         let mut account_cache = AccountCache::new(state);
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
@@ -1022,50 +1031,44 @@ impl TransactionPool {
     // FIXME: behind the state execution, which is weird. Moving the caller
     // FIXME: to the end of on_new_block may crash _assert_nonce_consecutive
     // easier.
-    pub fn set_tx_stale_for_ready(
-        &self, transaction: Arc<SignedTransaction>,
-    ) -> bool {
+    pub fn set_tx_stale_for_ready(&self, transaction: Arc<SignedTransaction>) {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
         self.add_pending_without_lock(inner, transaction.clone(), true);
-        let result = if self
-            .remove_ready_without_lock(inner, transaction.clone())
-            .is_some()
+        // FIXME: this is a temporary workaround for the issue explained above.
+        // FIXME: similar workaround can be found in notify_ready.
+        self.remove_lower_nonces_from_ready_pool_without_lock(
+            inner,
+            &transaction.sender,
+            &(transaction.nonce + U256::from(1)),
+        );
+
+        match inner
+            .unconfirmed_txs
+            .get_balance_and_nonce_info(&transaction.sender)
+            .cloned()
         {
-            true
-        } else {
-            match inner
-                .unconfirmed_txs
-                .get_balance_and_nonce_info(&transaction.sender)
-                .cloned()
-            {
-                Some(mut nonce_info) => {
-                    if transaction.nonce.eq(&nonce_info.0) {
-                        self.recalculate_ready_without_lock(
-                            inner,
-                            &transaction.sender,
-                            &mut nonce_info.0,
-                            &mut nonce_info.1,
-                            false,
-                        );
-                    }
+            Some(mut nonce_info) => {
+                if transaction.nonce.eq(&nonce_info.0) {
+                    self.recalculate_ready_without_lock(
+                        inner,
+                        &transaction.sender,
+                        &mut nonce_info.0,
+                        &mut nonce_info.1,
+                        false,
+                    );
                 }
-                None => {}
             }
-
-            false
-        };
-
-        result
+            None => {}
+        }
     }
 
-    pub fn remove_ready_without_lock(
-        &self, inner: &mut TransactionPoolInner,
-        transaction: Arc<SignedTransaction>,
-    ) -> Option<Arc<SignedTransaction>>
+    pub fn remove_lower_nonces_from_ready_pool_without_lock(
+        &self, inner: &mut TransactionPoolInner, address: &Address,
+        nonce: &U256,
+    )
     {
-        let hash = transaction.hash();
-        inner.ready_transactions.remove_by_hash(&hash)
+        inner.ready_transactions.remove_below(address, nonce);
     }
 
     // TODO: Unused. think about when/how to use this method.
@@ -1240,6 +1243,15 @@ impl TransactionPool {
     pub fn notify_ready(&self, address: &Address, account: &Account) {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
+
+        // FIXME: to overcome the deliver order issue,
+        // FIXME: we remove all lower nonces in ready_pool, to prevent gap from
+        // FIXME: being introduced into ready pool.
+        self.remove_lower_nonces_from_ready_pool_without_lock(
+            inner,
+            address,
+            &account.nonce,
+        );
 
         // In this case we check if there are unpacked transaction that are
         // waiting to be packed, and if the balance really need

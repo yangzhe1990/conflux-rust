@@ -195,6 +195,9 @@ impl ConsensusGraphInner {
     pub fn check_mining_heavy_block(
         &mut self, parent_index: usize, light_difficulty: U256,
     ) -> bool {
+        // FIXME: turn off heavy block?
+        // return false;
+
         let mut index = parent_index;
         let mut parent = self.arena[index].parent;
         let total_difficulty =
