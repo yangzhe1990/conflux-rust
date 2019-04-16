@@ -47,7 +47,7 @@ use std::{
 const HEAVY_BLOCK_THRESHOLD: usize = 2000;
 pub const HEAVY_BLOCK_DIFFICULTY_RATIO: usize = 240;
 
-pub const DEFERRED_STATE_EPOCH_COUNT: u64 = 1;
+pub const DEFERRED_STATE_EPOCH_COUNT: u64 = 5;
 
 /// `REWARD_EPOCH_COUNT` needs to be larger than
 /// `ANTICONE_PENALTY_UPPER_EPOCH_COUNT`. If we cannot cache receipts of recent

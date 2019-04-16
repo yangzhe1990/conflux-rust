@@ -1604,7 +1604,10 @@ impl SynchronizationProtocolHandler {
         peers: Vec<PeerId>, transactions: Vec<Arc<SignedTransaction>>,
     )
     {
-        const MAX_TXS_BYTES_TO_PROPOGATE: usize = 1_000_000;
+        // FIXME: not propogate transactions.
+        return;
+
+        const MAX_TXS_BYTES_TO_PROPOGATE: usize = 10_000_000;
         let all_transactions_hashes = transactions
             .iter()
             .map(|tx| tx.hash())
