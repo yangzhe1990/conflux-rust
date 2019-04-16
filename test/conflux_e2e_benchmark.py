@@ -71,13 +71,12 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
     def setup_network(self):
         #""" remote nodes
         self.remote = True
-        ips = [
-            "13.93.127.52",
-            "40.68.152.173",
-            "13.69.11.133",
-            "52.233.188.156",
-            "40.68.157.246",
-        ]
+
+        ips = []
+        with open("/dev/shm/ip_file", 'r') as ip_file:
+            for line in ip_file.readlines():
+                ips.append(line[:-1])
+
         self.num_nodes = len(ips)
         binary = ["/home/ubuntu/conflux"]
 
