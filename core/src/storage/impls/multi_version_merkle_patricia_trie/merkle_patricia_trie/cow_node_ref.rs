@@ -359,7 +359,9 @@ impl CowNodeRef {
                     &mut load_from_db,
                 )?;
             if load_from_db {
-                trie.get_node_memory_manager().compute_merkle_db_loads.fetch_add(1, Ordering::Relaxed);
+                trie.get_node_memory_manager()
+                    .compute_merkle_db_loads
+                    .fetch_add(1, Ordering::Relaxed);
             }
             Ok(trie_node.merkle_hash)
         }
@@ -734,5 +736,6 @@ use super::{
 };
 use parking_lot::MutexGuard;
 use rlp::*;
-use std::{cell::Cell, hint::unreachable_unchecked, ops::Deref};
-use std::sync::atomic::Ordering;
+use std::{
+    cell::Cell, hint::unreachable_unchecked, ops::Deref, sync::atomic::Ordering,
+};

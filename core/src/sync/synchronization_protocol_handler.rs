@@ -681,9 +681,10 @@ impl SynchronizationProtocolHandler {
 
         let req = rlp.as_val::<GetTerminalBlockHashes>()?;
         debug!("on_get_terminal_block_hashes, msg=:{:?}", req);
+        let (guard, best_info) = self.graph.get_best_info().into();
         let msg: Box<dyn Message> = Box::new(GetTerminalBlockHashesResponse {
             request_id: req.request_id().into(),
-            hashes: self.graph.get_best_info().terminal_block_hashes,
+            hashes: best_info.terminal_block_hashes,
         });
         self.send_message(io, peer, msg.as_ref())?;
         Ok(())
@@ -1207,14 +1208,13 @@ impl SynchronizationProtocolHandler {
     ) -> Result<(), NetworkError> {
         debug!("Sending status message to {:?}", peer);
 
+        let (guard, best_info) = self.graph.get_best_info().into();
+
         let msg: Box<dyn Message> = Box::new(Status {
             protocol_version: SYNCHRONIZATION_PROTOCOL_VERSION,
             network_id: 0x0,
             genesis_hash: *self.graph.genesis_hash(),
-            terminal_block_hashes: self
-                .graph
-                .get_best_info()
-                .terminal_block_hashes,
+            terminal_block_hashes: best_info.terminal_block_hashes,
         });
         self.send_message(io, peer, msg.as_ref())
     }

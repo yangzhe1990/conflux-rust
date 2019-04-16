@@ -4,16 +4,19 @@
 
 use crate::{
     cache_manager::{CacheId, CacheManager, CacheSize},
-    consensus::{SharedConsensusGraph, HEAVY_BLOCK_DIFFICULTY_RATIO},
+    consensus::{
+        ConsensusGraphInner, SharedConsensusGraph, HEAVY_BLOCK_DIFFICULTY_RATIO,
+    },
     db::COL_MISC,
     error::{BlockError, Error, ErrorKind},
     machine::new_machine,
     pow::ProofOfWorkConfig,
+    storage::GuardedValue,
     verification::*,
 };
 use cfx_types::{H256, U256, U512};
 use heapsize::HeapSizeOf;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 use primitives::{block::CompactBlock, Block, BlockHeader};
 use rlp::Rlp;
 use slab::Slab;
@@ -1083,9 +1086,12 @@ impl SynchronizationGraph {
         (insert_success, need_to_relay)
     }
 
-    pub fn get_best_info(&self) -> BestInformation {
+    pub fn get_best_info(
+        &self,
+    ) -> GuardedValue<RwLockReadGuard<ConsensusGraphInner>, BestInformation>
+    {
         let consensus_inner = self.consensus.inner.read();
-        BestInformation {
+        let value = BestInformation {
             best_block_hash: consensus_inner.best_block_hash(),
             current_difficulty: consensus_inner.current_difficulty,
             terminal_block_hashes: consensus_inner.terminal_hashes(),
@@ -1093,7 +1099,8 @@ impl SynchronizationGraph {
                 .deferred_state_root_following_best_block(),
             deferred_receipts_root: consensus_inner
                 .deferred_receipts_root_following_best_block(),
-        }
+        };
+        GuardedValue::new(consensus_inner, value)
     }
 
     pub fn verified_invalid(&self, hash: &H256) -> bool {

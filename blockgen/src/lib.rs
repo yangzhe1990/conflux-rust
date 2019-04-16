@@ -241,7 +241,7 @@ impl BlockGenerator {
     /// Assemble a new block without nonce
     pub fn assemble_new_block(&self, num_txs: usize) -> Block {
         // get the best block
-        let best_info = self.graph.get_best_info();
+        let (guarded, best_info) = self.graph.get_best_info().into();
         let best_block_hash = best_info.best_block_hash;
         let mut referee = best_info.terminal_block_hashes;
         referee.retain(|r| *r != best_block_hash);
@@ -273,7 +273,8 @@ impl BlockGenerator {
     /// Check if we need to mine on a new block
     pub fn is_mining_block_outdated(&self, block: &Block) -> bool {
         // 1st Check: if the parent block changed
-        let best_block_hash = self.graph.get_best_info().best_block_hash;
+        let best_block_hash =
+            self.graph.get_best_info().as_ref().best_block_hash;
         if best_block_hash != *block.block_header.parent_hash() {
             return true;
         }
