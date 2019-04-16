@@ -510,10 +510,14 @@ impl SynchronizationGraph {
         // `ConsensusGraph`
         thread::Builder::new()
             .name("Consensus Worker".into())
-            .spawn(move || loop {
-                match consensus_receiver.recv() {
-                    Ok(hash) => consensus.on_new_block(&hash, inner.as_ref()),
-                    Err(_) => break,
+            .spawn(move || {
+                loop {
+                    match consensus_receiver.recv() {
+                        Ok(hash) => {
+                            consensus.on_new_block(&hash, inner.as_ref())
+                        }
+                        Err(_) => break,
+                    }
                 }
                 warn!("Consensus receiver exited.");
             })
