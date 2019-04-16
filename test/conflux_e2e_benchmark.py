@@ -53,7 +53,7 @@ class RlpIter:
 
 
 class ConfluxEthReplayTest(ConfluxTestFramework):
-    EXPECTED_TPS = 3000
+    EXPECTED_TPS = 4000
 
     def set_test_params(self):
         self.setup_clean_chain = True
@@ -69,9 +69,8 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
                                 "egress_max_throttle": "1000",}
 
     def setup_network(self):
-        self.remote = False
-
-        """ remote nodes
+        #""" remote nodes
+        self.remote = True
         ips = [
             "13.93.127.52",
             "40.68.152.173",
@@ -88,14 +87,15 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
             self.log.info("Node "+str(i) + " bind to "+self.nodes[i].ip+":"+self.nodes[i].port)
         self.start_nodes()
         self.log.info("All nodes started, waiting to be connected")
-        """
+        #"""
 
-        #""" local nodes
+        """ local nodes
+        self.remote = False
         self.setup_nodes(binary=[os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             #"../target/debug/conflux")])
             "../target/release/conflux")]*self.num_nodes)
-        #"""
+        """
 
         connect_sample_nodes(self.nodes, self.log, 2, 0, 300)
 
@@ -116,15 +116,17 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         start_time = datetime.datetime.now()
         last_log_elapsed_time = 0
         tx_count = 0
-        peer_to_send = 0
-        tx_batch_size = 10
+        tx_batch_size = 200
         for txs, count in RlpIter(f, tx_batch_size):
-            #if tx_count % 10000 == 0:
-            peer_to_send = (peer_to_send + 1) % self.num_nodes
+            if tx_count > 5000000:
+                time.sleep(5000)
+
+            peers_to_send = range(0, self.num_nodes)
 
             txs_rlp = rlp.codec.length_prefix(len(txs), 192) + txs
 
-            self.nodes[peer_to_send].p2p.send_protocol_packet(int_to_bytes(
+            for peer_to_send in peers_to_send:
+                self.nodes[peer_to_send].p2p.send_protocol_packet(int_to_bytes(
                 TRANSACTIONS) + txs_rlp)
             elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
 
