@@ -116,7 +116,8 @@ pub struct NodeMemoryManager<
     /// This db access is read only.
     db: Arc<KeyValueDB>,
 
-    // TODO(yangzhe): use other atomic integer types when they becomes available in rust stable.
+    // TODO(yangzhe): use other atomic integer types when they becomes
+    // available in rust stable.
     db_load_counter: AtomicUsize,
     uncached_leaf_load_times: AtomicUsize,
     uncached_leaf_db_loads: AtomicUsize,
@@ -224,8 +225,10 @@ impl<
 
     pub fn log_uncached_key_access(&self, db_load_count: i32) {
         if db_load_count != 0 {
-            self.uncached_leaf_db_loads.fetch_add(db_load_count as usize, Ordering::Relaxed);
-            self.uncached_leaf_load_times.fetch_add(1, Ordering::Relaxed);
+            self.uncached_leaf_db_loads
+                .fetch_add(db_load_count as usize, Ordering::Relaxed);
+            self.uncached_leaf_load_times
+                .fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -561,7 +564,7 @@ impl<
                     allocator,
                     node,
                     cache_manager,
-                    is_loaded_from_db
+                    is_loaded_from_db,
                 )
             },
             NodeRefDeltaMpt::Dirty { ref index } => unsafe {
@@ -753,8 +756,8 @@ impl<
 use super::{
     super::{super::super::db::COL_DELTA_TRIE, errors::*},
     cache::algorithm::{
-        lru::LRU, CacheAccessResult, CacheAlgoDataTrait,
-        CacheAlgorithm, CacheIndexTrait, CacheStoreUtil,
+        lru::LRU, CacheAccessResult, CacheAlgoDataTrait, CacheAlgorithm,
+        CacheIndexTrait, CacheStoreUtil,
     },
     guarded_value::*,
     merkle_patricia_trie::*,
