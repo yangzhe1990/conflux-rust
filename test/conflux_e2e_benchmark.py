@@ -104,9 +104,11 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
 
         #time.sleep(10000)
 
+        block_gen_threads = []
         for node in self.nodes:
             block_gen_thread = BlockGenThread(node, self.log, random.random(), 1.0/self.num_nodes)
             block_gen_thread.start()
+            block_gen_threads.append(block_gen_thread)
 
 
         TX_FILE_PATH = "/run/media/yangzhe/HDDDATA/conflux_e2e_benchmark/convert_eth_from_0_to_4141811_unknown_txs.rlp"
@@ -141,8 +143,9 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
 
         end_time = datetime.datetime.now()
         time_used = (end_time - start_time).total_seconds()
-        block_gen_thread.stop()
-        block_gen_thread.join()
+        for block_gen_thread in block_gen_threads:
+            block_gen_thread.stop()
+            block_gen_thread.join()
         self.log.info("Time used: %f seconds", time_used)
         self.log.info("Tx per second: %f", tx_count / time_used)
 
