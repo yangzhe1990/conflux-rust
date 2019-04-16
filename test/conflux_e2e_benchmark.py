@@ -57,13 +57,24 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
 
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 4
+
+        ips = []
+        with open("/home/ubuntu/ip_file", 'r') as ip_file:
+                for line in ip_file.readlines():
+                    ips.append(line[:-1])
+
+        self.ips = ips
+
+        self.num_nodes = len(ips)
         #self.num_nodes = 1
+
         self.conf_parameters = {"log_level": "\"debug\"",
                                 "storage_cache_start_size": "1000000",
                                 "storage_cache_size": "20000000",
                                 "storage_node_map_size": "200000000",
                                 "ledger_cache_size": "3000",
+                                "send_tx_period_ms": "31536000000",
+                                "enable_discovery": "false",
                                 "egress_queue_capacity": "1024",
                                 "egress_min_throttle": "100",
                                 "egress_max_throttle": "1000",}
@@ -72,15 +83,9 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         #""" remote nodes
         self.remote = True
 
-        ips = []
-        with open("/dev/shm/ip_file", 'r') as ip_file:
-            for line in ip_file.readlines():
-                ips.append(line[:-1])
-
-        self.num_nodes = len(ips)
         binary = ["/home/ubuntu/conflux"]
 
-        for ip in ips:
+        for ip in self.ips:
             self.add_remote_nodes(1, user="ubuntu", ip=ip, binary=binary)
         for i in range(len(self.nodes)):
             self.log.info("Node "+str(i) + " bind to "+self.nodes[i].ip+":"+self.nodes[i].port)
