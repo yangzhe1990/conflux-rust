@@ -988,6 +988,7 @@ impl SynchronizationProtocolHandler {
             }
             Self::recover_public(
                 &mut block,
+                self.get_transaction_pool(),
                 &mut *self
                     .get_transaction_pool()
                     .transaction_pubkey_cache
@@ -1096,6 +1097,7 @@ impl SynchronizationProtocolHandler {
         let mut block = new_block.block;
         Self::recover_public(
             &mut block,
+            self.get_transaction_pool(),
             &mut *self.get_transaction_pool().transaction_pubkey_cache.write(),
             &mut *self.graph.cache_man.lock(),
             &*self.get_transaction_pool().worker_pool.lock(),
@@ -1906,7 +1908,7 @@ impl SynchronizationProtocolHandler {
     }
 
     pub fn recover_public(
-        block: &mut Block,
+        block: &mut Block, tx_pool: SharedTransactionPool,
         tx_cache: &mut HashMap<H256, Arc<SignedTransaction>>,
         cache_man: &mut CacheManager<CacheId>, worker_pool: &ThreadPool,
     ) -> Result<(), DecoderError>
@@ -1917,10 +1919,13 @@ impl SynchronizationProtocolHandler {
         for (idx, transaction) in block.transactions.iter().enumerate() {
             match tx_cache.get(&transaction.hash()) {
                 Some(tx) => recovered_transactions.push(tx.clone()),
-                None => {
-                    uncached_trans.push((idx, transaction.clone()));
-                    recovered_transactions.push(transaction.clone());
-                }
+                None => match tx_pool.get_transaction(&transaction.hash()) {
+                    Some(tx) => recovered_transactions.push(tx.clone()),
+                    None => {
+                        uncached_trans.push((idx, transaction.clone()));
+                        recovered_transactions.push(transaction.clone());
+                    }
+                },
             }
         }
         if uncached_trans.len() < WORKER_COMPUTATION_PARALLELISM * 8 {
