@@ -287,10 +287,27 @@ impl<'a> State<'a> {
 
         let mut accounts = self.cache.borrow_mut();
         debug!("Notify for epoch {}", epoch_id);
+        let mut sorted_dirty_addresses = accounts
+            .iter()
+            .filter_map(|(address, entry)| {
+                if entry.is_dirty() {
+                    Some(address.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        sorted_dirty_addresses.sort();
+        for address in &sorted_dirty_addresses {
+            let entry = accounts.get_mut(address).unwrap();
+            // FIXME: use a fixed order to sort accounts.
+            /*
+        }
         for (address, ref mut entry) in accounts
-            .iter_mut()
-            .filter(|&(_, ref entry)| entry.is_dirty())
-        {
+                .iter_mut()
+                .filter(|&(_, ref entry)| entry.is_dirty())
+            {
+            */
             entry.state = AccountState::Committed;
             if let Some(ref mut account) = entry.account {
                 txpool.notify_ready(address, &account.as_account());

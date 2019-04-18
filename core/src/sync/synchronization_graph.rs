@@ -16,7 +16,7 @@ use crate::{
 };
 use cfx_types::{H256, U256, U512};
 use heapsize::HeapSizeOf;
-use parking_lot::{Mutex, RwLock, RwLockReadGuard};
+use parking_lot::{Mutex, RwLock, RwLockUpgradableReadGuard};
 use primitives::{block::CompactBlock, Block, BlockHeader};
 use rlp::Rlp;
 use slab::Slab;
@@ -708,10 +708,15 @@ impl SynchronizationGraph {
     }
 
     pub fn check_mining_heavy_block(
-        &self, parent_hash: &H256, light_difficulty: &U256,
-    ) -> bool {
-        self.consensus
-            .check_mining_heavy_block(parent_hash, light_difficulty)
+        &self, inner: &mut ConsensusGraphInner, parent_hash: &H256,
+        light_difficulty: &U256,
+    ) -> bool
+    {
+        self.consensus.check_mining_heavy_block(
+            inner,
+            parent_hash,
+            light_difficulty,
+        )
     }
 
     pub fn best_epoch_number(&self) -> u64 {
@@ -1132,9 +1137,11 @@ impl SynchronizationGraph {
 
     pub fn get_best_info(
         &self,
-    ) -> GuardedValue<RwLockReadGuard<ConsensusGraphInner>, BestInformation>
-    {
-        let consensus_inner = self.consensus.inner.read();
+    ) -> GuardedValue<
+        RwLockUpgradableReadGuard<ConsensusGraphInner>,
+        BestInformation,
+    > {
+        let consensus_inner = self.consensus.inner.upgradable_read();
         let value = BestInformation {
             best_block_hash: consensus_inner.best_block_hash(),
             current_difficulty: consensus_inner.current_difficulty,
