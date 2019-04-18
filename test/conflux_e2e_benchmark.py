@@ -58,15 +58,20 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
 
+        #""" remote
         ips = []
-        with open("/home/ubuntu/ip_file", 'r') as ip_file:
+        try:
+            with open("/home/ubuntu/ip_file", 'r') as ip_file:
                 for line in ip_file.readlines():
                     ips.append(line[:-1])
+        except Exception:
+            pass
 
         self.ips = ips
 
         self.num_nodes = len(ips)
-        #self.num_nodes = 1
+        #"""
+
 
         self.conf_parameters = {"log_level": "\"debug\"",
                                 "storage_cache_start_size": "1000000",
@@ -98,7 +103,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         self.setup_nodes(binary=[os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             #"../target/debug/conflux")])
-            "../target/release/conflux")]*self.num_nodes)
+            "../target/release/conflux")] * self.num_nodes)
         """
 
         connect_sample_nodes(self.nodes, self.log, 2, 0, 300)
@@ -112,9 +117,8 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         block_gen_threads = []
         for node in self.nodes:
             block_gen_thread = BlockGenThread(node, self.log, random.random(), 1.0/self.num_nodes)
-            block_gen_thread.start()
             block_gen_threads.append(block_gen_thread)
-
+            block_gen_thread.start()
 
         TX_FILE_PATH = "/run/media/yangzhe/HDDDATA/conflux_e2e_benchmark/convert_eth_from_0_to_4141811_unknown_txs.rlp"
         f = open(TX_FILE_PATH, "rb")
@@ -173,7 +177,10 @@ class BlockGenThread(threading.Thread):
         self.hashpower_percent = hashpower
 
     def run(self):
+        self.log.info("block gen thread started to run")
         for i in range(0, 20):
+            if self.stopped:
+                return
             h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
             self.log.info("%s generate block at test start %s", 0, h)
             time.sleep(1)
