@@ -967,7 +967,7 @@ impl<'a, 'b> Executive<'a, 'b> {
         let nonce = self.state.nonce(&sender)?;
 
         let spec = self.spec;
-        let base_gas_required = U256::from(Self::gas_required_for(
+        let mut base_gas_required = U256::from(Self::gas_required_for(
             match tx.action {
                 Action::Create => true,
                 Action::Call(_) => false,
@@ -977,10 +977,14 @@ impl<'a, 'b> Executive<'a, 'b> {
         ));
 
         if tx.gas < base_gas_required {
+            // FIXME: changed to be compatible to eth transactions.
+            /*
             return Err(ExecutionError::NotEnoughBaseGas {
                 required: base_gas_required,
                 got: tx.gas,
             });
+            */
+            base_gas_required = tx.gas;
         }
 
         if !tx.is_unsigned()
@@ -1002,6 +1006,8 @@ impl<'a, 'b> Executive<'a, 'b> {
 
         // Validate if transaction fits into give block
         if self.env.gas_used + tx.gas > self.env.gas_limit {
+            // FIXME: make gas limit configurable.
+            debug!("block gas limit reached!");
             return Err(ExecutionError::BlockGasLimitReached {
                 gas_limit: self.env.gas_limit,
                 gas_used: self.env.gas_used,

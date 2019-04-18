@@ -1102,7 +1102,7 @@ impl TransactionPool {
         block_gas_limit: U256,
         block_size_limit: usize,
         // TODO: we don't use state to check nonce, instead, in future, there
-        // will be another TODO: structure to carry the information.
+        // TODO: will be another structure to carry the information.
         _state: State<'a>,
     ) -> Vec<Arc<SignedTransaction>>
     {
