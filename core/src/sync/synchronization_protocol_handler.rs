@@ -2063,6 +2063,7 @@ impl SynchronizationProtocolHandler {
         cache_man: &mut CacheManager<CacheId>, worker_pool: &ThreadPool,
     ) -> Result<(), DecoderError>
     {
+        debug!("recover public for block started.");
         let mut recovered_transactions =
             Vec::with_capacity(block.transactions.len());
         let mut uncached_trans = Vec::with_capacity(block.transactions.len());
@@ -2155,6 +2156,7 @@ impl SynchronizationProtocolHandler {
         }
 
         block.transactions = recovered_transactions;
+        debug!("recover public for block finished.");
         Ok(())
     }
 
