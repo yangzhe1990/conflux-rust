@@ -1120,6 +1120,8 @@ impl TransactionPool {
         let mut total_tx_gas_limit: U256 = 0.into();
         let mut total_tx_size: usize = 0;
 
+        let big_tx_resample_times_limit = 10;
+
         'out: loop {
             let tx = match inner.ready_transactions.pop() {
                 None => break,
@@ -1157,7 +1159,12 @@ impl TransactionPool {
                         .entry(sender)
                         .or_insert(HashMap::new())
                         .insert(tx.nonce, tx);
-                    continue;
+                    if big_tx_resample_times_limit > 0 {
+                        --big_tx_resample_times_limit;
+                        continue 'out;
+                    } else {
+                        break 'out;
+                    }
                 }
 
                 total_tx_gas_limit += *tx.gas_limit();
@@ -1176,6 +1183,21 @@ impl TransactionPool {
                             break;
                         }
                         if let Some(tx) = tx_map.remove(nonce) {
+                            if block_gas_limit - total_tx_gas_limit < *tx.gas_limit()
+                                || block_size_limit - total_tx_size < tx.size()
+                                {
+                                    future_txs
+                                        .entry(sender)
+                                        .or_insert(HashMap::new())
+                                        .insert(tx.nonce, tx);
+                                    if big_tx_resample_times_limit > 0 {
+                                        --big_tx_resample_times_limit;
+                                        continue 'out;
+                                    } else {
+                                        break 'out;
+                                    }
+                                }
+
                             packed_transactions.push(tx);
                             *nonce += 1.into();
 
