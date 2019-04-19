@@ -53,7 +53,7 @@ class RlpIter:
 
 
 class ConfluxEthReplayTest(ConfluxTestFramework):
-    EXPECTED_TPS = 4000
+    EXPECTED_TPS = 2000
 
     def set_test_params(self):
         self.setup_clean_chain = True
@@ -72,11 +72,12 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         self.num_nodes = len(ips)
         #"""
 
+        #self.num_nodes = 4
 
         self.conf_parameters = {"log_level": "\"debug\"",
                                 "storage_cache_start_size": "1000000",
-                                "storage_cache_size": "20000000",
-                                "storage_node_map_size": "200000000",
+                                "storage_cache_size": "2000000",
+                                "storage_node_map_size": "2000000",
                                 "ledger_cache_size": "3000",
                                 "send_tx_period_ms": "31536000000",
                                 "enable_discovery": "false",
@@ -115,10 +116,12 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         #time.sleep(10000)
 
         block_gen_threads = []
+        node_id = 0
         for node in self.nodes:
-            block_gen_thread = BlockGenThread(node, self.log, random.random(), 1.0/self.num_nodes)
+            block_gen_thread = BlockGenThread(node_id, node, self.log, random.random(), 1.0/self.num_nodes)
             block_gen_threads.append(block_gen_thread)
             block_gen_thread.start()
+            node_id += 1
 
         TX_FILE_PATH = "/run/media/yangzhe/HDDDATA/conflux_e2e_benchmark/convert_eth_from_0_to_4141811_unknown_txs.rlp"
         f = open(TX_FILE_PATH, "rb")
@@ -128,7 +131,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         tx_count = 0
         tx_batch_size = 1000
         for txs, count in RlpIter(f, tx_batch_size):
-            if tx_count > 5000000:
+            if tx_count > 4000000:
                 time.sleep(5000)
 
             peers_to_send = range(0, self.num_nodes)
@@ -166,10 +169,11 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
-    BLOCK_SIZE_LIMIT=7000
-    def __init__(self, node, log, seed, hashpower):
+    BLOCK_SIZE_LIMIT=20000
+    def __init__(self, node_id, node, log, seed, hashpower):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
+        self.node_id = node_id
         self.log = log
         self.local_random = random.Random()
         self.local_random.seed(seed)
@@ -182,13 +186,13 @@ class BlockGenThread(threading.Thread):
             if self.stopped:
                 return
             h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
-            self.log.info("%s generate block at test start %s", 0, h)
+            self.log.info("node %s generate block at test start %s", self.node_id, h)
             time.sleep(1)
         while not self.stopped:
             try:
                 h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
                 mining = 0.8 * numpy.random.exponential() / self.hashpower_percent
-                self.log.info("%s generate block %s and sleep %s sec", 0, h, mining)
+                self.log.info("node %s generate block %s and sleep %s sec", self.node_id, h, mining)
                 time.sleep(mining)
             except Exception as e:
                 self.log.info("Fails to generate blocks")
