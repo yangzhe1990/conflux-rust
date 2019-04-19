@@ -726,6 +726,10 @@ impl ConsensusGraphInner {
                             // Add future transactions back to pool if we are
                             // not verifying forking chain
                             if on_local_pivot && got > expected {
+                                debug!(
+                                    "tx execution error InvalidNonce: nonce expected: {}, got {}, \
+                                    transaction={:?}, err={:?}",
+                                    expected, got, transaction.clone(), r);
                                 trace!(
                                         "To re-add transaction ({:?}) to pending pool",
                                         transaction.clone()
@@ -744,7 +748,7 @@ impl ConsensusGraphInner {
                         }
                         _ => {
                             n_other += 1;
-                            trace!("tx executed: transaction={:?}, result={:?}, in block {:?}", transaction, r, block.hash());
+                            debug!("tx execution error?: transaction={:?}, result={:?}, in block {:?}", transaction, r, block.hash());
                         }
                     }
                     let receipt = Receipt::new(
@@ -2560,8 +2564,6 @@ impl ConsensusGraph {
                 self.txpool.unexecuted_transaction_addresses.lock();
             let mut cache_man = self.cache_man.lock();
             for (idx, tx) in block.transactions.iter().enumerate() {
-                self.txpool.set_tx_stale_for_ready(tx.clone());
-
                 // If an executed tx
                 let tx_hash = tx.hash();
                 if let Some(addr_set) =
@@ -2596,6 +2598,13 @@ impl ConsensusGraph {
             inner.arena[parent_idx].past_difficulty + difficulty_in_my_epoch;
 
         let me = inner.insert(block.as_ref(), past_difficulty);
+
+        // It's only correct to set tx stale after the block is considered
+        // terminal for mining.
+        for tx in block.transactions.iter() {
+            self.txpool.set_tx_stale_for_ready(tx.clone());
+        }
+
         inner.compute_anticone(me);
 
         let fully_valid = self.check_block_full_validity(
