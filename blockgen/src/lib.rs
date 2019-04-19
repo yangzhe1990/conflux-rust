@@ -368,12 +368,15 @@ impl BlockGenerator {
         );
         self.on_mined_block(block);
 
+        // FIXME: the sleep below runs forever, removed.
+        /*
         // Ensure that when `generate**` function returns, the block has been
         // handled by Consensus This order is assumed by some tests, and
         // this function is also only used in tests.
         while self.graph.consensus.get_block_epoch_number(&hash).is_none() {
             sleep(Duration::from_millis(100));
         }
+        */
         hash
     }
 
