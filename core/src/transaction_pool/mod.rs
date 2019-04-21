@@ -27,6 +27,7 @@ use primitives::{
     Account, Action, EpochId, SignedTransaction, TransactionAddress,
     TransactionWithSignature,
 };
+use rlp::*;
 use std::{
     cmp::{min, Ordering},
     collections::{hash_map::HashMap, BTreeMap, HashSet, VecDeque},
@@ -829,7 +830,7 @@ impl TransactionPool {
         let cost = transaction.value + transaction.gas_price * transaction.gas;
         if account_balance.deref().lt(&cost) {
             // FIXME: change back to trace,
-            debug!(
+            trace!(
                 "Transaction {:?} not ready due to not enough balance: {} < {}",
                 transaction,
                 //transaction.hash(),
@@ -1124,7 +1125,7 @@ impl TransactionPool {
         let mut total_tx_gas_limit: U256 = 0.into();
         let mut total_tx_size: usize = 0;
 
-        let big_tx_resample_times_limit = 10;
+        let mut big_tx_resample_times_limit = 10;
 
         'out: loop {
             let tx = match inner.ready_transactions.pop() {
@@ -1164,7 +1165,7 @@ impl TransactionPool {
                         .or_insert(HashMap::new())
                         .insert(tx.nonce, tx);
                     if big_tx_resample_times_limit > 0 {
-                        --big_tx_resample_times_limit;
+                        big_tx_resample_times_limit -= 1;
                         continue 'out;
                     } else {
                         break 'out;
@@ -1196,7 +1197,7 @@ impl TransactionPool {
                                     .or_insert(HashMap::new())
                                     .insert(tx.nonce, tx);
                                 if big_tx_resample_times_limit > 0 {
-                                    --big_tx_resample_times_limit;
+                                    big_tx_resample_times_limit -= 1;
                                     continue 'out;
                                 } else {
                                     break 'out;
@@ -1232,11 +1233,15 @@ impl TransactionPool {
                 inner.ready_transactions.insert(tx.clone());
             }
         }
+
+        let mut rlp_s = RlpStream::new();
+        rlp_s.append_list::<SignedTransaction, Arc<SignedTransaction>>(&packed_transactions);
         debug!(
-            "After packing ready pool size:{}, pending pool size:{}, packed_transactions: {}",
+            "After packing ready pool size:{}, pending pool size:{}, packed_transactions: {}, rlp size: {}",
             inner.ready_transactions.len(),
             inner.unconfirmed_txs.pending_pool_size(),
             packed_transactions.len(),
+            rlp_s.out().len()
         );
 
         packed_transactions
@@ -1261,16 +1266,19 @@ impl TransactionPool {
             .collect()
     }
 
-    pub fn notify_state_start(&self) {
-        self.inner.write().unconfirmed_txs.notify_state_start();
+    pub fn notify_state_start(&self, accounts_from_execution: Vec<Account>) {
+        let mut inner = self.inner.write();
+        let inner = inner.deref_mut();
+        inner.unconfirmed_txs.notify_state_start();
+
+        for account in &accounts_from_execution {
+            self.notify_ready(inner, &account.address, account);
+        }
     }
 
     // TODO: In the final version we must check for all block if their nonce
     // TODO: sequence is correct before issuing any notify_ready call.
-    pub fn notify_ready(&self, address: &Address, account: &Account) {
-        let mut inner = self.inner.write();
-        let inner = inner.deref_mut();
-
+    pub fn notify_ready(&self, inner: &mut TransactionPoolInner, address: &Address, account: &Account) {
         // FIXME: to overcome the deliver order issue,
         // FIXME: we remove all lower nonces in ready_pool, to prevent gap from
         // FIXME: being introduced into ready pool.

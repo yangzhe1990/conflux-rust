@@ -283,7 +283,7 @@ impl<'a> State<'a> {
     ) -> DbResult<()> {
         assert!(self.checkpoints.borrow().is_empty());
 
-        txpool.notify_state_start();
+        let mut accounts_for_txpool = vec![];
 
         let mut accounts = self.cache.borrow_mut();
         debug!("Notify for epoch {}", epoch_id);
@@ -310,7 +310,7 @@ impl<'a> State<'a> {
             */
             entry.state = AccountState::Committed;
             if let Some(ref mut account) = entry.account {
-                txpool.notify_ready(address, &account.as_account());
+                accounts_for_txpool.push(account.as_account());
                 account.commit(&mut self.db)?;
                 self.db.set::<Account>(
                     &StorageKey::new_account_key(address),
@@ -321,6 +321,14 @@ impl<'a> State<'a> {
             }
         }
         self.db.commit(epoch_id)?;
+        {
+            let txpool_clone = txpool.clone();
+            std::thread::Builder::new()
+                .name("txpool_update_state".into())
+                .spawn(move || {
+                    txpool_clone.notify_state_start(accounts_for_txpool);
+                });
+        }
         Ok(())
     }
 
