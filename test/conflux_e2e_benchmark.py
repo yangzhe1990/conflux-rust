@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime
+import math
 from http.client import CannotSendRequest
 
 from conflux.utils import convert_to_nodeid, privtoaddr, parse_as_int, encode_hex
@@ -53,7 +54,10 @@ class RlpIter:
 
 
 class ConfluxEthReplayTest(ConfluxTestFramework):
-    EXPECTED_TPS = 3500
+    EXPECTED_TPS = 2300
+    INITIALIZE_TXS = 200000
+    INITIALIZE_TPS = 4000
+    INITIALIZE_SLEEP = 20
 
     def set_test_params(self):
         self.setup_clean_chain = True
@@ -107,7 +111,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
             "../target/release/conflux")] * self.num_nodes)
         """
 
-        connect_sample_nodes(self.nodes, self.log, 2, 0, 300)
+        connect_sample_nodes(self.nodes, self.log, 7, 0, 300)
 
     def run_test(self):
         # Start mininode connection
@@ -143,7 +147,11 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
                 TRANSACTIONS) + txs_rlp)
             elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
 
-            speed_diff = 1.0 * tx_count / ConfluxEthReplayTest.EXPECTED_TPS - elapsed_time
+            if tx_count < ConfluxEthReplayTest.INITIALIZE_TXS:
+                expected_elapsed_time = 1.0 * tx_count / ConfluxEthReplayTest.INITIALIZE_TPS
+            else:
+                expected_elapsed_time = 1.0 * ConfluxEthReplayTest.INITIALIZE_TXS / ConfluxEthReplayTest.INITIALIZE_TPS + ConfluxEthReplayTest.INITIALIZE_SLEEP + 1.0 * (tx_count - ConfluxEthReplayTest.INITIALIZE_TXS) / ConfluxEthReplayTest.EXPECTED_TPS
+            speed_diff = expected_elapsed_time - elapsed_time
             if int(elapsed_time - last_log_elapsed_time) >= 1:
                 last_log_elapsed_time = elapsed_time
                 self.log.info("elapsed time %s, tx_count %s", elapsed_time, tx_count)
@@ -169,7 +177,7 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
-    BLOCK_SIZE_LIMIT=2000
+    BLOCK_SIZE_LIMIT=3000
     def __init__(self, node_id, node, log, seed, hashpower):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
@@ -182,18 +190,26 @@ class BlockGenThread(threading.Thread):
 
     def run(self):
         self.log.info("block gen thread started to run")
-        for i in range(0, 0):
+        start_time = datetime.datetime.now()
+        for i in range(0, math.ceil(1.0 * ConfluxEthReplayTest.INITIALIZE_TXS / BlockGenThread.BLOCK_SIZE_LIMIT)):
             if self.stopped:
                 return
-            h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
-            self.log.info("node %s generate block at test start %s", self.node_id, h)
-            time.sleep(1)
+            sleep_sec = 1.0 * i * BlockGenThread.BLOCK_SIZE_LIMIT / ConfluxEthReplayTest.INITIALIZE_TPS - (datetime.datetime.now() - start_time).total_seconds()
+            self.log.info("%s sleep %s at test startup", self.node_id, sleep_sec)
+            if sleep_sec > 0:
+                time.sleep(sleep_sec)
+            if self.node_id == 1:
+                h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
+                self.log.info("node %s generated block at test start %s", self.node_id, h)
+        # for blocks to propogate.
+        time.sleep(ConfluxEthReplayTest.INITIALIZE_SLEEP)
+
         start_time = datetime.datetime.now()
         total_mining_sec = 0.0
         while not self.stopped:
             try:
-                mining = 0.25 * numpy.random.exponential() / self.hashpower_percent
-                self.log.info("%s sleep %s sec and generate block", self.node_id, mining)
+                mining = 0.5 * numpy.random.exponential() / self.hashpower_percent
+                self.log.info("%s sleep %s sec then generate block", self.node_id, mining)
                 total_mining_sec += mining
                 elapsed_sec = (datetime.datetime.now() - start_time).total_seconds()
                 sleep_sec = total_mining_sec - elapsed_sec
@@ -201,6 +217,7 @@ class BlockGenThread(threading.Thread):
                 if sleep_sec > 0:
                     time.sleep(sleep_sec)
                 self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
+                self.log.info("%s generated block", self.node_id)
             except Exception as e:
                 self.log.info("%s Fails to generate blocks", self.node_id)
                 self.log.info("%s %s", self.node_id, e)
