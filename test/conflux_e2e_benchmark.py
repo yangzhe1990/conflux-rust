@@ -53,7 +53,7 @@ class RlpIter:
 
 
 class ConfluxEthReplayTest(ConfluxTestFramework):
-    EXPECTED_TPS = 2000
+    EXPECTED_TPS = 3500
 
     def set_test_params(self):
         self.setup_clean_chain = True
@@ -132,7 +132,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         tx_batch_size = 1000
         for txs, count in RlpIter(f, tx_batch_size):
             if tx_count > 4000000:
-                time.sleep(5000)
+                time.sleep(500000)
 
             peers_to_send = range(0, self.num_nodes)
 
@@ -169,7 +169,7 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
-    BLOCK_SIZE_LIMIT=20000
+    BLOCK_SIZE_LIMIT=2000
     def __init__(self, node_id, node, log, seed, hashpower):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
@@ -182,21 +182,28 @@ class BlockGenThread(threading.Thread):
 
     def run(self):
         self.log.info("block gen thread started to run")
-        for i in range(0, 20):
+        for i in range(0, 0):
             if self.stopped:
                 return
             h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
             self.log.info("node %s generate block at test start %s", self.node_id, h)
             time.sleep(1)
+        start_time = datetime.datetime.now()
+        total_mining_sec = 0.0
         while not self.stopped:
             try:
-                h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
-                mining = 0.8 * numpy.random.exponential() / self.hashpower_percent
-                self.log.info("node %s generate block %s and sleep %s sec", self.node_id, h, mining)
-                time.sleep(mining)
+                mining = 0.25 * numpy.random.exponential() / self.hashpower_percent
+                self.log.info("%s sleep %s sec and generate block", mining, self.node_id)
+                total_mining_sec += mining
+                elapsed_sec = (datetime.datetime.now() - start_time).total_seconds()
+                sleep_sec = total_mining_sec - elapsed_sec
+                self.log.info("%s elapsed time %s, total mining time %s sec, actually sleep %s sec", self.node_id, elapsed_sec, total_mining_sec, sleep_sec)
+                if sleep_sec > 0:
+                    time.sleep(sleep_sec)
+                self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
             except Exception as e:
-                self.log.info("Fails to generate blocks")
-                self.log.info(e)
+                self.log.info("%s Fails to generate blocks", self.node_id)
+                self.log.info("%s %s", self.node_id, e)
                 time.sleep(5)
 
     def stop(self):
