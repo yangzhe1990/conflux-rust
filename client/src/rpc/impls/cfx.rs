@@ -21,7 +21,7 @@ use jsonrpc_macros::Trailing;
 use network::node_table::{NodeEndpoint, NodeEntry, NodeId};
 use parking_lot::{Condvar, Mutex};
 use primitives::{
-    Action, EpochNumber as PrimitiveEpochNumber, SignedTransaction,
+    Action, block::MAX_BLOCK_SIZE_IN_BYTES, EpochNumber as PrimitiveEpochNumber, SignedTransaction,
     Transaction, TransactionWithSignature,
 };
 use rlp::Rlp;
@@ -343,7 +343,7 @@ impl RpcImpl {
         let mut hashes = Vec::new();
         for _i in 0..num_blocks {
             hashes
-                .push(self.block_gen.generate_block_with_transactions(num_txs));
+                .push(self.block_gen.generate_block_with_transactions(num_txs, MAX_BLOCK_SIZE_IN_BYTES));
         }
         Ok(hashes)
     }
@@ -361,10 +361,10 @@ impl RpcImpl {
         Ok(hash)
     }
 
-    fn generate_one_block(&self, num_txs: usize) -> RpcResult<H256> {
+    fn generate_one_block(&self, num_txs: usize, block_size_limit: usize) -> RpcResult<H256> {
         info!("RPC Request: generate_one_block()");
         // TODO Choose proper num_txs
-        let hash = self.block_gen.generate_block(num_txs);
+        let hash = self.block_gen.generate_block(num_txs, block_size_limit);
         Ok(hash)
     }
 
@@ -375,7 +375,7 @@ impl RpcImpl {
 
         thread::Builder::new()
             .name("generate_one_block_nonblock".into())
-            .spawn(move || {block_gen.generate_block(num_txs);})
+            .spawn(move || {block_gen.generate_block(num_txs, MAX_BLOCK_SIZE_IN_BYTES);})
             .expect("failed to start transaction packing thread");
 
         Ok(())
@@ -527,11 +527,12 @@ impl RpcImpl {
     }
 
     fn txpool_status(&self) -> RpcResult<BTreeMap<String, usize>> {
-        let (ready_len, pending_len) = self.tx_pool.stats();
+        let (ready_len, pending_len, total_received) = self.tx_pool.stats();
 
         let mut ret: BTreeMap<String, usize> = BTreeMap::new();
         ret.insert("ready".into(), ready_len);
         ret.insert("pending".into(), pending_len);
+        ret.insert("received".into(), total_received);
 
         Ok(ret)
     }
@@ -741,8 +742,8 @@ impl TestRpc for TestRpcImpl {
             .generate_fixed_block(parent_hash, referee, num_txs)
     }
 
-    fn generate_one_block(&self, num_txs: usize) -> RpcResult<H256> {
-        self.rpc_impl.generate_one_block(num_txs)
+    fn generate_one_block(&self, num_txs: usize, block_size_limit: usize) -> RpcResult<H256> {
+        self.rpc_impl.generate_one_block(num_txs, block_size_limit)
     }
 
     fn generate_one_block_nonblock(&self, num_txs: usize) -> RpcResult<()> {

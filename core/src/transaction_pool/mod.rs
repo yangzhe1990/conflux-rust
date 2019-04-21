@@ -286,6 +286,7 @@ impl UnconfirmedTransactions {
     }
 
     pub fn notify_state_start(&mut self) {
+        let mut removed_txs = 0;
         if self.recent_states_accounts.len() > Self::KEEP_NONCE_AT_OLD_STATE {
             match self.recent_states_accounts.pop_front() {
                 None => {}
@@ -311,6 +312,7 @@ impl UnconfirmedTransactions {
                                     self.ready_nonces_and_balances
                                         .remove(&address);
                                 }
+                                removed_txs += removed_tx_hashes.len();
                                 for hash in removed_tx_hashes {
                                     self.txs.remove(&hash);
                                 }
@@ -323,6 +325,8 @@ impl UnconfirmedTransactions {
                 }
             }
         }
+
+        debug!("Removed {} old txs from transaction pool.", removed_txs);
         self.recent_states_accounts.push_back(Default::default());
     }
 
@@ -1157,8 +1161,9 @@ impl TransactionPool {
                     .or_insert(HashMap::new())
                     .insert(tx.nonce, tx);
             } else if tx.nonce == *nonce {
+                let tx_size = tx.rlp_bytes().len();
                 if block_gas_limit - total_tx_gas_limit < *tx.gas_limit()
-                    || block_size_limit - total_tx_size < tx.size()
+                    || block_size_limit - total_tx_size < tx_size
                 {
                     future_txs
                         .entry(sender)
@@ -1173,7 +1178,7 @@ impl TransactionPool {
                 }
 
                 total_tx_gas_limit += *tx.gas_limit();
-                total_tx_size += tx.size();
+                total_tx_size += tx_size;
 
                 *nonce += 1.into();
                 packed_transactions.push(tx);
@@ -1188,9 +1193,10 @@ impl TransactionPool {
                             break;
                         }
                         if let Some(tx) = tx_map.remove(nonce) {
+                            let tx_size = tx.rlp_bytes().len();
                             if block_gas_limit - total_tx_gas_limit
                                 < *tx.gas_limit()
-                                || block_size_limit - total_tx_size < tx.size()
+                                || block_size_limit - total_tx_size < tx_size
                             {
                                 future_txs
                                     .entry(sender)
@@ -1203,6 +1209,9 @@ impl TransactionPool {
                                     break 'out;
                                 }
                             }
+
+                            total_tx_gas_limit += *tx.gas_limit();
+                            total_tx_size += tx_size;
 
                             packed_transactions.push(tx);
                             *nonce += 1.into();
@@ -1237,11 +1246,15 @@ impl TransactionPool {
         let mut rlp_s = RlpStream::new();
         rlp_s.append_list::<SignedTransaction, Arc<SignedTransaction>>(&packed_transactions);
         debug!(
-            "After packing ready pool size:{}, pending pool size:{}, packed_transactions: {}, rlp size: {}",
+            "After packing ready pool size:{}, pending pool size:{}, packed_transactions: {}, \
+            rlp size: {}, total txs received {}, total txs packed by chain {}",
             inner.ready_transactions.len(),
             inner.unconfirmed_txs.pending_pool_size(),
             packed_transactions.len(),
-            rlp_s.out().len()
+            rlp_s.out().len(),
+            // FIXME: change to number of tx received.
+            inner.len(),
+            inner.len() - inner.unconfirmed_txs.pending_pool_size(),
         );
 
         packed_transactions
@@ -1449,11 +1462,13 @@ impl TransactionPool {
     }
 
     /// stats retrieves the length of ready and pending queue.
-    pub fn stats(&self) -> (usize, usize) {
+    pub fn stats(&self) -> (usize, usize, usize) {
         let inner = self.inner.read();
         (
             inner.ready_transactions.len(),
             inner.unconfirmed_txs.pending_pool_size(),
+            // FIXME: change it to the number of total tx received, and check why there is no tx removal (or why the len() == total received).
+            inner.len()
         )
     }
 

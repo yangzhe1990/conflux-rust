@@ -54,7 +54,7 @@ class RlpIter:
 
 
 class ConfluxEthReplayTest(ConfluxTestFramework):
-    EXPECTED_TPS = 2300
+    EXPECTED_TX_SIZE_PER_SEC = 600000
     INITIALIZE_TXS = 200000
     INITIALIZE_TPS = 4000
     INITIALIZE_SLEEP = 20
@@ -134,6 +134,8 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         last_log_elapsed_time = 0
         tx_count = 0
         tx_batch_size = 1000
+        tx_bytes = 0
+        tx_received_slowdown = 0
         for txs, count in RlpIter(f, tx_batch_size):
             if tx_count > 4000000:
                 time.sleep(500000)
@@ -150,15 +152,23 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
             if tx_count < ConfluxEthReplayTest.INITIALIZE_TXS:
                 expected_elapsed_time = 1.0 * tx_count / ConfluxEthReplayTest.INITIALIZE_TPS
             else:
-                expected_elapsed_time = 1.0 * ConfluxEthReplayTest.INITIALIZE_TXS / ConfluxEthReplayTest.INITIALIZE_TPS + ConfluxEthReplayTest.INITIALIZE_SLEEP + 1.0 * (tx_count - ConfluxEthReplayTest.INITIALIZE_TXS) / ConfluxEthReplayTest.EXPECTED_TPS
+                tx_bytes += len(txs)
+                expected_elapsed_time = tx_received_slowdown + 1.0 * ConfluxEthReplayTest.INITIALIZE_TXS / ConfluxEthReplayTest.INITIALIZE_TPS + ConfluxEthReplayTest.INITIALIZE_SLEEP + 1.0 * tx_bytes / ConfluxEthReplayTest.EXPECTED_TX_SIZE_PER_SEC
             speed_diff = expected_elapsed_time - elapsed_time
             if int(elapsed_time - last_log_elapsed_time) >= 1:
                 last_log_elapsed_time = elapsed_time
-                self.log.info("elapsed time %s, tx_count %s", elapsed_time, tx_count)
+                self.log.info("elapsed time %s, tx_count %s, tx_bytes %s", elapsed_time, tx_count, tx_bytes)
+
+                # TODO: check peer_info and slow down tx sending when ready pool is too large.
+                txpool_received = self.nodes[0].txpool_status()["received"]
+                if txpool_received + 50000 < tx_count:
+                    tx_received_slowdown += 1
+                    self.log.info("Conflux full node is slow by %s at receiving txs, slow down by 1s.", tx_count - txpool_received)
             if speed_diff >= 1:
                 time.sleep(speed_diff)
 
             tx_count += count
+
         f.close()
 
         end_time = datetime.datetime.now()
@@ -177,7 +187,8 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
-    BLOCK_SIZE_LIMIT=3000
+    BLOCK_TX_LIMIT=4000
+    BLOCK_SIZE_LIMIT=600000
     def __init__(self, node_id, node, log, seed, hashpower):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
@@ -191,15 +202,15 @@ class BlockGenThread(threading.Thread):
     def run(self):
         self.log.info("block gen thread started to run")
         start_time = datetime.datetime.now()
-        for i in range(0, math.ceil(1.0 * ConfluxEthReplayTest.INITIALIZE_TXS / BlockGenThread.BLOCK_SIZE_LIMIT)):
+        for i in range(0, math.ceil(1.0 * ConfluxEthReplayTest.INITIALIZE_TXS / BlockGenThread.BLOCK_TX_LIMIT)):
             if self.stopped:
                 return
-            sleep_sec = 1.0 * i * BlockGenThread.BLOCK_SIZE_LIMIT / ConfluxEthReplayTest.INITIALIZE_TPS - (datetime.datetime.now() - start_time).total_seconds()
+            sleep_sec = 1.0 * i * BlockGenThread.BLOCK_TX_LIMIT / ConfluxEthReplayTest.INITIALIZE_TPS - (datetime.datetime.now() - start_time).total_seconds()
             self.log.info("%s sleep %s at test startup", self.node_id, sleep_sec)
             if sleep_sec > 0:
                 time.sleep(sleep_sec)
-            if self.node_id == 1:
-                h = self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
+            if self.node_id == 0:
+                h = self.node.generateoneblock(BlockGenThread.BLOCK_TX_LIMIT, BlockGenThread.BLOCK_SIZE_LIMIT * 10)
                 self.log.info("node %s generated block at test start %s", self.node_id, h)
         # for blocks to propogate.
         time.sleep(ConfluxEthReplayTest.INITIALIZE_SLEEP)
@@ -216,7 +227,7 @@ class BlockGenThread(threading.Thread):
                 self.log.info("%s elapsed time %s, total mining time %s sec, actually sleep %s sec", self.node_id, elapsed_sec, total_mining_sec, sleep_sec)
                 if sleep_sec > 0:
                     time.sleep(sleep_sec)
-                self.node.generateoneblock(BlockGenThread.BLOCK_SIZE_LIMIT)
+                self.node.generateoneblock(BlockGenThread.BLOCK_TX_LIMIT, BlockGenThread.BLOCK_SIZE_LIMIT)
                 self.log.info("%s generated block", self.node_id)
             except Exception as e:
                 self.log.info("%s Fails to generate blocks", self.node_id)

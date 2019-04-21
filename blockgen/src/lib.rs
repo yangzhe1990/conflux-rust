@@ -245,7 +245,7 @@ impl BlockGenerator {
     }
 
     /// Assemble a new block without nonce
-    pub fn assemble_new_block(&self, num_txs: usize) -> Block {
+    pub fn assemble_new_block(&self, num_txs: usize, block_size_limit: usize) -> Block {
         // get the best block
         let (guarded, best_info) = self.graph.get_best_info().into();
 
@@ -254,7 +254,6 @@ impl BlockGenerator {
         let mut referee = best_info.terminal_block_hashes;
         referee.retain(|r| *r != best_block_hash);
         let block_gas_limit = DEFAULT_MAX_BLOCK_GAS_LIMIT.into();
-        let block_size_limit = MAX_BLOCK_SIZE_IN_BYTES;
 
         let transactions = self.txpool.pack_transactions(
             num_txs,
@@ -294,7 +293,7 @@ impl BlockGenerator {
     }
 
     /// Generate a block with fake transactions
-    pub fn generate_block_with_transactions(&self, num_txs: usize) -> H256 {
+    pub fn generate_block_with_transactions(&self, num_txs: usize, block_size_limit: usize) -> H256 {
         let mut txs = Vec::new();
         for _ in 0..num_txs {
             let tx = self.txgen.generate_transaction();
@@ -304,7 +303,7 @@ impl BlockGenerator {
             self.graph.consensus.best_state_block_hash(),
             txs.into_iter().map(|tx| tx.transaction).collect(),
         );
-        self.generate_block(num_txs)
+        self.generate_block(num_txs, block_size_limit)
     }
 
     pub fn generate_fixed_block(
@@ -316,8 +315,8 @@ impl BlockGenerator {
     }
 
     /// Generate a block with transactions in the pool
-    pub fn generate_block(&self, num_txs: usize) -> H256 {
-        let block = self.assemble_new_block(num_txs);
+    pub fn generate_block(&self, num_txs: usize, block_size_limit: usize) -> H256 {
+        let block = self.assemble_new_block(num_txs, block_size_limit);
         self.generate_block_impl(block)
     }
 
@@ -417,7 +416,7 @@ impl BlockGenerator {
             if bg.is_mining_block_outdated(&current_mining_block) {
                 // TODO: #transations TBD
                 current_mining_block =
-                    bg.assemble_new_block(MAX_TRANSACTION_COUNT_PER_BLOCK);
+                    bg.assemble_new_block(MAX_TRANSACTION_COUNT_PER_BLOCK, MAX_BLOCK_SIZE_IN_BYTES);
 
                 // set a mining problem
                 let current_difficulty =
