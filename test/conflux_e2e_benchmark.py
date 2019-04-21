@@ -160,10 +160,15 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
                 self.log.info("elapsed time %s, tx_count %s, tx_bytes %s", elapsed_time, tx_count, tx_bytes)
 
                 # TODO: check peer_info and slow down tx sending when ready pool is too large.
-                txpool_received = self.nodes[0].txpool_status()["received"]
+                txpool_status = self.nodes[0].txpool_status()
+                txpool_received = txpool_status["received"]
                 if txpool_received + 50000 < tx_count:
                     tx_received_slowdown += 1
                     self.log.info("Conflux full node is slow by %s at receiving txs, slow down by 1s.", tx_count - txpool_received)
+                txpool_ready = txpool_status["ready"]
+                if txpool_ready > 100000:
+                    tx_received_slowdown += 1
+                    self.log.info("Conflux full node has too many ready txs %s.", txpool_ready)
             if speed_diff >= 1:
                 time.sleep(speed_diff)
 
