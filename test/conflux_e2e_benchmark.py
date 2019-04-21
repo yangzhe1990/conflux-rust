@@ -193,7 +193,7 @@ class BlockGenThread(threading.Thread):
         while not self.stopped:
             try:
                 mining = 0.25 * numpy.random.exponential() / self.hashpower_percent
-                self.log.info("%s sleep %s sec and generate block", mining, self.node_id)
+                self.log.info("%s sleep %s sec and generate block", self.node_id, mining)
                 total_mining_sec += mining
                 elapsed_sec = (datetime.datetime.now() - start_time).total_seconds()
                 sleep_sec = total_mining_sec - elapsed_sec
