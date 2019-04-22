@@ -166,8 +166,8 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
                     tx_received_slowdown += 1
                     self.log.info("Conflux full node is slow by %s at receiving txs, slow down by 1s.", tx_count - txpool_received)
                 txpool_ready = txpool_status["ready"]
-                if txpool_ready > 100000:
-                    tx_received_slowdown += 1
+                if txpool_ready > 30000:
+                    tx_received_slowdown += 1.0 * math.ceil(math.pow((txpool_ready - 30000) / 30000.0, 2))
                     self.log.info("Conflux full node has too many ready txs %s.", txpool_ready)
             if speed_diff >= 1:
                 time.sleep(speed_diff)
@@ -192,8 +192,8 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
-    BLOCK_TX_LIMIT=4000
-    BLOCK_SIZE_LIMIT=600000
+    BLOCK_TX_LIMIT=2030
+    BLOCK_SIZE_LIMIT=300000
     def __init__(self, node_id, node, log, seed, hashpower):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
@@ -224,7 +224,7 @@ class BlockGenThread(threading.Thread):
         total_mining_sec = 0.0
         while not self.stopped:
             try:
-                mining = 0.5 * numpy.random.exponential() / self.hashpower_percent
+                mining = 0.25 * numpy.random.exponential() / self.hashpower_percent
                 self.log.info("%s sleep %s sec then generate block", self.node_id, mining)
                 total_mining_sec += mining
                 elapsed_sec = (datetime.datetime.now() - start_time).total_seconds()

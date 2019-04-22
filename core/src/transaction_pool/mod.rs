@@ -1161,7 +1161,7 @@ impl TransactionPool {
                     .or_insert(HashMap::new())
                     .insert(tx.nonce, tx);
             } else if tx.nonce == *nonce {
-                let tx_size = tx.rlp_bytes().len();
+                let tx_size = tx.transaction.rlp_bytes().len();
                 if block_gas_limit - total_tx_gas_limit < *tx.gas_limit()
                     || block_size_limit - total_tx_size < tx_size
                 {
@@ -1193,7 +1193,7 @@ impl TransactionPool {
                             break;
                         }
                         if let Some(tx) = tx_map.remove(nonce) {
-                            let tx_size = tx.rlp_bytes().len();
+                            let tx_size = tx.transaction.rlp_bytes().len();
                             if block_gas_limit - total_tx_gas_limit
                                 < *tx.gas_limit()
                                 || block_size_limit - total_tx_size < tx_size
