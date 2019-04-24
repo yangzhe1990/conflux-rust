@@ -20,18 +20,24 @@ use cfxcore::{
     state::State,
     statedb::StateDb,
     storage::{StorageManager, StorageManagerTrait},
-    SharedConsensusGraph, SharedTransactionPool,
     vm::CreateContractAddress,
+    SharedConsensusGraph, SharedTransactionPool,
 };
 use hex::*;
 use keylib::{public_to_address, Generator, KeyPair, Random};
 use network::Error;
 use parking_lot::RwLock;
-use primitives::{transaction::Action, SignedTransaction, Transaction, Account};
+use primitives::{
+    transaction::Action, Account, SignedTransaction, Transaction,
+};
 use rand::prelude::*;
 use rlp::Encodable;
 use secret_store::{SecretStore, SharedSecretStore};
-use std::{collections::{HashMap, HashSet}, sync::Arc, thread, time};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    thread, time,
+};
 
 #[allow(unused)]
 enum TransGenState {
@@ -300,35 +306,62 @@ pub struct SpecialTransactionGenerator {
 impl SpecialTransactionGenerator {
     const MAX_TOTAL_ACCOUNTS: usize = 100000;
 
-    pub fn new(start_key_pair: KeyPair, contract_creator: &Address, start_balance: U256, start_erc20_balance: U256) -> SpecialTransactionGenerator {
+    pub fn new(
+        start_key_pair: KeyPair, contract_creator: &Address,
+        start_balance: U256, start_erc20_balance: U256,
+    ) -> SpecialTransactionGenerator
+    {
         let start_address = public_to_address(start_key_pair.public());
-        let info = (start_key_pair, Account::new_empty_with_balance(&start_address, &start_balance, &0.into()), start_erc20_balance);
+        let info = (
+            start_key_pair,
+            Account::new_empty_with_balance(
+                &start_address,
+                &start_balance,
+                &0.into(),
+            ),
+            start_erc20_balance,
+        );
         let mut accounts = HashMap::<Address, (KeyPair, Account, U256)>::new();
         accounts.insert(start_address.clone(), info);
         let address_by_index = vec![start_address.clone()];
 
         let erc20_address = contract_address(
-            CreateContractAddress::FromSenderAndNonce, &contract_creator, &0.into(), &[]
-        ).0;
+            CreateContractAddress::FromSenderAndNonce,
+            &contract_creator,
+            &0.into(),
+            &[],
+        )
+        .0;
 
-        debug!("Special Transaction Generator: erc20 contract address: {:?}", erc20_address);
-        assert_eq!(erc20_address.hex(), "0xe2182fba747b5706a516d6cf6bf62d6117ef86ea");
+        debug!(
+            "Special Transaction Generator: erc20 contract address: {:?}",
+            erc20_address
+        );
+        assert_eq!(
+            erc20_address.hex(),
+            "0xe2182fba747b5706a516d6cf6bf62d6117ef86ea"
+        );
 
-        SpecialTransactionGenerator{
+        SpecialTransactionGenerator {
             accounts,
             address_by_index,
             erc20_address,
         }
     }
 
-    pub fn generate_transactions(&mut self, block_size_limit: &mut usize, mut num_txs_simple: usize, mut num_txs_erc20: usize) -> Vec<Arc<SignedTransaction>> {
+    pub fn generate_transactions(
+        &mut self, block_size_limit: &mut usize, mut num_txs_simple: usize,
+        mut num_txs_erc20: usize,
+    ) -> Vec<Arc<SignedTransaction>>
+    {
         let mut result = vec![];
         // Generate new address with 10% probability
         while num_txs_simple > 0 {
             let number_of_accounts = self.address_by_index.len();
 
             let sender_index: usize = random::<usize>() % number_of_accounts;
-            let sender_address = self.address_by_index.get(sender_index).unwrap().clone();
+            let sender_address =
+                self.address_by_index.get(sender_index).unwrap().clone();
             let sender_kp;
             let sender_balance;
             let sender_nonce;
@@ -353,29 +386,38 @@ impl SpecialTransactionGenerator {
                 U512::from(H512::random()) % U512::from(sender_balance),
             );
 
-            let is_send_to_new_address = (number_of_accounts <= Self::MAX_TOTAL_ACCOUNTS)
-                && ((number_of_accounts < 10) || (rand::thread_rng().gen_range(0, 10) == 0));
+            let is_send_to_new_address = (number_of_accounts
+                <= Self::MAX_TOTAL_ACCOUNTS)
+                && ((number_of_accounts < 10)
+                    || (rand::thread_rng().gen_range(0, 10) == 0));
 
             let receiver_address = match is_send_to_new_address {
                 false => {
                     let index: usize = random::<usize>() % number_of_accounts;
                     self.address_by_index.get(index).unwrap().clone()
                 }
-                true => {
-                    loop {
-                        let kp = Random.generate().expect("Fail to generate KeyPair.");
-                        let address = public_to_address(kp.public());
-                        if self.accounts.get(&address).is_none() {
-                            self.accounts.insert(
-                                address,
-                                (kp, Account::new_empty_with_balance(&address, &0.into(), &0.into()),
-                                 0.into()));
-                            self.address_by_index.push(address.clone());
+                true => loop {
+                    let kp =
+                        Random.generate().expect("Fail to generate KeyPair.");
+                    let address = public_to_address(kp.public());
+                    if self.accounts.get(&address).is_none() {
+                        self.accounts.insert(
+                            address,
+                            (
+                                kp,
+                                Account::new_empty_with_balance(
+                                    &address,
+                                    &0.into(),
+                                    &0.into(),
+                                ),
+                                0.into(),
+                            ),
+                        );
+                        self.address_by_index.push(address.clone());
 
-                            break address;
-                        }
+                        break address;
                     }
-                }
+                },
             };
 
             let tx = Transaction {
@@ -384,7 +426,7 @@ impl SpecialTransactionGenerator {
                 gas,
                 value: balance_to_transfer,
                 action: Action::Call(receiver_address),
-                data: Default::default(),
+                data: vec![0u8; 128],
             };
             let signed_transaction = tx.sign(sender_kp.secret());
             let rlp_size = signed_transaction.transaction.rlp_bytes().len();
@@ -393,9 +435,11 @@ impl SpecialTransactionGenerator {
             }
             *block_size_limit -= rlp_size;
 
-            self.accounts.get_mut(&sender_address).unwrap().1.balance -= balance_to_transfer;
+            self.accounts.get_mut(&sender_address).unwrap().1.balance -=
+                balance_to_transfer;
             self.accounts.get_mut(&sender_address).unwrap().1.nonce += 1.into();
-            self.accounts.get_mut(&receiver_address).unwrap().1.balance += balance_to_transfer;
+            self.accounts.get_mut(&receiver_address).unwrap().1.balance +=
+                balance_to_transfer;
 
             result.push(Arc::new(signed_transaction));
 
@@ -406,7 +450,8 @@ impl SpecialTransactionGenerator {
             let number_of_accounts = self.address_by_index.len();
 
             let sender_index: usize = random::<usize>() % number_of_accounts;
-            let sender_address = self.address_by_index.get(sender_index).unwrap().clone();
+            let sender_address =
+                self.address_by_index.get(sender_index).unwrap().clone();
             let sender_kp;
             let sender_balance;
             let sender_erc20_balance;
@@ -430,15 +475,17 @@ impl SpecialTransactionGenerator {
             }
 
             let balance_to_transfer = if sender_erc20_balance == 0.into() {
-                continue
+                continue;
             } else {
                 U256::from(
-                    U512::from(H512::random()) % U512::from(sender_erc20_balance),
+                    U512::from(H512::random())
+                        % U512::from(sender_erc20_balance),
                 )
             };
 
             let receiver_index = random::<usize>() % number_of_accounts;
-            let receiver_address = self.address_by_index.get(receiver_index).unwrap().clone();
+            let receiver_address =
+                self.address_by_index.get(receiver_index).unwrap().clone();
 
             if receiver_index == sender_index {
                 continue;
@@ -446,8 +493,12 @@ impl SpecialTransactionGenerator {
 
             // Calls transfer of ERC20 contract.
             let tx_data = Vec::from_hex(
-                String::new() + "a9059cbb000000000000000000000000" + &receiver_address.hex()[2..]
-                    + &H256::from(balance_to_transfer).hex()[2..]).unwrap();
+                String::new()
+                    + "a9059cbb000000000000000000000000"
+                    + &receiver_address.hex()[2..]
+                    + &H256::from(balance_to_transfer).hex()[2..],
+            )
+            .unwrap();
 
             let tx = Transaction {
                 nonce: sender_nonce,
@@ -464,10 +515,11 @@ impl SpecialTransactionGenerator {
             }
             *block_size_limit -= rlp_size;
 
-
-            self.accounts.get_mut(&sender_address).unwrap().2-= balance_to_transfer;
+            self.accounts.get_mut(&sender_address).unwrap().2 -=
+                balance_to_transfer;
             self.accounts.get_mut(&sender_address).unwrap().1.nonce += 1.into();
-            self.accounts.get_mut(&receiver_address).unwrap().2 += balance_to_transfer;
+            self.accounts.get_mut(&receiver_address).unwrap().2 +=
+                balance_to_transfer;
 
             result.push(Arc::new(signed_transaction));
 

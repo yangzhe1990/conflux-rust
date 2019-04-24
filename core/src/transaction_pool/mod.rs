@@ -139,9 +139,9 @@ impl Deref for TxWithPackedMarkAndCachedBalance {
 
 impl TxTypeTrait for TxWithPackedMarkAndCachedBalance {
     fn replaces(&self, x: &Self) -> bool {
-        self.is_already_packed()
-            || (!x.is_already_packed()
-                && self.get_arc_tx().replaces(x.get_arc_tx()))
+        !x.is_already_packed()
+            && (self.is_already_packed()
+                || self.get_arc_tx().replaces(x.get_arc_tx()))
     }
 }
 
@@ -278,9 +278,7 @@ impl UnconfirmedTransactions {
         }
     }
 
-    pub fn number_packed_txs(&self) -> usize {
-        self.number_packed_txs
-    }
+    pub fn number_packed_txs(&self) -> usize { self.number_packed_txs }
 
     fn pending_pool_size(&self) -> usize {
         self.txs.len() - self.number_packed_txs
@@ -355,11 +353,9 @@ impl UnconfirmedTransactions {
             None => 0.into(),
         };
 
-        let result = match self.nonce_pool.insert(TxWithPackedMarkAndCachedBalance(
-            tx.clone(),
-            packed,
-            balance,
-        )) {
+        let result = match self.nonce_pool.insert(
+            TxWithPackedMarkAndCachedBalance(tx.clone(), packed, balance),
+        ) {
             InsertResult::NewAdded => {
                 self.txs.entry(tx.hash()).or_insert(tx.clone());
                 true
@@ -1020,7 +1016,7 @@ impl TransactionPool {
                 "should not trigger recycle transaction, nonce = {}, sender = {:?}, \
                 account nonce = {}, hash = {:?} .",
                 &tx.nonce, &tx.sender,
-                &account_cache.get_account_mut(&tx.sender).unwrap().nonce, tx.hash);
+                &account_cache.get_account_mut(&tx.sender).map_or(0.into(), |x| x.nonce), tx.hash);
             self.add_transaction_and_check_readiness_without_lock(
                 inner,
                 &mut account_cache,
@@ -1300,7 +1296,11 @@ impl TransactionPool {
 
     // TODO: In the final version we must check for all block if their nonce
     // TODO: sequence is correct before issuing any notify_ready call.
-    pub fn notify_ready(&self, inner: &mut TransactionPoolInner, address: &Address, account: &Account) {
+    pub fn notify_ready(
+        &self, inner: &mut TransactionPoolInner, address: &Address,
+        account: &Account,
+    )
+    {
         // FIXME: to overcome the deliver order issue,
         // FIXME: we remove all lower nonces in ready_pool, to prevent gap from
         // FIXME: being introduced into ready pool.
@@ -1477,7 +1477,7 @@ impl TransactionPool {
             inner.ready_transactions.len(),
             inner.unconfirmed_txs.pending_pool_size(),
             // FIXME: change it to the number of total tx received, and check why there is no tx removal (or why the len() == total received).
-            inner.len()
+            inner.len(),
         )
     }
 

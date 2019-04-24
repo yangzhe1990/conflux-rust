@@ -21,12 +21,11 @@ use primitives::{
 };
 use std::{
     sync::{mpsc, Arc},
-    thread,
-    time,
+    thread::{self, sleep},
+    time::{self, Duration},
 };
 use time::{SystemTime, UNIX_EPOCH};
-use txgen::SharedTransactionGenerator;
-use txgen::SpecialTransactionGenerator;
+use txgen::{SharedTransactionGenerator, SpecialTransactionGenerator};
 
 pub struct BlockGeneratorConfig {
     pub test_chain_path: Option<String>,
@@ -249,7 +248,11 @@ impl BlockGenerator {
     }
 
     /// Assemble a new block without nonce
-    pub fn assemble_new_block(&self, num_txs: usize, block_size_limit: usize, additional_transactions: Vec<Arc<SignedTransaction>>) -> Block {
+    pub fn assemble_new_block(
+        &self, num_txs: usize, block_size_limit: usize,
+        additional_transactions: Vec<Arc<SignedTransaction>>,
+    ) -> Block
+    {
         // get the best block
         let (guarded, best_info) = self.graph.get_best_info().into();
 
@@ -266,7 +269,11 @@ impl BlockGenerator {
             // TODO: the best state isn't necessary anymore.
             self.txgen.get_best_state_at(&write_guard.best_block_hash()),
         );
-        let transactions= [additional_transactions.as_slice(), transactions_from_pool.as_slice()].concat();
+        let transactions = [
+            additional_transactions.as_slice(),
+            transactions_from_pool.as_slice(),
+        ]
+        .concat();
 
         self.assemble_new_block_impl(
             best_block_hash,
@@ -297,13 +304,22 @@ impl BlockGenerator {
         false
     }
 
-    pub fn generate_special_transactions(&self, block_size_limit: &mut usize,
-                                         num_txs_simple: usize, num_txs_erc20: usize) -> Vec<Arc<SignedTransaction>> {
-        self.special_txgen.lock().generate_transactions(block_size_limit, num_txs_simple, num_txs_erc20)
+    pub fn generate_special_transactions(
+        &self, block_size_limit: &mut usize, num_txs_simple: usize,
+        num_txs_erc20: usize,
+    ) -> Vec<Arc<SignedTransaction>>
+    {
+        self.special_txgen.lock().generate_transactions(
+            block_size_limit,
+            num_txs_simple,
+            num_txs_erc20,
+        )
     }
 
     /// Generate a block with fake transactions
-    pub fn generate_block_with_transactions(&self, num_txs: usize, block_size_limit: usize) -> H256 {
+    pub fn generate_block_with_transactions(
+        &self, num_txs: usize, block_size_limit: usize,
+    ) -> H256 {
         let mut txs = Vec::new();
         for _ in 0..num_txs {
             let tx = self.txgen.generate_transaction();
@@ -315,7 +331,11 @@ impl BlockGenerator {
             txs.into_iter().map(|tx| tx.transaction).collect(),
         );
         */
-        self.generate_block(num_txs, block_size_limit, txs.into_iter().map(|tx| Arc::new(tx)).collect())
+        self.generate_block(
+            num_txs,
+            block_size_limit,
+            txs.into_iter().map(|tx| Arc::new(tx)).collect(),
+        )
     }
 
     pub fn generate_fixed_block(
@@ -327,8 +347,16 @@ impl BlockGenerator {
     }
 
     /// Generate a block with transactions in the pool
-    pub fn generate_block(&self, num_txs: usize, block_size_limit: usize, additional_transactions: Vec<Arc<SignedTransaction>>) -> H256 {
-        let block = self.assemble_new_block(num_txs, block_size_limit, additional_transactions);
+    pub fn generate_block(
+        &self, num_txs: usize, block_size_limit: usize,
+        additional_transactions: Vec<Arc<SignedTransaction>>,
+    ) -> H256
+    {
+        let block = self.assemble_new_block(
+            num_txs,
+            block_size_limit,
+            additional_transactions,
+        );
         self.generate_block_impl(block)
     }
 
@@ -379,15 +407,22 @@ impl BlockGenerator {
         );
         self.on_mined_block(block);
 
-        // FIXME: the sleep below runs forever, removed.
-        /*
         // Ensure that when `generate**` function returns, the block has been
         // handled by Consensus This order is assumed by some tests, and
         // this function is also only used in tests.
-        while self.graph.consensus.get_block_epoch_number(&hash).is_none() {
+        while self
+            .graph
+            .consensus
+            .inner
+            .read()
+            .indices
+            .get(&hash)
+            .is_none()
+        {
+            // FIXME: change to a notification by future later.
             sleep(Duration::from_millis(100));
         }
-        */
+
         hash
     }
 
@@ -427,8 +462,11 @@ impl BlockGenerator {
 
             if bg.is_mining_block_outdated(&current_mining_block) {
                 // TODO: #transations TBD
-                current_mining_block =
-                    bg.assemble_new_block(MAX_TRANSACTION_COUNT_PER_BLOCK, MAX_BLOCK_SIZE_IN_BYTES, vec![]);
+                current_mining_block = bg.assemble_new_block(
+                    MAX_TRANSACTION_COUNT_PER_BLOCK,
+                    MAX_BLOCK_SIZE_IN_BYTES,
+                    vec![],
+                );
 
                 // set a mining problem
                 let current_difficulty =
