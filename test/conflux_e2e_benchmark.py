@@ -56,7 +56,10 @@ class RlpIter:
             raise StopIteration()
 
 class ConfluxEthReplayTest(ConfluxTestFramework):
-    EXPECTED_TX_SIZE_PER_SEC = 600000
+    # For eth + payments.
+    EXPECTED_TX_SIZE_PER_SEC = 250000
+    # For eth replay
+    #EXPECTED_TX_SIZE_PER_SEC = 400000
     INITIALIZE_TXS = 200000 + 400 + 400
     INITIALIZE_TPS = 4000
     INITIALIZE_SLEEP = 20
@@ -83,8 +86,9 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
 
         self.conf_parameters = {"log_level": "\"debug\"",
                                 "storage_cache_start_size": "1000000",
-                                "storage_cache_size": "2000000",
-                                "storage_node_map_size": "2000000",
+                                "storage_cache_size": "20000000",
+                                "storage_idle_size": "2000000",
+                                "storage_node_map_size": "200000000",
                                 "ledger_cache_size": "3000",
                                 "send_tx_period_ms": "31536000000",
                                 "enable_discovery": "false",
@@ -271,16 +275,16 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
                 last_log_elapsed_time = elapsed_time
                 self.log.info("elapsed time %s, tx_count %s, tx_bytes %s", elapsed_time, tx_count, tx_bytes)
 
-                # TODO: check peer_info and slow down tx sending when ready pool is too large.
                 txpool_status = self.nodes[0].txpool_status()
                 txpool_received = txpool_status["received"]
                 if txpool_received + 50000 < tx_count:
                     tx_received_slowdown += 1
                     self.log.info("Conflux full node is slow by %s at receiving txs, slow down by 1s.", tx_count - txpool_received)
                 txpool_ready = txpool_status["ready"]
-                if txpool_ready > 30000:
-                    tx_received_slowdown += 1.0 * math.ceil(math.pow((txpool_ready - 30000) / 30000.0, 2))
-                    self.log.info("Conflux full node has too many ready txs %s.", txpool_ready)
+                if txpool_ready > 60000:
+                    should_sleep = elapsed_time * txpool_ready / tx_count
+                    tx_received_slowdown += should_sleep
+                    self.log.info("Conflux full node has too many ready txs %s. sleep %s", txpool_ready, should_sleep)
             if speed_diff >= 1:
                 time.sleep(speed_diff)
 
@@ -304,10 +308,13 @@ class DefaultNode(P2PInterface):
 
 
 class BlockGenThread(threading.Thread):
+    BLOCK_FREQ=0.25
     BLOCK_TX_LIMIT=3000
     BLOCK_SIZE_LIMIT=300000
-    SIMPLE_TX_PER_BLOCK=2000
-    ERC20_TX_PER_BLOCK=500
+    # Seems to be 90bytes + artificial 128b
+    SIMPLE_TX_PER_BLOCK=700
+    # Seems to be 90 + 64 bytes.
+    ERC20_TX_PER_BLOCK=50
     def __init__(self, node_id, node, log, seed, hashpower):
         threading.Thread.__init__(self, daemon=True)
         self.node = node
@@ -321,7 +328,8 @@ class BlockGenThread(threading.Thread):
     def run(self):
         self.log.info("block gen thread started to run")
         start_time = datetime.datetime.now()
-        for i in range(0, math.ceil(1.0 * ConfluxEthReplayTest.INITIALIZE_TXS / BlockGenThread.BLOCK_TX_LIMIT)):
+        pre_generated_blocks = math.ceil(1.0 * ConfluxEthReplayTest.INITIALIZE_TXS / BlockGenThread.BLOCK_TX_LIMIT)
+        for i in range(0, pre_generated_blocks):
             if self.stopped:
                 return
             sleep_sec = 1.0 * i * BlockGenThread.BLOCK_TX_LIMIT / ConfluxEthReplayTest.INITIALIZE_TPS - (datetime.datetime.now() - start_time).total_seconds()
@@ -338,7 +346,7 @@ class BlockGenThread(threading.Thread):
         total_mining_sec = 0.0
         while not self.stopped:
             try:
-                mining = 0.25 * numpy.random.exponential() / self.hashpower_percent
+                mining = BlockGenThread.BLOCK_FREQ * numpy.random.exponential() / self.hashpower_percent
                 self.log.info("%s sleep %s sec then generate block", self.node_id, mining)
                 total_mining_sec += mining
                 elapsed_sec = (datetime.datetime.now() - start_time).total_seconds()
@@ -346,8 +354,25 @@ class BlockGenThread(threading.Thread):
                 self.log.info("%s elapsed time %s, total mining time %s sec, actually sleep %s sec", self.node_id, elapsed_sec, total_mining_sec, sleep_sec)
                 if sleep_sec > 0:
                     time.sleep(sleep_sec)
-                self.node.generateoneblockspecial(BlockGenThread.BLOCK_TX_LIMIT, BlockGenThread.BLOCK_SIZE_LIMIT, BlockGenThread.SIMPLE_TX_PER_BLOCK, BlockGenThread.ERC20_TX_PER_BLOCK)
-                self.log.info("%s generated block", self.node_id)
+                # TODO: open the flag
+                if False:
+                    # Use getblockcount to compare with number of generated blocks to compare with expectation, then set number of generated txs, also report the number of generated txs to help calculation.
+                    received_blocks = self.node.getblockcount()
+                    expected_generated_blocks = pre_generated_blocks + (datetime.datetime.now() - start_time).total_seconds() / BlockGenThread.BLOCK_FREQ
+                    lag = expected_generated_blocks - received_blocks
+                    if lag >= 50:
+                        if lag < 100:
+                            generate_factor = 1.0 * (100 - lag)
+                        else:
+                            generate_factor = 0.0
+                    else:
+                        generate_factor = 1.0
+                
+                generate_factor = 1.0
+                simple_tx_count = math.ceil(BlockGenThread.SIMPLE_TX_PER_BLOCK * generate_factor)
+                erc20_tx_count = math.ceil(BlockGenThread.ERC20_TX_PER_BLOCK * generate_factor)
+                self.node.generateoneblockspecial(BlockGenThread.BLOCK_TX_LIMIT, BlockGenThread.BLOCK_SIZE_LIMIT, simple_tx_count, erc20_tx_count)
+                self.log.info("%s generated block with %s simple tx and %s erc20 tx", self.node_id, simple_tx_count, erc20_tx_count)
             except Exception as e:
                 self.log.info("%s Fails to generate blocks", self.node_id)
                 self.log.info("%s %s", self.node_id, e)
