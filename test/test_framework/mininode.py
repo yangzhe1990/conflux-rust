@@ -384,7 +384,7 @@ class P2PInterface(P2PConnection):
         ip = [127, 0, 0, 1]
         if self.remote:
             ip = self.remote
-            ip = [188, 155, 177, 72]
+            ip = [172, 31, 17, 152]
         endpoint = NodeEndpoint(address=bytes(ip), port=32325, udp_port=32325)
         hello = Hello([Capability(self.protocol, self.protocol_version)], endpoint)
         to_sign = rlp.encode(hello, Hello)

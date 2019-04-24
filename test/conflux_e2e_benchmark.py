@@ -131,8 +131,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
             block_gen_thread.start()
             node_id += 1
 
-
-        TX_FILE_PATH = "/run/media/yangzhe/HDDDATA/conflux_e2e_benchmark/convert_eth_from_0_to_4141811_unknown_txs.rlp"
+        TX_FILE_PATH = "/home/ubuntu/data/convert_eth_from_0_to_4141811_unknown_txs.rlp"
         f = open(TX_FILE_PATH, "rb")
 
         start_time = datetime.datetime.now()
