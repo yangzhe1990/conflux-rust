@@ -2586,7 +2586,6 @@ impl ConsensusGraph {
                 }
             }
         }
-        info!("Transaction pool size={}", self.txpool.len());
 
         let mut inner = &mut *self.inner.write();
 
@@ -2604,6 +2603,9 @@ impl ConsensusGraph {
         for tx in block.transactions.iter() {
             self.txpool.set_tx_stale_for_ready(tx.clone());
         }
+
+        let (_ready, pending, total) = self.txpool.stats();
+        info!("Total transaction received {}, total txs packed by chain {}", total, total - pending);
 
         inner.compute_anticone(me);
 

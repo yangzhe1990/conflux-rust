@@ -126,25 +126,46 @@ impl StateManager {
         &self, secret_store: &SecretStore, genesis_gas_limit: U256,
     ) -> Block {
         let mut state = self.get_state_at(H256::default()).unwrap();
-        let kp = KeyPair::from_secret(
-            "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"
-                .parse()
-                .unwrap(),
-        )
-        .unwrap();
-        let addr = kp.address();
-        let account = Account::new_empty_with_balance(
-            &addr,
-            &U256::from_dec_str("5000000000000000000000000000000000")
-                .expect("Not overflow"),
-            &0.into(),
-        );
-        state
-            .set(
-                StorageKey::new_account_key(&addr).as_ref(),
-                encode(&account).as_ref(),
+        {
+            let kp = KeyPair::from_secret(
+                "46b9e861b63d3509c88b7817275a30d22d62c8cd8fa6486ddee35ef0d8e0495f"
+                    .parse()
+                    .unwrap(),
             )
-            .unwrap();
+                .unwrap();
+            let addr = kp.address();
+            let account = Account::new_empty_with_balance(
+                &addr,
+                &U256::from_dec_str("5000000000000000000000000000000000")
+                    .expect("Not overflow"),
+                &0.into(),
+            );
+            state
+                .set(
+                    StorageKey::new_account_key(&addr).as_ref(),
+                    encode(&account).as_ref(),
+                )
+                .unwrap();
+
+            let kp = KeyPair::from_secret(
+                "9a6d3ba2b0c7514b16a006ee605055d71b9edfad183aeb2d9790e9d4ccced471".parse().unwrap(),
+            ).unwrap();
+            let addr = kp.address();
+
+            let account = Account::new_empty_with_balance(
+                &addr,
+                &U256::from_dec_str("5000000000000000000000000000000000")
+                    .expect("Not overflow"),
+                &0.into(),
+            );
+            state
+                .set(
+                    StorageKey::new_account_key(&addr).as_ref(),
+                    encode(&account).as_ref(),
+                )
+                .unwrap();
+            secret_store.insert(kp);
+        }
         let root = state.compute_state_root().unwrap();
         let genesis = Block {
             block_header: BlockHeaderBuilder::new()
@@ -155,7 +176,6 @@ impl StateManager {
         };
         debug!("Genesis Block:{:?} hash={:?}", genesis, genesis.hash());
         state.commit(genesis.block_header.hash()).unwrap();
-        secret_store.insert(kp);
         genesis
     }
 

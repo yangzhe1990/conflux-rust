@@ -261,6 +261,7 @@ struct UnconfirmedTransactions {
     txs: HashMap<H256, Arc<SignedTransaction>>,
     recent_states_accounts: VecDeque<HashMap<Address, U256>>,
     recent_states_accounts_nonces: HashMap<Address, VecDeque<U256>>,
+    number_packed_txs: usize,
 }
 
 impl UnconfirmedTransactions {
@@ -273,16 +274,16 @@ impl UnconfirmedTransactions {
             txs: HashMap::new(),
             recent_states_accounts: Default::default(),
             recent_states_accounts_nonces: Default::default(),
+            number_packed_txs: 0,
         }
     }
 
+    pub fn number_packed_txs(&self) -> usize {
+        self.number_packed_txs
+    }
+
     fn pending_pool_size(&self) -> usize {
-        self.nonce_pool
-            .buckets
-            .values()
-            .flat_map(|nonce_map| nonce_map.values())
-            .filter(|x| !x.is_already_packed())
-            .count()
+        self.txs.len() - self.number_packed_txs
     }
 
     pub fn notify_state_start(&mut self) {
@@ -354,7 +355,7 @@ impl UnconfirmedTransactions {
             None => 0.into(),
         };
 
-        match self.nonce_pool.insert(TxWithPackedMarkAndCachedBalance(
+        let result = match self.nonce_pool.insert(TxWithPackedMarkAndCachedBalance(
             tx.clone(),
             packed,
             balance,
@@ -369,7 +370,13 @@ impl UnconfirmedTransactions {
                 self.txs.insert(tx.hash(), tx.clone());
                 true
             }
+        };
+
+        if packed && result {
+            self.number_packed_txs += 1;
         }
+
+        result
     }
 
     pub fn get_mut(
@@ -1244,7 +1251,9 @@ impl TransactionPool {
         }
 
         let mut rlp_s = RlpStream::new();
-        rlp_s.append_list::<SignedTransaction, Arc<SignedTransaction>>(&packed_transactions);
+        for tx in &packed_transactions {
+            rlp_s.append::<TransactionWithSignature>(&**tx);
+        }
         debug!(
             "After packing ready pool size:{}, pending pool size:{}, packed_transactions: {}, \
             rlp size: {}, total txs received {}, total txs packed by chain {}",
@@ -1254,7 +1263,7 @@ impl TransactionPool {
             rlp_s.out().len(),
             // FIXME: change to number of tx received.
             inner.len(),
-            inner.len() - inner.unconfirmed_txs.pending_pool_size(),
+            inner.unconfirmed_txs.number_packed_txs(),
         );
 
         packed_transactions

@@ -363,20 +363,25 @@ impl RpcImpl {
 
     fn generate_one_block(&self, num_txs: usize, block_size_limit: usize) -> RpcResult<H256> {
         info!("RPC Request: generate_one_block()");
-        // TODO Choose proper num_txs
-        let hash = self.block_gen.generate_block(num_txs, block_size_limit);
+        let hash = self.block_gen.generate_block(num_txs, block_size_limit, vec![]);
         Ok(hash)
     }
 
-    fn generate_one_block_nonblock(&self, num_txs: usize) -> RpcResult<()> {
-        info!("RPC Request: generate_one_block_nonblock()");
+    fn generate_one_block_special(&self, num_txs: usize, mut block_size_limit: usize,
+                                  num_txs_simple: usize, num_txs_erc20: usize) -> RpcResult<()> {
+        info!("RPC Request: generate_one_block_special()");
 
-        let block_gen = self.block_gen.clone();
+        let block_gen = &self.block_gen;
+        let special_transactions = block_gen.generate_special_transactions(
+            &mut block_size_limit, num_txs_simple, num_txs_erc20);
 
+        block_gen.generate_block(num_txs, block_size_limit, special_transactions);
+        /*
         thread::Builder::new()
             .name("generate_one_block_nonblock".into())
-            .spawn(move || {block_gen.generate_block(num_txs, MAX_BLOCK_SIZE_IN_BYTES);})
+            .spawn(move || {})
             .expect("failed to start transaction packing thread");
+            */
 
         Ok(())
     }
@@ -746,8 +751,9 @@ impl TestRpc for TestRpcImpl {
         self.rpc_impl.generate_one_block(num_txs, block_size_limit)
     }
 
-    fn generate_one_block_nonblock(&self, num_txs: usize) -> RpcResult<()> {
-        self.rpc_impl.generate_one_block_nonblock(num_txs)
+    fn generate_one_block_special(&self, num_txs: usize, block_size_limit: usize,
+                                  num_txs_simple: usize, num_txs_erc20: usize) -> RpcResult<()> {
+        self.rpc_impl.generate_one_block_special(num_txs, block_size_limit, num_txs_simple, num_txs_erc20)
     }
 
     fn generate_custom_block(

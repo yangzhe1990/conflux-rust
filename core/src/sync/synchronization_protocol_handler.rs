@@ -332,10 +332,7 @@ impl SynchronizationProtocolHandler {
                     } else {
                         debug!("Cmpct block Processing, hash={}", hash);
                         let missing = cmpct.build_partial(
-                            &*self
-                                .get_transaction_pool()
-                                .transaction_pubkey_cache
-                                .read(),
+                            &Default::default(),
                         );
                         if !missing.is_empty() {
                             debug!(

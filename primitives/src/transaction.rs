@@ -170,6 +170,12 @@ pub struct Transaction {
     pub data: Bytes,
 }
 
+mod eth_signature {
+    pub fn add_chain_replay_protection(v: u64, chain_id: Option<u64>) -> u64 {
+        v + if let Some(n) = chain_id { 35 + n * 2 } else { 27 }
+    }
+}
+
 impl Transaction {
     /// Append object with a without signature into RLP stream
     pub fn rlp_append_unsigned_transaction(&self, s: &mut RlpStream, chain_id: Option<u64>) {
@@ -196,7 +202,7 @@ impl Transaction {
     pub fn sign(self, secret: &Secret) -> SignedTransaction {
         let sig = ::keylib::sign(secret, &self.hash(None))
             .expect("data is valid and context has signing capabilities; qed");
-        let tx_with_sig = self.with_signature(sig);
+        let tx_with_sig = self.with_eth_signature(sig, None);
         let public = tx_with_sig
             .recover_public()
             .expect("secret is valid so it's recoverable");
@@ -204,12 +210,12 @@ impl Transaction {
     }
 
     /// Signs the transaction with signature.
-    pub fn with_signature(self, sig: Signature) -> TransactionWithSignature {
+    pub fn with_eth_signature(self, sig: Signature, chain_id: Option<u64>) -> TransactionWithSignature {
         TransactionWithSignature {
             unsigned: self,
             r: sig.r().into(),
             s: sig.s().into(),
-            v: sig.v(),
+            v: eth_signature::add_chain_replay_protection(sig.v() as u64, chain_id) as u8,
             hash: 0.into(),
         }
         .compute_hash()
@@ -305,7 +311,7 @@ impl TransactionWithSignature {
             unsigned: tx,
             s: 0.into(),
             r: 0.into(),
-            v: 0.into(),
+            v: 0,
             hash: Default::default(),
         }
     }
