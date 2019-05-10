@@ -2,8 +2,9 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-fn generate_keys() -> Vec<[u8; 4]> {
-    let number_of_keys = 100000;
+const DEFAULT_NUMBER_OF_KEYS : usize = 100000;
+
+fn generate_keys(number_of_keys: usize) -> Vec<[u8; 4]> {
     let mut rng = get_rng_for_test();
 
     let mut keys_num: Vec<u32> = Default::default();
@@ -34,7 +35,7 @@ fn test_set_get() {
     let mut rng = get_rng_for_test();
     let state_manager = new_state_manager_for_testing();
     let mut state = state_manager.get_state_at(H256::default()).unwrap();
-    let mut keys: Vec<[u8; 4]> = generate_keys()
+    let mut keys: Vec<[u8; 4]> = generate_keys(DEFAULT_NUMBER_OF_KEYS)
         .iter()
         .filter(|_| rng.gen_bool(0.5))
         .cloned()
@@ -67,7 +68,7 @@ fn test_set_get() {
 fn test_get_set_at_second_commit() {
     let rng = get_rng_for_test();
     let state_manager = new_state_manager_for_testing();
-    let keys: Vec<[u8; 4]> = generate_keys();
+    let keys: Vec<[u8; 4]> = generate_keys(DEFAULT_NUMBER_OF_KEYS);
     let set_size = 10000;
     let (keys_0, keys_1_new, keys_remain, keys_1_overwritten) = (
         &keys[0..set_size * 2],
@@ -153,7 +154,7 @@ fn test_set_delete() {
     let mut rng = get_rng_for_test();
     let state_manager = new_state_manager_for_testing();
     let mut state = state_manager.get_state_at(H256::default()).unwrap();
-    let mut keys: Vec<[u8; 4]> = generate_keys();
+    let mut keys: Vec<[u8; 4]> = generate_keys(DEFAULT_NUMBER_OF_KEYS);
 
     println!("Testing with {} set operations.", keys.len());
 
@@ -197,27 +198,34 @@ fn print(key: &[u8]) {
 fn test_set_order() {
     let mut rng = get_rng_for_test();
     let state_manager = new_state_manager_for_testing();
-    let keys: Vec<[u8; 4]> = generate_keys()
+    let keys: Vec<[u8; 4]> = generate_keys(500000)
         .iter()
         .filter(|_| rng.gen_bool(0.5))
         .cloned()
         .collect();
 
-    let parent_epoch_0 = H256::default();
     let mut epoch_id = H256::default();
-    let mut state_0 = state_manager.get_state_at(parent_epoch_0).unwrap();
+    let mut state_0 = state_manager.get_state_at(H256::default()).unwrap();
     println!("Setting state_0 with {} keys.", keys.len());
     for key in &keys {
-        state_0.set(key, key).expect("Failed to insert key.");
+        let key_slice = &key[0..4];
+        let actual_key = vec![key_slice; 3].concat();
+        let actual_value = vec![key_slice; (key[0] % 21) as usize].concat();
+        state_0.set(&actual_key, &actual_value).expect("Failed to insert key.");
     }
     let merkle_0 = state_0.compute_state_root().unwrap();
     epoch_id[0] = 1;
     state_0.commit(epoch_id).unwrap();
 
+    let parent_epoch_0 = epoch_id;
+
     let mut state_1 = state_manager.get_state_at(parent_epoch_0).unwrap();
     println!("Setting state_1 with {} keys.", keys.len());
     for key in &keys {
-        state_1.set(key, key).expect("Failed to insert key.");
+        let key_slice = &key[0..4];
+        let actual_key = vec![key_slice; 3].concat();
+        let actual_value = vec![key_slice; (key[0] % 32) as usize].concat();
+        state_1.set(&actual_key, &actual_value).expect("Failed to insert key.");
     }
     let merkle_1 = state_1.compute_state_root().unwrap();
     epoch_id[0] = 2;
@@ -226,20 +234,16 @@ fn test_set_order() {
     let mut state_2 = state_manager.get_state_at(parent_epoch_0).unwrap();
     println!("Setting state_2 with {} keys.", keys.len());
     for key in keys.iter().rev() {
-        state_2.set(key, key).expect("Failed to insert key.");
-    }
-    for key in &keys {
-        assert_eq!(
-            *state_2.get(key).expect("Failed to insert key.").unwrap(),
-            *key
-        );
+        let key_slice = &key[0..4];
+        let actual_key = vec![key_slice; 3].concat();
+        let actual_value = vec![key_slice; (key[0] % 32) as usize].concat();
+        state_2.set(&actual_key, &actual_value).expect("Failed to insert key.");
     }
     let merkle_2 = state_2.compute_state_root().unwrap();
     epoch_id[0] = 3;
     state_2.commit(epoch_id).unwrap();
 
-    assert_eq!(merkle_0, merkle_1);
-    assert_eq!(merkle_0, merkle_2);
+    assert_eq!(merkle_1, merkle_2);
 }
 
 use super::{
