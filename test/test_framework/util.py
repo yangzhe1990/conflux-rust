@@ -580,7 +580,7 @@ class BlockGenThread(threading.Thread):
                     time.sleep(self.interval_fixed)
                 
                 r = self.local_random.randint(0, len(self.nodes) - 1)
-                h = self.nodes[r].generateoneblock(self.num_txs)
+                h = self.nodes[r].generateoneblock(self.num_txs, 300000)
 
                 self.log.debug("%s generate block %s", r, h)
             except Exception as e:

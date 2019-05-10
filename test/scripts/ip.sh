@@ -1,4 +1,4 @@
-sudo rm -rf /etc/hosts
+#sudo rm -rf /etc/hosts
 mv ips ips_old
 touch ips
 if [[ -f instances ]]
@@ -10,11 +10,12 @@ then
 	rm ips_tmp
 fi
 echo GET `wc -l ips` IPs
+exit 0
 ips=(`cat ips`)
 for i in `seq 0 $((${#ips[@]}-1))`
 do
-  echo ${ips[$i]} n$i |sudo tee -a /etc/hosts
-  ssh -o "StrictHostKeyChecking no" n$i &
+  #echo ${ips[$i]} n$i |sudo tee -a /etc/hosts
+  #ssh -o "StrictHostKeyChecking no" n$i &
 done
 wait
 #scp ips_current lpl@blk:~/ips

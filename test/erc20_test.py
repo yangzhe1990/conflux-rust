@@ -54,7 +54,9 @@ class P2PTest(ConfluxTestFramework):
             value = int((balance_map[sender_key] - ((tx_n - i) * 21000 * gas_price)) * random.random())
             receiver_sk, _ = ec_random_keys()
             balance_map[receiver_sk] = value
-            tx_data = decode_hex(erc20_contract.functions.transfer(Web3.toChecksumAddress(encode_hex(privtoaddr(receiver_sk))), value).buildTransaction(self.tx_conf)["data"])
+            tx_data_hex = erc20_contract.functions.transfer(Web3.toChecksumAddress(encode_hex(privtoaddr(receiver_sk))), value).buildTransaction(self.tx_conf)["data"]
+            self.log.info("sender %s, receiver %s, value %s, transaction data hex %s", encode_hex_0x(genesis_addr), encode_hex_0x(privtoaddr(receiver_sk)), hex(value), tx_data_hex)
+            tx_data = decode_hex(tx_data_hex)
             tx = create_transaction(pri_key=sender_key, receiver=decode_hex(self.tx_conf["to"]), value=0, nonce=nonce, gas=gas,
                                     gas_price=gas_price, data=tx_data)
             r = random.randint(0, self.num_nodes - 1)
@@ -71,6 +73,7 @@ class P2PTest(ConfluxTestFramework):
         block_gen_thread.stop()
         block_gen_thread.join()
         sync_blocks(self.nodes)
+        time.sleep(1000)
         self.log.info("Pass")
 
     def wait_for_tx(self, all_txs):
@@ -81,7 +84,7 @@ class P2PTest(ConfluxTestFramework):
                     retry = True
                     while retry:
                         try:
-                            wait_until(lambda: checktx(self.nodes[0], tx.hash_hex()), timeout=20)
+                            wait_until(lambda: checktx(self.nodes[0], tx.hash_hex()), timeout=300)
                             retry = False
                         except CannotSendRequest:
                             time.sleep(0.01)
@@ -89,7 +92,7 @@ class P2PTest(ConfluxTestFramework):
                 except AssertionError as _:
                     self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
                 if i == 2:
-                        raise AssertionError("Tx {} not confirmed after 30 seconds".format(tx.hash_hex()))
+                        raise AssertionError("Tx {} not confirmed after 300 seconds".format(tx.hash_hex()))
 
     def get_balance(self, contract, token_address, nonce):
         tx = contract.functions.balanceOf(Web3.toChecksumAddress(encode_hex(token_address))).buildTransaction(self.tx_conf)

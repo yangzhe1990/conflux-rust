@@ -331,6 +331,7 @@ impl CowNodeRef {
         allocator_ref: AllocatorRefRefDeltaMpt,
     ) -> Result<MerkleHash>
     {
+        //println!("get_or_compute_merkle");
         if self.owned {
             let trie_node = unsafe {
                 trie.get_node_memory_manager().dirty_node_as_mut_unchecked(
@@ -344,8 +345,10 @@ impl CowNodeRef {
                 trie_node,
                 allocator_ref,
             )?;
+            //println!("  children merkles {:?}", children_merkles);
 
             let merkle = self.set_merkle(children_merkles.as_ref(), trie_node);
+            //println!("  computed merkle {:?}", merkle);
 
             Ok(merkle)
         } else {
@@ -363,6 +366,7 @@ impl CowNodeRef {
                     .compute_merkle_db_loads
                     .fetch_add(1, Ordering::Relaxed);
             }
+            //println!("  loaded merkle {:?}", trie_node.merkle_hash);
             Ok(trie_node.merkle_hash)
         }
     }
@@ -387,6 +391,7 @@ impl CowNodeRef {
                                 (*node_ref_mut).into(),
                                 owned_node_set,
                             );
+                            //println!("call get_or_compute_merkle for child {}", i);
                             let result = cow_child_node.get_or_compute_merkle(
                                 trie,
                                 owned_node_set,

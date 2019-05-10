@@ -1610,7 +1610,7 @@ mod tests2 {
         assert_eq!(pool.get(&tx3.sender, &tx3.nonce), Some(tx3.clone()));
         assert_eq!(pool.get(&tx.sender, &tx.nonce), Some(tx3.clone()));
     }
-
+/*
     #[test]
     fn test_pending_pool() {
         let mut pool = super::UnconfirmedTransactions::new();
@@ -1644,7 +1644,7 @@ mod tests2 {
         assert_eq!(pool.get_by_hash(&tx.hash()), None);
         assert_eq!(pool.get_by_hash(&tx4.hash()), Some(tx4.clone()));
     }
-
+*/
     #[test]
     fn test_ready_pool() {
         let mut pool = super::ReadyTransactionPool::new();

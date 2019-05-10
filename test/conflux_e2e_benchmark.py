@@ -68,7 +68,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
 
-        #""" remote
+        """ remote
         ips = []
         try:
             with open("/home/ubuntu/ip_file", 'r') as ip_file:
@@ -80,9 +80,9 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         self.ips = ips
 
         self.num_nodes = len(ips)
-        #"""
+        """
 
-        #self.num_nodes = 4
+        self.num_nodes = 1
 
         self.conf_parameters = {"log_level": "\"debug\"",
                                 "storage_cache_start_size": "1000000",
@@ -97,7 +97,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
                                 "egress_max_throttle": "1000",}
 
     def setup_network(self):
-        #""" remote nodes
+        """ remote nodes
         self.remote = True
 
         binary = ["/home/ubuntu/conflux"]
@@ -108,18 +108,18 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
             self.log.info("Node "+str(i) + " bind to "+self.nodes[i].ip+":"+self.nodes[i].port)
         self.start_nodes()
         self.log.info("All nodes started, waiting to be connected")
-        #"""
+        """
 
-        """ local nodes
+        #""" local nodes
         self.remote = False
         self.setup_nodes(binary=[os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             #"../target/debug/conflux")]
             "../target/release/conflux")]
             * self.num_nodes)
-        """
+        #"""
 
-        connect_sample_nodes(self.nodes, self.log, 7, 0, 300)
+        #connect_sample_nodes(self.nodes, self.log, 7, 0, 300)
 
     def run_test(self):
         # Start mininode connection

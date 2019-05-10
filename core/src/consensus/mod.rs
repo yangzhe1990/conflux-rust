@@ -39,7 +39,7 @@ use slab::Slab;
 use std::{
     cell::RefCell,
     cmp::min,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, BTreeMap, HashSet, VecDeque},
     iter::FromIterator,
     sync::Arc,
 };
@@ -902,6 +902,9 @@ impl ConsensusGraphInner {
             }
         }
 
+        let mut debug_tx_fees = BTreeMap::new();
+        let mut debug_rewards = BTreeMap::new();
+
         for index in &indices_in_epoch {
             if self.arena[*index].data.partial_invalid {
                 continue;
@@ -923,6 +926,7 @@ impl ConsensusGraphInner {
             // Add tx fee to base reward, and penalize them together
             if let Some(fee) = block_tx_fees.get(index) {
                 reward += U512::from(*fee);
+                debug_tx_fees.insert(self.arena[*index].hash, *fee);
             }
 
             if reward > 0.into() {
@@ -958,6 +962,7 @@ impl ConsensusGraphInner {
             let reward = U256::from(reward);
             let author = *authors.get(index).unwrap();
             rewards.push((author, reward));
+            debug_rewards.insert(self.arena[*index].hash, reward);
             if on_local_pivot {
                 self.block_receipts
                     .get_mut(index)
@@ -965,7 +970,8 @@ impl ConsensusGraphInner {
                     .retain_epoch(pivot_index);
             }
         }
-        debug!("Give rewards reward={:?}", rewards);
+        info!("Give rewards reward={:?} for Epoch {:?}, tx fees {:?}",
+              debug_rewards, pivot_hash, debug_tx_fees);
 
         for (address, reward) in rewards {
             state
@@ -2288,9 +2294,23 @@ impl ConsensusGraph {
                 if *block.block_header.deferred_state_root()
                     != correct_state_root
                 {
+                    let epoch_blocks = inner.indices_in_epochs.get(&deferred).unwrap();
+                    let epoch_block_hashes = epoch_blocks.iter().map(|index| inner.arena[*index].hash).collect::<Vec<_>>();
+                    let transactions = epoch_block_hashes.iter().flat_map(
+                        |hash| self.block_by_hash(hash, false).unwrap().transactions.clone()).collect::<Vec<_>>();
+
                     warn!(
-                        "Invalid state root: should be {:?}",
-                        correct_state_root
+                        "Invalid state root: should be {:?}, got {:?}, deferred block: {:?}, \
+                         number of blocks in epoch: {:?}, number of transactions in epoch: {:?}, \
+                         epoch blocks: {:?}, \
+                         transactions: {:?}",
+                        correct_state_root,
+                        block.block_header.deferred_state_root(),
+                        inner.arena[deferred].hash,
+                        epoch_blocks.len(),
+                        transactions.len(),
+                        epoch_block_hashes,
+                        transactions,
                     );
                     valid = false;
                 }

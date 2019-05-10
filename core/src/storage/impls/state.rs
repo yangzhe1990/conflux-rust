@@ -189,8 +189,10 @@ impl<'a> State<'a> {
     }
 
     fn compute_merkle_root(&mut self) -> Result<MerkleHash> {
+        //println!("compute merkle root");
         match &self.root_node {
             None => {
+                //println!("  ret: {:?}", MERKLE_NULL_NODE);
                 // Don't commit empty state. Empty state shouldn't exists since
                 // genesis block.
                 Ok(MERKLE_NULL_NODE)
@@ -207,6 +209,7 @@ impl<'a> State<'a> {
                     self.owned_node_set.as_mut().unwrap(),
                     &allocator,
                 )?;
+                //println!("  ret: {:?}", merkle);
                 cow_root.into_child();
 
                 Ok(merkle)

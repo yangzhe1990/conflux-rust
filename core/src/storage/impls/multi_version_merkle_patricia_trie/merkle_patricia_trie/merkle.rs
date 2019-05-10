@@ -38,6 +38,7 @@ pub fn compute_node_merkle(
 fn compute_path_merkle(
     compressed_path: CompressedPathRef, node_merkle: &MerkleHash,
 ) -> MerkleHash {
+    //println!("compute path merkle: path {:?}, node merkle {:?}", compressed_path, node_merkle);
     if compressed_path.path_slice().len() != 0 {
         let mut rlp_stream = RlpStream::new_list(3);
         compressed_path.rlp_append_parts(&mut rlp_stream);
