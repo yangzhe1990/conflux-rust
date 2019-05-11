@@ -2,7 +2,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-const DEFAULT_NUMBER_OF_KEYS : usize = 100000;
+const DEFAULT_NUMBER_OF_KEYS: usize = 100000;
 
 fn generate_keys(number_of_keys: usize) -> Vec<[u8; 4]> {
     let mut rng = get_rng_for_test();
@@ -182,6 +182,48 @@ fn test_set_delete() {
     state.commit(epoch_id).unwrap();
 }
 
+#[test]
+fn test_set_delete_all() {
+    let mut rng = get_rng_for_test();
+    let state_manager = new_state_manager_for_testing();
+    let mut state = state_manager.get_state_at(H256::default()).unwrap();
+    let mut keys: Vec<[u8; 4]> = generate_keys(DEFAULT_NUMBER_OF_KEYS);
+
+    println!("Testing with {} set operations.", keys.len());
+
+    for key in &keys {
+        state.set(vec![&key[..], &key[..]].concat().as_slice(), key).expect("Failed to insert key.");
+    }
+
+    rng.shuffle(keys.as_mut());
+
+    println!("Testing with {} delete operations.", keys.len());
+    let mut count = 0;
+    for key in &keys {
+        count += 1;
+        // TODO(yz): use some random prefix of the key to delete, then check if all keys are
+        // deleted only once.
+        let value = state
+            .delete_all(key)
+            .expect("Failed to delete key.")
+            .expect("Failed to get key");
+        assert_eq!(value.len(), 1);
+        let equal = key.eq(value[0].1.as_ref());
+        assert_eq!(equal, true);
+        assert_eq!(vec![&key[..], &key[..]].concat(), value[0].0);
+
+        let value = state
+            .delete_all(key)
+            .expect("Failed to delete key.");
+        assert_eq!(value, None);
+    }
+
+    let mut epoch_id = H256::default();
+    epoch_id[0] = 1;
+    state.compute_state_root().unwrap();
+    state.commit(epoch_id).unwrap();
+}
+
 fn print(key: &[u8]) {
     print!("key = (");
     for char in key {
@@ -208,10 +250,12 @@ fn test_set_order() {
     let mut state_0 = state_manager.get_state_at(H256::default()).unwrap();
     println!("Setting state_0 with {} keys.", keys.len());
     for key in &keys {
-        let key_slice = &key[0..4];
+        let key_slice = &key[..];
         let actual_key = vec![key_slice; 3].concat();
         let actual_value = vec![key_slice; (key[0] % 21) as usize].concat();
-        state_0.set(&actual_key, &actual_value).expect("Failed to insert key.");
+        state_0
+            .set(&actual_key, &actual_value)
+            .expect("Failed to insert key.");
     }
     let merkle_0 = state_0.compute_state_root().unwrap();
     epoch_id[0] = 1;
@@ -222,10 +266,12 @@ fn test_set_order() {
     let mut state_1 = state_manager.get_state_at(parent_epoch_0).unwrap();
     println!("Setting state_1 with {} keys.", keys.len());
     for key in &keys {
-        let key_slice = &key[0..4];
+        let key_slice = &key[..];
         let actual_key = vec![key_slice; 3].concat();
         let actual_value = vec![key_slice; (key[0] % 32) as usize].concat();
-        state_1.set(&actual_key, &actual_value).expect("Failed to insert key.");
+        state_1
+            .set(&actual_key, &actual_value)
+            .expect("Failed to insert key.");
     }
     let merkle_1 = state_1.compute_state_root().unwrap();
     epoch_id[0] = 2;
@@ -234,16 +280,103 @@ fn test_set_order() {
     let mut state_2 = state_manager.get_state_at(parent_epoch_0).unwrap();
     println!("Setting state_2 with {} keys.", keys.len());
     for key in keys.iter().rev() {
-        let key_slice = &key[0..4];
+        let key_slice = &key[..];
         let actual_key = vec![key_slice; 3].concat();
         let actual_value = vec![key_slice; (key[0] % 32) as usize].concat();
-        state_2.set(&actual_key, &actual_value).expect("Failed to insert key.");
+        state_2
+            .set(&actual_key, &actual_value)
+            .expect("Failed to insert key.");
     }
     let merkle_2 = state_2.compute_state_root().unwrap();
     epoch_id[0] = 3;
     state_2.commit(epoch_id).unwrap();
 
     assert_eq!(merkle_1, merkle_2);
+}
+
+#[test]
+fn test_set_order_concurrent() {
+    let mut rng = get_rng_for_test();
+    let state_manager = Arc::new(new_state_manager_for_testing());
+    let keys = Arc::new(
+        generate_keys(10000)
+            .iter()
+            .filter(|_| rng.gen_bool(0.5))
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
+
+    let mut epoch_id = H256::default();
+    let mut state_0 = state_manager.get_state_at(H256::default()).unwrap();
+    println!("Setting state_0 with {} keys.", keys.len());
+    for key in keys.iter() {
+        let key_slice = &key[..];
+        let actual_key = vec![key_slice; 3].concat();
+        let actual_value = vec![key_slice; (key[0] % 21) as usize].concat();
+        state_0
+            .set(&actual_key, &actual_value)
+            .expect("Failed to insert key.");
+    }
+    let merkle_0 = state_0.compute_state_root().unwrap();
+    epoch_id[0] = 1;
+    state_0.commit(epoch_id).unwrap();
+
+    let parent_epoch_0 = epoch_id;
+
+    let mut state_1 = state_manager.get_state_at(parent_epoch_0).unwrap();
+    println!("Setting state_1 with {} keys.", keys.len());
+    for key in keys.iter() {
+        let key_slice = &key[..];
+        let actual_key = vec![key_slice; 3].concat();
+        let actual_value = vec![key_slice; (key[0] % 32) as usize].concat();
+        state_1
+            .set(&actual_key, &actual_value)
+            .expect("Failed to insert key.");
+    }
+    let merkle_1 = state_1.compute_state_root().unwrap();
+    epoch_id[0] = 2;
+    state_1.commit(epoch_id).unwrap();
+
+    const THREAD_COUNT: usize = 500;
+    let mut threads = Vec::with_capacity(THREAD_COUNT);
+    for thread_id in 0..THREAD_COUNT {
+        thread::sleep_ms(30);
+        let keys = keys.clone();
+        let state_manager = state_manager.clone();
+        threads.push(thread::spawn(move || {
+            // TODO: put these into threads.
+            let mut state_2 =
+                state_manager.get_state_at(parent_epoch_0).unwrap();
+            println!(
+                "Setting state_{} with {} keys.",
+                2 + thread_id,
+                keys.len()
+            );
+            for key in keys.iter().rev() {
+                let key_slice = &key[..];
+                let actual_key = vec![key_slice; 3].concat();
+                let actual_value =
+                    vec![key_slice; (key[0] % 32) as usize].concat();
+                state_2
+                    .set(&actual_key, &actual_value)
+                    .expect("Failed to insert key.");
+            }
+            let merkle_2 = state_2.compute_state_root().unwrap();
+            epoch_id[0] = 3 + thread_id as u8;
+            state_2.commit(epoch_id).unwrap();
+
+            assert_eq!(merkle_1, merkle_2);
+        }));
+    }
+    {
+        let mut thread_id = 0;
+        for thread in threads.drain(..) {
+            thread
+                .join()
+                .expect(&format!("Thread {} failed.", thread_id));
+            thread_id += 1;
+        }
+    }
 }
 
 use super::{
@@ -255,4 +388,4 @@ use super::{
 };
 use cfx_types::H256;
 use rand::{ChaChaRng, Rng, SeedableRng};
-use std::mem;
+use std::{mem, sync::Arc, thread};

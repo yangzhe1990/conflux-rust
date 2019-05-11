@@ -243,6 +243,7 @@ impl CowNodeRef {
                     .get_trie_node(node_memory_manager, &allocator)?;
                 let key_prefix = CompressedPathRaw::concat(
                     &key_prefix,
+                    i,
                     &child_node.compressed_path_ref(),
                 );
                 let child_node = GuardedValue::take(child_node);
@@ -444,6 +445,7 @@ impl CowNodeRef {
                 .get_trie_node(node_memory_manager, &allocator)?;
             let key_prefix = CompressedPathRaw::concat(
                 &key_prefix,
+                i,
                 &child_node.compressed_path_ref(),
             );
             let child_node = GuardedValue::take(child_node);
