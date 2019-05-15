@@ -82,7 +82,7 @@ class P2PTest(ConfluxTestFramework):
                     retry = True
                     while retry:
                         try:
-                            wait_until(lambda: checktx(self.nodes[0], tx.hash_hex()), timeout=20)
+                            wait_until(lambda: checktx(self.nodes[0], tx.hash_hex()), timeout=300)
                             retry = False
                         except CannotSendRequest:
                             time.sleep(0.01)
@@ -90,7 +90,7 @@ class P2PTest(ConfluxTestFramework):
                 except AssertionError as _:
                     self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
                 if i == 2:
-                        raise AssertionError("Tx {} not confirmed after 30 seconds".format(tx.hash_hex()))
+                        raise AssertionError("Tx {} not confirmed after 300 seconds".format(tx.hash_hex()))
 
     def get_balance(self, contract, token_address, nonce):
         tx = contract.functions.balanceOf(Web3.toChecksumAddress(encode_hex(token_address))).buildTransaction(self.tx_conf)

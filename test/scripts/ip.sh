@@ -1,4 +1,3 @@
-# sudo rm -rf /etc/hosts
 export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-west-2}
 
 if [[ $# -eq 0 ]]; then
@@ -20,11 +19,12 @@ then
 	rm ips_tmp
 fi
 echo GET `wc -l ips` IPs
+exit 0
 ips=(`cat ips`)
+# TODO: use "${ips[@]}"
 for i in `seq 0 $((${#ips[@]}-1))`
 do
-#  echo ${ips[$i]} n$i |sudo tee -a /etc/hosts
-  ssh -o "StrictHostKeyChecking no" ubuntu@${ips[$i]} "exit" &
+  ssh -o "StrictHostKeyChecking no" ${ips[$i]} &
 done
 wait
 #scp ips_current lpl@blk:~/ips

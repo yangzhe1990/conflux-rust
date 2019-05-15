@@ -1047,7 +1047,7 @@ impl SynchronizationGraph {
                     ErrorKind::Block(BlockError::InvalidTransactionsRoot(e)),
                     _,
                 )) => {
-                    warn ! ("BlockTransactionRoot not match! inserted_block={:?} err={:?}", block, e);
+                    warn!("BlockTransactionRoot not match! inserted_block={:?} err={:?}", block, e);
                     insert_success = false;
                     return (insert_success, need_to_relay);
                 }
@@ -1092,7 +1092,8 @@ impl SynchronizationGraph {
                 inner.arena[index].graph_status = BLOCK_GRAPH_READY;
 
                 let h = inner.arena[index].block_header.hash();
-                debug!("Block {:?} is graph ready", h);
+                debug!("Block {:?} is graph ready, need_to_verify = {}, persistent = {}, \
+                sync_graph_only = {}", h, need_to_verify, persistent, sync_graph_only);
                 if !sync_graph_only {
                     // Make Consensus Worker handle the block in order
                     // asynchronously
