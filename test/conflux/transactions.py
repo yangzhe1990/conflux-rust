@@ -68,7 +68,7 @@ class Transaction(rlp.Serializable):
         key = normalize_key(key)
 
         v, r, s = ecsign(rawhash, key)
-        v = v - 27
+        #v = v - 27
 
         ret = self.copy(
             v=v, r=r, s=s

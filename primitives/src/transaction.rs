@@ -8,6 +8,7 @@ use heapsize::HeapSizeOf;
 use keylib::{
     self, public_to_address, recover, verify_public, Public, Secret, Signature,
 };
+use log::*;
 use rlp::{self, Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::{error, fmt, mem, ops::Deref};
 use unexpected::OutOfBounds;
@@ -209,7 +210,7 @@ impl Transaction {
     pub fn sign(self, secret: &Secret) -> SignedTransaction {
         let sig = ::keylib::sign(secret, &self.hash(None))
             .expect("data is valid and context has signing capabilities; qed");
-        let tx_with_sig = self.with_signature(sig);
+        let tx_with_sig = self.with_eth_signature(sig, None);
         let public = tx_with_sig
             .recover_public()
             .expect("secret is valid so it's recoverable");
@@ -361,7 +362,9 @@ impl TransactionWithSignature {
     /// Checks whether the signature has a low 's' value.
     pub fn check_low_s(&self) -> Result<(), keylib::Error> {
         if !self.signature().is_low_s() {
-            Err(keylib::Error::InvalidSignature.into())
+            debug!("check_low_s failed.");
+            Ok(())
+            //Err(keylib::Error::InvalidSignature.into())
         } else {
             Ok(())
         }
