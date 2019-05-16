@@ -385,7 +385,7 @@ class P2PInterface(P2PConnection):
             "receive", "Hello, capabilities:{}".format(capabilities))
         ip = [127, 0, 0, 1]
         if self.remote:
-            if hasattr(self, "local_ip") || not self.local_ip:
+            if hasattr(self, "local_ip") or not self.local_ip:
                 ip = get_ip_address()
             else:
                 ip = self.local_ip

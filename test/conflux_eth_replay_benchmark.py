@@ -106,7 +106,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
         binary = ["/home/ubuntu/conflux"]
 
         for ip in self.ips:
-            self.add_remote_nodes(1, user="ubuntu", ip=ip, binary=binary)
+            self.add_remote_nodes(1, user="ubuntu", ip=ip, binary=binary, no_pssh=True)
         for i in range(len(self.nodes)):
             self.log.info("Node "+str(i) + " bind to "+self.nodes[i].ip+":"+self.nodes[i].port)
         self.start_nodes()
@@ -138,7 +138,7 @@ class ConfluxEthReplayTest(ConfluxTestFramework):
             block_gen_thread.start()
             node_id += 1
 
-        TX_FILE_PATH = "/home/ubuntu/data/convert_eth_from_0_to_4141811_unknown_txs.rlp"
+        TX_FILE_PATH = "/home/ubuntu/convert_eth_from_0_to_4141811_unknown_txs.rlp"
         f = open(TX_FILE_PATH, "rb")
 
         start_time = datetime.datetime.now()
@@ -335,7 +335,9 @@ class BlockGenThread(threading.Thread):
         for i in range(0, pre_generated_blocks):
             if self.stopped:
                 return
-            sleep_sec = 1.0 * i * ConfluxEthReplayTest.INITIALIZE_SLEEP / 2 / pre_generated_blocks + 1.0 * i * BlockGenThread.BLOCK_TX_LIMIT / ConfluxEthReplayTest.INITIALIZE_TPS - (datetime.datetime.now() - start_time).total_seconds()
+            sleep_sec = 1.0 * i * ConfluxEthReplayTest.INITIALIZE_SLEEP / 2 / pre_generated_blocks \
+                        + 1.0 * i \
+                        - (datetime.datetime.now() - start_time).total_seconds()
             self.log.info("%s sleep %s at test startup", self.node_id, sleep_sec)
             if sleep_sec > 0:
                 time.sleep(sleep_sec)
