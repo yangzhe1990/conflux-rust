@@ -255,7 +255,7 @@ impl<TxType: TxTypeTrait> NoncePool<TxType> {
     }
 }
 
-struct UnconfirmedTransactions {
+struct UnexecutedTransactions {
     nonce_pool: NoncePool<TxWithPackedMarkAndCachedBalance>,
     ready_nonces_and_balances: HashMap<Address, (U256, U256)>,
     txs: HashMap<H256, Arc<SignedTransaction>>,
@@ -264,11 +264,11 @@ struct UnconfirmedTransactions {
     number_packed_txs: usize,
 }
 
-impl UnconfirmedTransactions {
+impl UnexecutedTransactions {
     const KEEP_NONCE_AT_OLD_STATE: usize = 100;
 
     fn new() -> Self {
-        UnconfirmedTransactions {
+        UnexecutedTransactions {
             nonce_pool: NoncePool::new(),
             ready_nonces_and_balances: Default::default(),
             txs: HashMap::new(),
@@ -538,25 +538,25 @@ impl ReadyTransactionPool {
 }
 
 pub struct TransactionPoolInner {
-    unconfirmed_txs: UnconfirmedTransactions,
+    unexecuted_txs: UnexecutedTransactions,
     ready_transactions: ReadyTransactionPool,
 }
 
 impl TransactionPoolInner {
     pub fn new() -> Self {
         TransactionPoolInner {
-            unconfirmed_txs: UnconfirmedTransactions::new(),
+            unexecuted_txs: UnexecutedTransactions::new(),
             ready_transactions: ReadyTransactionPool::new(),
         }
     }
 
     // The size of unconfirmed txs. Not exact same as pending pool size.
-    pub fn len(&self) -> usize { self.unconfirmed_txs.txs.len() }
+    pub fn len(&self) -> usize { self.unexecuted_txs.txs.len() }
 
     fn get(&self, tx_hash: &H256) -> Option<Arc<SignedTransaction>> {
         self.ready_transactions
             .get(tx_hash)
-            .or_else(|| self.unconfirmed_txs.get_by_hash(tx_hash))
+            .or_else(|| self.unexecuted_txs.get_by_hash(tx_hash))
     }
 }
 
@@ -734,10 +734,12 @@ impl TransactionPool {
         let mut account_cache = AccountCache::new(
             self.storage_manager.get_state_at(latest_epoch).unwrap(),
         );
-        let mut passed_transaction = Vec::new();
         {
             let mut tx_cache = self.transaction_pubkey_cache.write();
             let mut cache_man = self.cache_man.lock();
+
+            let mut inner = self.inner.write();
+            let mut inner = &mut *inner;
 
             for txes in signed_trans {
                 for tx in txes {
@@ -879,7 +881,7 @@ impl TransactionPool {
         // any packed transaction, account_cached's nonce and balance is
         // used.
         let (mut next_nonce, mut balance) =
-            inner.unconfirmed_txs.get_cached_balance_and_nonce_info(
+            inner.unexecuted_txs.get_cached_balance_and_nonce_info(
                 &transaction.sender,
                 account_cache,
             );
@@ -941,7 +943,7 @@ impl TransactionPool {
         } else {
             next_nonce = transaction.nonce.clone();
             balance = inner
-                .unconfirmed_txs
+                .unexecuted_txs
                 .get_mut(&transaction.sender, &transaction.nonce)
                 .unwrap()
                 .get_cached_account_balance_before_tx()
@@ -1044,7 +1046,7 @@ impl TransactionPool {
             transaction.hash(),
             transaction.sender
         );
-        inner.unconfirmed_txs.insert(transaction, packed)
+        inner.unexecuted_txs.insert(transaction, packed)
     }
 
     // FIXME: I noticed that the order of ready transaction removal may be
@@ -1064,7 +1066,7 @@ impl TransactionPool {
         );
 
         match inner
-            .unconfirmed_txs
+            .unexecuted_txs
             .get_balance_and_nonce_info(&transaction.sender)
             .cloned()
         {
@@ -1129,7 +1131,7 @@ impl TransactionPool {
         debug!(
             "Before packing ready pool size:{}, pending pool size:{}",
             inner.ready_transactions.len(),
-            inner.unconfirmed_txs.pending_pool_size()
+            inner.unexecuted_txs.pending_pool_size()
         );
 
         let mut total_tx_gas_limit: U256 = 0.into();
@@ -1157,6 +1159,7 @@ impl TransactionPool {
                     }
                     None => tx.nonce.clone(),
                 };
+            let nonce_entry = nonce_map.entry(tx.sender);
             let nonce = nonce_entry.or_insert(lowest_nonce_in_ready_pool);
             if tx.nonce > *nonce {
                 future_txs
@@ -1245,11 +1248,12 @@ impl TransactionPool {
                 "After packing ready pool size:{}, pending pool size:{}, packed_transactions: {}, \
                 rlp size: {}, total txs received {}, total txs packed by chain {}",
                 inner.ready_transactions.len(),
-                inner.pending_transactions.len(),
+                inner.unexecuted_txs.pending_pool_size(),
                 packed_transactions.len(),
-                rlp_s.out().len()
+                rlp_s.out().len(),
+                // FIXME: use correct counter to get total number of txs received.
                 inner.len(),
-                inner.unconfirmed_txs.number_packed_txs(),
+                inner.unexecuted_txs.number_packed_txs(),
             );
         }
 
@@ -1260,7 +1264,7 @@ impl TransactionPool {
         let inner = self.inner.read();
 
         inner
-            .unconfirmed_txs
+            .unexecuted_txs
             .nonce_pool
             .buckets
             .values()
@@ -1278,7 +1282,7 @@ impl TransactionPool {
     pub fn notify_state_start(&self, accounts_from_execution: Vec<Account>) {
         let mut inner = self.inner.write();
         let inner = inner.deref_mut();
-        inner.unconfirmed_txs.notify_state_start();
+        inner.unexecuted_txs.notify_state_start();
 
         for account in &accounts_from_execution {
             self.notify_ready(inner, &account.address, account);
@@ -1330,7 +1334,7 @@ impl TransactionPool {
         // Conclusion: Do checking the balance at the nonce first, if
         // performance isn't good, check for unpacked
         // transaction to avoid useless account balance update?
-        match inner.unconfirmed_txs.get_mut(address, &account.nonce) {
+        match inner.unexecuted_txs.get_mut(address, &account.nonce) {
             Some(tx) => {
                 if tx
                     .get_cached_account_balance_before_tx()
@@ -1366,14 +1370,14 @@ impl TransactionPool {
 
         if from_block_execution {
             inner
-                .unconfirmed_txs
+                .unexecuted_txs
                 .notify_state_account(address.clone(), next_nonce.clone());
         }
 
         trace!("Notify ready {:?} with nonce {:?}", address, next_nonce);
 
         loop {
-            if let Some(tx) = inner.unconfirmed_txs.get_mut(address, next_nonce)
+            if let Some(tx) = inner.unexecuted_txs.get_mut(address, next_nonce)
             {
                 trace!(
                     "We got the tx from pending_pool with hash {:?}",
@@ -1405,7 +1409,7 @@ impl TransactionPool {
 
         // Update the next ready nonce.
         match inner
-            .unconfirmed_txs
+            .unexecuted_txs
             .ready_nonces_and_balances
             .get_mut(address)
         {
@@ -1429,7 +1433,7 @@ impl TransactionPool {
             None => {
                 // There is a new transaction added before calling.
                 if !from_block_execution {
-                    inner.unconfirmed_txs.ready_nonces_and_balances.insert(
+                    inner.unexecuted_txs.ready_nonces_and_balances.insert(
                         address.clone(),
                         (next_nonce.clone(), account_balance.clone()),
                     );
@@ -1439,7 +1443,7 @@ impl TransactionPool {
 
         while start_nonce.lt(next_nonce) {
             match inner
-                .unconfirmed_txs
+                .unexecuted_txs
                 .get_mut(address, &start_nonce)
                 .cloned()
             {
@@ -1468,7 +1472,7 @@ impl TransactionPool {
         let inner = self.inner.read();
         (
             inner.ready_transactions.len(),
-            inner.unconfirmed_txs.pending_pool_size(),
+            inner.unexecuted_txs.pending_pool_size(),
             // FIXME: change it to the number of total tx received, and check why there is no tx removal (or why the len() == total received).
             inner.len(),
         )
@@ -1488,7 +1492,7 @@ impl TransactionPool {
             .collect();
 
         let pending_txs = inner
-            .unconfirmed_txs
+            .unexecuted_txs
             .txs
             .values()
             .map(|v| v.clone())
