@@ -11,7 +11,7 @@ from test_framework.mininode import *
 from test_framework.test_node import TestNode
 from test_framework.util import *
 
-class IpLimitedNode(P2PInterface):
+class IpLimitedNode(]]):
     disconnect_reason = None
 
     def on_disconnect(self, disconnect):

@@ -246,7 +246,7 @@ class P2PInterface(P2PConnection):
     Individual testcases should subclass this and override the on_* methods
     if they want to alter message handling behaviour."""
 
-    def __init__(self, remote=False):
+    def __init__(self, remote=False, local_ip=None):
         super().__init__()
 
         # Track number of messages of each type received and the most recent
@@ -269,6 +269,7 @@ class P2PInterface(P2PConnection):
         self.had_status = False
         self.on_packet_func = {}
         self.remote = remote
+        self.local_ip = local_ip
 
     def peer_connect(self, *args, **kwargs):
         super().peer_connect(*args, **kwargs)
@@ -384,8 +385,10 @@ class P2PInterface(P2PConnection):
             "receive", "Hello, capabilities:{}".format(capabilities))
         ip = [127, 0, 0, 1]
         if self.remote:
-            ip = self.remote
-            ip = [172, 31, 17, 152]
+            if hasattr(self, "local_ip") || not self.local_ip:
+                ip = get_ip_address()
+            else:
+                ip = self.local_ip
         endpoint = NodeEndpoint(address=bytes(ip), port=32325, udp_port=32325)
         hello = Hello([Capability(self.protocol, self.protocol_version)], endpoint)
         to_sign = rlp.encode(hello, Hello)
@@ -431,8 +434,8 @@ mininode_socket_map = dict()
 mininode_lock = threading.RLock()
 
 class DefaultNode(P2PInterface):
-    def __init__(self, remote = False):
-        super().__init__(remote)
+    def __init__(self, remote = False, local_ip = None):
+        super().__init__(remote, local_ip)
         self.protocol = b'cfx'
         self.protocol_version = 1
 
@@ -478,11 +481,11 @@ def network_thread_join(timeout=10):
         thread.join(timeout)
         assert not thread.is_alive()
 
-def start_p2p_connection(nodes, remote=False):
+def start_p2p_connection(nodes, remote=False, local_ip=None):
     p2p_connections = []
 
     for node in nodes:
-        conn = DefaultNode(remote)
+        conn = DefaultNode(remote, local_ip)
         p2p_connections.append(conn)
         node.add_p2p_connection(conn)
 
