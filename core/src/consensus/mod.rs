@@ -14,7 +14,8 @@ use crate::{
     state::{CleanupMode, State},
     statedb::StateDb,
     statistics::SharedStatistics,
-    storage::{state::StateTrait, StorageManager, StorageManagerTrait},
+    storage::{state::StateTrait, StorageManager, StorageManagerTrait,
+              ReturnAfterUse},
     sync::SynchronizationGraphInner,
     transaction_pool::SharedTransactionPool,
     vm::{EnvInfo, Spec},
@@ -34,12 +35,13 @@ use primitives::{
     TransactionAddress,
 };
 use rayon::prelude::*;
-use rlp::RlpStream;
+use rlp::*;
 use slab::Slab;
 use std::{
     cell::RefCell,
     cmp::min,
-    collections::{HashMap, BTreeMap, HashSet, VecDeque},
+    collections::{HashMap, BTreeMap, HashSet, BTreeSet, VecDeque},
+    io::Write,
     iter::FromIterator,
     sync::Arc,
 };
@@ -726,10 +728,11 @@ impl ConsensusGraphInner {
     fn process_rewards_and_fees(
         &mut self, state: &mut State, pivot_index: usize,
         pivot_block_upper: usize, on_local_pivot: bool,
+        mut debug_recompute: ReturnAfterUse<&mut ComputeEpochDebug>,
     )
     {
         /// (Fee, PackingBlockIndexSet)
-        struct TxExecutionInfo(U256, HashSet<usize>);
+        struct TxExecutionInfo(U256, BTreeSet<H256>);
 
         let pivot_hash = self.arena[pivot_index].hash.clone();
         debug!("Process rewards and fees for {:?}", pivot_hash);
@@ -754,6 +757,7 @@ impl ConsensusGraphInner {
                 .expect("exist");
             authors.insert(*index, block.block_header.author().clone());
 
+            // FIXME: why use receipts?
             let receipts = match self.data_man.block_results_by_hash_with_epoch(
                 &block_hash,
                 &pivot_hash,
@@ -781,9 +785,10 @@ impl ConsensusGraphInner {
                 let fee = tx.gas_price * gas_used;
                 let info = tx_fee
                     .entry(tx.hash())
-                    .or_insert(TxExecutionInfo(fee, HashSet::default()));
-                info.1.insert(*index);
+                    .or_insert(TxExecutionInfo(fee, Default::default()));
+                info.1.insert(block_hash);
                 if !fee.is_zero() {
+                    // FIXME: the assertion is wrong!
                     debug_assert!(info.1.len() == 1 || info.0.is_zero());
                     info.0 = fee;
                 }
@@ -796,9 +801,9 @@ impl ConsensusGraphInner {
             let block_count = U256::from(block_set.len());
             let quotient: U256 = *fee / block_count;
             let mut remainder: U256 = *fee - (block_count * quotient);
-            for block_index in block_set {
+            for block_hash in block_set {
                 let reward =
-                    block_tx_fees.entry(*block_index).or_insert(U256::zero());
+                    block_tx_fees.entry(*block_hash).or_insert(U256::zero());
                 *reward += quotient;
                 if !remainder.is_zero() {
                     *reward += 1.into();
@@ -807,14 +812,12 @@ impl ConsensusGraphInner {
             }
         }
 
-        let mut debug_tx_fees = BTreeMap::new();
-        let mut debug_rewards = BTreeMap::new();
-
         for index in &indices_in_epoch {
             if self.arena[*index].data.partial_invalid {
                 continue;
             }
             let block_hash = self.arena[*index].hash;
+            let author = *authors.get(index).unwrap();
 
             let mut reward: U512 =
                 if self.arena[*index].pow_quality >= difficulty {
@@ -827,10 +830,9 @@ impl ConsensusGraphInner {
                     0.into()
                 };
 
-            // Add tx fee to base reward, and penalize them together
-            if let Some(fee) = block_tx_fees.get(index) {
-                reward += U512::from(*fee);
-                debug_tx_fees.insert(self.arena[*index].hash, *fee);
+            if !debug_recompute.is_none() {
+                let debug_out = debug_recompute.get_mut();
+                debug_out.block_rewards.push(BlockHashAuthorValue(block_hash, author, U256::from(reward)));
             }
 
             if reward > 0.into() {
@@ -842,9 +844,9 @@ impl ConsensusGraphInner {
                     .collect::<HashSet<_>>();
 
                 let mut anticone_difficulty: U512 = 0.into();
-                for a_index in anticone_set {
+                for a_index in &anticone_set {
                     anticone_difficulty +=
-                        U512::from(self.arena[a_index].difficulty);
+                        U512::from(self.arena[*a_index].difficulty);
                 }
 
                 let penalty = reward * anticone_difficulty
@@ -860,25 +862,60 @@ impl ConsensusGraphInner {
                 } else {
                     reward -= penalty;
                 }
+                if !debug_recompute.is_none() {
+                    let debug_out = debug_recompute.get_mut();
+                    debug_out.anticone_set_size.push(BlockHashAuthorValue(block_hash, author, U256::from(anticone_set.len())));
+                    debug_out.anticone_penalties.push(BlockHashAuthorValue(block_hash, author, U256::from(penalty)));
+                }
+            }
+
+            if reward > 0.into() {
+                if let Some(fee) = block_tx_fees.get(&block_hash) {
+                    reward += U512::from(*fee);
+                    if !debug_recompute.is_none() {
+                        let debug_out = debug_recompute.get_mut();
+                        debug_out.tx_fees.push(BlockHashAuthorValue(block_hash, author, *fee));
+                    }
+                }
             }
 
             debug_assert!(reward <= U512::from(U256::max_value()));
             let reward = U256::from(reward);
-            let author = *authors.get(index).unwrap();
             rewards.push((author, reward));
-            debug_rewards.insert(self.arena[*index].hash, reward);
+            if !debug_recompute.is_none() {
+                let debug_out = debug_recompute.get_mut();
+                debug_out.final_rewards.push(BlockHashAuthorValue(block_hash, author, reward));
+            }
             if on_local_pivot {
                 self.data_man
                     .receipts_retain_epoch(&block_hash, &pivot_hash);
             }
         }
-        info!("Give rewards reward={:?} for Epoch {:?}, tx fees {:?}",
-              debug_rewards, pivot_hash, debug_tx_fees);
+        info!("Give rewards for Epoch {:?}", pivot_hash);
+
+        let mut merged_rewards = BTreeMap::new();
 
         for (address, reward) in rewards {
             state
                 .add_balance(&address, &reward, CleanupMode::ForceCreate)
                 .unwrap();
+
+            *merged_rewards.entry(address).or_default() += reward;
+
+            if !debug_recompute.is_none() {
+                let debug_out = debug_recompute.get_mut();
+                debug_out.state_ops.push(
+                    ("add_balance".to_string(),
+                     address.hex().as_bytes().to_vec(),
+                     Some(reward.to_hex().as_bytes().to_vec())));
+            }
+        }
+
+        if !debug_recompute.is_none() {
+            let debug_out = debug_recompute.get_mut();
+            for (address, value) in merged_rewards {
+                debug_out.merged_rewards.push(AuthorValue(address, value));
+            }
         }
     }
 
@@ -1294,6 +1331,42 @@ impl ConsensusGraphInner {
     }
 }
 
+#[derive(Debug)]
+pub struct BlockHashAuthorValue(H256, Address, U256);
+
+#[derive(Debug)]
+pub struct AuthorValue(Address, U256);
+
+impl Encodable for BlockHashAuthorValue {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(3).append(&(String::from("block_hash: ") + &self.0.hex()))
+            .append(&(String::from("author: ") + &self.1.hex()))
+            .append(&self.2);
+    }
+}
+
+impl Encodable for AuthorValue {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(2).append(&(String::from("author: ") + &self.0.hex()))
+            .append(&self.1);
+    }
+}
+
+#[derive(Default)]
+pub struct ComputeEpochDebug{
+    block_rewards: Vec<BlockHashAuthorValue>,
+    anticone_penalties: Vec<BlockHashAuthorValue>,
+    anticone_set_size: Vec<BlockHashAuthorValue>,
+    tx_fees: Vec<BlockHashAuthorValue>,
+    final_rewards: Vec<BlockHashAuthorValue>,
+    merged_rewards: Vec<AuthorValue>,
+    // state root
+    state_roots_post_tx: Vec<H256>,
+    state_roots_post_reward: Vec<H256>,
+    // op name, key, maybe_value
+    state_ops: Vec<(String, Vec<u8>, Option<Vec<u8>>)>,
+}
+
 pub struct ConsensusGraph {
     pub inner: RwLock<ConsensusGraphInner>,
     genesis_block: Arc<Block>,
@@ -1543,12 +1616,13 @@ impl ConsensusGraph {
         &self, inner: &mut ConsensusGraphInner, epoch_index: usize,
         parent_index: usize, reward_index: Option<(usize, usize)>,
         on_local_pivot: bool, to_pending: &mut Vec<Arc<SignedTransaction>>,
+        mut debug_recompute: ReturnAfterUse<&mut ComputeEpochDebug>,
     )
     {
         let epoch_hash = inner.arena[epoch_index].hash;
 
         // Check if the state has been computed
-        if inner.storage_manager.state_exists(epoch_hash)
+        if debug_recompute.is_none() && inner.storage_manager.state_exists(epoch_hash)
             && self.epoch_executed_and_recovered(
                 epoch_index,
                 inner,
@@ -1585,6 +1659,7 @@ impl ConsensusGraph {
             to_pending,
         );
 
+        // FIXME: when reward_index is None, no transaction fee is shared?
         if let Some((reward_pivot_index, reward_pivot_upper_index)) =
             reward_index
         {
@@ -1595,6 +1670,7 @@ impl ConsensusGraph {
                 reward_pivot_index,
                 reward_pivot_upper_index,
                 on_local_pivot,
+                ReturnAfterUse::new_from_origin(&mut debug_recompute),
             );
         }
 
@@ -1746,6 +1822,7 @@ impl ConsensusGraph {
                 reward_index,
                 false,
                 &mut Vec::new(),
+                ReturnAfterUse::new(&mut None),
             );
             last_state_height += 1;
         }
@@ -1779,6 +1856,7 @@ impl ConsensusGraph {
                 reward_index,
                 false,
                 &mut Vec::new(),
+                ReturnAfterUse::new(&mut None),
             );
         }
 
@@ -1815,6 +1893,136 @@ impl ConsensusGraph {
         }
         let hash = inner.arena[idx].hash;
         self.compute_state_for_block(&hash, inner)
+    }
+
+    fn log_invalid_state_root(
+        &self,
+        exected_state_root: &H256,
+        got_state_root: &H256,
+        deferred: usize,
+        inner: &mut ConsensusGraphInner) -> std::io::Result<()> {
+        let deferred_block_hash = inner.arena[deferred].hash;
+
+        let epoch_block_hashes = {
+            let epoch_blocks = inner.indices_in_epochs.get(&deferred).unwrap();
+
+            epoch_blocks.iter().map(|index| inner.arena[*index].hash).collect::<Vec<_>>()
+        };
+        let transactions = epoch_block_hashes.iter().flat_map(
+            |hash| self.data_man.block_by_hash(hash, false).unwrap().transactions.clone()).collect::<Vec<_>>();
+
+        let mut rlpstream = RlpStream::new();
+        rlpstream.begin_unbounded_list();
+        // Parent state root.
+        let parent_index = inner.arena[deferred].parent;
+        let parent_block_hash = inner.arena[parent_index].hash;
+        let parent_state_root = inner
+            .storage_manager
+            .get_state_at(parent_block_hash)
+            .unwrap()
+            .get_state_root()
+            .unwrap()
+            .unwrap();
+
+        // Recompute epoch.
+        let anticone_cut_height = REWARD_EPOCH_COUNT - ANTICONE_PENALTY_UPPER_EPOCH_COUNT;
+        let mut anticone_cut_block = parent_index;
+        for _i in 1..anticone_cut_height {
+            if anticone_cut_block == NULL {
+                break;
+            }
+            anticone_cut_block = inner.arena[anticone_cut_block].parent;
+        }
+        let mut reward_epoch_block = anticone_cut_block;
+        for _i in 0..ANTICONE_PENALTY_UPPER_EPOCH_COUNT {
+            if reward_epoch_block == NULL {
+                break;
+            }
+            reward_epoch_block = inner.arena[reward_epoch_block].parent;
+        }
+        let reward_index = if reward_epoch_block == NULL {
+            None
+        } else {
+            Some((reward_epoch_block, anticone_cut_block))
+        };
+
+        let mut debug_info = Some(ComputeEpochDebug::default());
+        self.compute_epoch(
+            inner, deferred, parent_index,
+            reward_index,
+            false, &mut vec![],
+            ReturnAfterUse::new(&mut debug_info.as_mut())
+        );
+
+        rlpstream.append(&"parent_block_hash").append(&parent_block_hash);
+        rlpstream.append(&"parent_state_root").append(&parent_state_root);
+        rlpstream.append(&"reward_epoch_block_hash").append(
+            &if reward_epoch_block != NULL {
+                Some(inner.arena[reward_epoch_block].hash)
+            } else {
+                None
+            }
+        );
+        rlpstream.append(&"anticone_cutoff_block_hash").append(
+            &if anticone_cut_block != NULL {
+                Some(inner.arena[anticone_cut_block].hash)
+            } else {
+                None
+            }
+        );
+
+        rlpstream.append(&"epoch_block_hashes").append_list(&epoch_block_hashes);
+        /*
+        rlpstream.append(&"transactions")
+            .append_list::<SignedTransaction, Arc<SignedTransaction>>(&transactions);
+            */
+        rlpstream.append(&"mining_rewards")
+            .append_list(&debug_info.as_ref().unwrap().block_rewards);
+        rlpstream.append(&"anticone_penalties")
+            .append_list(&debug_info.as_ref().unwrap().anticone_penalties);
+        rlpstream.append(&"transaction_fees")
+            .append_list(&debug_info.as_ref().unwrap().tx_fees);
+        rlpstream.append(&"final_rewards")
+            .append_list(&debug_info.as_ref().unwrap().final_rewards);
+        rlpstream.append(&"merged_rewards")
+            .append_list(&debug_info.as_ref().unwrap().merged_rewards);
+        rlpstream.complete_unbounded_list();
+
+
+        warn!(
+            "Invalid state root: should be {:?}, got {:?}, deferred block: {:?}, \
+            reward epoch bock: {:?}, anticone cutoff block: {:?}, \
+            number of blocks in epoch: {:?}, number of transactions in epoch: {:?}, rewards: {:?}",
+            exected_state_root,
+            got_state_root,
+            deferred_block_hash,
+            if reward_epoch_block != NULL {
+                Some(inner.arena[reward_epoch_block].hash)
+            } else {
+                None
+            },
+            if anticone_cut_block != NULL {
+                Some(inner.arena[anticone_cut_block].hash)
+            } else {
+                None
+            },
+            epoch_block_hashes.len(),
+            transactions.len(),
+            debug_info.as_ref().unwrap().state_ops,
+        );
+
+        let dir_path = String::from("/tmp/invalid_state_root/");
+        let invalid_state_root_path = dir_path.clone()
+            + &deferred_block_hash.hex();
+        std::fs::create_dir_all(dir_path)?;
+
+        if std::path::Path::new(&invalid_state_root_path).exists() {
+            return Ok(())
+        }
+        let mut file = std::fs::File::create(&invalid_state_root_path)?;
+        file.write_all(&rlpstream.drain())?;
+
+        Ok(())
     }
 
     fn check_block_full_validity(
@@ -1892,24 +2100,11 @@ impl ConsensusGraph {
                 if *block.block_header.deferred_state_root()
                     != correct_state_root
                 {
-                    let epoch_blocks = inner.indices_in_epochs.get(&deferred).unwrap();
-                    let epoch_block_hashes = epoch_blocks.iter().map(|index| inner.arena[*index].hash).collect::<Vec<_>>();
-                    let transactions = epoch_block_hashes.iter().flat_map(
-                        |hash| self.data_man.block_by_hash(hash, false).unwrap().transactions.clone()).collect::<Vec<_>>();
+                    self.log_invalid_state_root(
+                        &correct_state_root,
+                        &block.block_header.deferred_state_root(),
+                        deferred, inner).ok();
 
-                    warn!(
-                        "Invalid state root: should be {:?}, got {:?}, deferred block: {:?}, \
-                         number of blocks in epoch: {:?}, number of transactions in epoch: {:?}, \
-                         epoch blocks: {:?}, \
-                         transactions: {:?}",
-                        correct_state_root,
-                        block.block_header.deferred_state_root(),
-                        inner.arena[deferred].hash,
-                        epoch_blocks.len(),
-                        transactions.len(),
-                        epoch_block_hashes,
-                        transactions,
-                    );
                     valid = false;
                 }
                 let correct_receipts_root =
@@ -1929,6 +2124,15 @@ impl ConsensusGraph {
                 let deferred_hash = inner.arena[deferred].hash;
                 let (state_root, receipts_root) =
                     self.compute_state_for_block(&deferred_hash, inner);
+
+                if state_root != *block.block_header.deferred_state_root() {
+                    self.log_invalid_state_root(
+                        &state_root,
+                        block.block_header.deferred_state_root(),
+                        deferred, inner).ok();
+                    // FIXME: log reward computations.
+                }
+
                 *block.block_header.deferred_state_root() == state_root
                     && *block.block_header.deferred_receipts_root()
                         == receipts_root
@@ -2096,6 +2300,7 @@ impl ConsensusGraph {
                     reward_index,
                     true,
                     &mut Vec::new(),
+                    ReturnAfterUse::new(&mut None),
                 );
             }
         }
@@ -2404,6 +2609,7 @@ impl ConsensusGraph {
                 reward_index,
                 true,
                 &mut to_pending,
+                ReturnAfterUse::new(&mut None),
             );
             state_at += 1;
         }
