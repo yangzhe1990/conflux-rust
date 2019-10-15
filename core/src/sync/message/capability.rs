@@ -16,9 +16,14 @@ use rlp_derive::{RlpDecodableWrapper, RlpEncodableWrapper};
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum DynamicCapability {
-    TxRelay(bool),                 // provide tx relay
-    ServeHeaders(bool),            // provide block header downloads
-    ServeCheckpoint(Option<H256>), // provide checkpoint downloads
+    TxRelay(bool),      // provide tx relay
+    ServeHeaders(bool), // provide block header downloads
+    ServeCheckpoint(Option<H256>), /* provide checkpoint downloads
+                         * FIXME: after a certain period, the checkpoint
+                         * and snapshot FIXME: will
+                         * become unavailable.
+                         * FIXME: How is this situation handled?
+                         * ServeSnapshot(EpochId), */
 }
 
 impl DynamicCapability {

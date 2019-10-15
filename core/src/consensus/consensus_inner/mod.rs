@@ -342,6 +342,8 @@ pub struct ConsensusGraphInner {
     anticone_cache: AnticoneCache,
     pastset_cache: PastSetCache,
     // The cache to store execution information of nodes in the consensus graph
+    // FIXME: It looks like that execution_info_cache is kept in memory for
+    // current eras (which?).
     pub execution_info_cache: HashMap<usize, ConsensusGraphExecutionInfo>,
     sequence_number_of_block_entrance: u64,
     last_recycled_era_block: usize,
@@ -1982,6 +1984,8 @@ impl ConsensusGraphInner {
         }
     }
 
+    // FIXME: There is another function epoch_hash(&self).. What's the
+    // difference?
     pub fn get_hash_from_epoch_number(
         &self, epoch_number: u64,
     ) -> Result<H256, String> {
@@ -2192,6 +2196,11 @@ impl ConsensusGraphInner {
         }
     }
 
+    // FIXME: why is it necessary to return StateRootWithAuxInfo combined?
+    // FIXME: Maybe StateRootWithAuxInfo can be kept as a ref, then it's not
+    // FIXME: necessary to return and the StateRootWithAuxInfo should be
+    // FIXME: removed from block header..
+    // FIXME: structure the input/output.
     fn compute_blame_and_state_with_execution_result(
         &self, parent: usize, exec_result: (StateRootWithAuxInfo, H256, H256),
     ) -> Result<(u32, StateRootWithAuxInfo, H256, H256, H256), String> {
@@ -2208,6 +2217,8 @@ impl ConsensusGraphInner {
             if self.arena[cur].data.state_valid {
                 break;
             }
+            // FIXME: is it possible to remove execution_info_cache and use
+            // epoch_execution_commitments instead?
             let exec_info_opt = self.execution_info_cache.get(&cur);
             if exec_info_opt.is_none() {
                 return Err("Failed to compute blame and state due to stale consensus graph state".to_owned());
@@ -2253,6 +2264,7 @@ impl ConsensusGraphInner {
         }
     }
 
+    // FIXME: maybe this method can be simplified.
     fn compute_execution_info_with_result(
         &mut self, me: usize, exec_result: (StateRootWithAuxInfo, H256, H256),
     ) -> Result<(), String> {
@@ -2260,6 +2272,10 @@ impl ConsensusGraphInner {
         if self.arena[me].height == 0 {
             self.arena[me].data.state_valid = true;
             let exec_info = ConsensusGraphExecutionInfo {
+                deferred_state_root_with_aux_info: self
+                    .data_man
+                    .genesis_state_root(),
+
                 original_deferred_state_root: *self
                     .data_man
                     .true_genesis_block
@@ -2316,10 +2332,11 @@ impl ConsensusGraphInner {
                 false
             }
         };
+        let deferred_state_root_with_aux_info;
         if !skip_state_validation {
             let (
                 blame,
-                _,
+                _deferred_state_root_with_aux_info,
                 deferred_state_root,
                 deferred_receipt_root,
                 deferred_logs_bloom_hash,
@@ -2327,6 +2344,8 @@ impl ConsensusGraphInner {
                 parent,
                 exec_result,
             )?;
+            deferred_state_root_with_aux_info =
+                _deferred_state_root_with_aux_info;
             let block_header = self
                 .data_man
                 .block_header_by_hash(&self.arena[me].hash)
@@ -2345,8 +2364,11 @@ impl ConsensusGraphInner {
             }
 
             self.arena[me].data.state_valid = state_valid;
+        } else {
+            deferred_state_root_with_aux_info = exec_result.0;
         }
         let exec_info = ConsensusGraphExecutionInfo {
+            deferred_state_root_with_aux_info,
             original_deferred_state_root,
             original_deferred_receipt_root,
             original_deferred_logs_bloom_hash,
@@ -2585,6 +2607,9 @@ impl ConsensusGraphInner {
         .and_then(|index| Some(self.arena[self.pivot_chain[index]].hash))
     }
 
+    // FIXME: maybe this is why execution_info_cache should be kept?
+    // FIXME: can we just loop on state block and check
+    // epoch_execution_commitment?
     fn collect_blocks_missing_execution_info(
         &self, me: usize,
     ) -> Result<Vec<(H256, H256)>, String> {

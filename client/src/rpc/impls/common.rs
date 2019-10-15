@@ -2,15 +2,16 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
+use jsonrpc_core::{
+    Error as RpcError, ErrorCode::InternalError, Result as RpcResult,
+};
+use parking_lot::{Condvar, Mutex};
 use std::{
     collections::{BTreeMap, HashSet},
     net::SocketAddr,
     sync::Arc,
     time::Duration,
 };
-
-use jsonrpc_core::{Error as RpcError, Result as RpcResult};
-use parking_lot::{Condvar, Mutex};
 
 use cfx_types::{Address, H256, U128};
 use cfxcore::{
@@ -455,8 +456,12 @@ impl RpcImpl {
             }
             let (local_nonce, local_balance) =
                 self.tx_pool.get_local_account_info(&tx.sender());
-            let (state_nonce, state_balance) =
-                self.tx_pool.get_state_account_info(&tx.sender());
+            let (state_nonce, state_balance) = self
+                .tx_pool
+                .get_state_account_info(&tx.sender())
+                // FIXME: it would be best to use an error type which can carry
+                // more error details.
+                .map_err(|_| RpcError::new(InternalError))?;
             ret.insert(
                 "local nonce".into(),
                 serde_json::to_string(&local_nonce).unwrap(),
