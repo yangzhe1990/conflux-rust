@@ -1427,7 +1427,8 @@ impl ConsensusNewBlockHandler {
         // `execution_info_cache` or recompute the state if it is not exist in
         // `execution_info_cache`
         debug!("stable: {}", inner.cur_era_stable_height);
-        for pivot_index in inner.cur_era_stable_height as usize
+        let stable_pivot_index = inner.cur_era_stable_height - inner.cur_era_genesis_height;
+        for pivot_index in stable_pivot_index as usize
             ..inner.pivot_chain.len() - DEFERRED_STATE_EPOCH_COUNT as usize + 1
         {
             let arena_index = inner.pivot_chain[pivot_index];

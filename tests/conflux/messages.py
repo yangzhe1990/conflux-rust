@@ -110,14 +110,13 @@ class Hello(rlp.Serializable):
     ]
 
 
-class Disconnect(rlp.Serializable):
+class Disconnect:
     def __init__(self, code:int, msg:str=None):
         self.code = code
         self.msg = msg
-
-    @classmethod
-    def deserialize(cls, serial):
-        return cls(int(serial[0]), str(serial[1:]))
+    # @classmethod
+    # def deserialize(cls, serial):
+    #     return cls(int(serial[0]), str(serial[1:]))
 
 
 class Status(rlp.Serializable):
@@ -287,7 +286,7 @@ class BlockHeaderRlpPart(rlp.Serializable):
 
 class BlockHeaderWithoutNonce(rlp.Serializable):
     fields = [
-        (field, sedes) for field, sedes in BlockHeader._meta.fields
+        (field, sedes) for field, sedes in BlockHeader._meta.fields if field not in ["nonce"]
     ]
 
 
