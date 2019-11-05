@@ -1418,15 +1418,12 @@ impl ConsensusNewBlockHandler {
     /// This function is only invoked from recover_graph_from_db with
     /// header_only being false.
     pub fn construct_pivot_state(&self, inner: &mut ConsensusGraphInner) {
-        debug!("enter construct_pivot_state");
         if inner.pivot_chain.len() < DEFERRED_STATE_EPOCH_COUNT as usize {
-            debug!("return 1: pivot_chain={:?}", inner.pivot_chain);
             return;
         }
         // recover `EpochExecutionCommitments` from
         // `execution_info_cache` or recompute the state if it is not exist in
         // `execution_info_cache`
-        debug!("stable: {}", inner.cur_era_stable_height);
         let stable_pivot_index = inner.cur_era_stable_height - inner.cur_era_genesis_height;
         for pivot_index in stable_pivot_index as usize
             ..inner.pivot_chain.len() - DEFERRED_STATE_EPOCH_COUNT as usize + 1
@@ -1440,13 +1437,11 @@ impl ConsensusNewBlockHandler {
                 pivot_index + DEFERRED_STATE_EPOCH_COUNT as usize;
             // For each execution_info_cache, set epoch_execution_commitments
             // for the state block..
-            debug!("exec_pivot_index: {}", exec_pivot_index);
             if exec_pivot_index < inner.pivot_chain.len()
                 && inner
                     .execution_info_cache
                     .contains_key(&inner.pivot_chain[exec_pivot_index])
             {
-                debug!("enter if");
                 let exec_arena_index = inner.pivot_chain[exec_pivot_index];
                 let exec_info =
                     inner.execution_info_cache.get(&exec_arena_index).unwrap();
@@ -1457,7 +1452,6 @@ impl ConsensusNewBlockHandler {
                     exec_info.original_deferred_logs_bloom_hash,
                 );
             } else {
-                debug!("enter else");
                 let reward_execution_info =
                     self.executor.get_reward_execution_info(inner, arena_index);
                 let epoch_block_hashes =

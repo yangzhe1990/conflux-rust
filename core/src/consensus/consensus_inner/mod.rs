@@ -1899,7 +1899,6 @@ impl ConsensusGraphInner {
                 pivot_len - DEFERRED_STATE_EPOCH_COUNT
             };
         while best_state_pivot_index > 0 {
-            debug!("Try pivot index {}", best_state_pivot_index);
             if self.data_man.epoch_executed(
                 &self.arena[self.pivot_chain[best_state_pivot_index as usize]]
                     .hash,
