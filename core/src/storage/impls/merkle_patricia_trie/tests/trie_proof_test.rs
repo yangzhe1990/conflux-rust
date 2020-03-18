@@ -65,8 +65,9 @@ fn test_proofs() {
     let leaf1 = TrieProofNode::new(
         Default::default(),
         Some(Box::new(value1)),
+        // FIXME: no start nibble.
         (&[0x20u8][..]).into(),
-        /* path_without_first_nibble = */ false,
+        /* path_without_first_nibble = */ true,
     );
 
     let leaf2 = TrieProofNode::new(
@@ -83,8 +84,9 @@ fn test_proofs() {
         TrieProofNode::new(
             children.into(),
             None,
+            // FIXME: no start nibble.
             (&[0x00u8, 0x00u8][..]).into(),
-            /* path_without_first_nibble = */ false,
+            /* path_without_first_nibble = */ true,
         )
     };
 
