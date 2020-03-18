@@ -10,16 +10,14 @@ use std::cmp::min;
 pub type KeyPart<'a> = &'a [u8];
 
 pub enum WalkStop<'key, ChildIdType> {
-    // path matching fails at some point. Want the new path_steps,
-    // path_end_mask, ..., etc Basically, a new node should be created to
-    // replace the current node from parent children table;
-    // modify this node or create a new node to insert as children of new
-    // node, (update path) then
-    // the child that should be followed is nil at the new node.
-    // if put single version, this node changes, this node replaced, parent
-    // update child and merkle. Before merkle update, this node must be saved
-    // in mem or into disk db (not that expensive). if get / delete (not
-    // found)
+    // Path matching fails on the compressed path.
+    //
+    // if put, a new node should be created to replace the current node from
+    // parent children table; modify this node or create a new node to
+    // insert as children of new node, (update path) then the child that
+    // should be followed is nil at the new node.
+    //
+    // if get / delete (not found)
     PathDiverted {
         /// Key may terminate on the path.
         key_child_index: Option<u8>,
@@ -43,11 +41,12 @@ pub enum WalkStop<'key, ChildIdType> {
 
     // To descent, however child doesn't exists:
     // to modify this node or create a new node to replace this node (update
-    // child) Then create a new node for remaining key_part (we don't care
-    // about begin_mask). if put single version, this node changes, parent
-    // update merkle. if get / delete (not found)
+    // child) Then create a new node for remaining key_part. if put single
+    // version, this node changes, parent update merkle.
+    //
+    // if get / delete (not found)
     ChildNotFound {
-        key_remaining: KeyPart<'key>,
+        key_remaining: CompressedPathRef<'key>,
         child_index: u8,
     },
 }
@@ -115,15 +114,17 @@ pub(super) fn walk<
     key: KeyPart<'key>, path: &dyn CompressedPathTrait, node: &'node Node,
 ) -> WalkStop<'key, Node::ChildIdType> {
     let path_slice = path.path_slice();
-    let path_end_mask = path.end_mask();
+    let path_mask = path.path_mask();
+    let matched_path_begin_mask = CompressedPathRaw::second_nibble(path_mask);
+    let mut unmatched_path_mask =
+        CompressedPathRaw::clear_second_nibble(path_mask);
 
     // Compare bytes till the last full byte. The first byte is always
     // included because even if it's the second-half, it must be
     // already matched before entering this TrieNode.
     let memcmp_len = min(
         path_slice.len()
-            - ((path_end_mask != CompressedPathRaw::HAS_SECOND_NIBBLE)
-                as usize),
+            - (CompressedPathRaw::no_second_nibble(path_mask) as usize),
         key.len(),
     );
 
@@ -143,7 +144,8 @@ pub(super) fn walk<
                     // "First half" matched
                     matched_path = CompressedPathRaw::new_and_apply_mask(
                         &path_slice[0..i + 1],
-                        CompressedPathRaw::second_nibble_mask(),
+                        matched_path_begin_mask
+                            | CompressedPathRaw::second_nibble_mask(),
                     );
 
                     key_child_index = CompressedPathRaw::second_nibble(key[i]);
@@ -152,9 +154,14 @@ pub(super) fn walk<
                         CompressedPathRaw::second_nibble(path_slice[i]);
                     unmatched_path_remaining = &path_slice[i + 1..];
                 } else {
-                    matched_path = CompressedPathRaw::new(&path_slice[0..i], 0);
+                    matched_path = CompressedPathRaw::new(
+                        &path_slice[0..i],
+                        matched_path_begin_mask,
+                    );
                     key_child_index = CompressedPathRaw::first_nibble(key[i]);
                     key_remaining = &key[i..];
+                    unmatched_path_mask |=
+                        CompressedPathRaw::first_nibble_mask();
                     unmatched_child_index =
                         CompressedPathRaw::first_nibble(path_slice[i]);
                     unmatched_path_remaining = &path_slice[i..];
@@ -166,7 +173,7 @@ pub(super) fn walk<
                     unmatched_child_index,
                     unmatched_path_remaining: CompressedPathRaw::new(
                         unmatched_path_remaining,
-                        path_end_mask,
+                        unmatched_path_mask,
                     ),
                 };
             }
@@ -181,20 +188,20 @@ pub(super) fn walk<
             } else {
                 return WalkStop::PathDiverted {
                     // key_remaining is empty, and key_child_index doesn't
-                    // make sense, but we need to
-                    // mark it.
+                    // make sense, but we need to mark it.
                     key_remaining: Default::default(),
                     key_child_index: None,
                     matched_path: CompressedPathRaw::new(
                         &path_slice[0..memcmp_len],
-                        0,
+                        matched_path_begin_mask,
                     ),
                     unmatched_child_index: CompressedPathRaw::first_nibble(
                         path_slice[memcmp_len],
                     ),
                     unmatched_path_remaining: CompressedPathRaw::new(
                         &path_slice[memcmp_len..],
-                        path_end_mask,
+                        unmatched_path_mask
+                            | CompressedPathRaw::first_nibble_mask(),
                     ),
                 };
             }
@@ -204,15 +211,17 @@ pub(super) fn walk<
     } else {
         // Key is not fully consumed.
 
-        // When path is fully consumed, check if child exists under
-        // child_index.
+        // When path is fully consumed, check if child exists under child_index.
         let child_index;
         let key_remaining;
 
         if path_slice.len() == memcmp_len {
             // Compressed path is fully consumed. Descend into one child.
             child_index = CompressedPathRaw::first_nibble(key[memcmp_len]);
-            key_remaining = &key[memcmp_len..];
+            key_remaining = CompressedPathRef::new(
+                &key[memcmp_len..],
+                CompressedPathRaw::first_nibble_mask(),
+            );
         } else {
             // One half byte remaining to match with path. Consume it in the
             // key.
@@ -231,20 +240,24 @@ pub(super) fn walk<
                         key_remaining: &key[memcmp_len..],
                         matched_path: CompressedPathRaw::new(
                             &path_slice[0..memcmp_len],
-                            0,
+                            matched_path_begin_mask,
                         ),
                         unmatched_child_index: CompressedPathRaw::first_nibble(
                             path_slice[memcmp_len],
                         ),
                         unmatched_path_remaining: CompressedPathRaw::new(
                             &path_slice[memcmp_len..],
-                            path_end_mask,
+                            unmatched_path_mask
+                                | CompressedPathRaw::first_nibble_mask(),
                         ),
                     };
                 }
             } else {
                 child_index = CompressedPathRaw::second_nibble(key[memcmp_len]);
-                key_remaining = &key[memcmp_len + 1..];
+                key_remaining = CompressedPathRef::new(
+                    &key[memcmp_len + 1..],
+                    CompressedPathRaw::NO_MISSING_NIBBLE,
+                );
             }
         }
 
@@ -257,7 +270,7 @@ pub(super) fn walk<
             }
             Option::Some(child_node) => {
                 return WalkStop::Descent {
-                    key_remaining,
+                    key_remaining: key_remaining.path_slice,
                     child_index,
                     child_node,
                 };

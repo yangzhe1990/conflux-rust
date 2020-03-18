@@ -253,10 +253,9 @@ impl CowNodeRef {
     {
         if self.owned {
             if guarded_trie_node.as_ref().as_ref().has_value() {
-                assert_eq!(
-                    key_prefix.end_mask(),
-                    CompressedPathRaw::HAS_SECOND_NIBBLE
-                );
+                assert!(CompressedPathRaw::has_second_nibble(
+                    key_prefix.path_mask()
+                ));
                 values.push((
                     key_prefix.path_slice().to_vec(),
                     guarded_trie_node.as_ref().as_ref().value_clone().unwrap(),
@@ -398,6 +397,10 @@ impl CowNodeRef {
         parent_node_path_steps: u16,
     ) -> Result<MerkleHash>
     {
+        println!(
+            "get_or_compute_merkle, parent_node_path_steps: {}",
+            parent_node_path_steps
+        );
         if self.owned {
             let trie_node = unsafe {
                 trie.get_node_memory_manager().dirty_node_as_mut_unchecked(
@@ -405,10 +408,14 @@ impl CowNodeRef {
                     &mut self.node_ref,
                 )
             };
-            // node_path_steps = 2 * parent_node_path_size_in_bytes +
-            // compressed_path_path_steps.
-            let node_path_steps = ((parent_node_path_steps + 1) & (!1))
+            let node_path_steps = parent_node_path_steps
+                + 1
                 + trie_node.compressed_path_ref().path_steps();
+            println!(
+                "get_or_compute_merkle, node_path_steps: {}, compressed_path: {:?}",
+                node_path_steps,
+                trie_node.compressed_path_ref(),
+            );
             let children_merkles = self.get_or_compute_children_merkles(
                 trie,
                 owned_node_set,
@@ -589,10 +596,9 @@ impl CowNodeRef {
     ) -> Result<()>
     {
         if guarded_trie_node.as_ref().as_ref().has_value() {
-            assert_eq!(
-                key_prefix.end_mask(),
-                CompressedPathRaw::HAS_SECOND_NIBBLE
-            );
+            assert!(CompressedPathRaw::has_second_nibble(
+                key_prefix.path_mask()
+            ));
             values.push((
                 key_prefix.path_slice().to_vec(),
                 guarded_trie_node.as_ref().as_ref().value_clone().unwrap(),
@@ -717,10 +723,7 @@ impl CowNodeRef {
             CowNodeRef::new(child_node_ref, owned_node_set, self.mpt_id);
         let compressed_path_ref =
             trie_node.as_ref().as_ref().compressed_path_ref();
-        let path_prefix = CompressedPathRaw::new(
-            compressed_path_ref.path_slice(),
-            compressed_path_ref.end_mask(),
-        );
+        let path_prefix = CompressedPathRaw::from(compressed_path_ref);
         // FIXME: Here we may hold the lock and get the trie node for the child
         // FIXME: node. think about it.
         drop(trie_node);

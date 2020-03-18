@@ -122,7 +122,7 @@ impl<Mpt: GetReadMpt, PathNode: PathNodeTrait<Mpt>> MptCursor<Mpt, PathNode> {
                 key_remaining,
             } => Ok(CursorPopNodesTerminal::Descent {
                 child_index,
-                key_remaining,
+                key_remaining: key_remaining.path_slice,
             }),
             WalkStop::PathDiverted {
                 key_child_index,
@@ -143,7 +143,7 @@ impl<Mpt: GetReadMpt, PathNode: PathNodeTrait<Mpt>> MptCursor<Mpt, PathNode> {
                 // The beginning of compressed_path is always aligned at full
                 // byte.
                 let aligned_path_start_offset = started_steps / 2;
-                if aligned_path_start_offset * 2
+                if started_steps
                     + last_trie_node.compressed_path_ref().path_steps()
                     == match_stopped_steps
                 {
@@ -163,35 +163,33 @@ impl<Mpt: GetReadMpt, PathNode: PathNodeTrait<Mpt>> MptCursor<Mpt, PathNode> {
                             WalkStop::path_diverted_uninitialized(),
                         ))
                     } else {
+                        let original_compressed_path_ref =
+                            last_trie_node.compressed_path_ref();
+                        let original_compressed_path_ref_mask =
+                            original_compressed_path_ref.path_mask();
                         let actual_matched_path = CompressedPathRaw::new(
                             &matched_path.path_slice()
                                 [aligned_path_start_offset as usize..],
-                            matched_path.end_mask(),
+                            CompressedPathRaw::set_second_nibble(
+                                matched_path.path_mask(),
+                                CompressedPathRaw::second_nibble(
+                                    original_compressed_path_ref_mask,
+                                ),
+                            ),
                         );
-                        let original_compressed_path_ref =
-                            last_trie_node.compressed_path_ref();
                         let actual_unmatched_path_remaining =
-                            if original_compressed_path_ref.end_mask()
-                                != CompressedPathRaw::HAS_SECOND_NIBBLE
-                            {
-                                CompressedPathRaw::new_and_apply_mask(
-                                    &unmatched_path_remaining.path_slice()[0
-                                        ..(original_compressed_path_ref
-                                            .path_size()
-                                            - actual_matched_path.path_size())
-                                            as usize],
-                                    original_compressed_path_ref.end_mask(),
-                                )
-                            } else {
-                                CompressedPathRaw::new(
-                                    &unmatched_path_remaining.path_slice()[0
-                                        ..(original_compressed_path_ref
-                                            .path_size()
-                                            - actual_matched_path.path_size())
-                                            as usize],
-                                    original_compressed_path_ref.end_mask(),
-                                )
-                            };
+                            CompressedPathRaw::new_and_apply_mask(
+                                &unmatched_path_remaining.path_slice()[0
+                                    ..(original_compressed_path_ref.path_size()
+                                        - actual_matched_path.path_size())
+                                        as usize],
+                                CompressedPathRaw::set_second_nibble(
+                                    original_compressed_path_ref_mask,
+                                    CompressedPathRaw::second_nibble(
+                                        unmatched_path_remaining.path_mask(),
+                                    ),
+                                ),
+                            );
 
                         Ok(CursorPopNodesTerminal::PathDiverted(
                             WalkStop::PathDiverted {
@@ -268,7 +266,7 @@ impl<Mpt: GetReadMpt, PathNode: PathNodeTrait<Mpt>> MptCursor<Mpt, PathNode> {
                         } => {
                             self.path_nodes.push(new_node);
                             child_index = *new_child_index;
-                            key_remaining = *new_key_remaining;
+                            key_remaining = new_key_remaining.path_slice;
                             continue;
                         }
                         WalkStop::PathDiverted { .. } => {
