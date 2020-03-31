@@ -87,13 +87,13 @@ fn compute_path_merkle(
             // Trie node without a compressed path which starts with the second
             // half nibble always has the first half nibble stored
             // in its compressed_path to help with trie access.
-            // In this case the path steps == 1 and we shouldn't include the
-            // compressed path.
+            // We shouldn't include the compressed path when there isn't
+            // anything.
             buffer.extend_from_slice(compressed_path.path_slice());
-        }
-        if without_first_nibble && compressed_path.path_steps() > 1 {
-            // Clear out the first nibble.
-            buffer[1] = CompressedPathRaw::second_nibble(buffer[1]);
+            if without_first_nibble {
+                // Clear out the first nibble.
+                buffer[1] = CompressedPathRaw::second_nibble(buffer[1]);
+            }
         }
         buffer.extend_from_slice(node_merkle.as_bytes());
 

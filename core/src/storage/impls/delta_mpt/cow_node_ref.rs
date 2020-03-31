@@ -717,10 +717,7 @@ impl CowNodeRef {
             CowNodeRef::new(child_node_ref, owned_node_set, self.mpt_id);
         let compressed_path_ref =
             trie_node.as_ref().as_ref().compressed_path_ref();
-        let path_prefix = CompressedPathRaw::new(
-            compressed_path_ref.path_slice(),
-            compressed_path_ref.end_mask(),
-        );
+        let path_prefix = CompressedPathRaw::from(compressed_path_ref);
         // FIXME: Here we may hold the lock and get the trie node for the child
         // FIXME: node. think about it.
         drop(trie_node);
