@@ -66,6 +66,15 @@ fn compute_path_merkle(
     node_merkle: &MerkleHash,
 ) -> MerkleHash
 {
+    assert_eq!(
+        without_first_nibble,
+        CompressedPathRaw::second_nibble(compressed_path.path_mask())
+            != CompressedPathRaw::NO_MISSING_NIBBLE,
+        "without_first_nibble: {}, path_mask: {}",
+        without_first_nibble,
+        compressed_path.path_mask(),
+    );
+
     if compressed_path.path_slice().len() != 0 {
         let mut buffer = Vec::with_capacity(
             1 + compressed_path.path_size() as usize
@@ -77,13 +86,11 @@ fn compute_path_merkle(
         // does not belong to the compressed path;
         // least significant 6 bits = number of nibbles in the compressed path %
         // 64.
-        // The implementation uses 63 because path_steps doesn't minus 1 for
-        // the non-existing first nibble.
         let path_info_byte = 128u8
-            + 63u8 * (without_first_nibble as u8)
+            + 64u8 * (without_first_nibble as u8)
             + (compressed_path.path_steps() as u8) % 64u8;
         buffer.push(path_info_byte);
-        if compressed_path.path_steps() > (without_first_nibble as u16) {
+        if compressed_path.path_steps() > 0 {
             // Trie node without a compressed path which starts with the second
             // half nibble always has the first half nibble stored
             // in its compressed_path to help with trie access.
