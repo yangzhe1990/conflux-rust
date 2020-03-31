@@ -15,7 +15,7 @@ fn test_rlp() {
         Some(Box::new([0x03, 0x04, 0x05])),
         CompressedPathRaw::new(
             &[0x00, 0x01, 0x02],
-            CompressedPathRaw::second_nibble_mask(),
+            CompressedPathRaw::first_nibble_mask(),
         ),
         /* path_without_first_nibble = */ true,
     );
@@ -65,8 +65,11 @@ fn test_proofs() {
     let leaf1 = TrieProofNode::new(
         Default::default(),
         Some(Box::new(value1)),
-        (&[0x20u8][..]).into(),
-        /* path_without_first_nibble = */ false,
+        CompressedPathRaw::new(
+            &[0x20u8][..],
+            CompressedPathRaw::first_nibble_mask(),
+        ),
+        /* path_without_first_nibble = */ true,
     );
 
     let leaf2 = TrieProofNode::new(
@@ -83,8 +86,11 @@ fn test_proofs() {
         TrieProofNode::new(
             children.into(),
             None,
-            (&[0x00u8, 0x00u8][..]).into(),
-            /* path_without_first_nibble = */ false,
+            CompressedPathRaw::new(
+                &[0x00u8, 0x00u8][..],
+                CompressedPathRaw::first_nibble_mask(),
+            ),
+            /* path_without_first_nibble = */ true,
         )
     };
 
