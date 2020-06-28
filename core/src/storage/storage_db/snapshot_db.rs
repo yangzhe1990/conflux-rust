@@ -69,13 +69,26 @@ pub trait OpenSnapshotMptTrait<'db> {
     ) -> Result<Self::SnapshotDbBorrowSharedType>;
 }
 
+pub trait SnapshotKvIterTrait<'db> {
+    type SnapshotKvIterType: 'db;
+
+    fn snapshot_kv_iterator(&'db self) -> Result<Self::SnapshotKvIterType>;
+}
+
 pub trait SnapshotDbTrait:
     KeyValueDbTraitOwnedRead
     + KeyValueDbTraitRead
     + KeyValueDbTraitSingleWriter
+    + for<'db> SnapshotKvIterTrait<'db>
     + for<'db> OpenSnapshotMptTrait<'db>
     + Sized
 {
+    type SnapshotKvdbIterTraitTag;
+
+    type SnapshotKvdbIterType: WrappedTrait<
+        dyn KvdbIterTrait<MptKeyValue, [u8], Self::SnapshotKvdbIterTraitTag>,
+    >;
+
     fn get_null_snapshot() -> Self;
 
     /// Store already_open_snapshots and open_semaphore to update
@@ -103,6 +116,19 @@ pub trait SnapshotDbTrait:
     fn start_transaction(&mut self) -> Result<()>;
 
     fn commit_transaction(&mut self) -> Result<()>;
+
+    fn snapshot_kv_iterator_n(
+        &self,
+    ) -> Result<
+        Wrap<
+            Self::SnapshotKvdbIterType,
+            dyn KvdbIterTrait<
+                MptKeyValue,
+                [u8],
+                Self::SnapshotKvdbIterTraitTag,
+            >,
+        >,
+    >;
 }
 
 impl Encodable for SnapshotInfo {
@@ -137,8 +163,11 @@ use super::{
 use crate::storage::{
     impls::storage_db::snapshot_db_manager_sqlite::AlreadyOpenSnapshots,
     storage_db::{
-        KeyValueDbTraitRead, SnapshotMptTraitRead, SnapshotMptTraitRw,
+        KeyValueDbTraitRead, KvdbIterTrait, SnapshotMptTraitRead,
+        SnapshotMptTraitRw,
     },
+    utils::wrap::{Wrap, WrappedTrait},
+    MptKeyValue,
 };
 use derivative::Derivative;
 use primitives::{EpochId, MerkleHash, MERKLE_NULL_NODE, NULL_EPOCH};
