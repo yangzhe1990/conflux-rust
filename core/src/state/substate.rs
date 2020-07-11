@@ -6,11 +6,7 @@ use super::CleanupMode;
 use crate::evm::{CleanDustMode, Spec};
 use cfx_types::Address;
 use primitives::LogEntry;
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Default)]
 pub struct CallStackInfo {
@@ -27,9 +23,10 @@ impl CallStackInfo {
     fn pop(&mut self) -> Option<Address> {
         let maybe_address = self.call_stack_recipient_addresses.pop();
         if let Some(address) = &maybe_address {
-            let poped_address_cnt = self.address_counter.get_mut(address).expect(
-                "The lookup table should consistent with call stack",
-            );
+            let poped_address_cnt = self
+                .address_counter
+                .get_mut(address)
+                .expect("The lookup table should consistent with call stack");
             *poped_address_cnt -= 1;
             if *poped_address_cnt == 0 {
                 self.address_counter.remove(address);
@@ -50,8 +47,9 @@ impl CallStackInfo {
         let current = self
             .last()
             .expect("The contract stack should not empty during execution");
-        let maybe_caller =
-            self.call_stack_recipient_addresses.iter().rev().nth(1);
+        let maybe_caller = self
+            .call_stack_recipient_addresses
+            .get(self.call_stack_recipient_addresses.len() - 2);
         if let Some(caller) = maybe_caller {
             if *current == *caller {
                 // Recursive call is not regarded as reentrancy.
@@ -96,27 +94,29 @@ pub struct Substate {
     /// Passed from caller to callee when calling happens
     /// and passed back to caller when callee returns,
     /// through mem::swap.
-    pub contracts_in_callstack: Rc<RefCell<CallStackInfo>>,
+    pub contracts_in_callstack: CallStackInfo,
 }
 
 impl Substate {
     /// Creates new substate.
     pub fn new() -> Self { Substate::default() }
 
-    pub fn with_call_stack(callstack: Rc<RefCell<CallStackInfo>>) -> Self {
+    pub fn with_call_stack(callstack: CallStackInfo) -> Self {
         let mut substate = Substate::default();
         substate.contracts_in_callstack = callstack;
         substate
     }
 
-    pub fn push_callstack(&self, contract: Address) {
-        self.contracts_in_callstack.borrow_mut().push(contract);
+    pub fn take_contracts_in_callstack(&mut self) -> CallStackInfo {
+        std::mem::take(&mut self.contracts_in_callstack)
+    }
+
+    pub fn push_callstack(&mut self, contract: Address) {
+        self.contracts_in_callstack.push(contract);
     }
 
     #[inline]
-    pub fn pop_callstack(&self) {
-        self.contracts_in_callstack.borrow_mut().pop();
-    }
+    pub fn pop_callstack(&mut self) { self.contracts_in_callstack.pop(); }
 
     /// Merge secondary substate `s` into self, accruing each element
     /// correspondingly.
@@ -152,7 +152,7 @@ impl Substate {
 
 #[cfg(test)]
 mod tests {
-    use super::{Substate, CallStackInfo};
+    use super::{CallStackInfo, Substate};
     use cfx_types::Address;
     use primitives::LogEntry;
 
@@ -193,54 +193,52 @@ mod tests {
         assert_eq!(sub_state.suicides.len(), 1);
     }
 
-    fn get_test_address(n: u8) -> Address{
-        Address::from([n; 20])
-    }
+    fn get_test_address(n: u8) -> Address { Address::from([n; 20]) }
 
     #[test]
     fn test_callstack_info() {
         let mut call_stack = CallStackInfo::default();
         call_stack.push(get_test_address(1));
         call_stack.push(get_test_address(2));
-        assert_eq!(call_stack.pop(),Some(get_test_address(2)));
-        assert_eq!(call_stack.contains_key(&get_test_address(2)),false);
+        assert_eq!(call_stack.pop(), Some(get_test_address(2)));
+        assert_eq!(call_stack.contains_key(&get_test_address(2)), false);
 
         call_stack.push(get_test_address(3));
         call_stack.push(get_test_address(4));
         call_stack.push(get_test_address(3));
-        assert_eq!(call_stack.last().unwrap().clone(),get_test_address(3));
+        assert_eq!(call_stack.last().unwrap().clone(), get_test_address(3));
 
-        assert_eq!(call_stack.pop(),Some(get_test_address(3)));
-        assert_eq!(call_stack.contains_key(&get_test_address(3)),true);
-        assert_eq!(call_stack.last().unwrap().clone(),get_test_address(4));
+        assert_eq!(call_stack.pop(), Some(get_test_address(3)));
+        assert_eq!(call_stack.contains_key(&get_test_address(3)), true);
+        assert_eq!(call_stack.last().unwrap().clone(), get_test_address(4));
 
-        assert_eq!(call_stack.pop(),Some(get_test_address(4)));
-        assert_eq!(call_stack.contains_key(&get_test_address(4)),false);
-        assert_eq!(call_stack.last().unwrap().clone(),get_test_address(3));
+        assert_eq!(call_stack.pop(), Some(get_test_address(4)));
+        assert_eq!(call_stack.contains_key(&get_test_address(4)), false);
+        assert_eq!(call_stack.last().unwrap().clone(), get_test_address(3));
 
-        assert_eq!(call_stack.pop(),Some(get_test_address(3)));
-        assert_eq!(call_stack.contains_key(&get_test_address(3)),false);
-        assert_eq!(call_stack.last().unwrap().clone(),get_test_address(1));
+        assert_eq!(call_stack.pop(), Some(get_test_address(3)));
+        assert_eq!(call_stack.contains_key(&get_test_address(3)), false);
+        assert_eq!(call_stack.last().unwrap().clone(), get_test_address(1));
 
         call_stack.push(get_test_address(3));
         call_stack.push(get_test_address(4));
         call_stack.push(get_test_address(3));
-        assert_eq!(call_stack.last().unwrap().clone(),get_test_address(3));
+        assert_eq!(call_stack.last().unwrap().clone(), get_test_address(3));
 
-        assert_eq!(call_stack.pop(),Some(get_test_address(3)));
-        assert_eq!(call_stack.contains_key(&get_test_address(3)),true);
-        assert_eq!(call_stack.last().unwrap().clone(),get_test_address(4));
+        assert_eq!(call_stack.pop(), Some(get_test_address(3)));
+        assert_eq!(call_stack.contains_key(&get_test_address(3)), true);
+        assert_eq!(call_stack.last().unwrap().clone(), get_test_address(4));
 
-        assert_eq!(call_stack.pop(),Some(get_test_address(4)));
-        assert_eq!(call_stack.contains_key(&get_test_address(4)),false);
-        assert_eq!(call_stack.last().unwrap().clone(),get_test_address(3));
+        assert_eq!(call_stack.pop(), Some(get_test_address(4)));
+        assert_eq!(call_stack.contains_key(&get_test_address(4)), false);
+        assert_eq!(call_stack.last().unwrap().clone(), get_test_address(3));
 
-        assert_eq!(call_stack.pop(),Some(get_test_address(3)));
-        assert_eq!(call_stack.contains_key(&get_test_address(3)),false);
-        assert_eq!(call_stack.last().unwrap().clone(),get_test_address(1));
+        assert_eq!(call_stack.pop(), Some(get_test_address(3)));
+        assert_eq!(call_stack.contains_key(&get_test_address(3)), false);
+        assert_eq!(call_stack.last().unwrap().clone(), get_test_address(1));
 
-        assert_eq!(call_stack.pop(),Some(get_test_address(1)));
-        assert_eq!(call_stack.pop(),None);
-        assert_eq!(call_stack.last(),None);
+        assert_eq!(call_stack.pop(), Some(get_test_address(1)));
+        assert_eq!(call_stack.pop(), None);
+        assert_eq!(call_stack.last(), None);
     }
 }

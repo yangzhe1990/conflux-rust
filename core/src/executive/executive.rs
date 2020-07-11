@@ -30,10 +30,8 @@ use primitives::{
     receipt::StorageChange, transaction::Action, SignedTransaction,
 };
 use std::{
-    cell::RefCell,
     collections::HashSet,
     convert::{TryFrom, TryInto},
-    rc::Rc,
     sync::Arc,
 };
 
@@ -151,7 +149,7 @@ impl<'a> CallCreateExecutive<'a> {
         spec: &'a Spec, factory: &'a VmFactory, depth: usize,
         stack_depth: usize, parent_static_flag: bool,
         internal_contract_map: &'a InternalContractMap,
-        contracts_in_callstack: Rc<RefCell<CallStackInfo>>,
+        contracts_in_callstack: CallStackInfo,
     ) -> Self
     {
         trace!(
@@ -220,7 +218,7 @@ impl<'a> CallCreateExecutive<'a> {
         spec: &'a Spec, factory: &'a VmFactory, depth: usize,
         stack_depth: usize, static_flag: bool,
         internal_contract_map: &'a InternalContractMap,
-        contracts_in_callstack: Rc<RefCell<CallStackInfo>>,
+        contracts_in_callstack: CallStackInfo,
     ) -> Self
     {
         trace!(
@@ -349,6 +347,9 @@ impl<'a> CallCreateExecutive<'a> {
         sender: &Address, storage_limit: &U256, is_bottom_ex: bool,
     ) -> vm::Result<FinalizationResult>
     {
+        // FIXME: better as a method.
+        substate.contracts_in_callstack =
+            unconfirmed_substate.take_contracts_in_callstack();
         match result {
             Err(vm::Error::OutOfGas)
             | Err(vm::Error::BadJumpDestination { .. })
@@ -646,7 +647,6 @@ impl<'a> CallCreateExecutive<'a> {
                         )?;
                         if unconfirmed_substate
                             .contracts_in_callstack
-                            .borrow()
                             .is_reentrancy_at_this_level()
                         {
                             state.discard_checkpoint();
@@ -1071,7 +1071,7 @@ impl<'a> CallCreateExecutive<'a> {
                 Some((_, _, Err(TrapError::Call(subparams, mut resume)))) => {
                     let substate = resume.unconfirmed_substate().unwrap();
                     substate.push_callstack(subparams.address.clone());
-                    let contracts_in_callstack = substate.contracts_in_callstack.clone();
+                    let contracts_in_callstack = substate.take_contracts_in_callstack();
 
                     let sub_exec = CallCreateExecutive::new_call_raw(
                         subparams,
@@ -1093,7 +1093,7 @@ impl<'a> CallCreateExecutive<'a> {
                 Some((_, _, Err(TrapError::Create(subparams, address, mut resume)))) => {
                     let substate = resume.unconfirmed_substate().unwrap();
                     substate.push_callstack(subparams.address.clone());
-                    let contracts_in_callstack = substate.contracts_in_callstack.clone();
+                    let contracts_in_callstack = substate.take_contracts_in_callstack();
 
                     let sub_exec = CallCreateExecutive::new_create_raw(
                         subparams,
@@ -1208,7 +1208,7 @@ impl<'a> Executive<'a> {
             stack_depth,
             self.static_flag,
             self.internal_contract_map,
-            substate.contracts_in_callstack.clone(),
+            substate.take_contracts_in_callstack(),
         )
         .consume(self.state, substate);
 
@@ -1239,7 +1239,7 @@ impl<'a> Executive<'a> {
             stack_depth,
             self.static_flag,
             self.internal_contract_map,
-            substate.contracts_in_callstack.clone(),
+            substate.take_contracts_in_callstack(),
         )
         .consume(self.state, substate);
 
