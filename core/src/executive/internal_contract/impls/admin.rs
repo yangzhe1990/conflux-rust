@@ -94,9 +94,13 @@ pub fn suicide(
             &sponsor_balance_for_collateral,
         )?;
     }
-    if refund_address == contract_address {
-        // This is the corner case that the sponsor of the contract is itself.
+    if !refund_address.is_valid_address() || refund_address == contract_address
+    {
+        // This is the corner case that the sponsor of the contract is itself,
+        // or the sponsor is invalid.
         // When destroying, the balance will be burnt.
+        // The case when sponsor is invalid can never happen but we add a check
+        // anyways as defensive design.
         state.sub_balance(
             contract_address,
             &balance,
