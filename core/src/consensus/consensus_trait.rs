@@ -17,6 +17,17 @@ use primitives::{
 };
 use std::{any::Any, sync::Arc};
 
+pub struct MaybeExecutedTxExtraInfo {
+    pub receipt: Receipt,
+    pub prior_gas_used: U256,
+    pub tx_exec_error_msg: Option<String>,
+}
+
+pub struct TransactionInfo {
+    pub tx_index: TransactionIndex,
+    pub maybe_executed_extra_info: Option<MaybeExecutedTxExtraInfo>,
+}
+
 /// FIXME: redesign this trait
 pub trait ConsensusGraphTrait: Send + Sync {
     type ConsensusConfig;
@@ -71,10 +82,9 @@ pub trait ConsensusGraphTrait: Send + Sync {
         &self, epoch_number: EpochNumber,
     ) -> Result<Vec<H256>, String>;
 
-    // FIXME: return type.
     fn get_transaction_info_by_hash(
         &self, hash: &H256,
-    ) -> Option<(SignedTransaction, TransactionIndex, Option<(Receipt, U256)>)>;
+    ) -> Option<(SignedTransaction, TransactionInfo)>;
 
     fn get_block_epoch_number(&self, hash: &H256) -> Option<u64>;
 
