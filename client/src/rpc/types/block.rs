@@ -168,6 +168,13 @@ impl Block {
                                         index: idx,
                                     };
                                     let tx_exec_error_msg = &execution_result.block_receipts.tx_execution_error_messages[idx];
+
+                                    let epoch_number = consensus_inner
+                                        .get_block_epoch_number(&tx_index.block_hash);
+
+                                    let maybe_state_root = data_man
+                                        .get_epoch_executed_state_root(&b.hash());
+
                                     Transaction::from_signed(
                                         tx,
                                         Some(PackedOrExecuted::Executed(Receipt::new(
@@ -175,10 +182,11 @@ impl Block {
                                             receipt.clone(),
                                             tx_index,
                                             prior_gas_used,
-                                            // TODO: set these fields below.
                                             /* maybe_epoch_number = */
-                                            None,
-                                            /* maybe_state_root = */ None,
+                                            epoch_number,
+                                            /* maybe_state_root = */
+                                            maybe_state_root,
+
                                            if tx_exec_error_msg.is_empty() {
                                                 None
                                             } else {
