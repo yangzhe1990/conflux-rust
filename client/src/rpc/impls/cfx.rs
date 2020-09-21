@@ -465,7 +465,7 @@ impl RpcImpl {
                     let maybe_state_root = self
                         .consensus
                         .get_data_manager()
-                        .get_epoch_executed_state_root(&tx_index.block_hash);
+                        .get_executed_state_root(&tx_index.block_hash);
 
                     let receipt = RpcReceipt::new(
                         tx.clone(),
