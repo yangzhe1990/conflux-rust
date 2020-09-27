@@ -3,6 +3,68 @@
 // See http://www.gnu.org/licenses/
 
 #[cfg(test)]
+#[test]
+pub fn test_code_size()
+{
+    fn dir_size(path: impl Into<PathBuf>) -> io::Result<u64> {
+        fn dir_size(mut dir: fs::ReadDir) -> io::Result<u64> {
+            dir.try_fold(0, |acc, file| {
+                let file = file?;
+                let size = match file.metadata()? {
+                    data if data.is_dir() => dir_size(fs::read_dir(file.path())?)?,
+                    data => data.len(),
+                };
+                Ok(acc + size)
+            })
+        }
+
+        dir_size(fs::read_dir(path.into())?)
+    }
+
+    const PATH_STR: &'static str = "./tmp/";
+    let path = Path::new(&PATH_STR);
+    let already_open_snapshots: AlreadyOpenSnapshots<SnapshotDbSqlite> = Default::default();
+    let open_snapshot_semaphore: Arc<Semaphore> = Arc::new(Semaphore::new(
+        1 as usize,
+    ));
+    let mut snapshot_db_sqlite = SnapshotDbSqlite::create(
+        path,
+        &already_open_snapshots,
+        &open_snapshot_semaphore,
+    ).unwrap();
+    
+    println!("init {}", dir_size(&PATH_STR).unwrap());
+
+    const LEN: usize = 10 * 1024;
+    const ROUNDS: u32 = 10;
+    const KV_PER_ROUND: u32 = 10000;
+
+    const CODE_HASH: H256 = KECCAK_EMPTY;
+
+    for _i in 0..ROUNDS {
+        for _j in 0..KV_PER_ROUND {
+            let address = Address::random();
+
+            let key = StorageKey::new_code_key(&address, &CODE_HASH).to_key_bytes();
+
+            let code = random_string(LEN).as_bytes().to_vec();
+            let code_info = CodeInfo {
+                code: Arc::new(code),
+                owner: address,
+            };
+            let value = ::rlp::encode(&code_info).into_boxed_slice();
+
+            snapshot_db_sqlite.put(&key, &value).expect("insert kv");
+        }
+        println!("round {}: {}", _i, dir_size(&PATH_STR).unwrap());
+    }
+
+    drop(snapshot_db_sqlite);
+
+    fs::remove_dir_all(path).expect("remove dir");
+}
+
+#[cfg(test)]
 pub fn open_snapshot_db_for_testing(
     snapshot_path: &Path, readonly: bool,
 ) -> Result<SnapshotDbSqlite> {
@@ -87,9 +149,22 @@ use std::fmt::Debug;
 #[cfg(test)]
 use crate::impls::{
     defaults::DEFAULT_MAX_OPEN_SNAPSHOTS,
-    storage_db::snapshot_db_sqlite::SnapshotDbTrait,
+    storage_db::{
+        snapshot_db_sqlite::SnapshotDbTrait,
+        snapshot_db_manager_sqlite::AlreadyOpenSnapshots,
+    },
 };
 #[cfg(test)]
-use std::{path::Path, sync::Arc};
+use crate::{storage_db::KeyValueDbTraitSingleWriter};
+#[cfg(test)]
+use std::{path::{Path, PathBuf}, sync::Arc, fs, io};
 #[cfg(test)]
 use tokio::sync::Semaphore;
+#[cfg(test)]
+use cfx_types::Address;
+#[cfg(test)]
+use keccak_hash::{KECCAK_EMPTY, H256};
+#[cfg(test)]
+use primitives::{StorageKey, CodeInfo};
+#[cfg(test)]
+use cfxstore::random_string;
