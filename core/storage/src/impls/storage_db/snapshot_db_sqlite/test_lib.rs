@@ -4,14 +4,15 @@
 
 #[cfg(test)]
 #[test]
-pub fn test_code_size()
-{
+pub fn test_db_size() {
     fn dir_size(path: impl Into<PathBuf>) -> io::Result<u64> {
         fn dir_size(mut dir: fs::ReadDir) -> io::Result<u64> {
             dir.try_fold(0, |acc, file| {
                 let file = file?;
                 let size = match file.metadata()? {
-                    data if data.is_dir() => dir_size(fs::read_dir(file.path())?)?,
+                    data if data.is_dir() => {
+                        dir_size(fs::read_dir(file.path())?)?
+                    }
                     data => data.len(),
                 };
                 Ok(acc + size)
@@ -22,46 +23,85 @@ pub fn test_code_size()
     }
 
     const PATH_STR: &'static str = "./tmp/";
-    let path = Path::new(&PATH_STR);
-    let already_open_snapshots: AlreadyOpenSnapshots<SnapshotDbSqlite> = Default::default();
-    let open_snapshot_semaphore: Arc<Semaphore> = Arc::new(Semaphore::new(
-        1 as usize,
-    ));
-    let mut snapshot_db_sqlite = SnapshotDbSqlite::create(
-        path,
-        &already_open_snapshots,
-        &open_snapshot_semaphore,
-    ).unwrap();
-    
-    println!("init {}", dir_size(&PATH_STR).unwrap());
-
-    const LEN: usize = 10 * 1024;
+    let sql_path = PATH_STR.to_string() + "sql/";
+    let kv_keys_per_round = 1000000;
+    let code_keys_per_found = 10000;
+    let exp_params = vec![
+        ("kv", 10, kv_keys_per_round),
+        ("kv", 30, kv_keys_per_round),
+        ("kv", 50, kv_keys_per_round),
+        ("code", 50_000, code_keys_per_found),
+        ("code", 100_000, code_keys_per_found),
+        ("code", 150_000, code_keys_per_found),
+    ];
     const ROUNDS: u32 = 10;
-    const KV_PER_ROUND: u32 = 10000;
 
-    const CODE_HASH: H256 = KECCAK_EMPTY;
+    for exp_params in &exp_params {
+        let (exp_type, data_len, kvs_per_round) = exp_params;
+        println!(
+            "start experiment {} data len {} kvs_per_round {}",
+            exp_type, data_len, kvs_per_round
+        );
+        let already_open_snapshots: AlreadyOpenSnapshots<SnapshotDbSqlite> =
+            Default::default();
+        let open_snapshot_semaphore: Arc<Semaphore> =
+            Arc::new(Semaphore::new(1 as usize));
+        let db = SnapshotDbSqlite::create(
+            Path::new(&sql_path),
+            &already_open_snapshots,
+            &open_snapshot_semaphore,
+        )
+        .unwrap();
+        drop(db);
+        println!("init {}", dir_size(&PATH_STR).unwrap());
+        for _i in 0..ROUNDS {
+            let mut db = SnapshotDbSqlite::open(
+                Path::new(&sql_path),
+                false,
+                &already_open_snapshots,
+                &open_snapshot_semaphore,
+            )
+            .unwrap();
+            db.start_transaction().unwrap();
+            for _j in 0..*kvs_per_round {
+                let address = Address::random();
+                let key_suffix = H256::random();
+                let key;
+                let code_value;
+                let value_value;
+                let value_ref;
+                if *exp_type == "code" {
+                    key = StorageKey::new_code_key(
+                        &address,
+                        /* code_hash = */ &key_suffix,
+                    )
+                    .to_key_bytes();
+                    let code = random_string(*data_len).as_bytes().to_vec();
+                    let code_info = CodeInfo {
+                        code: Arc::new(code),
+                        owner: address,
+                    };
+                    code_value = ::rlp::encode(&code_info);
+                    value_ref = code_value.as_ref();
+                } else {
+                    key = StorageKey::new_storage_key(
+                        &address,
+                        key_suffix.as_ref(),
+                    )
+                    .to_key_bytes();
+                    value_value = random_string(*data_len);
+                    value_ref = value_value.as_bytes();
+                };
 
-    for _i in 0..ROUNDS {
-        for _j in 0..KV_PER_ROUND {
-            let address = Address::random();
-
-            let key = StorageKey::new_code_key(&address, &CODE_HASH).to_key_bytes();
-
-            let code = random_string(LEN).as_bytes().to_vec();
-            let code_info = CodeInfo {
-                code: Arc::new(code),
-                owner: address,
-            };
-            let value = ::rlp::encode(&code_info).into_boxed_slice();
-
-            snapshot_db_sqlite.put(&key, &value).expect("insert kv");
+                db.put(&key, &value_ref).expect("insert kv");
+            }
+            db.commit_transaction().unwrap();
+            drop(db);
+            println!("round {}: {}", _i, dir_size(&PATH_STR).unwrap());
         }
-        println!("round {}: {}", _i, dir_size(&PATH_STR).unwrap());
     }
 
-    drop(snapshot_db_sqlite);
-
-    fs::remove_dir_all(path).expect("remove dir");
+    fs::remove_dir_all(PATH_STR).expect("remove dir");
 }
 
 #[cfg(test)]
@@ -150,21 +190,23 @@ use std::fmt::Debug;
 use crate::impls::{
     defaults::DEFAULT_MAX_OPEN_SNAPSHOTS,
     storage_db::{
-        snapshot_db_sqlite::SnapshotDbTrait,
         snapshot_db_manager_sqlite::AlreadyOpenSnapshots,
+        snapshot_db_sqlite::SnapshotDbTrait,
     },
 };
 #[cfg(test)]
-use crate::{storage_db::KeyValueDbTraitSingleWriter};
+use crate::storage_db::KeyValueDbTraitSingleWriter;
 #[cfg(test)]
-use std::{path::{Path, PathBuf}, sync::Arc, fs, io};
-#[cfg(test)]
-use tokio::sync::Semaphore;
-#[cfg(test)]
-use cfx_types::Address;
-#[cfg(test)]
-use keccak_hash::{KECCAK_EMPTY, H256};
-#[cfg(test)]
-use primitives::{StorageKey, CodeInfo};
+use cfx_types::{Address, H256};
 #[cfg(test)]
 use cfxstore::random_string;
+#[cfg(test)]
+use primitives::{CodeInfo, StorageKey};
+#[cfg(test)]
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+#[cfg(test)]
+use tokio::sync::Semaphore;
